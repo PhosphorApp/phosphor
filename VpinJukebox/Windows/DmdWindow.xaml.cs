@@ -44,7 +44,8 @@ public partial class DmdWindow : JukeboxWindow
     private bool _ssTransitioning;
     private IBlobPattern? _ssCurrentPattern;
     private int _ssBlobCount = 6;
-    private int _ssDarkBlobStart = -1; // index where dark blobs begin
+    private int _ssDarkBlobStart = -1; // kept for ScreensaverColorCycle skip guard
+    private IBlobPattern? _ssDimPattern; // dark blobs created on-demand when dimmed
     private AudioReactiveService? _audioReactive;
 
     // Dim screensaver fields
@@ -211,6 +212,8 @@ public partial class DmdWindow : JukeboxWindow
             _dinputPoller = null;
             _audioReactive?.Dispose();
             _audioReactive = null;
+            _ssDimPattern?.Dispose();
+            _ssDimPattern = null;
             if (_dofClient?.IsConnected == true)
             {
                 try
@@ -582,11 +585,18 @@ public partial class DmdWindow : JukeboxWindow
         _playfieldProxy.SetRotation(settings.PlayfieldRotation);
         _topperWindow.SetBlobCount(settings.TopperBlobCount);
         _topperWindow.SetBlobPattern(settings.TopperBlobPattern);
-        SetBlobCount(settings.DmdBlobCount);
-        SetBlobPattern(settings.DmdBlobPattern);
+        // Configure blob state before creating anything to avoid triple-creation and brightness pop
+        _ssBlobIntensity = Math.Clamp(settings.ScreensaverIntensity, 0.05, 0.8);
+        _ssBlobSpeedMultiplier = Math.Clamp(settings.ScreensaverSpeed, 0.1, 5.0);
+        _ssBlobCount = Math.Clamp(settings.DmdBlobCount, 0, 25);
+        _ssBlobPatternSetting = settings.DmdBlobPattern;
+        _ssBlobPattern = settings.DmdBlobPattern == BlobPattern.RandomPerSong
+            ? BlobTransition.CurrentRandomPattern
+            : settings.DmdBlobPattern;
+
+        // Single creation point — SetDmdScreensaver will create blobs if enabled
         SetDmdScreensaver(settings.DmdScreensaver);
         SetDmdScreensaverDim(settings.DmdScreensaverDimEnabled, settings.DmdScreensaverDimOpacity, settings.DmdScreensaverDimTimeoutSeconds, settings.DmdScreensaverDimDarkBlobs, settings.SwapPlayfieldDmdOnDim, settings.ApplyDefaultDmdOnSwap);
-        SetScreensaverSettings(settings.ScreensaverIntensity, settings.ScreensaverSpeed);
         ApplyReactiveBlobs(settings.ReactiveBlobs);
 
         // DOF color band — subscribe to playfield blob color changes
@@ -2124,39 +2134,19 @@ public partial class DmdWindow : JukeboxWindow
 
         _isDimmed = true;
 
-        // Ensure screensaver blobs exist
-        var ssBlobs = _ssCurrentPattern?.Blobs;
-        if ((ssBlobs == null || ssBlobs.Count == 0) && ScreensaverCanvas.ActualWidth > 0)
-        {
-            CreateScreensaverBlobs();
-            ssBlobs = _ssCurrentPattern?.Blobs;
-        }
-        if (!_ssColorTimer.IsEnabled) _ssColorTimer.Start();
-
         // Hide colored blobs
+        var ssBlobs = _ssCurrentPattern?.Blobs;
         if (ssBlobs != null)
         {
             for (int i = 0; i < ssBlobs.Count; i++)
-            {
-                if (_ssDarkBlobStart < 0 || i < _ssDarkBlobStart)
-                    ssBlobs[i].Visibility = Visibility.Collapsed;
-            }
+                ssBlobs[i].Visibility = Visibility.Collapsed;
         }
 
-        // Move dark blobs to the overlay canvas above the dim layer
-        if (_dimDarkBlobsEnabled && _ssDarkBlobStart >= 0 && ssBlobs != null)
+        // Create dark blobs on-demand directly on DimBlobCanvas
+        if (_dimDarkBlobsEnabled)
         {
+            CreateDarkBlobs();
             DimBlobCanvas.Visibility = Visibility.Visible;
-            for (int i = _ssDarkBlobStart; i < ssBlobs.Count; i++)
-            {
-                var blob = ssBlobs[i];
-                double left = Canvas.GetLeft(blob);
-                double top = Canvas.GetTop(blob);
-                ScreensaverCanvas.Children.Remove(blob);
-                Canvas.SetLeft(blob, left);
-                Canvas.SetTop(blob, top);
-                DimBlobCanvas.Children.Add(blob);
-            }
         }
 
         // Animate dim overlay in
@@ -2282,35 +2272,18 @@ public partial class DmdWindow : JukeboxWindow
 
         _isDimmed = false;
 
-        // Move dark blobs back to ScreensaverCanvas
-        var ssBlobs = _ssCurrentPattern?.Blobs;
-        if (_ssDarkBlobStart >= 0 && ssBlobs != null)
-        {
-            for (int i = _ssDarkBlobStart; i < ssBlobs.Count; i++)
-            {
-                var blob = ssBlobs[i];
-                if (blob.Parent == DimBlobCanvas)
-                {
-                    double left = Canvas.GetLeft(blob);
-                    double top = Canvas.GetTop(blob);
-                    DimBlobCanvas.Children.Remove(blob);
-                    Canvas.SetLeft(blob, left);
-                    Canvas.SetTop(blob, top);
-                    ScreensaverCanvas.Children.Add(blob);
-                    System.Windows.Controls.Panel.SetZIndex(blob, -1);
-                }
-            }
-            DimBlobCanvas.Visibility = Visibility.Collapsed;
-        }
+        // Remove dark blobs — they only exist while dimmed
+        _ssDimPattern?.Dispose();
+        _ssDimPattern = null;
+        DimBlobCanvas.Children.Clear();
+        DimBlobCanvas.Visibility = Visibility.Collapsed;
 
         // Restore colored blobs
+        var ssBlobs = _ssCurrentPattern?.Blobs;
         if (ssBlobs != null)
         {
             for (int i = 0; i < ssBlobs.Count; i++)
-            {
-                if (_ssDarkBlobStart < 0 || i < _ssDarkBlobStart)
-                    ssBlobs[i].Visibility = Visibility.Visible;
-            }
+                ssBlobs[i].Visibility = Visibility.Visible;
         }
 
         // If DMD screensaver is not enabled, hide the background canvas and stop timer
@@ -2530,48 +2503,61 @@ public partial class DmdWindow : JukeboxWindow
         const double referenceArea = 175_000.0;
         double blobScale = Math.Max(1.0, Math.Sqrt(w * h / referenceArea));
 
-        int darkBlobCount = 4;
         return new BlobPatternConfig
         {
             Canvas = ScreensaverCanvas,
-            BlobCount = _ssBlobCount + darkBlobCount,
+            BlobCount = _ssBlobCount,
             Intensity = _ssBlobIntensity,
             SpeedMultiplier = _ssBlobSpeedMultiplier,
             Rng = _ssRng,
-            BlobSizeFactory = r => (250 + r.NextDouble() * 375) * blobScale,
+            BlobSizeFactory = r => (200 + r.NextDouble() * 325) * blobScale,
             UseBitmapCache = false,
         };
     }
 
     private void CreateScreensaverBlobs()
     {
-        int darkBlobCount = 4;
-        _ssDarkBlobStart = _ssBlobCount;
+        _ssDarkBlobStart = -1;
 
         _ssCurrentPattern?.Dispose();
         _ssCurrentPattern = BlobTransition.Create(_ssBlobPattern, MakeSsConfig());
-        _ssCurrentPattern.Enter(() =>
-        {
-            // After enter, make the last N blobs dark
-            var blobs = _ssCurrentPattern?.Blobs;
-            var gradBrushes = _ssCurrentPattern?.GradientBrushes;
-            if (blobs == null) return;
+        _ssCurrentPattern.Enter(() => { });
+    }
 
-            for (int i = _ssDarkBlobStart; i < blobs.Count; i++)
+    /// <summary>
+    /// Creates dark blobs directly on DimBlobCanvas for the dim screensaver overlay.
+    /// Only called when dim fires and dark blobs are enabled.
+    /// </summary>
+    private void CreateDarkBlobs()
+    {
+        const int darkBlobCount = 4;
+        double w = Math.Max(200, DimBlobCanvas.ActualWidth > 0 ? DimBlobCanvas.ActualWidth : ScreensaverCanvas.ActualWidth);
+        double h = Math.Max(200, DimBlobCanvas.ActualHeight > 0 ? DimBlobCanvas.ActualHeight : ScreensaverCanvas.ActualHeight);
+        const double referenceArea = 175_000.0;
+        double blobScale = Math.Max(1.0, Math.Sqrt(w * h / referenceArea));
+
+        var config = new BlobPatternConfig
+        {
+            Canvas = DimBlobCanvas,
+            BlobCount = darkBlobCount,
+            Intensity = 0.75,
+            SpeedMultiplier = _ssBlobSpeedMultiplier,
+            Rng = _ssRng,
+            BlobSizeFactory = r => (195 + r.NextDouble() * 228) * blobScale,
+            UseBitmapCache = false,
+        };
+
+        _ssDimPattern?.Dispose();
+        _ssDimPattern = BlobTransition.Create(_ssBlobPattern, config);
+
+        // Style all blobs as dark before entering
+        var blobs = _ssDimPattern.Blobs;
+        var gradBrushes = _ssDimPattern.GradientBrushes;
+        if (blobs != null)
+        {
+            for (int i = 0; i < blobs.Count; i++)
             {
                 blobs[i].Opacity = 0.75 + _ssRng.NextDouble() * 0.1;
-                System.Windows.Controls.Panel.SetZIndex(blobs[i], -1);
-
-                // Adjust dark blob size
-                double w = Math.Max(200, ScreensaverCanvas.ActualWidth);
-                double h = Math.Max(200, ScreensaverCanvas.ActualHeight);
-                const double referenceArea = 175_000.0;
-                double blobScale = Math.Max(1.0, Math.Sqrt(w * h / referenceArea));
-                double size = (195 + _ssRng.NextDouble() * 228) * blobScale;
-                blobs[i].Width = size;
-                blobs[i].Height = size;
-
-                // Dark gradient
                 if (gradBrushes != null && i < gradBrushes.Count)
                 {
                     var stops = gradBrushes[i].GradientStops;
@@ -2583,7 +2569,9 @@ public partial class DmdWindow : JukeboxWindow
                     }
                 }
             }
-        });
+        }
+
+        _ssDimPattern.Enter(() => { });
     }
 
     private void ScreensaverColorCycle(object? sender, EventArgs e)
