@@ -1,0 +1,32 @@
+<local:JukeboxWindow x:Class="VpinJukebox.PlayfieldWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:VpinJukebox"
+        Title="Playfield - OLED Safe">
+
+    <Grid x:Name="Root" Background="Black" ClipToBounds="True">
+        <!-- Expand button overlay -->
+        <Button x:Name="ExpandButton" Content="⛶" ToolTip="Toggle Fullscreen (F11)"
+                Click="ToggleExpand_Click"
+                HorizontalAlignment="Right" VerticalAlignment="Top"
+                Width="28" Height="28" FontSize="13" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Margin="4"
+                Opacity="0.3" Panel.ZIndex="10"/>
+
+        <!-- Static image layer -->
+        <Image x:Name="StaticImage" Stretch="UniformToFill" Visibility="Collapsed"/>
+
+        <!-- Video layer -->
+        <MediaElement x:Name="VideoPlayer" Stretch="UniformToFill" Visibility="Collapsed"
+                      LoadedBehavior="Manual" UnloadedBehavior="Manual" MediaEnded="VideoPlayer_MediaEnded"/>
+
+        <!-- Psychedelic screensaver layer -->
+        <Canvas x:Name="ScreensaverCanvas" ClipToBounds="True">
+            <!-- Animated gradient blobs rendered in code-behind -->
+        </Canvas>
+
+        <!-- Fade overlay for swap transitions -->
+        <Border x:Name="SwapFadeOverlay" Background="Black" Opacity="0" IsHitTestVisible="False" Visibility="Collapsed"
+                Panel.ZIndex="200"/>
+        <!-- Blur effect is applied directly to root content for swap transitions -->
+    </Grid>
+</local:JukeboxWindow>

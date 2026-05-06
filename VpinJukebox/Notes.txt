@@ -1,0 +1,22 @@
+Youtube Search notes:
+Official formats: artist name - song title (Official Music Video)
+Audio/lyric content: (Official Audio) or (Lyric Video)
+Live/Alternative: Artist Name - Live at [venue] or (Acoustic version)
+Genre & Vibe: [Genre] 2026, Chill music playlist, upbeat study music.
+Contextual: Best [Genre] music video, Trending [Genre] 2026
+
+----
+
+Todo:
+- move video res and codec to bottom right? add to debug log
+- max res? 1920x1080, allow 4k? 
+- show videos 
+	- show backglass? 
+- Network precache?
+
+-----------
+todo:
+- Add setting for hiding mouse cursor when not moving for a few seconds
+
+-move hide cursor to settings, add option for how long to wait before hiding cursor 
+-rename setup to General. Move DOF to new Tab. 

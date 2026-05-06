@@ -1,0 +1,48 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="DirectOutput">
+      <HintPath>..\dependencies\DirectOutput\x64\DirectOutput.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="DofBridgeSettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Copy x64 build output to main app's x64 subfolder -->
+  <Target Name="CopyToMainApp" AfterTargets="Build">
+    <ItemGroup>
+      <BridgeFiles Include="$(OutputPath)DofBridge.exe" Condition="Exists('$(OutputPath)DofBridge.exe')" />
+      <BridgeFiles Include="$(OutputPath)DofBridge.exe.config" Condition="Exists('$(OutputPath)DofBridge.exe.config')" />
+      <BridgeFiles Include="$(OutputPath)DirectOutput.dll" Condition="Exists('$(OutputPath)DirectOutput.dll')" />
+      <BridgeFiles Include="$(OutputPath)DofBridgeSettings.json" Condition="Exists('$(OutputPath)DofBridgeSettings.json')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(BridgeFiles)" DestinationFolder="..\VpinJukebox\bin\$(Configuration)\net8.0-windows\x64\" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- Build x86 variant after main build and copy to main app's x86 subfolder -->
+  <Target Name="BuildAndCopyX86" AfterTargets="CopyToMainApp">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)..\DofBridge.x86\DofBridge.x86.csproj" Properties="Configuration=$(Configuration)" Targets="Restore;Build" />
+
+    <ItemGroup>
+      <X86BridgeFiles Include="$(MSBuildThisFileDirectory)..\DofBridge.x86\bin\$(Configuration)\DofBridge.exe" Condition="Exists('$(MSBuildThisFileDirectory)..\DofBridge.x86\bin\$(Configuration)\DofBridge.exe')" />
+      <X86BridgeFiles Include="$(MSBuildThisFileDirectory)..\DofBridge.x86\bin\$(Configuration)\DofBridge.exe.config" Condition="Exists('$(MSBuildThisFileDirectory)..\DofBridge.x86\bin\$(Configuration)\DofBridge.exe.config')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(X86BridgeFiles)" DestinationFolder="..\VpinJukebox\bin\$(Configuration)\net8.0-windows\x86\" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="..\dependencies\DirectOutput\x86\DirectOutput.dll" DestinationFolder="..\VpinJukebox\bin\$(Configuration)\net8.0-windows\x86\" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(OutputPath)DofBridgeSettings.json" DestinationFolder="..\VpinJukebox\bin\$(Configuration)\net8.0-windows\x86\" SkipUnchangedFiles="true" Condition="Exists('$(OutputPath)DofBridgeSettings.json')" />
+  </Target>
+
+</Project>

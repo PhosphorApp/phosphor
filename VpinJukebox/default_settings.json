@@ -1,0 +1,243 @@
+{
+  "Playfield": {
+    "Left": 0,
+    "Top": 0,
+    "Width": 400,
+    "Height": 200,
+    "IsExpanded": false
+  },
+  "Backglass": {
+    "Left": 500,
+    "Top": 600,
+    "Width": 800,
+    "Height": 600,
+    "IsExpanded": false
+  },
+  "Dmd": {
+    "Left": 500,
+    "Top": 0,
+    "Width": 800,
+    "Height": 600,
+    "IsExpanded": false
+  },
+  "PlayfieldDisplayMode": 1,
+  "PlayfieldStaticImagePath": "",
+  "ShowVideoInfo": false,
+  "ShowPlayfield": true,
+  "ShowTopper": false,
+  "Topper": {
+    "Left": 0,
+    "Top": 0,
+    "Width": 800,
+    "Height": 300,
+    "IsExpanded": false
+  },
+  "SettingsWindowLayout": null,
+  "ResizableWindows": true,
+  "CheckWindowsOnStartup": true,
+  "CacheEnabled": false,
+  "CacheMaxSizeGb": 5,
+  "CacheMaxClipLengthMinutes": 0,
+  "CacheMode": 0,
+  "ThumbnailCacheEnabled": true,
+  "ThumbnailCacheMaxSizeMb": 500,
+  "KeyBindings": {
+    "NavLeft": {
+      "PrimaryKey": 116,
+      "CabinetButton": 0,
+      "CabinetDInputDeviceGuid": null,
+      "CabinetDInputButton": null,
+      "HasDInputBinding": false
+    },
+    "NavRight": {
+      "PrimaryKey": 117,
+      "CabinetButton": 0,
+      "CabinetDInputDeviceGuid": null,
+      "CabinetDInputButton": null,
+      "HasDInputBinding": false
+    },
+    "NavUp": {
+      "PrimaryKey": 24,
+      "CabinetButton": 0,
+      "CabinetDInputDeviceGuid": null,
+      "CabinetDInputButton": null,
+      "HasDInputBinding": false
+    },
+    "NavDown": {
+      "PrimaryKey": 26,
+      "CabinetButton": 0,
+      "CabinetDInputDeviceGuid": null,
+      "CabinetDInputButton": null,
+      "HasDInputBinding": false
+    },
+    "Select": {
+      "PrimaryKey": 6,
+      "CabinetButton": 0,
+      "CabinetDInputDeviceGuid": null,
+      "CabinetDInputButton": null,
+      "HasDInputBinding": false
+    },
+    "Back": {
+      "PrimaryKey": 2,
+      "CabinetButton": 0,
+      "CabinetDInputDeviceGuid": null,
+      "CabinetDInputButton": null,
+      "HasDInputBinding": false
+    },
+    "Skip": {
+      "PrimaryKey": 57,
+      "CabinetButton": 0,
+      "CabinetDInputDeviceGuid": null,
+      "CabinetDInputButton": null,
+      "HasDInputBinding": false
+    },
+    "StopPlayback": {
+      "PrimaryKey": 62,
+      "CabinetButton": 0,
+      "CabinetDInputDeviceGuid": null,
+      "CabinetDInputButton": null,
+      "HasDInputBinding": false
+    },
+    "FavToggle": {
+      "PrimaryKey": 49,
+      "CabinetButton": 0,
+      "CabinetDInputDeviceGuid": null,
+      "CabinetDInputButton": null,
+      "HasDInputBinding": false
+    },
+    "OpenSettings": {
+      "PrimaryKey": 99,
+      "CabinetButton": 0,
+      "CabinetDInputDeviceGuid": null,
+      "CabinetDInputButton": null,
+      "HasDInputBinding": false
+    },
+    "QueueSelected": {
+      "PrimaryKey": 60,
+      "CabinetButton": 0,
+      "CabinetDInputDeviceGuid": null,
+      "CabinetDInputButton": null,
+      "HasDInputBinding": false
+    },
+    "ToggleAutoDj": {
+      "PrimaryKey": 47,
+      "CabinetButton": 0,
+      "CabinetDInputDeviceGuid": null,
+      "CabinetDInputButton": null,
+      "HasDInputBinding": false
+    },
+    "SeekForward": {
+      "PrimaryKey": 151,
+      "CabinetButton": 0,
+      "CabinetDInputDeviceGuid": null,
+      "CabinetDInputButton": null,
+      "HasDInputBinding": false
+    },
+    "SeekBack": {
+      "PrimaryKey": 149,
+      "CabinetButton": 0,
+      "CabinetDInputDeviceGuid": null,
+      "CabinetDInputButton": null,
+      "HasDInputBinding": false
+    },
+    "ExitApp": {
+      "PrimaryKey": 13,
+      "CabinetButton": 0,
+      "CabinetDInputDeviceGuid": null,
+      "CabinetDInputButton": null,
+      "HasDInputBinding": false
+    },
+    "Pause": {
+      "PrimaryKey": 18,
+      "CabinetButton": 0,
+      "CabinetDInputDeviceGuid": null,
+      "CabinetDInputButton": null,
+      "HasDInputBinding": false
+    },
+    "CreatePlaylistFromQueue": {
+      "PrimaryKey": 59,
+      "CabinetButton": 0,
+      "CabinetDInputDeviceGuid": null,
+      "CabinetDInputButton": null,
+      "HasDInputBinding": false
+    },
+    "ToggleShuffle": {
+      "PrimaryKey": 51,
+      "CabinetButton": 0,
+      "CabinetDInputDeviceGuid": null,
+      "CabinetDInputButton": null,
+      "HasDInputBinding": false
+    },
+    "ToggleRepeat": {
+      "PrimaryKey": 61,
+      "CabinetButton": 0,
+      "CabinetDInputDeviceGuid": null,
+      "CabinetDInputButton": null,
+      "HasDInputBinding": false
+    },
+    "FocusSearch": {
+      "PrimaryKey": 145,
+      "CabinetButton": 0,
+      "CabinetDInputDeviceGuid": null,
+      "CabinetDInputButton": null,
+      "HasDInputBinding": false
+    },
+    "Home": {
+      "PrimaryKey": 22,
+      "CabinetButton": 0,
+      "CabinetDInputDeviceGuid": null,
+      "CabinetDInputButton": null,
+      "HasDInputBinding": false
+    }
+  },
+  "ResultColumns": 2,
+  "ResultFontSizeModifier": 0,
+  "ScreensaverIntensity": 0.25,
+  "ScreensaverSpeed": 1,
+  "DmdScreensaver": false,
+  "DmdScreensaverDimEnabled": false,
+  "DmdScreensaverDimOpacity": 80,
+  "DmdScreensaverDimTimeoutSeconds": 60,
+  "DmdScreensaverDimDarkBlobs": true,
+  "BackglassLogoDimEnabled": false,
+  "BackglassLogoDimOpacity": 80,
+  "BackglassLogoDimTimeoutSeconds": 60,
+  "BackglassLogoMorphColor": false,
+  "BackglassAudioOnly": false,
+  "LogoSpin": true,
+  "LogoRings": 2,
+  "TopperDistortion": 0,
+  "ShowStatusText": true,
+  "HideCursorTimeoutSeconds": 15,
+  "OledSleepDefeatSeconds": 0,
+  "OledSleepDefeatDurationSeconds": 5,
+  "OledSleepDefeatIntensity": 80,
+  "PlayfieldBlobPattern": 0,
+  "PlayfieldBlobCount": 10,
+  "BackglassBlobPattern": 1,
+  "BackglassBlobCount": 6,
+  "TopperBlobPattern": 0,
+  "TopperBlobCount": 4,
+  "ReactiveBlobs": false,
+  "ReactivityThreshold": 0.1,
+  "ReactiveSpeedMs": 120,
+  "DmdBlobPattern": 0,
+  "DmdBlobCount": 6,
+  "DmdRotation": 0,
+  "DmdQueuePosition": 0,
+  "DmdPlayButtonSizeModifier": 0,
+  "DmdGenreIconSizeModifier": 0,
+  "QueueFontSizeModifier": 0,
+  "DmdQueueSplitterSize": -1,
+  "LogoText": "\u2022 VPIN JUKEBOX \u2022 VPIN JUKEBOX ",
+  "PrefetchEnabled": true,
+  "VideoQuality": 2,
+  "StereoAudio": true,
+  "Volume": 100,
+  "PlexServerUrl": "",
+  "PlexToken": "",
+  "PlexLibraries": [],
+  "PlexStereoAudio": false,
+  "AutoPlayQueueOnStart": false,
+  "HiddenCategories": []
+}

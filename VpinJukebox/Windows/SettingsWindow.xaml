@@ -1,0 +1,1154 @@
+<local:JukeboxWindow x:Class="VpinJukebox.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:VpinJukebox"
+        Title="Settings"
+        Background="{StaticResource BgBrush}"
+        Width="640" Height="800">
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,12">
+            <TextBlock Text="⚙ SETTINGS" FontSize="20" FontWeight="Bold"
+                       Foreground="{StaticResource AccentBrush}"/>
+            <TextBlock x:Name="VersionText" FontSize="11" Foreground="{StaticResource TextDimBrush}"
+                       VerticalAlignment="Bottom" Margin="10,0,0,2"/>
+        </DockPanel>
+
+        <!-- Tabbed body -->
+        <TabControl x:Name="SettingsTabs" Grid.Row="1" Background="Transparent" BorderThickness="0">
+            <TabControl.Resources>
+                <Style TargetType="TabItem">
+                    <Setter Property="Foreground" Value="{StaticResource TextDimBrush}"/>
+                    <Setter Property="Background" Value="Transparent"/>
+                    <Setter Property="Padding" Value="0"/>
+                    <Setter Property="FontSize" Value="11"/>
+                    <Setter Property="FontWeight" Value="Bold"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="TabItem">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="|" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Opacity="0.3"
+                                               Margin="0,0,0,0" FontSize="11"
+                                               Visibility="{Binding RelativeSource={RelativeSource TemplatedParent}, Path=Tag, FallbackValue=Visible}"/>
+                                    <Border Background="Transparent" Padding="6,4" Cursor="Hand">
+                                        <ContentPresenter ContentSource="Header"/>
+                                    </Border>
+                                </StackPanel>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                                    </Trigger>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </TabControl.Resources>
+
+            <!-- ═══ TAB: General ═══ -->
+            <TabItem Header="GENERAL" Tag="Collapsed">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,5,0">
+                    <Border Background="{StaticResource SurfaceBrush}" CornerRadius="6"
+                            Padding="12" Margin="0,8,0,0">
+                        <StackPanel>
+                            <!-- ═══ SECTION: General Options ═══ -->
+                            <TextBlock Text="WINDOW &amp; STARTUP OPTIONS" FontSize="12" FontWeight="Bold"
+                                Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
+                            <CheckBox x:Name="CbResizableWindows" Content="Enable resizable windows (may show artifacts)"
+                                      Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
+                                      ToolTip="Allows windows to be resized by dragging the corners. This sometimes show visible artifacts, so keep this disabled when not needed or if you see visual artifacts."/>
+                            <CheckBox x:Name="CbAutoPlayQueue" Content="Auto play queue on start"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
+                                      ToolTip="When enabled, if there are items in the queue on launch, playback starts automatically."/>
+                            <CheckBox x:Name="CbShowBackglass" Content="Show backglass (video player) window"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
+                                      ToolTip="Controls whether the backglass window is visible. The media player still runs in the background when hidden."/>
+                            <CheckBox x:Name="CbShowPlayfield" Content="Show playfield window"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"/>
+                            <CheckBox x:Name="CbShowTopper" Content="Show topper window"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"/>
+                            <DockPanel Margin="24,8,0,0">
+                                <TextBlock Text="Topper Logo Shape:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="120"/>
+                                <TextBlock x:Name="DistortionValueText" Text="0" Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" DockPanel.Dock="Right" Width="40"
+                                           TextAlignment="Right"/>
+                                <Slider x:Name="SliderDistortion" Minimum="-100" Maximum="100" Value="0"
+                                        VerticalAlignment="Center" IsMoveToPointEnabled="True"
+                                        ValueChanged="SliderDistortion_ValueChanged"
+                                        ToolTip="Adjust to make the logo look round on non-standard monitors. Negative = taller, Positive = wider."/>
+                            </DockPanel>
+                            <DockPanel Margin="0,8,0,0">
+                                <TextBlock Text="Hide Cursor After:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="140"/>
+                                <ComboBox x:Name="CbHideCursorTimeout" IsEditable="False" Width="140" HorizontalAlignment="Left"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"
+                                          FontSize="12" BorderBrush="#333"/>
+                            </DockPanel>
+                                        <!-- ═══ SECTION: Window Positions ═══ -->
+                                        <TextBlock Text="WINDOW POSITIONS" FontSize="12" FontWeight="Bold"
+                                                   Foreground="{StaticResource AccentBrush}" Margin="0,16,0,6"/>
+                                        <CheckBox x:Name="CbCheckWindowsOnStartup" Content="Check window positions on startup"
+                                                  Foreground="{StaticResource TextBrush}" Margin="0,0,0,8"
+                                                  ToolTip="When enabled, windows that are off-screen (e.g. a monitor was disconnected) are moved back to the primary screen. Disable this if you have an unusual monitor layout that causes windows to be incorrectly repositioned."/>
+                                        <WrapPanel Margin="0,0,0,0">
+                                            <Button Content="↺ Reset All" Click="ResetWindows_Click" Padding="12,6" Margin="0,0,6,6"
+                                                    ToolTip="Reset all window positions on Save"/>
+                                            <Button Content="↺ DMD" Click="ResetDmdWindow_Click" Padding="12,6" Margin="0,0,6,6"
+                                                    ToolTip="Reset DMD window to default position and size"/>
+                                            <Button Content="↺ Backglass" Click="ResetBackglassWindow_Click" Padding="12,6" Margin="0,0,6,6"
+                                                    ToolTip="Reset Backglass window to default position and size"/>
+                                            <Button Content="↺ Playfield" Click="ResetPlayfieldWindow_Click" Padding="12,6" Margin="0,0,6,6"
+                                                    ToolTip="Reset Playfield window to default position and size"
+                                                    IsEnabled="{Binding IsChecked, ElementName=CbShowPlayfield}"/>
+                                            <Button Content="↺ Topper" Click="ResetTopperWindow_Click" Padding="12,6" Margin="0,0,6,6"
+                                                    ToolTip="Reset Topper window to default position and size"
+                                                    IsEnabled="{Binding IsChecked, ElementName=CbShowTopper}"/>
+                                        </WrapPanel>
+
+                                        <!-- ═══ SECTION: Video ═══ -->
+                                        <TextBlock Text="VIDEO" FontSize="12" FontWeight="Bold"
+                                                   Foreground="{StaticResource AccentBrush}" Margin="0,16,0,6"/>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                            <TextBlock Text="Quality:" Foreground="{StaticResource TextBrush}"
+                                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <ComboBox x:Name="CbVideoQuality" Width="150"
+                                                      VerticalAlignment="Center"
+                                                      SelectionChanged="CbVideoQuality_SelectionChanged"/>
+                                            <TextBlock x:Name="QualityHintText" Foreground="{StaticResource TextDimBrush}"
+                                                       VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11"/>
+                                        </StackPanel>
+                                        <CheckBox x:Name="CbStereoAudio" Content="Prefer stereo audio (instead of 5.1 surround)"
+                                                  Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
+                                                  Margin="0,0,0,4"/>
+                                        <CheckBox x:Name="CbPrefetchEnabled" Content="Prefetch next track for instant transitions"
+                                                  Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
+                                                  Margin="0,0,0,0"/>
+
+                                        <!-- ═══ SECTION: Network ═══ -->
+                                        <TextBlock Text="NETWORK" FontSize="12" FontWeight="Bold"
+                                                   Foreground="{StaticResource AccentBrush}" Margin="0,16,0,6"/>
+                                        <TextBlock Text="Buffering settings for streaming playback. Higher values improve reliability on slower connections but increase startup delay."
+                                                   FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,8"
+                                                   TextWrapping="Wrap"/>
+
+                                        <DockPanel Margin="0,4,0,0">
+                                            <TextBlock Text="Network Caching (ms):" Foreground="{StaticResource TextBrush}"
+                                                       VerticalAlignment="Center" Width="160"/>
+                                            <TextBlock x:Name="NetworkCachingValueText" Text="2000" Foreground="{StaticResource TextDimBrush}"
+                                                       VerticalAlignment="Center" DockPanel.Dock="Right" Width="50"
+                                                       TextAlignment="Right"/>
+                                            <Slider x:Name="SliderNetworkCaching" Minimum="500" Maximum="10000"
+                                                    Value="2000" TickFrequency="500" IsSnapToTickEnabled="True"
+                                                    VerticalAlignment="Center" IsMoveToPointEnabled="True"
+                                                    ValueChanged="SliderNetworkCaching_ValueChanged"
+                                                    ToolTip="How much data to buffer before starting playback from network streams. Higher = more reliable on slow connections."/>
+                                        </DockPanel>
+
+                                        <DockPanel Margin="0,8,0,0">
+                                            <TextBlock Text="Live Caching (ms):" Foreground="{StaticResource TextBrush}"
+                                                       VerticalAlignment="Center" Width="160"/>
+                                            <TextBlock x:Name="LiveCachingValueText" Text="1000" Foreground="{StaticResource TextDimBrush}"
+                                                       VerticalAlignment="Center" DockPanel.Dock="Right" Width="50"
+                                                       TextAlignment="Right"/>
+                                            <Slider x:Name="SliderLiveCaching" Minimum="300" Maximum="10000"
+                                                    Value="1000" TickFrequency="500" IsSnapToTickEnabled="True"
+                                                    VerticalAlignment="Center" IsMoveToPointEnabled="True"
+                                                    ValueChanged="SliderLiveCaching_ValueChanged"
+                                                    ToolTip="Buffer size for live/adaptive streams."/>
+                                        </DockPanel>
+
+                                        <DockPanel Margin="0,8,0,0">
+                                            <TextBlock Text="File Caching (ms):" Foreground="{StaticResource TextBrush}"
+                                                       VerticalAlignment="Center" Width="160"/>
+                                            <TextBlock x:Name="FileCachingValueText" Text="300" Foreground="{StaticResource TextDimBrush}"
+                                                       VerticalAlignment="Center" DockPanel.Dock="Right" Width="50"
+                                                       TextAlignment="Right"/>
+                                            <Slider x:Name="SliderFileCaching" Minimum="0" Maximum="5000"
+                                                    Value="300" TickFrequency="100" IsSnapToTickEnabled="True"
+                                                    VerticalAlignment="Center" IsMoveToPointEnabled="True"
+                                                    ValueChanged="SliderFileCaching_ValueChanged"
+                                                    ToolTip="Buffer size for local file playback (cached videos)."/>
+                                        </DockPanel>
+
+                                        <CheckBox x:Name="CbHttpReconnect" Content="Auto-reconnect on dropped connections"
+                                                  Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
+                                                  ToolTip="Automatically attempt to reconnect when the HTTP connection is lost during streaming."/>
+                                    </StackPanel>
+                                </Border>
+                            </ScrollViewer>
+                        </TabItem>
+
+                        <!-- ═══ TAB: Controls ═══ -->
+            <TabItem Header="CONTROLS">
+                <Border Background="{StaticResource SurfaceBrush}" CornerRadius="6" Padding="12" Margin="0,8,0,0">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top"
+                                   Text="Each action has a keyboard key and an optional cabinet button (keyboard or joystick). Click to rebind."
+                                   FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
+                                   TextWrapping="Wrap"/>
+                        <ListView x:Name="BindingsList" Background="Transparent" BorderThickness="0"
+                                  Foreground="{StaticResource TextBrush}" SelectionMode="Single"
+                                  HorizontalAlignment="Left">
+                            <ListView.Resources>
+                                <Style TargetType="GridViewColumnHeader">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="BorderThickness" Value="0"/>
+                                    <Setter Property="Foreground" Value="{StaticResource TextDimBrush}"/>
+                                    <Setter Property="FontWeight" Value="Bold"/>
+                                    <Setter Property="FontSize" Value="11"/>
+                                    <Setter Property="Padding" Value="4,4,4,6"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="GridViewColumnHeader">
+                                                <TextBlock Text="{TemplateBinding Content}"
+                                                           FontWeight="{TemplateBinding FontWeight}"
+                                                           FontSize="{TemplateBinding FontSize}"
+                                                           Foreground="{TemplateBinding Foreground}"
+                                                           Margin="{TemplateBinding Padding}"
+                                                           TextAlignment="Center"
+                                                           HorizontalAlignment="Stretch"/>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListView.Resources>
+                            <ListView.View>
+                                <GridView>
+                                    <GridViewColumn Header="Action" Width="130"
+                                                    DisplayMemberBinding="{Binding DisplayName}"/>
+                                    <GridViewColumn Header="Keyboard Key" Width="130">
+                                        <GridViewColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Button Content="{Binding PrimaryKeyDisplay}" Padding="8,4" MinWidth="70"
+                                                        Click="RebindPrimaryKey_Click" Tag="{Binding}"
+                                                        Background="{StaticResource Surface2Brush}"/>
+                                            </DataTemplate>
+                                        </GridViewColumn.CellTemplate>
+                                    </GridViewColumn>
+                                    <GridViewColumn Header="Cabinet Button" Width="130">
+                                        <GridViewColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Button Content="{Binding CabinetButtonDisplay}" Padding="8,4" MinWidth="70"
+                                                        Click="RebindCabinetButton_Click" Tag="{Binding}"
+                                                        Background="{StaticResource Surface2Brush}"/>
+                                            </DataTemplate>
+                                        </GridViewColumn.CellTemplate>
+                                    </GridViewColumn>
+                                </GridView>
+                            </ListView.View>
+                        </ListView>
+                    </DockPanel>
+                </Border>
+            </TabItem>
+
+            <!-- ═══ TAB: Visuals ═══ -->
+            <TabItem Header="VISUALS">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,5,0">
+                    <Border Background="{StaticResource SurfaceBrush}" CornerRadius="6"
+                            Padding="12" Margin="0,8,0,0">
+                        <StackPanel>
+                            <TextBlock Text="SCREENSAVER AND VISUAL EFFECTS" FontSize="12" FontWeight="Bold"
+                                Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
+                            <TextBlock Text="Screensaver &amp; effect options that apply to all windows"
+                                       FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
+                                       TextWrapping="Wrap"/>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Intensity:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="70"/>
+                                <TextBlock x:Name="IntensityValueText" Text="25%"
+                                           VerticalAlignment="Center" DockPanel.Dock="Right" Width="40"
+                                           TextAlignment="Right"/>
+                                <Slider x:Name="SliderIntensity" Minimum="5" Maximum="80" Value="25"
+                                        VerticalAlignment="Center" IsMoveToPointEnabled="True"
+                                        ValueChanged="SliderIntensity_ValueChanged"/>
+                            </DockPanel>
+                            <DockPanel>
+                                <TextBlock Text="Speed:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="70"/>
+                                <TextBlock x:Name="SpeedValueText" Text="1.0×" Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" DockPanel.Dock="Right" Width="40"
+                                           TextAlignment="Right"/>
+                                <Slider x:Name="SliderSpeed" Minimum="1" Maximum="50" Value="10"
+                                        VerticalAlignment="Center" IsMoveToPointEnabled="True"
+                                        ValueChanged="SliderSpeed_ValueChanged"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,8,0,0">
+                                <TextBlock Text="Title text:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="70"/>
+                                <Button DockPanel.Dock="Right" x:Name="BtnTitleTextDefault" Content="Default" Width="100" Margin="6,0,0,0"
+                                        VerticalAlignment="Center" Click="BtnTitleTextDefault_Click"/>
+                                <TextBox x:Name="TbTitleText" Foreground="{StaticResource TextBrush}"
+                                         Background="{StaticResource SurfaceBrush}" VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,8,0,0">
+                                <TextBlock Text="Logo text:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="70"/>
+                                <Button DockPanel.Dock="Right" x:Name="BtnLogoTextDefault" Content="Default" Width="100" Margin="6,0,0,0"
+                                        VerticalAlignment="Center" Click="BtnLogoTextDefault_Click"/>
+                                <TextBox x:Name="TbLogoText" Foreground="{StaticResource TextBrush}"
+                                         Background="{StaticResource SurfaceBrush}" VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <CheckBox x:Name="CbLogoSpin" Content="Spin logo on idle screens"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"/>
+                            <DockPanel Margin="0,8,0,0">
+                                <TextBlock Text="Logo rings:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="70"/>
+                                <Grid Width="200" VerticalAlignment="Center">
+                                    <Slider x:Name="SliderLogoRings" Minimum="0" Maximum="2" Value="2"
+                                            IsSnapToTickEnabled="True" TickFrequency="1"
+                                            TickPlacement="BottomRight" IsMoveToPointEnabled="True"
+                                            ValueChanged="SliderLogoRings_ValueChanged"/>
+                                    <Grid Margin="5,28,5,0" IsHitTestVisible="False">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="Off" FontSize="11"
+                                                   Foreground="{StaticResource TextDimBrush}" HorizontalAlignment="Left"/>
+                                        <TextBlock Grid.Column="1" Text="Reduced" FontSize="11"
+                                                   Foreground="{StaticResource TextDimBrush}" HorizontalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="Standard" FontSize="11"
+                                                   Foreground="{StaticResource TextDimBrush}" HorizontalAlignment="Right"/>
+                                    </Grid>
+                                </Grid>
+                            </DockPanel>
+                            <TextBlock Text="SCREENSAVER PATTERN" FontSize="12" FontWeight="Bold"
+                                Foreground="{StaticResource AccentBrush}" Margin="0,12,0,12"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
+                                <TextBlock Text="Playfield:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="70"/>
+                                <ComboBox x:Name="CbBlobPatternPlayfield" Width="180" HorizontalAlignment="Left" SelectionChanged="CbBlobPattern_SelectionChanged"/>
+                                <TextBlock x:Name="TxtBlobCountPlayfield" Text="10" Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" Width="25" TextAlignment="Right" Margin="12,0,4,0"/>
+                                <Slider x:Name="SliderBlobCountPlayfield" Minimum="0" Maximum="25" Value="10"
+                                        Width="100" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
+                                        ValueChanged="SliderBlobCountPlayfield_ValueChanged"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
+                                <TextBlock Text="Backglass:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="70"/>
+                                <ComboBox x:Name="CbBlobPatternBackglass" Width="180" HorizontalAlignment="Left" SelectionChanged="CbBlobPattern_SelectionChanged"/>
+                                <TextBlock x:Name="TxtBlobCountBackglass" Text="10" Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" Width="25" TextAlignment="Right" Margin="12,0,4,0"/>
+                                <Slider x:Name="SliderBlobCountBackglass" Minimum="0" Maximum="25" Value="10"
+                                        Width="100" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
+                                        ValueChanged="SliderBlobCountBackglass_ValueChanged"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
+                                <TextBlock Text="Topper:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="70"/>
+                                <ComboBox x:Name="CbBlobPatternTopper" Width="180" HorizontalAlignment="Left" SelectionChanged="CbBlobPattern_SelectionChanged"/>
+                                <TextBlock x:Name="TxtBlobCountTopper" Text="10" Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" Width="25" TextAlignment="Right" Margin="12,0,4,0"/>
+                                <Slider x:Name="SliderBlobCountTopper" Minimum="0" Maximum="25" Value="10"
+                                        Width="100" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
+                                        ValueChanged="SliderBlobCountTopper_ValueChanged"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
+                                <TextBlock Text="DMD:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="70"/>
+                                <ComboBox x:Name="CbBlobPatternDmd" Width="180" HorizontalAlignment="Left" SelectionChanged="CbBlobPattern_SelectionChanged"/>
+                                <TextBlock x:Name="TxtBlobCountDmd" Text="10" Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" Width="25" TextAlignment="Right" Margin="12,0,4,0"/>
+                                <Slider x:Name="SliderBlobCountDmd" Minimum="0" Maximum="25" Value="10"
+                                        Width="100" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
+                                        ValueChanged="SliderBlobCountDmd_ValueChanged"/>
+                            </StackPanel>
+                            <CheckBox x:Name="CbExcludeMandelbrot" Content="Exclude Mandelbrot from random choices"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
+                                      ToolTip="Mandelbrot rendering can be CPU/GPU intensive and may impact performance on some systems."/>
+                            <CheckBox x:Name="CbExcludeProjectM" Content="Exclude ProjectM from random choices"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,4,0,0"
+                                      ToolTip="ProjectM rendering can be CPU/GPU intensive and may impact performance on some systems."/>
+
+                            <!-- ═══ SECTION: Mandelbrot Tuning (visible only when any pattern is Mandelbrot) ═══ -->
+                            <StackPanel x:Name="PanelMandelbrotTuning" Visibility="Collapsed">
+                                <TextBlock Text="MANDELBROT TUNING" FontSize="12" FontWeight="Bold"
+                                    Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
+                                <CheckBox x:Name="CbMandelbrotUseGpu" Content="Use GPU acceleration"
+                                          Foreground="{StaticResource TextBrush}" Margin="0,4,0,0"
+                                          ToolTip="When enabled, uses the GPU (Direct3D 11) for Mandelbrot rendering. Falls back to CPU if GPU initialization fails."/>
+                                <CheckBox x:Name="CbMandelbrotAdaptiveIterations" Content="Adaptive iterations"
+                                          Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
+                                          ToolTip="Automatically scales iteration count with zoom depth — fewer iterations at low zoom for better performance."/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Max Iterations:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <Slider x:Name="SliderMandelbrotMaxIterations" Minimum="64" Maximum="8192"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="64"
+                                            ValueChanged="SliderMandelbrotMaxIterations_ValueChanged"
+                                            ToolTip="Maximum iteration count per pixel. Higher = more detail at deep zoom but slower. Default 256."/>
+                                    <TextBlock x:Name="TxtMandelbrotMaxIterations" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Max FPS:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <Slider x:Name="SliderMandelbrotMaxHz" Minimum="0" Maximum="240"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="1"
+                                            ValueChanged="SliderMandelbrotMaxHz_ValueChanged"
+                                            ToolTip="Caps the Mandelbrot frame rate. 0 = unlimited (vsync). Lower values reduce CPU/GPU load."/>
+                                    <TextBlock x:Name="TxtMandelbrotMaxHz" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Render Scale:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <Slider x:Name="SliderMandelbrotRenderScale" Minimum="20" Maximum="100"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="5"
+                                            ValueChanged="SliderMandelbrotRenderScale_ValueChanged"
+                                            ToolTip="Resolution multiplier (20%–100%). Lower values render fewer pixels for better performance. The image is stretched to fill the window."/>
+                                    <TextBlock x:Name="TxtMandelbrotRenderScale" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Perturbation:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <Slider x:Name="SliderMandelbrotPerturbation" Minimum="0" Maximum="100"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="5"
+                                            ValueChanged="SliderMandelbrotPerturbation_ValueChanged"
+                                            ToolTip="Adds random displacement to each zoom target so the same coordinate never looks exactly the same twice. 0 = exact curated coordinates, 100 = maximum randomness."/>
+                                    <TextBlock x:Name="TxtMandelbrotPerturbation" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <CheckBox x:Name="CbMandelbrotDiscovery" Content="Algorithmic discovery"
+                                          Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
+                                          ToolTip="When enabled, algorithmically searches for novel interesting boundary points instead of only using the curated library. Uses extra CPU at pattern startup."/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Dimming:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <Slider x:Name="SliderMandelbrotDimming" Minimum="0" Maximum="90"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="5"
+                                            ValueChanged="SliderMandelbrotDimming_ValueChanged"
+                                            ToolTip="Dims the Mandelbrot visualization by overlaying a semi-transparent black layer. 0 = full brightness, 100 = fully dimmed."/>
+                                    <TextBlock x:Name="TxtMandelbrotDimming" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <!-- ═══ SECTION: ProjectM Tuning (visible only when any pattern is ProjectM) ═══ -->
+                            <StackPanel x:Name="PanelProjectMTuning" Visibility="Collapsed">
+                                <TextBlock Text="PROJECTM TUNING" FontSize="12" FontWeight="Bold"
+                                    Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Preset Duration:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="110"/>
+                                    <Slider x:Name="SliderProjectMPresetDuration" Minimum="5" Maximum="120"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="5"
+                                            ValueChanged="SliderProjectMPresetDuration_ValueChanged"
+                                            ToolTip="Seconds between automatic preset transitions."/>
+                                    <TextBlock x:Name="TxtProjectMPresetDuration" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Soft Cut:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="110"/>
+                                    <Slider x:Name="SliderProjectMSoftCut" Minimum="0" Maximum="10"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="1"
+                                            ValueChanged="SliderProjectMSoftCut_ValueChanged"
+                                            ToolTip="Seconds for the crossfade between presets."/>
+                                    <TextBlock x:Name="TxtProjectMSoftCut" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Beat Sensitivity:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="110"/>
+                                    <Slider x:Name="SliderProjectMBeatSensitivity" Minimum="0" Maximum="3"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="0.1"
+                                            ValueChanged="SliderProjectMBeatSensitivity_ValueChanged"
+                                            ToolTip="How reactive visuals are to beats (0–3). Higher = more reactive."/>
+                                    <TextBlock x:Name="TxtProjectMBeatSensitivity" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <CheckBox x:Name="CbProjectMHardCut" Content="Enable hard cuts (beat-driven)"
+                                           Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
+                                           ToolTip="Allow beat-driven instant preset switches."/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Render Scale:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="110"/>
+                                    <Slider x:Name="SliderProjectMRenderScale" Minimum="20" Maximum="100"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="5"
+                                            ValueChanged="SliderProjectMRenderScale_ValueChanged"
+                                            ToolTip="Resolution multiplier (20%–100%). Lower values improve performance."/>
+                                    <TextBlock x:Name="TxtProjectMRenderScale" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+
+                                <TextBlock Text="Preset Folders" FontSize="11" FontWeight="SemiBold"
+                                    Foreground="{StaticResource TextBrush}" Margin="0,12,0,4"/>
+                                <TextBlock Text="Check the folders to include in the playlist. Unchecked folders are skipped."
+                                    FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,4" TextWrapping="Wrap"/>
+                                <Border BorderBrush="{StaticResource TextDimBrush}" BorderThickness="1"
+                                        CornerRadius="3" Padding="4" MaxHeight="250">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <TreeView x:Name="TvProjectMFolders" Background="Transparent"
+                                                  BorderThickness="0"/>
+                                    </ScrollViewer>
+                                </Border>
+                                <Button Content="🔍 Preset Browser" Click="BtnPresetBrowser_Click"
+                                        Padding="12,6" Margin="0,8,0,0" HorizontalAlignment="Left"
+                                        ToolTip="Browse, preview, and activate/deactivate individual presets."/>
+                            </StackPanel>
+
+                            <TextBlock Text="REACTIVE BLOBS" FontSize="12" FontWeight="Bold"
+                                Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
+                            <TextBlock Text="Blobs will pulse with the audio"
+                                 FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,2" Padding="0,0,0,4"
+                                 TextWrapping="Wrap"/> 
+                            <CheckBox x:Name="CbReactiveBlobs" Content="Reactive Blobs (pulse with audio)"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="Reactivity Threshold:" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Width="140"/>
+                                <TextBlock x:Name="TxtReactivityThreshold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Width="45" TextAlignment="Right" Margin="0,0,8,0"/>
+                                <Slider x:Name="SliderReactivityThreshold" Minimum="0" Maximum="50" Value="10" Width="150" VerticalAlignment="Center"
+                                        ValueChanged="SliderReactivityThreshold_ValueChanged"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="Reactive Speed:" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Width="140"/>
+                                <TextBlock x:Name="TxtReactiveSpeed" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Width="45" TextAlignment="Right" Margin="0,0,8,0"/>
+                                <Slider x:Name="SliderReactiveSpeed" Minimum="20" Maximum="240" Value="120" TickFrequency="20" IsSnapToTickEnabled="True" Width="150" VerticalAlignment="Center"
+                                        ValueChanged="SliderReactiveSpeed_ValueChanged"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="Overdrive:" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Width="140"/>
+                                <TextBlock x:Name="TxtReactiveOverdrive" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Width="45" TextAlignment="Right" Margin="0,0,8,0"/>
+                                <Slider x:Name="SliderReactiveOverdrive" Minimum="5" Maximum="30" Value="10" TickFrequency="1" IsSnapToTickEnabled="True" Width="150" VerticalAlignment="Center"
+                                        ValueChanged="SliderReactiveOverdrive_ValueChanged"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ═══ TAB: DMD ═══ -->
+            <TabItem Header="DMD">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,5,0">
+                    <Border Background="{StaticResource SurfaceBrush}" CornerRadius="6"
+                            Padding="12" Margin="0,8,0,0">
+                        <StackPanel>
+                            <!-- ═══ SECTION: DMD WINDOW OPTIONS ═══ -->
+                            <TextBlock Text="DMD UI OPTIONS" FontSize="12" FontWeight="Bold"
+                                Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
+                            <TextBlock Text="The main UI options (typically the DMD screen)"
+                                       FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
+                                       TextWrapping="Wrap"/>
+                            <CheckBox x:Name="CbDmdScreensaver" Content="Show screensaver effect behind DMD UI"
+                                      Foreground="{StaticResource TextBrush}"/>
+                            <CheckBox x:Name="CbShowStatusText" Content="Show status text in title bar"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"/>
+                            <CheckBox x:Name="CbShowVideoInfo" Content="Show resolution, FPS, other stats in title bar"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"/>
+                            <CheckBox x:Name="CbDmdScreensaverDim" Content="Dim screen after idle timeout"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,12,0,0"/>
+                            <DockPanel Margin="24,8,0,0">
+                                <TextBlock Text="Opacity:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <ComboBox x:Name="CbDmdDimOpacity" IsEditable="False" Width="140" HorizontalAlignment="Left"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"
+                                          FontSize="12" BorderBrush="#333"/>
+                            </DockPanel>
+                            <DockPanel Margin="24,8,0,0">
+                                <TextBlock Text="Timeout:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <ComboBox x:Name="CbDmdDimTimeout" IsEditable="False" Width="140" HorizontalAlignment="Left"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"
+                                          FontSize="12" BorderBrush="#333"/>
+                            </DockPanel>
+                            <CheckBox x:Name="CbDmdDimDarkBlobs" Content="Show dark blobs when dimmed on the DMD"
+                                      Foreground="{StaticResource TextBrush}" Margin="24,8,0,0"/>
+                            <TextBlock Text="SWAP DMD &amp; PLAYFIELD" FontSize="12" FontWeight="Bold"
+                                Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
+                            <TextBlock Text="After timout, the DMD and playfield can swap positions for a larger UI while browsing, then showing the screensaver to prevent burn-in."
+                                       Foreground="{StaticResource TextDimBrush}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                            <CheckBox x:Name="CbSwapPlayfieldDmdOnDim" Content="Swap Playfield and DMD when dimmed"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
+                                      IsEnabled="{Binding IsChecked, ElementName=CbDmdScreensaverDim}"/>
+                            <CheckBox x:Name="CbApplyDefaultDmdOnSwap" Content="Apply default settings to DMD when swapped"
+                                      Foreground="{StaticResource TextBrush}" Margin="20,8,0,0"/>
+                            <TextBlock Text="To configure swap:&#10;1) Set up your DMD and Playfield screens for how you'd like them after the swap. Then, use this button to save as the default settings."
+                                       Foreground="{StaticResource TextDimBrush}" Margin="20,8,0,0" TextWrapping="Wrap" FontSize="11"/>
+                            <StackPanel Orientation="Horizontal" Margin="20,10,0,0">
+                                <Button x:Name="BtnSaveDefaultSettings" Content="Save Default Settings"
+                                        Click="SaveDefaultSettings_Click"
+                                        Padding="12,6" HorizontalAlignment="Left"
+                                        Background="{StaticResource AccentBrush}"
+                                        Foreground="{StaticResource TextBrush}"
+                                        FontSize="12" BorderThickness="0" Cursor="Hand"/>
+                                <TextBlock x:Name="DefaultSettingsSavedText" Text="✓ Settings saved"
+                                           Foreground="{StaticResource TextDimBrush}" FontSize="11"
+                                           VerticalAlignment="Center" Margin="10,0,0,0"
+                                           Visibility="Collapsed"/>
+                            </StackPanel>
+                            <TextBlock Text="2) Next, arrange the windows as you'd like them while browsing (before the swap). After the timeout, the two layouts will swap until there is activity."
+                               Foreground="{StaticResource TextDimBrush}" Margin="20,8,0,0" TextWrapping="Wrap" FontSize="11"/>
+                            <TextBlock Text="APPEARANCE &amp; LAYOUT" FontSize="12" FontWeight="Bold"
+                                 Foreground="{StaticResource AccentBrush}" Margin="0,12,0,12"/>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Category Visibility:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <ComboBox x:Name="CbCategoryVisibility" IsEditable="True" IsReadOnly="True" Width="200" HorizontalAlignment="Left"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"
+                                          FontSize="12" BorderBrush="#333">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <CheckBox Content="{Binding Name}" IsChecked="{Binding IsVisible, Mode=TwoWay}"
+                                                      Foreground="{StaticResource TextBrush}" FontSize="12"
+                                                      Checked="CategoryVisibility_Changed" Unchecked="CategoryVisibility_Changed"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </DockPanel>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Rotation:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <ComboBox x:Name="CbDmdRotation" IsEditable="False" Width="140" HorizontalAlignment="Left"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"
+                                          FontSize="12" BorderBrush="#333"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Queue:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <ComboBox x:Name="CbQueuePosition" IsEditable="False" Width="140" HorizontalAlignment="Left"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"
+                                          FontSize="12" BorderBrush="#333"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Track Columns:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <ComboBox x:Name="CbResultColumns" IsEditable="False" Width="140" HorizontalAlignment="Left"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"
+                                          FontSize="12" BorderBrush="#333"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,0,0,8" Visibility="Collapsed">
+                                <TextBlock Text="Minor Buttons:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <ComboBox x:Name="CbMinorButtonLocation" IsEditable="False" Width="140" HorizontalAlignment="Left"
+                                           Background="{StaticResource Surface2Brush}"
+                                           Foreground="{StaticResource TextBrush}"
+                                           FontSize="12" BorderBrush="#333"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Queue Font Size:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <TextBlock Text="Smaller" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <Slider x:Name="SliderQueueFontSize" Minimum="-12" Maximum="24"
+                                        TickFrequency="2" IsSnapToTickEnabled="True"
+                                        Width="140" VerticalAlignment="Center"/>
+                                <TextBlock Text="Larger" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Queue Buttons:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <TextBlock Text="Smaller" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <Slider x:Name="SliderQueueButtonSize" Minimum="-12" Maximum="24"
+                                        TickFrequency="2" IsSnapToTickEnabled="True"
+                                        Width="140" VerticalAlignment="Center"/>
+                                <TextBlock Text="Larger" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Play Buttons:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <TextBlock Text="Smaller" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <Slider x:Name="SliderPlayButtonSize" Minimum="-12" Maximum="36"
+                                        TickFrequency="3" IsSnapToTickEnabled="True"
+                                        Width="140" VerticalAlignment="Center"/>
+                                <TextBlock Text="Larger" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Genre Icons:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <TextBlock Text="Smaller" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <Slider x:Name="SliderGenreIconSize" Minimum="-12" Maximum="24"
+                                        TickFrequency="2" IsSnapToTickEnabled="True"
+                                        Width="140" VerticalAlignment="Center"/>
+                                <TextBlock Text="Larger" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Track Font Size:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <TextBlock Text="Smaller" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <Slider x:Name="SliderResultFontSize" Minimum="-12" Maximum="24"
+                                        TickFrequency="2" IsSnapToTickEnabled="True"
+                                        Width="140" VerticalAlignment="Center"/>
+                                <TextBlock Text="Larger" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Track Button Size:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <TextBlock Text="Smaller" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <Slider x:Name="SliderTrackButtonSize" Minimum="-12" Maximum="24"
+                                        TickFrequency="2" IsSnapToTickEnabled="True"
+                                        Width="140" VerticalAlignment="Center"/>
+                                <TextBlock Text="Larger" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                            </DockPanel>
+                        </StackPanel>
+                    </Border>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ═══ TAB: Backglass ═══ -->
+            <TabItem Header="BACKGLASS">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,5,0">
+                    <Border Background="{StaticResource SurfaceBrush}" CornerRadius="6"
+                            Padding="12" Margin="0,8,0,0">
+                        <StackPanel>
+                            <TextBlock Text="BACKGLASS OPTIONS" FontSize="12" FontWeight="Bold"
+                                Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
+                            <TextBlock Text="The main video screen options (typically the backglass screen)"
+                                       FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
+                                       TextWrapping="Wrap"/>
+                            <!-- Dim Logo -->
+                            <CheckBox x:Name="CbBackglassLogoDim" Content="Dim logo after idle timeout"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,0,0,0"/>
+                            <DockPanel Margin="24,8,0,0">
+                                <TextBlock Text="Opacity:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <ComboBox x:Name="CbBackglassDimOpacity" IsEditable="False" Width="140" HorizontalAlignment="Left"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"
+                                          FontSize="12" BorderBrush="#333"/>
+                            </DockPanel>
+                            <DockPanel Margin="24,8,0,8">
+                                <TextBlock Text="Timeout:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <ComboBox x:Name="CbBackglassDimTimeout" IsEditable="False" Width="140" HorizontalAlignment="Left"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"
+                                          FontSize="12" BorderBrush="#333"/>
+                            </DockPanel>
+                            <CheckBox x:Name="CbBackglassMorphColor" Content="Morph logo colors"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,0,0,8"/>
+                            <CheckBox x:Name="CbBackglassAudioOnly" Content="Stream audio only (no video on backglass)"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,0,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ═══ TAB: Playfield ═══ -->
+            <TabItem Header="PLAYFIELD">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,5,0">
+                    <Border Background="{StaticResource SurfaceBrush}" CornerRadius="6"
+                            Padding="12" Margin="0,8,0,0">
+                        <StackPanel>
+                            <TextBlock Text="PLAYFIELD OPTIONS" FontSize="12" FontWeight="Bold"
+                                Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
+                            <TextBlock Text="The main screensaver screen, typically the playfield. This uses a screensaver primarily to protect OLED screens from static image burn-in. However, you can rearrange windows to suit your cab."
+                                       FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
+                                       TextWrapping="Wrap"/>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Orientation:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="70"/>
+                                <ComboBox x:Name="CbPlayfieldRotation" Width="75" HorizontalAlignment="Left"/>
+                            </DockPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="RbBlank" Content="Blank"
+                                             Margin="0,0,16,0" GroupName="PfMode"/>
+                                <RadioButton x:Name="RbScreensaver" Content="Screensaver" Foreground="{StaticResource TextBrush}"
+                                             Margin="0,0,16,0" GroupName="PfMode"/>
+                                <RadioButton x:Name="RbStatic" Content="Static Image" Foreground="{StaticResource TextBrush}"
+                                             Margin="0,0,16,0" GroupName="PfMode"/>
+                                <RadioButton x:Name="RbVideo" Content="Video" Foreground="{StaticResource TextBrush}"
+                                             GroupName="PfMode"/>
+                            </StackPanel>
+                            <DockPanel Margin="0,8,0,0">
+                                <TextBlock Text="Image file:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="70"/>
+                                <Button DockPanel.Dock="Right" Content="Browse…" Padding="8,4" Margin="6,0,0,0"
+                                        Click="BrowseStaticImage_Click"/>
+                                <TextBox x:Name="TbStaticImagePath" Foreground="{StaticResource TextBrush}"
+                                         Background="{StaticResource SurfaceBrush}" VerticalAlignment="Center"
+                                         IsReadOnly="True"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,8,0,0">
+                                <TextBlock Text="Video file:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="70"/>
+                                <Button DockPanel.Dock="Right" Content="Browse…" Padding="8,4" Margin="6,0,0,0"
+                                        Click="BrowseVideo_Click"/>
+                                <TextBox x:Name="TbVideoPath" Foreground="{StaticResource TextBrush}"
+                                         Background="{StaticResource SurfaceBrush}" VerticalAlignment="Center"
+                                         IsReadOnly="True"/>
+                            </DockPanel>
+                            <TextBlock Text="OLED SLEEP DEFEAT" FontSize="12" FontWeight="Bold"
+                                  Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
+                            <TextBlock Text="Some OLED screens turn off if there isn't enough movement or brightness. This setting occasionally brightens the screensaver to prevent sleeping." 
+                                       FontSize="10" FontWeight="Bold" TextWrapping="Wrap"
+                                       Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,12"/>
+                            <DockPanel Margin="0,0,0,0">
+                                <TextBlock Text="Interval:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="70"/>
+                                <ComboBox x:Name="CbOledSleepDefeat" IsEditable="False" Width="130" HorizontalAlignment="Left"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"/>
+                                <TextBlock Text="Duration:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Margin="12,0,6,0"/>
+                                <ComboBox x:Name="CbOledSleepDuration" IsEditable="False" Width="130" HorizontalAlignment="Left"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,6,0,0">
+                                <TextBlock Text="Intensity:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="70"/>
+                                <TextBlock x:Name="TxtOledIntensity" Text="80%" Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" Width="35"/>
+                                <Slider x:Name="SliderOledIntensity" Minimum="0" Maximum="100" Value="80"
+                                        IsSnapToTickEnabled="True" TickFrequency="1"
+                                        ValueChanged="SliderOledIntensity_ValueChanged"/>
+                            </DockPanel>
+                        </StackPanel>
+                    </Border>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ═══ TAB: Plex ═══ -->
+            <TabItem Header="PLEX">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,5,0">
+                    <Border Background="{StaticResource SurfaceBrush}" CornerRadius="6"
+                            Padding="12" Margin="0,8,0,0">
+                        <StackPanel>
+                            <TextBlock Text="PLEX SETUP" FontSize="12" FontWeight="Bold"
+                            Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
+                            <TextBlock FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
+                                       TextWrapping="Wrap">
+                                <Run Text="Allows you to connect to a Plex server. This requires you to know your authentication token. Once configured, you can select which libraries to add as tiles, and optionally include playlists and hubs from Plex for those libraries. "/>
+                                <Hyperlink NavigateUri="https://www.google.com/search?q=find+plex+auth+token"
+                                           RequestNavigate="Hyperlink_RequestNavigate">Here's how to find your Plex auth token.</Hyperlink>
+                            </TextBlock>
+                            <DockPanel Margin="0,0,0,6">
+                                <TextBlock Text="Server URL:"
+                                           VerticalAlignment="Center" Width="80"/>
+                                <TextBox x:Name="TbPlexUrl" VerticalAlignment="Center"
+                                         ToolTip="e.g. http://192.168.1.100:32400"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,0,0,6">
+                                <TextBlock Text="Token:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="80"/>
+                                <TextBox x:Name="TbPlexToken" VerticalAlignment="Center"
+                                         ToolTip="Your Plex authentication token"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,0,0,6">
+                                <TextBlock Text="Add library:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="80"/>
+                                <Button Content="＋ Add" Click="PlexAddLibrary_Click" Padding="8,4"
+                                        DockPanel.Dock="Right" Margin="8,0,0,0"/>
+                                <ComboBox x:Name="CbPlexLibrary" MinWidth="150"
+                                          VerticalAlignment="Center" DisplayMemberPath="Title"
+                                          SelectedValuePath="Key"
+                                          IsEditable="True" IsReadOnly="True"
+                                          Text="No libraries loaded"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"/>
+                            </DockPanel>
+                            <TextBlock Text="LIBRARY TILES" Foreground="{StaticResource TextDimBrush}"
+                                       FontSize="10" FontWeight="Bold" Margin="0,9,0,9"/>
+                            <ItemsControl x:Name="PlexLibraryList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel Margin="0,7">
+                                            <Button Content="✕" Click="PlexRemoveLibrary_Click"
+                                                    Tag="{Binding}" DockPanel.Dock="Right"
+                                                    Padding="6,2" Margin="8,0,0,0" FontSize="14"/>
+                                            <CheckBox IsChecked="{Binding PlaylistsEnabled}" Content="Playlists"
+                                                      Foreground="{StaticResource TextDimBrush}"
+                                                      DockPanel.Dock="Right" Margin="8,0,0,0"
+                                                      VerticalAlignment="Center" FontSize="14"
+                                                      ToolTip="Show a Playlists tile to browse Plex playlists"/>
+                                            <CheckBox IsChecked="{Binding HubsEnabled}" Content="Hubs"
+                                                      Foreground="{StaticResource TextDimBrush}"
+                                                      DockPanel.Dock="Right" Margin="8,0,0,0"
+                                                      VerticalAlignment="Center" FontSize="14"
+                                                      ToolTip="Show a Hubs tile (Recently Played, Recently Added, etc.)"/>
+                                            <TextBlock Text="{Binding Title}" Foreground="{StaticResource TextBrush}"
+                                                       VerticalAlignment="Center" FontSize="14"/>
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                <Button Content="Test Connection" Click="PlexTest_Click" Padding="12,6"
+                                        Margin="0,0,8,0"/>
+                                <Button Content="Load Libraries" Click="PlexLoadLibraries_Click" Padding="12,6"/>
+                                <TextBlock x:Name="PlexStatusText" Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11"/>
+                            </StackPanel>
+                            <CheckBox x:Name="CbPlexStereo" Content="Force stereo audio (downmix surround)"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
+                                      ToolTip="Request stereo audio from Plex instead of surround sound"/>
+                        </StackPanel>
+                    </Border>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ═══ TAB: Cache ═══ -->
+            <TabItem Header="CACHE">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,5,0">
+                    <Border Background="{StaticResource SurfaceBrush}" CornerRadius="6"
+                            Padding="12" Margin="0,8,0,0">
+                        <StackPanel>
+                            <TextBlock Text="CACHING OPTIONS" FontSize="12" FontWeight="Bold"
+                                Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
+                            <TextBlock Text="Configure cache options for video content (Plex media is not cached) and playlist/thumbnails"
+                                       FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
+                                       TextWrapping="Wrap"/>
+
+                            <!-- VIDEO CACHE subsection -->
+                            <TextBlock Text="VIDEO CACHE" FontSize="9" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,6"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <CheckBox x:Name="CbCacheEnabled" Content="Cache enabled"
+                                          Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
+                                          Margin="0,0,16,0"/>
+                                <TextBlock Text="Max:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <ComboBox x:Name="CbCacheMaxSize" IsEditable="False" MinWidth="120"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"
+                                          FontSize="12" BorderBrush="#333"/>
+                                <TextBlock x:Name="CacheSizeText" Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" Margin="8,0,8,0"/>
+                                <Button Content="🗑 Purge" Click="PurgeVideoCache_Click" Padding="8,4"/>
+                            </StackPanel>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Cache mode:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="100"/>
+                                <ComboBox x:Name="CbCacheMode" IsEditable="False" MinWidth="140"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"
+                                          FontSize="12" BorderBrush="#333"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Max clip length:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="100"/>
+                                <ComboBox x:Name="CbCacheMaxClipLength" IsEditable="False" MinWidth="120"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"
+                                          FontSize="12" BorderBrush="#333"/>
+                            </DockPanel>
+
+                            <!-- CONTENT CACHE subsection -->
+                            <TextBlock Text="CONTENT CACHE" FontSize="9" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextDimBrush}" Margin="0,8,0,6"/>
+                            <Grid Margin="0,0,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="130"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="130"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="8"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="8"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- Row 0: Thumbnails -->
+                                <CheckBox x:Name="CbThumbnailCacheEnabled" Content="Thumbnails"
+                                          Grid.Row="0" Grid.Column="0"
+                                          Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Text="Max:" Grid.Row="0" Grid.Column="1"
+                                           Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <ComboBox x:Name="CbThumbnailCacheMaxSize" Grid.Row="0" Grid.Column="2"
+                                          IsEditable="False"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"
+                                          FontSize="12" BorderBrush="#333"/>
+                                <TextBlock x:Name="ThumbnailCacheSizeText" Grid.Row="0" Grid.Column="3"
+                                           Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" Margin="8,0,8,0"/>
+                                <Button Content="🗑 Purge" Grid.Row="0" Grid.Column="4"
+                                        Click="PurgeThumbnailCache_Click" Padding="8,4"/>
+
+                                <!-- Row 2: YouTube Playlists -->
+                                <CheckBox x:Name="CbPlaylistCacheEnabled" Content="YouTube Playlists"
+                                          Grid.Row="2" Grid.Column="0"
+                                          Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Text="Max age:" Grid.Row="2" Grid.Column="1"
+                                           Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <ComboBox x:Name="CbPlaylistCacheMaxAge" Grid.Row="2" Grid.Column="2"
+                                          IsEditable="False"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"
+                                          FontSize="12" BorderBrush="#333"/>
+                                <TextBlock x:Name="PlaylistCacheSizeText" Grid.Row="2" Grid.Column="3"
+                                           Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" Margin="8,0,8,0"/>
+                                <Button Content="🗑 Purge" Grid.Row="2" Grid.Column="4"
+                                        Click="PurgePlaylistCache_Click" Padding="8,4"/>
+
+                                <!-- Row 4: Plex Playlists -->
+                                <CheckBox x:Name="CbPlexPlaylistCacheEnabled" Content="Plex Playlists"
+                                          Grid.Row="4" Grid.Column="0"
+                                          Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Text="Max age:" Grid.Row="4" Grid.Column="1"
+                                           Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <ComboBox x:Name="CbPlexPlaylistCacheMaxAge" Grid.Row="4" Grid.Column="2"
+                                          IsEditable="False"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"
+                                          FontSize="12" BorderBrush="#333"/>
+                                <TextBlock x:Name="PlexPlaylistCacheSizeText" Grid.Row="4" Grid.Column="3"
+                                           Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" Margin="8,0,8,0"/>
+                                <Button Content="🗑 Purge" Grid.Row="4" Grid.Column="4"
+                                        Click="PurgePlexPlaylistCache_Click" Padding="8,4"/>
+                            </Grid>
+
+                            <!-- HISTORY subsection -->
+                            <TextBlock Text="HISTORY" FontSize="9" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextDimBrush}" Margin="0,12,0,6"/>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="HistoryCountText" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Margin="0,0,16,0"/>
+                                <Button Content="🗑 Purge History" Click="PurgeHistory_Click" Padding="8,4"
+                                        Margin="0,0,8,0"/>
+                                <Button Content="🗑 Clear Search" Click="ClearSearchHistory_Click" Padding="8,4"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ═══ TAB: DOF ═══ -->
+            <TabItem Header="DOF">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,5,0">
+                    <Border Background="{StaticResource SurfaceBrush}" CornerRadius="6"
+                            Padding="12" Margin="0,8,0,0">
+                        <StackPanel>
+                            <TextBlock Text="DIRECTOUTPUT FRAMEWORK (DOF)" FontSize="12" FontWeight="Bold"
+                                       Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
+                            <TextBlock Text="Controls cabinet feedback devices (solenoids, LEDs, shaker, etc.) via the DirectOutput Framework"
+                                       FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,12"
+                                       TextWrapping="Wrap"/>
+                            <CheckBox x:Name="CbDofEnabled" Content="Enable DOF support"
+                                      Foreground="{StaticResource TextBrush}"
+                                      ToolTip="Enable DirectOutput Framework integration. Requires DOF to be installed and configured."/>
+                            <DockPanel Margin="24,8,0,0">
+                                <TextBlock Text="ROM Name:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="80"/>
+                                <TextBox x:Name="TbDofRomName" Width="160" HorizontalAlignment="Left"
+                                         ToolTip="The ROM name used to look up effects in the DOF configuration. Must match an entry in your DOF config."/>
+                            </DockPanel>
+                            <CheckBox x:Name="CbDofColorBand" Content="Blob playfield color triggers (E120–E126)"
+                                       Foreground="{StaticResource TextBrush}" Margin="24,8,0,0"
+                                       ToolTip="Send ROYGBIV color band triggers based on the playfield blob hue. Uses DOF codes E120 (Red) through E126 (Violet)."
+                                      IsEnabled="{Binding IsChecked, ElementName=CbDofEnabled}"/>
+                            <TextBlock x:Name="DofStatusText" Text="" FontSize="11"
+                                       Foreground="{StaticResource TextDimBrush}" Margin="24,4,0,0"/>
+
+                            <TextBlock Text="Test Trigger" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextBrush}" Margin="24,12,0,4"/>
+                            <StackPanel Orientation="Horizontal" Margin="24,0,0,0">
+                                <TextBlock Text="Element:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <TextBox x:Name="TbDofTestElement" Text="E" Width="60"
+                                         VerticalAlignment="Center" MaxLength="1"
+                                         ToolTip="Table element type character (e.g. E, S, W, L)"/>
+                                <TextBlock Text="Number:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Margin="10,0,4,0"/>
+                                <TextBox x:Name="TbDofTestNumber" Text="101" Width="100"
+                                         VerticalAlignment="Center"
+                                         ToolTip="Table element number"/>
+                                <TextBlock Text="Value:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Margin="10,0,4,0"/>
+                                <TextBox x:Name="TbDofTestValue" Text="255" Width="100"
+                                         VerticalAlignment="Center"
+                                         ToolTip="Value to send (0-255, where 0 = off, 255 = full on)"/>
+                                <Button Content="Send" Click="DofTestSend_Click" Padding="12,4" Margin="10,0,4,0"
+                                        ToolTip="Send the trigger to DOF"
+                                        IsEnabled="{Binding IsChecked, ElementName=CbDofEnabled}"/>
+                            </StackPanel>
+                            <TextBlock x:Name="DofTestStatusText" Text="" FontSize="11"
+                                       Foreground="{StaticResource TextDimBrush}"
+                                       Margin="24,4,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ═══ TAB: About ═══ -->
+            <TabItem Header="ABOUT">
+                <Border Background="{StaticResource SurfaceBrush}" CornerRadius="6"
+                        Padding="12" Margin="0,8,0,0">
+                        <StackPanel>
+                        <TextBlock Text="ABOUT" FontSize="12" FontWeight="Bold"
+                                   Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
+                        <TextBlock Text="VPin Jukebox. This application may not be distributed without permission."
+                                   FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
+                                   TextWrapping="Wrap"/>
+                        <TextBlock Text="DEBUG LOG" FontSize="12" FontWeight="Bold"
+                                   Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
+                        <TextBlock Text="Create a debug log that logs events and errors"
+                                 FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
+                                 TextWrapping="Wrap"/>
+                        <CheckBox x:Name="CbDebugLogging" Content="Create DEBUG file"
+                                  Foreground="{StaticResource TextBrush}"/>
+                        <StackPanel Orientation="Horizontal" Margin="20,2,0,0">
+                            <TextBlock x:Name="DebugLogPathText"
+                                       Foreground="{StaticResource TextDimBrush}" FontSize="10"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <Button x:Name="BtnOpenDebugLog" Content="📂 Open" Padding="6,2"
+                                    FontSize="10" Click="OpenDebugLog_Click"/>
+                        </StackPanel>
+                        <TextBlock Text="CRASH LOG" FontSize="12" FontWeight="Bold"
+                                    Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
+                        <TextBlock Text="Application crash logs are always stored"
+                                 FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
+                                 TextWrapping="Wrap"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="CrashLogStatusText" Foreground="{StaticResource TextDimBrush}"
+                                       FontSize="10" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <Button x:Name="BtnOpenCrashLog" Content="📂 Open" Padding="6,2"
+                                    FontSize="10" Click="OpenCrashLog_Click" Visibility="Collapsed"/>
+                            <Button x:Name="BtnDeleteCrashLog" Content="🗑 Delete" Padding="6,2"
+                                    FontSize="10" Click="DeleteCrashLog_Click" Visibility="Collapsed" Margin="6,0,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </TabItem>
+
+        </TabControl>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="Apply" Padding="20,8" Click="Apply_Click" Margin="0,0,8,0"/>
+            <Button Content="Apply &amp; Close" Padding="20,8" Click="Save_Click"
+                    Background="{StaticResource AccentBrush}" Margin="0,0,8,0"/>
+            <Button Content="Cancel" Padding="20,8" Click="Cancel_Click"/>
+        </StackPanel>
+    </Grid>
+</local:JukeboxWindow>
