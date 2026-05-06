@@ -25,3 +25,7 @@ x86/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# ProjectM presets and textures
+dependencies/projectM/presets-cream-of-the-crop-master/
+dependencies/projectM/textures/
