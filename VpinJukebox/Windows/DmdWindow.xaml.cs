@@ -1506,6 +1506,9 @@ public partial class DmdWindow : JukeboxWindow
         browser.Owner = this;
         _presetBrowserWindow = browser;
 
+        // Wire mouse/key events so movement on the browser window keeps the cursor visible
+        WireDimIdleEvents(browser);
+
         browser.Closed += (_, _) =>
         {
             _presetBrowserWindow = null;
