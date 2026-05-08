@@ -75,7 +75,6 @@ public partial class DmdWindow : JukeboxWindow
     // Mouse cursor auto-hide fields
     private readonly DispatcherTimer _cursorIdleTimer;
     private bool _cursorHidden;
-    private bool _cursorHideSuppressed;
     private PresetBrowserWindow? _presetBrowserWindow;
 
     // DOF fields
@@ -354,7 +353,7 @@ public partial class DmdWindow : JukeboxWindow
 
         // Suppress cursor auto-hide while modal is open
         _cursorIdleTimer.Stop();
-        _cursorHideSuppressed = true;
+        MouseHideState.Suppress();
         ShowMouseCursor();
 
         var dialog = new System.Windows.Window
@@ -372,7 +371,7 @@ public partial class DmdWindow : JukeboxWindow
 
         dialog.Closed += (_, _) =>
         {
-            _cursorHideSuppressed = false;
+            MouseHideState.Unsuppress();
             ApplyCursorHideTimeout();
         };
 
@@ -1499,7 +1498,7 @@ public partial class DmdWindow : JukeboxWindow
 
         // Suppress cursor auto-hide while preset browser is open
         _cursorIdleTimer.Stop();
-        _cursorHideSuppressed = true;
+        MouseHideState.Suppress();
         ShowMouseCursor();
 
         var browser = new PresetBrowserWindow(presetPath, _playfieldProxy);
@@ -1512,7 +1511,7 @@ public partial class DmdWindow : JukeboxWindow
         browser.Closed += (_, _) =>
         {
             _presetBrowserWindow = null;
-            _cursorHideSuppressed = false;
+            MouseHideState.Unsuppress();
             ApplyCursorHideTimeout();
             Activate();
         };
@@ -1527,7 +1526,7 @@ public partial class DmdWindow : JukeboxWindow
         // Pause dim idle timer and show cursor while settings is open
         _dimIdleTimer.Stop();
         _cursorIdleTimer.Stop();
-        _cursorHideSuppressed = true;
+        MouseHideState.Suppress();
         ShowMouseCursor();
 
         var settingsWindow = new SettingsWindow(_appSettings);
@@ -1573,7 +1572,7 @@ public partial class DmdWindow : JukeboxWindow
         }
 
         // Resume idle timers
-        _cursorHideSuppressed = false;
+        MouseHideState.Unsuppress();
         if (_dimScreensaverEnabled)
         {
             _dimIdleTimer.Stop();
@@ -2679,7 +2678,7 @@ public partial class DmdWindow : JukeboxWindow
 
     private void HideMouseCursor()
     {
-        if (_cursorHidden || _cursorHideSuppressed) return;
+        if (_cursorHidden || !MouseHideState.EnableMouseHide) return;
         _cursorHidden = true;
         _cursorIdleTimer.Stop();
         Mouse.OverrideCursor = System.Windows.Input.Cursors.None;
@@ -2699,7 +2698,7 @@ public partial class DmdWindow : JukeboxWindow
         _topperWindow?.Dispatcher.BeginInvoke(() =>
             System.Windows.Input.Mouse.OverrideCursor = null);
         _cursorIdleTimer.Stop();
-        if (!_cursorHideSuppressed && _appSettings.HideCursorTimeoutSeconds > 0)
+        if (MouseHideState.EnableMouseHide && _appSettings.HideCursorTimeoutSeconds > 0)
             _cursorIdleTimer.Start();
         SetTitleBarButtonsVisibility(Visibility.Visible);
     }
