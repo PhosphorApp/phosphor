@@ -102,6 +102,7 @@ public class AppSettings
     public int ProjectMPresetMonitorBlackHits { get; set; } = 5;
     public double ProjectMPresetMonitorIntervalSeconds { get; set; } = 2.5;
     public double ProjectMPresetMonitorPercentile { get; set; } = 5.0;
+    public double ProjectMPresetMonitorThreshold { get; set; } = 10.0;
     public int DmdRotation { get; set; }
     public QueuePosition DmdQueuePosition { get; set; } = QueuePosition.Right;
     public int DmdPlayButtonSizeModifier { get; set; }
@@ -129,11 +130,14 @@ public class AppSettings
     public string PlexToken { get; set; } = "";
     public List<PlexLibraryMapping> PlexLibraries { get; set; } = [];
     public bool PlexStereoAudio { get; set; }
+    public bool RepeatEnabled { get; set; }
+    public bool AutoDjEnabled { get; set; }
     public bool AutoPlayQueueOnStart { get; set; }
     public bool DofEnabled { get; set; }
     public bool DofSimulator { get; set; }
     public string DofRomName { get; set; } = "vpinjukebox";
     public bool DofColorBand { get; set; }
+    public bool DofPresetChanged { get; set; }
     public bool DebugLogging { get; set; }
 
     /// <summary>

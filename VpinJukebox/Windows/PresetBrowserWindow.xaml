@@ -228,9 +228,13 @@
                                                     Tag="{Binding FullPath}"
                                                     Click="BtnPreview_Click"/>
                                             <Button Content="👍" ToolTip="Reactivate this preset"
-                                                    Padding="6,2"
+                                                    Padding="6,2" Margin="0,0,4,0"
                                                     Tag="{Binding FullPath}"
                                                     Click="BtnActivate_Click"/>
+                                            <Button Content="✕" ToolTip="Delete this preset"
+                                                    Padding="6,2"
+                                                    Tag="{Binding FullPath}"
+                                                    Click="BtnDeletePreset_Click"/>
                                         </StackPanel>
                                         <TextBlock Text="{Binding Name}"
                                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>

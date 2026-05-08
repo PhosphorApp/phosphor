@@ -225,8 +225,14 @@ public partial class JukeboxViewModel : ObservableObject
     public bool RepeatEnabled
     {
         get => _repeatEnabled;
-        set => SetProperty(ref _repeatEnabled, value);
+        set
+        {
+            if (SetProperty(ref _repeatEnabled, value))
+                RepeatEnabledChanged?.Invoke(value);
+        }
     }
+
+    public event Action<bool>? RepeatEnabledChanged;
 
     private int _queueIndex = -1;
     /// <summary>
@@ -253,10 +259,16 @@ public partial class JukeboxViewModel : ObservableObject
         get => _autoDjEnabled;
         set
         {
-            if (SetProperty(ref _autoDjEnabled, value) && value)
-                _ = SafeFireAndForget(AutoDjFillQueue());
+            if (SetProperty(ref _autoDjEnabled, value))
+            {
+                if (value)
+                    _ = SafeFireAndForget(AutoDjFillQueue());
+                AutoDjEnabledChanged?.Invoke(value);
+            }
         }
     }
+
+    public event Action<bool>? AutoDjEnabledChanged;
 
     private bool _isAutoDjFilling;
 

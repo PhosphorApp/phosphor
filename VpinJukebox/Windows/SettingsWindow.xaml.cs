@@ -66,6 +66,7 @@ public partial class SettingsWindow : JukeboxWindow
     private readonly List<CategoryVisibilityItem> _categoryVisibilityItems = new();
     private bool _originalDofEnabled;
     private bool _originalDofColorBand;
+    private bool _originalDofPresetChanged;
     private string _originalDofRomName;
     private DofClient? _testDofClient;
     private DofClient? _sharedDofClient;
@@ -118,6 +119,7 @@ public partial class SettingsWindow : JukeboxWindow
     public bool DofSettingsChanged =>
         _settings.DofEnabled != _originalDofEnabled ||
         _settings.DofColorBand != _originalDofColorBand ||
+        _settings.DofPresetChanged != _originalDofPresetChanged ||
         _settings.DofRomName != _originalDofRomName;
 
     public bool ProjectMSettingsChanged =>
@@ -194,6 +196,7 @@ public partial class SettingsWindow : JukeboxWindow
         CbDofEnabled.IsChecked = settings.DofEnabled;
         TbDofRomName.Text = settings.DofRomName;
         CbDofColorBand.IsChecked = settings.DofColorBand;
+        CbDofPresetChanged.IsChecked = settings.DofPresetChanged;
 
         // Validate DOF bridge availability
         if (!DofClient.IsBridgeAvailable())
@@ -517,6 +520,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalProjectMEnabledFolders = new List<string>(settings.ProjectMEnabledFolders);
         _originalDofEnabled = settings.DofEnabled;
         _originalDofColorBand = settings.DofColorBand;
+        _originalDofPresetChanged = settings.DofPresetChanged;
         _originalDofRomName = settings.DofRomName;
         CbVideoQuality.Items.Add("Low (480p)");
         CbVideoQuality.Items.Add("Medium (720p)");
@@ -1388,6 +1392,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.DofEnabled = CbDofEnabled.IsChecked == true;
         _settings.DofRomName = string.IsNullOrWhiteSpace(TbDofRomName.Text) ? "vpinjukebox" : TbDofRomName.Text.Trim();
         _settings.DofColorBand = CbDofColorBand.IsChecked == true;
+        _settings.DofPresetChanged = CbDofPresetChanged.IsChecked == true;
         _settings.DmdScreensaver = CbDmdScreensaver.IsChecked == true;
         _settings.BackglassLogoDimEnabled = CbBackglassLogoDim.IsChecked == true;
         _settings.BackglassLogoDimOpacity = CbBackglassDimOpacity.SelectedIndex * 5;
@@ -1566,6 +1571,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalProjectMEnabledFolders = new List<string>(_settings.ProjectMEnabledFolders);
         _originalDofEnabled = _settings.DofEnabled;
         _originalDofColorBand = _settings.DofColorBand;
+        _originalDofPresetChanged = _settings.DofPresetChanged;
         _originalDofRomName = _settings.DofRomName;
     }
 

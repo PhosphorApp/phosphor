@@ -1065,8 +1065,11 @@
                             </DockPanel>
                             <CheckBox x:Name="CbDofColorBand" Content="Blob playfield color triggers (E120–E126)"
                                        Foreground="{StaticResource TextBrush}" Margin="24,8,0,0"
-                                       ToolTip="Send ROYGBIV color band triggers based on the playfield blob hue. Uses DOF codes E120 (Red) through E126 (Violet)."
-                                      IsEnabled="{Binding IsChecked, ElementName=CbDofEnabled}"/>
+                                       ToolTip="Send ROYGBIV color band triggers based on the playfield blob hue. Uses DOF codes E120 (Red) through E126 (Violet)."/>
+                            <CheckBox x:Name="CbDofPresetChanged" Content="Visualization preset changed (E130-E136)"
+                                       Foreground="{StaticResource TextBrush}" Margin="24,8,0,0"
+                                       ToolTip="Send a trigger when the visualization preset changes. Uses DOF codes E130–E136."
+                                       Visibility="Collapsed"/>
                             <TextBlock x:Name="DofStatusText" Text="" FontSize="11"
                                        Foreground="{StaticResource TextDimBrush}" Margin="24,4,0,0"/>
 
@@ -1085,9 +1088,9 @@
                                          ToolTip="Table element number"/>
                                 <TextBlock Text="Value:" Foreground="{StaticResource TextBrush}"
                                            VerticalAlignment="Center" Margin="10,0,4,0"/>
-                                <TextBox x:Name="TbDofTestValue" Text="255" Width="100"
+                                <TextBox x:Name="TbDofTestValue" Text="1" Width="100"
                                          VerticalAlignment="Center"
-                                         ToolTip="Value to send (0-255, where 0 = off, 255 = full on)"/>
+                                         ToolTip="Value to send (0 = off, 1 = full on)"/>
                                 <Button Content="Send" Click="DofTestSend_Click" Padding="12,4" Margin="10,0,4,0"
                                         ToolTip="Send the trigger to DOF"
                                         IsEnabled="{Binding IsChecked, ElementName=CbDofEnabled}"/>

@@ -30,8 +30,8 @@ public sealed class FractalBoxPattern : BlobPatternBase
         _states = BlobMotion.CreateStates(_blobCount, PatternType, w, h, _rng,
             _maxOrbitRadius, speedMultiplier: _speedMultiplier);
 
-        // Base box size is ~1/10 of the screen width, with ±30% random variation
-        double baseBoxSize = w / 10.0;
+        // Base box size is ~1/8 of the screen width, with ±30% random variation
+        double baseBoxSize = w / 8.0;
 
         for (int i = 0; i < _blobCount; i++)
         {

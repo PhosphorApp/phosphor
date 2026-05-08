@@ -11,6 +11,7 @@ public class ProjectMPresetMonitorEntry
     public DateTime Timestamp { get; set; }
     public string PresetPath { get; set; } = "";
     public string Action { get; set; } = "";
+    public double TopAvgLuminance { get; set; }
 }
 
 /// <summary>
@@ -38,7 +39,7 @@ public static class ProjectMPresetMonitorLog
         }
     }
 
-    public static void Add(string presetRelativePath, string action)
+    public static void Add(string presetRelativePath, string action, double topAvgLuminance = 0)
     {
         lock (_lock)
         {
@@ -47,6 +48,7 @@ public static class ProjectMPresetMonitorLog
                 Timestamp = DateTime.Now,
                 PresetPath = presetRelativePath,
                 Action = action,
+                TopAvgLuminance = topAvgLuminance,
             });
 
             while (Entries.Count > MaxEntries)

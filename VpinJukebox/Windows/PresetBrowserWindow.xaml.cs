@@ -16,6 +16,7 @@ public partial class PresetBrowserWindow : Window
     private readonly string _presetPath;
     private readonly string _deactivatedPath;
     private readonly string _favoritesPath;
+    private readonly string _deletedPath;
     private readonly PlayfieldProxy? _playfieldProxy;
     private string? _selectedActiveFolder;
     private string? _selectedDeactivatedFolder;
@@ -27,6 +28,7 @@ public partial class PresetBrowserWindow : Window
         _presetPath = presetPath;
         _deactivatedPath = Path.Combine(presetPath, "Deactivated");
         _favoritesPath = Path.Combine(presetPath, "Favorites");
+        _deletedPath = Path.Combine(presetPath, "Deleted");
         _playfieldProxy = playfieldProxy;
 
         // Lock the current preset so preview stays visible
@@ -155,6 +157,7 @@ public partial class PresetBrowserWindow : Window
         {
             if (IsUnderDeactivated(topDir)) continue;
             if (IsUnderFavorites(topDir)) continue;
+            if (IsUnderDeleted(topDir)) continue;
             var topName = Path.GetFileName(topDir);
 
             var topItem = CreateTreeItem(topName, topDir, true, isActive: true);
@@ -163,6 +166,7 @@ public partial class PresetBrowserWindow : Window
             {
                 if (IsUnderDeactivated(subDir)) continue;
                 if (IsUnderFavorites(subDir)) continue;
+                if (IsUnderDeleted(subDir)) continue;
                 int count = Directory.GetFiles(subDir, "*.milk").Length;
                 count += GetFavoriteMirrorCount(subDir);
                 if (count == 0) continue;
@@ -298,7 +302,7 @@ public partial class PresetBrowserWindow : Window
         var items = new List<PresetItem>();
         if (Directory.Exists(folderPath))
         {
-            foreach (var file in Directory.GetFiles(folderPath, "*.milk").OrderBy(f => f))
+            foreach (var file in Directory.GetFiles(folderPath, "*.milk", SearchOption.AllDirectories).OrderBy(f => f))
             {
                 items.Add(new PresetItem
                 {
@@ -315,7 +319,7 @@ public partial class PresetBrowserWindow : Window
             var favMirror = Path.Combine(_favoritesPath, relativePath);
             if (Directory.Exists(favMirror))
             {
-                foreach (var file in Directory.GetFiles(favMirror, "*.milk").OrderBy(f => f))
+                foreach (var file in Directory.GetFiles(favMirror, "*.milk", SearchOption.AllDirectories).OrderBy(f => f))
                 {
                     items.Add(new PresetItem
                     {
@@ -436,6 +440,29 @@ public partial class PresetBrowserWindow : Window
 
             await Task.Run(() =>
             {
+                MoveOrDeleteSource(presetFile, destPath);
+                CleanEmptyDirectories(_deactivatedPath);
+            });
+            RefreshAfterMove();
+        });
+    }
+
+    // ── Delete single deactivated preset ──────────────────────────
+
+    private async void BtnDeletePreset_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.Tag is not string presetFile) return;
+        if (!File.Exists(presetFile)) return;
+
+        await RunWithWaitCursor(async () =>
+        {
+            var relativePath = Path.GetRelativePath(_deactivatedPath, presetFile);
+            var destPath = Path.Combine(_deletedPath, relativePath);
+
+            await Task.Run(() =>
+            {
+                var destDir = Path.GetDirectoryName(destPath);
+                if (destDir != null) Directory.CreateDirectory(destDir);
                 MoveOrDeleteSource(presetFile, destPath);
                 CleanEmptyDirectories(_deactivatedPath);
             });
@@ -668,6 +695,13 @@ public partial class PresetBrowserWindow : Window
         var fullPath = Path.GetFullPath(path);
         var favorites = Path.GetFullPath(_favoritesPath);
         return fullPath.StartsWith(favorites, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsUnderDeleted(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var deleted = Path.GetFullPath(_deletedPath);
+        return fullPath.StartsWith(deleted, StringComparison.OrdinalIgnoreCase);
     }
 
     private int GetFavoriteMirrorCount(string activeFolder)

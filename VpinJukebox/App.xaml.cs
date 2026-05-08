@@ -41,6 +41,8 @@ public partial class App : Application
         viewModel.StereoAudio = _settings.StereoAudio;
         viewModel.CacheMode = _settings.CacheMode;
         viewModel.Volume = _settings.Volume;
+        viewModel.RepeatEnabled = _settings.RepeatEnabled;
+        viewModel.AutoDjEnabled = _settings.AutoDjEnabled;
         if (!string.IsNullOrWhiteSpace(_settings.PlexServerUrl) && !string.IsNullOrWhiteSpace(_settings.PlexToken))
             viewModel.ConfigurePlex(_settings.PlexServerUrl, _settings.PlexToken, _settings.PlexLibraries, _settings.PlexStereoAudio);
 
@@ -248,6 +250,11 @@ public partial class App : Application
         _backglassProxy?.SaveLayout(_settings.Backglass);
         _playfieldProxy?.SaveLayout(_settings.Playfield);
         _topperWindow?.SaveLayout(_settings.Topper);
+        if (_dmdWindow.DataContext is JukeboxViewModel vmSettings)
+        {
+            _settings.RepeatEnabled = vmSettings.RepeatEnabled;
+            _settings.AutoDjEnabled = vmSettings.AutoDjEnabled;
+        }
         _settings.Save();
 
         // Prune thumbnail cache on exit
