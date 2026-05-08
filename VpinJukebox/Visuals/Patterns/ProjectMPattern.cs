@@ -263,6 +263,10 @@ public sealed class ProjectMPattern : BlobPatternBase
                         Log($"Failed to move black preset: {ex.Message}");
                     }
                 }
+
+                // Remove from in-memory playlist so shuffle can't revisit it
+                if (renderer.IsAvailable)
+                    renderer.RemoveCurrentPresetFromPlaylist();
             }
 
             // Skip to next preset

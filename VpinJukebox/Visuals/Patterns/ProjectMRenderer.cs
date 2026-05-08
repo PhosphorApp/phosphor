@@ -279,10 +279,10 @@ public sealed class ProjectMRenderer : IDisposable
                 }
                 else
                 {
-                    // Load all presets recursively, excluding the Deactivated folder
+                    // Load all presets recursively, excluding special folders
                     foreach (var dir in System.IO.Directory.GetDirectories(PresetPath))
                     {
-                        if (System.IO.Path.GetFileName(dir).Equals("Deactivated", StringComparison.OrdinalIgnoreCase))
+                        if (IsExcludedFolder(System.IO.Path.GetFileName(dir)))
                             continue;
                         count += projectm_playlist_add_path(_playlist, dir, true, false);
                     }
@@ -340,6 +340,24 @@ public sealed class ProjectMRenderer : IDisposable
             if (index >= PresetCount) return;
             projectm_playlist_set_position(_playlist, index, hardCut);
             Log($"Manually switched to preset [{index}]");
+        }
+    }
+
+    /// <summary>
+    /// Removes the currently playing preset from the playlist so it won't be selected again.
+    /// </summary>
+    public void RemoveCurrentPresetFromPlaylist()
+    {
+        if (!_initialized || _disposed || _playlist == IntPtr.Zero) return;
+        lock (_nativeLock)
+        {
+            if (!_initialized || _disposed || _playlist == IntPtr.Zero) return;
+            uint index = projectm_playlist_get_position(_playlist);
+            if (index < projectm_playlist_size(_playlist))
+            {
+                projectm_playlist_remove_preset(_playlist, index);
+                Log($"Removed preset at index [{index}] from playlist");
+            }
         }
     }
 
@@ -469,11 +487,11 @@ public sealed class ProjectMRenderer : IDisposable
             }
             else
             {
-                // Load all subfolders except Deactivated
+                // Load all subfolders except excluded folders
                 count = 0;
                 foreach (var dir in System.IO.Directory.GetDirectories(PresetPath))
                 {
-                    if (System.IO.Path.GetFileName(dir).Equals("Deactivated", StringComparison.OrdinalIgnoreCase))
+                    if (IsExcludedFolder(System.IO.Path.GetFileName(dir)))
                         continue;
                     count += projectm_playlist_add_path(_playlist, dir, true, false);
                 }
@@ -707,6 +725,16 @@ public sealed class ProjectMRenderer : IDisposable
 
         double topAvg = (double)topSum / topCount;
         return topAvg < luminanceThreshold;
+    }
+
+    /// <summary>
+    /// Returns true if the given top-level folder name should be excluded from the playlist.
+    /// </summary>
+    private static bool IsExcludedFolder(string folderName)
+    {
+        return folderName.Equals("Deactivated", StringComparison.OrdinalIgnoreCase)
+            || folderName.Equals("Transition", StringComparison.OrdinalIgnoreCase)
+            || folderName.Equals("! Transition", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void Log(string message)

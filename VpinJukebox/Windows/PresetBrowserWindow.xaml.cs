@@ -158,6 +158,7 @@ public partial class PresetBrowserWindow : Window
             if (IsUnderDeactivated(topDir)) continue;
             if (IsUnderFavorites(topDir)) continue;
             if (IsUnderDeleted(topDir)) continue;
+            if (IsUnderTransition(topDir)) continue;
             var topName = Path.GetFileName(topDir);
 
             var topItem = CreateTreeItem(topName, topDir, true, isActive: true);
@@ -167,6 +168,7 @@ public partial class PresetBrowserWindow : Window
                 if (IsUnderDeactivated(subDir)) continue;
                 if (IsUnderFavorites(subDir)) continue;
                 if (IsUnderDeleted(subDir)) continue;
+                if (IsUnderTransition(subDir)) continue;
                 int count = Directory.GetFiles(subDir, "*.milk").Length;
                 count += GetFavoriteMirrorCount(subDir);
                 if (count == 0) continue;
@@ -702,6 +704,13 @@ public partial class PresetBrowserWindow : Window
         var fullPath = Path.GetFullPath(path);
         var deleted = Path.GetFullPath(_deletedPath);
         return fullPath.StartsWith(deleted, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsUnderTransition(string path)
+    {
+        var name = Path.GetFileName(path);
+        return name.Equals("Transition", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("! Transition", StringComparison.OrdinalIgnoreCase);
     }
 
     private int GetFavoriteMirrorCount(string activeFolder)

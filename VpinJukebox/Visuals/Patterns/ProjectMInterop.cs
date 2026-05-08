@@ -212,6 +212,9 @@ internal static class ProjectMInterop
         [MarshalAs(UnmanagedType.Bool)] bool isHardCut, uint index, IntPtr userData);
 
     [DllImport(PlaylistLib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern bool projectm_playlist_remove_preset(IntPtr playlistInstance, uint index);
+
+    [DllImport(PlaylistLib, CallingConvention = CallingConvention.Cdecl)]
     public static extern void projectm_playlist_clear(IntPtr playlistInstance);
 
     [DllImport(PlaylistLib, CallingConvention = CallingConvention.Cdecl)]
