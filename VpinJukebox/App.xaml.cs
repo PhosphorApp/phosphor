@@ -2,6 +2,7 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using NAudio.CoreAudioApi;
 
 namespace VpinJukebox;
 
@@ -129,6 +130,7 @@ public partial class App : Application
                 viewModel.PlayCommand.Execute(null);
             }
 
+            LogWindowsAudioLevel("Startup");
             DebugLog.Log("App", "Deferred startup complete");
         });
     }
@@ -240,6 +242,7 @@ public partial class App : Application
 
     private void OnMainWindowClosed(object? sender, EventArgs e)
     {
+        LogWindowsAudioLevel("Shutdown");
         DebugLog.Log("App", "Application shutting down");
 
         // Ensure DOF bridge is shut down (fallback if async closing didn't complete)
@@ -271,6 +274,33 @@ public partial class App : Application
         _topperWindow?.Close();
 
         Shutdown();
+    }
+
+    private static void LogWindowsAudioLevel(string context)
+    {
+        try
+        {
+            using var enumerator = new MMDeviceEnumerator();
+            using var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+            var sessions = device.AudioSessionManager.Sessions;
+            var pid = Environment.ProcessId;
+            for (int i = 0; i < sessions.Count; i++)
+            {
+                var session = sessions[i];
+                if (session.GetProcessID == pid)
+                {
+                    var vol = session.SimpleAudioVolume.Volume;
+                    var muted = session.SimpleAudioVolume.Mute;
+                    DebugLog.Log("WinVolume", $"{context}: Per-app volume={vol:P0}, Muted={muted}");
+                    return;
+                }
+            }
+            DebugLog.Log("WinVolume", $"{context}: No audio session found for this process");
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Log("WinVolume", $"{context}: Failed to query per-app volume: {ex.Message}");
+        }
     }
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

@@ -94,7 +94,7 @@ public sealed class ProjectMRenderer : IDisposable
     /// Raised when the dominant color band is determined after a preset switch.
     /// Fires on the render thread (UI thread).
     /// </summary>
-    public event Action<RoygbivColor>? ColorBandChanged;
+    public event Action<ColorAnalysis>? ColorBandChanged;
 
     /// <summary>
     /// Preset monitor mode: 0 = off, 1 = log black presets, 2 = log and move to Deactivated.
@@ -575,9 +575,9 @@ public sealed class ProjectMRenderer : IDisposable
                 _colorSampleTargetTick = -1;
                 try
                 {
-                    var band = FrameColorAnalyzer.GetDominantColorBand(_width, _height);
-                    Log($"Dominant color band: {band}");
-                    ColorBandChanged?.Invoke(band);
+                    var analysis = FrameColorAnalyzer.GetDominantColorBand(_width, _height);
+                    Log($"Dominant color band: {analysis.Color} (brightness: {analysis.Brightness:F3})");
+                    ColorBandChanged?.Invoke(analysis);
                 }
                 catch (Exception ex)
                 {

@@ -22,7 +22,9 @@ public static class ProjectMPresetLog
     private const int MaxEntries = 256;
 
     private static readonly string LogPath = Path.Combine(
-        AppDomain.CurrentDomain.BaseDirectory, "projectmpresetlog.json");
+        AppDomain.CurrentDomain.BaseDirectory, "logs", "projectmpresetlog.json");
+
+    public static bool Enabled { get; set; }
 
     private static readonly object _lock = new();
     private static List<ProjectMPresetLogEntry>? _entries;
@@ -39,6 +41,9 @@ public static class ProjectMPresetLog
 
     public static void Add(string presetRelativePath, string cutType)
     {
+        if (!Enabled)
+            return;
+
         lock (_lock)
         {
             Entries.Add(new ProjectMPresetLogEntry
@@ -82,6 +87,9 @@ public static class ProjectMPresetLog
     {
         try
         {
+            var dir = Path.GetDirectoryName(LogPath)!;
+            if (!Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
             var json = JsonSerializer.Serialize(Entries, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(LogPath, json);
         }

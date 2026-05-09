@@ -9,8 +9,17 @@ namespace VpinJukebox;
 internal static class FrameColorAnalyzer
 {
     /// <summary>
+    /// Minimum per-channel sum (R+G+B) for a pixel to be considered "lit" and included
+    /// in color/brightness averaging. Pixels at or below this threshold are treated as
+    /// background black and excluded so that dark backgrounds don't dilute the brightness
+    /// of the actual visible content.
+    /// </summary>
+    private const int BlackPixelThreshold = 30; // ~4% of max 765 (255*3)
+
+    /// <summary>
     /// Reads the current framebuffer and returns the dominant <see cref="RoygbivColor"/>
     /// by computing the average pixel color and mapping its hue to a color band.
+    /// Near-black pixels are excluded so brightness reflects visible content only.
     /// </summary>
     /// <param name="width">Framebuffer width in pixels.</param>
     /// <param name="height">Framebuffer height in pixels.</param>
@@ -18,7 +27,7 @@ internal static class FrameColorAnalyzer
     /// Sampling stride — every Nth pixel in each axis. Higher = faster, lower = more accurate.
     /// Default 4 samples 1/16th of all pixels.
     /// </param>
-    public static RoygbivColor GetDominantColorBand(int width, int height, int sampleStep = 4)
+    public static ColorAnalysis GetDominantColorBand(int width, int height, int sampleStep = 4)
     {
         int pixelCount = width * height;
         byte[] pixels = new byte[pixelCount * 4];
@@ -44,34 +53,47 @@ internal static class FrameColorAnalyzer
             for (int x = 0; x < width; x += sampleStep)
             {
                 int i = rowOffset + x * 4;
-                totalR += pixels[i];
-                totalG += pixels[i + 1];
-                totalB += pixels[i + 2];
+                byte r = pixels[i];
+                byte g = pixels[i + 1];
+                byte b = pixels[i + 2];
+
+                // Skip near-black pixels so dark backgrounds don't dilute brightness
+                if (r + g + b <= BlackPixelThreshold)
+                    continue;
+
+                totalR += r;
+                totalG += g;
+                totalB += b;
                 samples++;
             }
         }
 
         if (samples == 0)
-            return RoygbivColor.Red;
+            return new ColorAnalysis(RoygbivColor.Red, 0f);
 
         double avgR = (double)totalR / samples / 255.0;
         double avgG = (double)totalG / samples / 255.0;
         double avgB = (double)totalB / samples / 255.0;
 
-        double hue = RgbToHue(avgR, avgG, avgB);
-        return RoygbivHelper.FromHue(hue);
+        RgbToHsb(avgR, avgG, avgB, out double hue, out double saturation, out double brightness);
+        return RoygbivHelper.Analyze(hue, saturation, brightness);
     }
 
-    private static double RgbToHue(double r, double g, double b)
+    private static void RgbToHsb(double r, double g, double b, out double hue, out double saturation, out double brightness)
     {
         double max = Math.Max(r, Math.Max(g, b));
         double min = Math.Min(r, Math.Min(g, b));
         double delta = max - min;
 
-        if (delta < 0.001)
-            return 0; // achromatic
+        brightness = max;
+        saturation = max < 0.001 ? 0 : delta / max;
 
-        double hue;
+        if (delta < 0.001)
+        {
+            hue = 0;
+            return;
+        }
+
         if (max == r)
             hue = 60.0 * (((g - b) / delta) % 6.0);
         else if (max == g)
@@ -79,6 +101,6 @@ internal static class FrameColorAnalyzer
         else
             hue = 60.0 * (((r - g) / delta) + 4.0);
 
-        return ((hue % 360.0) + 360.0) % 360.0;
+        hue = ((hue % 360.0) + 360.0) % 360.0;
     }
 }
