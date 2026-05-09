@@ -95,6 +95,16 @@ public abstract class BlobPatternBase : IBlobPattern
     /// </summary>
     protected abstract void StopMotion();
 
+    // Cached easing function for audio reactive animations (avoids allocation per tick).
+    // Frozen so it can be shared across threads (multiple windows on different dispatchers).
+    private static readonly QuadraticEase _reactiveEase = CreateFrozenEase();
+    private static QuadraticEase CreateFrozenEase()
+    {
+        var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+        ease.Freeze();
+        return ease;
+    }
+
     /// <inheritdoc />
     public virtual void ApplyAudioReactive(AudioReactiveData data, double baseIntensity, double reactiveSpeedMs)
     {
@@ -102,15 +112,14 @@ public abstract class BlobPatternBase : IBlobPattern
 
         float intensity = Math.Clamp(data.Bass * 1.5f + (data.IsBeat ? 0.25f : 0f), 0f, 1f);
         var dur = TimeSpan.FromMilliseconds(reactiveSpeedMs);
-        var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+
+        double scale = 1.0 + data.Bass * 0.85;
+        if (data.IsBeat) scale += 0.15;
+        scale = Math.Min(scale, 1.8);
 
         for (int i = 0; i < _blobs.Count; i++)
         {
             var blob = _blobs[i];
-
-            double scale = 1.0 + data.Bass * 0.85;
-            if (data.IsBeat) scale += 0.15;
-            scale = Math.Min(scale, 1.8);
 
             if (blob.RenderTransform is not ScaleTransform st)
             {
@@ -118,8 +127,8 @@ public abstract class BlobPatternBase : IBlobPattern
                 blob.RenderTransform = st;
             }
 
-            st.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(scale, dur) { EasingFunction = ease });
-            st.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(scale, dur) { EasingFunction = ease });
+            st.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(scale, dur) { EasingFunction = _reactiveEase });
+            st.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(scale, dur) { EasingFunction = _reactiveEase });
 
             // Use the blob's original base opacity to preserve per-blob variance
             // and avoid a visible dim after fly-in completes.

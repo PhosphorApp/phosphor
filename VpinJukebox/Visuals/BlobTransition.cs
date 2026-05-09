@@ -46,15 +46,17 @@ public static class BlobTransition
     /// </summary>
     public static BlobPattern PickRandom(Random rng, BlobPattern? exclude = null)
     {
-        var candidates = ConcretePatterns.AsEnumerable();
-        if (exclude.HasValue)
-            candidates = candidates.Where(p => p != exclude.Value);
-        if (ExcludeMandelbrotFromRandom)
-            candidates = candidates.Where(p => p != BlobPattern.Mandelbrot);
-        if (ExcludeProjectMFromRandom)
-            candidates = candidates.Where(p => p != BlobPattern.ProjectM);
-        var arr = candidates.ToArray();
-        return arr[rng.Next(arr.Length)];
+        // Use stack-based filtering to avoid LINQ/array allocations
+        Span<BlobPattern> buf = stackalloc BlobPattern[ConcretePatterns.Length];
+        int count = 0;
+        foreach (var p in ConcretePatterns)
+        {
+            if (exclude.HasValue && p == exclude.Value) continue;
+            if (ExcludeMandelbrotFromRandom && p == BlobPattern.Mandelbrot) continue;
+            if (ExcludeProjectMFromRandom && p == BlobPattern.ProjectM) continue;
+            buf[count++] = p;
+        }
+        return buf[rng.Next(count)];
     }
 
     /// <summary>

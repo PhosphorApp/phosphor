@@ -128,11 +128,17 @@ public sealed class FractalBoxPattern : BlobPatternBase
             }
 
             // Pulse scale via the ScaleTransform in the TransformGroup
-            if (blob.RenderTransform is TransformGroup tg
-                && tg.Children.OfType<ScaleTransform>().FirstOrDefault() is { } st)
+            if (blob.RenderTransform is TransformGroup tg)
             {
-                st.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(scale, dur) { EasingFunction = ease });
-                st.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(scale, dur) { EasingFunction = ease });
+                for (int c = 0; c < tg.Children.Count; c++)
+                {
+                    if (tg.Children[c] is ScaleTransform st)
+                    {
+                        st.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(scale, dur) { EasingFunction = ease });
+                        st.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(scale, dur) { EasingFunction = ease });
+                        break;
+                    }
+                }
             }
         }
     }

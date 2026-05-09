@@ -49,6 +49,9 @@ public sealed class AudioReactiveService : IDisposable
     // Raw PCM ring buffer for projectM — stores the most recent mono-mixed samples
     private static readonly object _pcmLock = new();
     private static float[]? _rawPcmBuffer;
+    private static int _rawPcmLength; // valid sample count within _rawPcmBuffer
+    // Reusable buffer for stereo PCM data to avoid per-callback allocations
+    private float[]? _stereoPool;
 
     /// <summary>
     /// Consume the most recent raw PCM samples (stereo interleaved) for projectM.
@@ -58,9 +61,13 @@ public sealed class AudioReactiveService : IDisposable
     {
         lock (_pcmLock)
         {
-            var buf = _rawPcmBuffer;
+            if (_rawPcmBuffer == null) return null;
+            // Copy valid portion since the buffer is reused by the capture callback
+            var result = new float[_rawPcmLength];
+            Array.Copy(_rawPcmBuffer, result, _rawPcmLength);
             _rawPcmBuffer = null;
-            return buf;
+            _rawPcmLength = 0;
+            return result;
         }
     }
 
@@ -174,20 +181,23 @@ public sealed class AudioReactiveService : IDisposable
         // so projectM gets the actual audio signal for its own beat detection)
         if (frameCount > 0)
         {
-            var stereo = new float[frameCount * 2];
+            int needed = frameCount * 2;
+            if (_stereoPool == null || _stereoPool.Length < needed)
+                _stereoPool = new float[needed];
             int idx = 0;
-            for (int i = 0; i + bytesPerFrame <= e.BytesRecorded && idx < stereo.Length; i += bytesPerFrame)
+            for (int i = 0; i + bytesPerFrame <= e.BytesRecorded && idx < needed; i += bytesPerFrame)
             {
                 float left = BitConverter.ToSingle(e.Buffer, i);
                 float right = channels > 1
                     ? BitConverter.ToSingle(e.Buffer, i + bytesPerSample)
                     : left;
-                stereo[idx++] = left;
-                stereo[idx++] = right;
+                _stereoPool[idx++] = left;
+                _stereoPool[idx++] = right;
             }
             lock (_pcmLock)
             {
-                _rawPcmBuffer = stereo;
+                _rawPcmBuffer = _stereoPool;
+                _rawPcmLength = idx;
             }
         }
 

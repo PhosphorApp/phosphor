@@ -16,6 +16,10 @@ internal static class FrameColorAnalyzer
     /// </summary>
     private const int BlackPixelThreshold = 30; // ~4% of max 765 (255*3)
 
+    // Reusable pixel buffer to avoid allocating megabytes every frame.
+    // Only accessed from the render thread so no locking is needed.
+    private static byte[]? _pixelBuffer;
+
     /// <summary>
     /// Reads the current framebuffer and returns the dominant <see cref="RoygbivColor"/>
     /// by computing the average pixel color and mapping its hue to a color band.
@@ -30,7 +34,10 @@ internal static class FrameColorAnalyzer
     public static ColorAnalysis GetDominantColorBand(int width, int height, int sampleStep = 4)
     {
         int pixelCount = width * height;
-        byte[] pixels = new byte[pixelCount * 4];
+        int requiredSize = pixelCount * 4;
+        if (_pixelBuffer == null || _pixelBuffer.Length < requiredSize)
+            _pixelBuffer = new byte[requiredSize];
+        byte[] pixels = _pixelBuffer;
 
         var handle = GCHandle.Alloc(pixels, GCHandleType.Pinned);
         try
