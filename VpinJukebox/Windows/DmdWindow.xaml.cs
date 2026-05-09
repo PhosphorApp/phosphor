@@ -89,7 +89,7 @@ public partial class DmdWindow : JukeboxWindow
     {
         this.Icon = BitmapFrame.Create(new Uri("pack://application:,,,/app.ico"), BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
 
-        _ssColorTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+        _ssColorTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
         _ssColorTimer.Tick += ScreensaverColorCycle;
 
         _dimIdleTimer = new DispatcherTimer();
@@ -100,6 +100,7 @@ public partial class DmdWindow : JukeboxWindow
         _cursorIdleTimer.Start();
 
         InitializeComponent();
+        SkipButton.IsVisibleChanged += (_, _) => InvalidateNavRing();
         PreviewKeyDown += OnPreviewKeyDown;
         PreviewMouseDown += (_, _) => ResetDimIdle();
         PreviewMouseWheel += (_, _) => ResetDimIdle();
@@ -127,6 +128,8 @@ public partial class DmdWindow : JukeboxWindow
                 editBox.TextChanged += (_, _) => UpdateSearchPlaceholder();
             if (DataContext is JukeboxViewModel vmLoaded)
             {
+                vmLoaded.Categories.CollectionChanged += (_, _) => InvalidateNavRing();
+                vmLoaded.Queue.CollectionChanged += (_, _) => InvalidateNavRing();
                 vmLoaded.PropertyChanged += (_, args) => { if (args.PropertyName == "SearchQuery") Dispatcher.BeginInvoke(UpdateSearchPlaceholder); };
                 vmLoaded.PropertyChanged += (_, args) =>
                 {
@@ -1040,6 +1043,7 @@ public partial class DmdWindow : JukeboxWindow
     // ── Nav ring: flat ordered list of all navigable elements ──
 
     private int _navIndex;
+    private List<NavEntry>? _cachedNavRing;
     private int _resultsIndex = -1;
     private FrameworkElement? _highlightedElement;
 
@@ -1049,13 +1053,26 @@ public partial class DmdWindow : JukeboxWindow
     private List<System.Windows.Controls.Button>? _actionButtons;
     private System.Windows.Controls.Button? _highlightedActionButton;
 
-    private static readonly DropShadowEffect NavHighlightEffect = new()
+    private static readonly DropShadowEffect NavHighlightEffect = CreateNavHighlightEffect();
+    private static DropShadowEffect CreateNavHighlightEffect()
     {
-        Color = Colors.DodgerBlue,
-        ShadowDepth = 0,
-        BlurRadius = 15,
-        Opacity = 0.9
-    };
+        var effect = new DropShadowEffect
+        {
+            Color = Colors.DodgerBlue,
+            ShadowDepth = 0,
+            BlurRadius = 15,
+            Opacity = 0.9
+        };
+        effect.Freeze();
+        return effect;
+    }
+
+    private void InvalidateNavRing() => _cachedNavRing = null;
+
+    private List<NavEntry> GetNavRing(JukeboxViewModel vm)
+    {
+        return _cachedNavRing ??= BuildNavRing(vm);
+    }
 
     private void InitializeNavRing()
     {
@@ -1114,7 +1131,7 @@ public partial class DmdWindow : JukeboxWindow
     {
         if (vm.ShowCategories)
         {
-            var ring = BuildNavRing(vm);
+            var ring = GetNavRing(vm);
             if (ring.Count == 0) return;
             ClearNavHighlight();
             _navIndex = ((_navIndex + delta) % ring.Count + ring.Count) % ring.Count;
@@ -1151,7 +1168,7 @@ public partial class DmdWindow : JukeboxWindow
     {
         if (vm.ShowCategories)
         {
-            var ring = BuildNavRing(vm);
+            var ring = GetNavRing(vm);
             if (_navIndex >= 0 && _navIndex < ring.Count)
             {
                 ClearNavHighlight();
@@ -1193,7 +1210,7 @@ public partial class DmdWindow : JukeboxWindow
 
     private void ApplyNavHighlight(JukeboxViewModel vm)
     {
-        var ring = BuildNavRing(vm);
+        var ring = GetNavRing(vm);
         if (_navIndex < 0 || _navIndex >= ring.Count) return;
 
         var entry = ring[_navIndex];
@@ -2586,7 +2603,7 @@ public partial class DmdWindow : JukeboxWindow
         var gradBrushes = _ssCurrentPattern?.GradientBrushes;
         if (brushes == null || brushes.Count == 0) return;
 
-        _ssHueOffset += 0.3;
+        _ssHueOffset += 0.6;
 
         for (int i = 0; i < brushes.Count; i++)
         {

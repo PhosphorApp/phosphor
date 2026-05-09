@@ -2128,6 +2128,12 @@ public partial class JukeboxViewModel : ObservableObject
     // ── Playlists ──
 
     /// <summary>
+    /// All playlists (static and live) — used by the playlist picker dropdown.
+    /// </summary>
+    public IReadOnlyList<Playlist> AllPlaylists =>
+        _playlists.Playlists.ToList();
+
+    /// <summary>
     /// Only static playlists — used by the "Add to Playlist" picker so live playlists are excluded.
     /// </summary>
     public IReadOnlyList<Playlist> StaticPlaylists =>

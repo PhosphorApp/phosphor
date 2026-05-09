@@ -145,7 +145,7 @@ public partial class BackglassWindow : JukeboxWindow
 
     public BackglassWindow()
     {
-        _colorTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+        _colorTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
         _colorTimer.Tick += ColorCycleBlobs;
 
         _logoDimTimer.Tick += LogoDimTimer_Tick;
@@ -249,7 +249,11 @@ public partial class BackglassWindow : JukeboxWindow
         vm.SeekRequested += OnSeekRequested;
         vm.PauseRequested += () => Dispatcher.BeginInvoke(() => EnsureVlcInitialized().SetPause(true));
         vm.ResumeRequested += () => Dispatcher.BeginInvoke(() => EnsureVlcInitialized().SetPause(false));
-        vm.VolumeChanged += v => EnsureVlcInitialized().Volume = v;
+        vm.VolumeChanged += v => Dispatcher.BeginInvoke(() =>
+        {
+            EnsureVlcInitialized().Volume = v;
+            DebugLog.Log("Volume", $"VLC volume set to {v}");
+        });
 
         _positionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _positionTimer.Tick += (_, _) =>
@@ -1142,7 +1146,7 @@ public partial class BackglassWindow : JukeboxWindow
         var gradBrushes = _currentPattern?.GradientBrushes;
         if (brushes == null || brushes.Count == 0) return;
 
-        _hueOffset += 0.3;
+        _hueOffset += 0.6;
         double lightness = Math.Clamp((0.15 + _blobIntensity * 0.7) * _brightnessBoost, 0.0, 1.0);
         for (int i = 0; i < brushes.Count; i++)
         {
