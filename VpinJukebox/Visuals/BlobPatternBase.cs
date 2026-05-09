@@ -121,7 +121,12 @@ public abstract class BlobPatternBase : IBlobPattern
             st.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(scale, dur) { EasingFunction = ease });
             st.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(scale, dur) { EasingFunction = ease });
 
-            blob.Opacity = baseIntensity + intensity * 0.25;
+            // Use the blob's original base opacity to preserve per-blob variance
+            // and avoid a visible dim after fly-in completes.
+            double blobBase = i < _states.Count && _states[i].BaseOpacity > 0
+                ? _states[i].BaseOpacity
+                : baseIntensity;
+            blob.Opacity = blobBase + intensity * 0.25;
         }
     }
 

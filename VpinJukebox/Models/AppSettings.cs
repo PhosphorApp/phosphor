@@ -62,6 +62,7 @@ public class AppSettings
     public int OledSleepDefeatSeconds { get; set; }
     public int OledSleepDefeatDurationSeconds { get; set; } = 5;
     public int OledSleepDefeatIntensity { get; set; } = 80;
+    public bool PlayfieldPulseDominantBlobs { get; set; }
     public BlobPattern PlayfieldBlobPattern { get; set; } = BlobPattern.Random;
     public int PlayfieldBlobCount { get; set; } = 10;
     public int PlayfieldRotation { get; set; } = 270;
@@ -95,6 +96,7 @@ public class AppSettings
     public string ProjectMTexturePath { get; set; } = "";
     public List<string> ProjectMEnabledFolders { get; set; } = new();
     public double ProjectMColorSampleDelaySeconds { get; set; } = 1.0;
+    public bool ProjectMPresetLogEnabled { get; set; }
     /// <summary>
     /// 0 = off, 1 = log black presets, 2 = log and move to Deactivated folder.
     /// </summary>

@@ -212,6 +212,7 @@
   "OledSleepDefeatSeconds": 0,
   "OledSleepDefeatDurationSeconds": 5,
   "OledSleepDefeatIntensity": 80,
+  "PlayfieldPulseDominantBlobs": false,
   "PlayfieldBlobPattern": 0,
   "PlayfieldBlobCount": 10,
   "BackglassBlobPattern": 1,

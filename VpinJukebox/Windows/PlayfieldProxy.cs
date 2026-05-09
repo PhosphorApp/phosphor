@@ -75,6 +75,9 @@ public sealed class PlayfieldProxy
     public void SetBlobPattern(BlobPattern pattern) =>
         _dispatcher.BeginInvoke(() => _window.SetBlobPattern(pattern));
 
+    public void SetPulseDominantBlobs(bool enabled) =>
+        _dispatcher.BeginInvoke(() => _window.SetPulseDominantBlobs(enabled));
+
     /// <summary>
     /// Invokes an action on the playfield thread with access to the active ProjectMRenderer.
     /// The callback receives null if ProjectM is not the current pattern.
@@ -124,7 +127,7 @@ public sealed class PlayfieldProxy
     /// Raised when the predominant blob color band changes.
     /// Fires on the playfield's dispatcher thread — callers must marshal if needed.
     /// </summary>
-    public event Action<RoygbivColor>? BlobColorBandChanged
+    public event Action<ColorAnalysis>? BlobColorBandChanged
     {
         add => _dispatcher.BeginInvoke(() => _window.BlobColorBandChanged += value);
         remove => _dispatcher.BeginInvoke(() => _window.BlobColorBandChanged -= value);

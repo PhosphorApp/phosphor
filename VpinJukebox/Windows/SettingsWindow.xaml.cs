@@ -183,6 +183,8 @@ public partial class SettingsWindow : JukeboxWindow
 
         SliderOledIntensity.Value = settings.OledSleepDefeatIntensity;
 
+        CbPulseDominantBlobs.IsChecked = settings.PlayfieldPulseDominantBlobs;
+
         TbStaticImagePath.Text = settings.PlayfieldStaticImagePath;
         TbVideoPath.Text = settings.PlayfieldVideoPath;
 
@@ -1376,6 +1378,7 @@ public partial class SettingsWindow : JukeboxWindow
         else
             _settings.PlayfieldDisplayMode = PlayfieldMode.StaticImage;
 
+        _settings.PlayfieldPulseDominantBlobs = CbPulseDominantBlobs.IsChecked == true;
         _settings.OledSleepDefeatSeconds = CbOledSleepDefeat.SelectedIndex * 10;
         _settings.OledSleepDefeatDurationSeconds = CbOledSleepDuration.SelectedIndex + 1;
         _settings.OledSleepDefeatIntensity = (int)SliderOledIntensity.Value;

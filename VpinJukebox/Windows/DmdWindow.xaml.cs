@@ -557,6 +557,7 @@ public partial class DmdWindow : JukeboxWindow
             : System.IO.Path.Combine(AppContext.BaseDirectory, "presets", "textures");
         ProjectMRenderer.EnabledFolders = settings.ProjectMEnabledFolders;
         ProjectMRenderer.ColorSampleDelaySeconds = Math.Clamp(settings.ProjectMColorSampleDelaySeconds, 0.1, 30.0);
+        ProjectMPresetLog.Enabled = settings.ProjectMPresetLogEnabled;
         ProjectMRenderer.PresetMonitorMode = Math.Clamp(settings.ProjectMPresetMonitor, 0, 2);
         ProjectMRenderer.BlackCheckRequiredHits = Math.Clamp(settings.ProjectMPresetMonitorBlackHits, 1, 20);
         ProjectMRenderer.BlackCheckIntervalSeconds = Math.Clamp(settings.ProjectMPresetMonitorIntervalSeconds, 0.5, 30.0);
@@ -581,6 +582,7 @@ public partial class DmdWindow : JukeboxWindow
         };
         _playfieldProxy.SetBlobCount(settings.PlayfieldBlobCount);
         _playfieldProxy.SetBlobPattern(settings.PlayfieldBlobPattern);
+        _playfieldProxy.SetPulseDominantBlobs(settings.PlayfieldPulseDominantBlobs);
         _playfieldProxy.SetRotation(settings.PlayfieldRotation);
         _topperWindow.SetBlobCount(settings.TopperBlobCount);
         _topperWindow.SetBlobPattern(settings.TopperBlobPattern);
@@ -1687,6 +1689,7 @@ public partial class DmdWindow : JukeboxWindow
             _playfieldProxy?.SetBlobCount(_appSettings.PlayfieldBlobCount);
             _playfieldProxy?.SetBlobPattern(_appSettings.PlayfieldBlobPattern);
         }
+        _playfieldProxy?.SetPulseDominantBlobs(_appSettings.PlayfieldPulseDominantBlobs);
         if (settingsWindow.PlayfieldRotationChanged)
             _playfieldProxy?.SetRotation(_appSettings.PlayfieldRotation);
         if (settingsWindow.TopperBlobsChanged)
@@ -1873,7 +1876,7 @@ public partial class DmdWindow : JukeboxWindow
         }
     }
 
-    private void OnPlayfieldColorBandChanged(RoygbivColor band)
+    private void OnPlayfieldColorBandChanged(ColorAnalysis analysis)
     {
         // This fires on the playfield's dispatcher thread — marshal to our thread
         Dispatcher.BeginInvoke(() =>
@@ -1881,13 +1884,14 @@ public partial class DmdWindow : JukeboxWindow
             if (!_dofColorBandEnabled || _dofClient?.IsConnected != true)
                 return;
 
-            int newNumber = band.ToDofNumber();
-            if (newNumber == _lastDofColorNumber)
-                return;
+            int newNumber = analysis.Color.ToDofNumber();
 
-            // Throttle color changes — effects need time to run
+            // Throttle color changes — self-rendering patterns (ProjectM/Mandelbrot)
+            // change on preset switch so allow 2s; blob patterns shift slowly so use 6s
+            // regardless of whether the color changed or not.
+            double throttleMs = analysis.SelfRendering ? 2000 : 6000;
             var now = DateTime.UtcNow;
-            if ((now - _lastDofColorChangeTime).TotalMilliseconds < 2000)
+            if ((now - _lastDofColorChangeTime).TotalMilliseconds < throttleMs)
                 return;
             _lastDofColorChangeTime = now;
 

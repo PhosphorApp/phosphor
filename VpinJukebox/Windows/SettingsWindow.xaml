@@ -798,6 +798,13 @@
                                          Background="{StaticResource SurfaceBrush}" VerticalAlignment="Center"
                                          IsReadOnly="True"/>
                             </DockPanel>
+                            <TextBlock Text="BLOB SETTINGS" FontSize="12" FontWeight="Bold"
+                                  Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
+                            <CheckBox x:Name="CbPulseDominantBlobs" Content="Pulse dominant color blobs"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,0,0,2"/>
+                            <TextBlock Text="When the dominant blob color band changes, matching blobs briefly pulse with a heartbeat effect." 
+                                       FontSize="10" FontWeight="Bold" TextWrapping="Wrap"
+                                       Foreground="{StaticResource TextDimBrush}" Margin="18,0,0,8"/>
                             <TextBlock Text="OLED SLEEP DEFEAT" FontSize="12" FontWeight="Bold"
                                   Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
                             <TextBlock Text="Some OLED screens turn off if there isn't enough movement or brightness. This setting occasionally brightens the screensaver to prevent sleeping." 

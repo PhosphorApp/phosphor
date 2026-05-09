@@ -30,7 +30,10 @@ public partial class PlayfieldWindow : JukeboxWindow
     private int _blobCount = 10;
     private bool _blobsInitialized;
     private double[] _blobHueOffsets = [];
-    private RoygbivColor? _lastColorBand;
+    private ColorAnalysis? _lastColorAnalysis;
+    private bool _pulseDominantBlobs;
+    private DateTime _lastPulseTime;
+    private DateTime _patternStartTime;
     private DispatcherTimer? _oledDefeatTimer;
     private DispatcherTimer? _oledDefeatRevertTimer;
     private int _oledDefeatIntervalSeconds;
@@ -59,7 +62,7 @@ public partial class PlayfieldWindow : JukeboxWindow
     /// <summary>
     /// Raised when the predominant blob color band changes (based on blob 0's hue).
     /// </summary>
-    public event Action<RoygbivColor>? BlobColorBandChanged;
+    public event Action<ColorAnalysis>? BlobColorBandChanged;
 
     public PlayfieldWindow()
     {
@@ -113,7 +116,7 @@ public partial class PlayfieldWindow : JukeboxWindow
             CreateBlobs();
         }
 
-        _colorTimer.Start();
+        SyncColorTimer();
     }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
@@ -149,13 +152,32 @@ public partial class PlayfieldWindow : JukeboxWindow
     {
         _baseBlobSizes = null;
         _blobHueOffsets = [];
+        _patternStartTime = DateTime.UtcNow;
 
         _currentPattern?.Dispose();
         _currentPattern = BlobTransition.Create(_blobPattern, MakeConfig());
-        SubscribeProjectMColorBand();
-        _currentPattern.Enter(() => { });
+        _currentPattern.Enter(() => SubscribeProjectMColorBand());
 
         _blobsInitialized = true;
+    }
+
+    /// <summary>
+    /// Returns true when the active pattern is self-rendering (ProjectM, Mandelbrot)
+    /// and does not need the color animation timer.
+    /// </summary>
+    private bool IsSelfRenderingPattern =>
+        _blobPattern is BlobPattern.ProjectM or BlobPattern.Mandelbrot;
+
+    /// <summary>
+    /// Starts or stops the color animation timer based on whether the current
+    /// pattern is blob-based (needs AnimateBlobs) or self-rendering.
+    /// </summary>
+    private void SyncColorTimer()
+    {
+        if (IsSelfRenderingPattern)
+            _colorTimer.Stop();
+        else
+            _colorTimer.Start();
     }
 
     private void AnimateBlobs(object? sender, EventArgs e)
@@ -170,7 +192,8 @@ public partial class PlayfieldWindow : JukeboxWindow
         if (_blobHueOffsets.Length != brushes.Count)
             _blobHueOffsets = Enumerable.Range(0, brushes.Count).Select(_ => _rng.NextDouble() * 360.0).ToArray();
 
-        Span<int> bandCounts = stackalloc int[7];
+        Span<int> bandCounts = stackalloc int[8];
+        float totalBrightness = 0f;
         for (int i = 0; i < brushes.Count; i++)
         {
             double hue = (_hueOffset + _reactiveHueBoost + _blobHueOffsets[i]) % 360.0;
@@ -186,7 +209,9 @@ public partial class PlayfieldWindow : JukeboxWindow
                     stops[1].Color = Color.FromArgb(120, color.R, color.G, color.B);
                 }
             }
-            bandCounts[(int)RoygbivHelper.FromHue(hue)]++;
+            var analysis = RoygbivHelper.Analyze(hue, 0.7, lightness);
+            bandCounts[(int)analysis.Color]++;
+            totalBrightness += analysis.Brightness;
         }
 
         // Detect dominant color band (mode) across all blobs and notify on change
@@ -194,7 +219,7 @@ public partial class PlayfieldWindow : JukeboxWindow
         {
             int maxCount = 0;
             var modeBand = RoygbivColor.Red;
-            for (int b = 0; b < 7; b++)
+            for (int b = 0; b < 8; b++)
             {
                 if (bandCounts[b] > maxCount)
                 {
@@ -202,10 +227,113 @@ public partial class PlayfieldWindow : JukeboxWindow
                     modeBand = (RoygbivColor)b;
                 }
             }
-            if (modeBand != _lastColorBand)
+            var modeAnalysis = new ColorAnalysis(modeBand, totalBrightness / brushes.Count);
+            if (_lastColorAnalysis?.Color != modeAnalysis.Color)
             {
-                _lastColorBand = modeBand;
-                BlobColorBandChanged?.Invoke(modeBand);
+                _lastColorAnalysis = modeAnalysis;
+
+                // Suppress DOF and pulse effects during the first few seconds
+                // after a pattern enters to avoid jank during fly-in animation.
+                var now = DateTime.UtcNow;
+                if ((now - _patternStartTime).TotalSeconds < 3)
+                    return;
+
+                BlobColorBandChanged?.Invoke(modeAnalysis);
+                if (_pulseDominantBlobs && (now - _lastPulseTime).TotalMilliseconds > 6000)
+                {
+                    _lastPulseTime = now;
+                    PulseDominantBlobs(modeBand);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Briefly pulses blobs whose current hue falls in the given ROYGBIV color band
+    /// with a heartbeat-style double-beat animation, mirroring DOF cabinet effects.
+    /// Uses opacity only when audio reactive is active (to avoid fighting ScaleTransform);
+    /// uses both opacity and scale when audio reactive is off.
+    /// </summary>
+    private void PulseDominantBlobs(RoygbivColor dominantBand)
+    {
+        // ── Tuning constants ──────────────────────────────────────────
+        const double opacityBoost1  = 0.32;   // first beat opacity bump
+        const double opacityBoost2  = 0.20;   // second beat opacity bump
+        const double scalePeak1     = 1.14;   // first beat scale factor
+        const double scalePeak2     = 1.10;   // second beat scale factor
+        const int    beat1Ms        = 150;    // time to first peak
+        const int    dip1Ms         = 400;    // time to dip between beats
+        const int    beat2Ms        = 650;    // time to second peak
+        const int    settleMs       = 1200;   // time to ease back to rest
+        // ──────────────────────────────────────────────────────────────
+
+        if (_currentPattern == null || IsSelfRenderingPattern) return;
+
+        var blobs = _currentPattern.Blobs;
+        if (blobs.Count == 0 || _blobHueOffsets.Length == 0) return;
+
+        bool includeScale = _audioReactive == null;
+
+        for (int i = 0; i < blobs.Count && i < _blobHueOffsets.Length; i++)
+        {
+            double hue = (_hueOffset + _reactiveHueBoost + _blobHueOffsets[i]) % 360.0;
+            var band = RoygbivHelper.FromHue(hue);
+            if (band != dominantBand) continue;
+
+            var blob = blobs[i];
+            double baseOpacity = blob.Opacity;
+
+            // Heartbeat: strong beat → dip → softer beat → ease back
+            var opacityFrames = new DoubleAnimationUsingKeyFrames();
+            double peak1 = Math.Min(baseOpacity + opacityBoost1, 1.0);
+            double peak2 = Math.Min(baseOpacity + opacityBoost2, 1.0);
+            opacityFrames.KeyFrames.Add(new EasingDoubleKeyFrame(peak1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(beat1Ms)),
+                new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+            opacityFrames.KeyFrames.Add(new EasingDoubleKeyFrame(baseOpacity, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(dip1Ms)),
+                new QuadraticEase { EasingMode = EasingMode.EaseIn }));
+            opacityFrames.KeyFrames.Add(new EasingDoubleKeyFrame(peak2, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(beat2Ms)),
+                new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+            opacityFrames.KeyFrames.Add(new EasingDoubleKeyFrame(baseOpacity, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(settleMs)),
+                new QuadraticEase { EasingMode = EasingMode.EaseInOut }));
+
+            var b = blob;
+            var bBase = baseOpacity;
+            opacityFrames.Completed += (_, _) =>
+            {
+                b.BeginAnimation(UIElement.OpacityProperty, null);
+                b.Opacity = bBase;
+            };
+            blob.BeginAnimation(UIElement.OpacityProperty, opacityFrames);
+
+            if (includeScale)
+            {
+                if (blob.RenderTransform is not ScaleTransform st)
+                {
+                    st = new ScaleTransform(1.0, 1.0);
+                    blob.RenderTransform = st;
+                }
+
+                // Matching heartbeat on scale
+                var scaleFrames = new DoubleAnimationUsingKeyFrames();
+                scaleFrames.KeyFrames.Add(new EasingDoubleKeyFrame(scalePeak1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(beat1Ms)),
+                    new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+                scaleFrames.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(dip1Ms)),
+                    new QuadraticEase { EasingMode = EasingMode.EaseIn }));
+                scaleFrames.KeyFrames.Add(new EasingDoubleKeyFrame(scalePeak2, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(beat2Ms)),
+                    new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+                scaleFrames.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(settleMs)),
+                    new QuadraticEase { EasingMode = EasingMode.EaseInOut }));
+
+                var stRef = st;
+                scaleFrames.Completed += (_, _) =>
+                {
+                    stRef.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                    stRef.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                    stRef.ScaleX = 1.0;
+                    stRef.ScaleY = 1.0;
+                };
+                st.BeginAnimation(ScaleTransform.ScaleXProperty, scaleFrames);
+                st.BeginAnimation(ScaleTransform.ScaleYProperty, scaleFrames.Clone());
             }
         }
     }
@@ -253,6 +381,11 @@ public partial class PlayfieldWindow : JukeboxWindow
         _brightnessBoost = Math.Clamp(boost, 0.5, 2.0);
     }
 
+    public void SetPulseDominantBlobs(bool enabled)
+    {
+        _pulseDominantBlobs = enabled;
+    }
+
     public void SetReactiveAudio(AudioReactiveService? service)
     {
         if (_audioReactive != null)
@@ -297,11 +430,11 @@ public partial class PlayfieldWindow : JukeboxWindow
             return;
 
         _baseBlobSizes = null;
+        _patternStartTime = DateTime.UtcNow;
         _currentPattern?.Dispose();
         _currentPattern = BlobTransition.Create(_blobPattern, MakeConfig());
-        SubscribeProjectMColorBand();
-        _currentPattern.Enter(() => { });
-        _colorTimer.Start();
+        _currentPattern.Enter(() => SubscribeProjectMColorBand());
+        SyncColorTimer();
     }
 
     public void SetBlobPattern(BlobPattern pattern)
@@ -321,10 +454,11 @@ public partial class PlayfieldWindow : JukeboxWindow
             return;
 
         _currentPattern?.Dispose();
+        _patternStartTime = DateTime.UtcNow;
         _currentPattern = BlobTransition.Create(pattern, MakeConfig());
-        SubscribeProjectMColorBand();
-        _currentPattern.Enter(() => { });
+        _currentPattern.Enter(() => SubscribeProjectMColorBand());
         _blobsInitialized = true;
+        SyncColorTimer();
     }
 
     /// <summary>
@@ -343,13 +477,11 @@ public partial class PlayfieldWindow : JukeboxWindow
     {
         if (_currentPattern is ProjectMPattern pmPattern && pmPattern.Renderer != null)
         {
-            pmPattern.Renderer.ColorBandChanged += band =>
+            pmPattern.Renderer.ColorBandChanged += analysis =>
             {
-                if (band != _lastColorBand)
-                {
-                    _lastColorBand = band;
-                    BlobColorBandChanged?.Invoke(band);
-                }
+                var tagged = new ColorAnalysis(analysis.Color, analysis.Brightness, SelfRendering: true);
+                _lastColorAnalysis = tagged;
+                BlobColorBandChanged?.Invoke(tagged);
             };
         }
     }
@@ -391,10 +523,12 @@ public partial class PlayfieldWindow : JukeboxWindow
             _blobPattern = newPattern;
 
             _currentPattern?.Dispose();
+            _patternStartTime = DateTime.UtcNow;
             _currentPattern = BlobTransition.Create(newPattern, MakeConfig());
-            SubscribeProjectMColorBand();
+            SyncColorTimer();
             _currentPattern.Enter(() =>
             {
+                SubscribeProjectMColorBand();
                 _transitioning = false;
             });
         });
@@ -451,7 +585,7 @@ public partial class PlayfieldWindow : JukeboxWindow
 
             case PlayfieldMode.Screensaver:
                 ScreensaverCanvas.Visibility = Visibility.Visible;
-                _colorTimer.Start();
+                SyncColorTimer();
                 break;
 
             case PlayfieldMode.StaticImage:
