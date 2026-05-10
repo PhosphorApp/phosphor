@@ -22,7 +22,7 @@ public static class ProjectMPresetLog
     private const int MaxEntries = 256;
 
     private static readonly string LogPath = Path.Combine(
-        AppDomain.CurrentDomain.BaseDirectory, "ProjectMPresetHistory.json");
+        AppDomain.CurrentDomain.BaseDirectory, "projectm_preset_history.json");
 
     public static bool Enabled { get; set; }
 
