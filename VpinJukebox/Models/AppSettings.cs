@@ -96,7 +96,7 @@ public class AppSettings
     public string ProjectMTexturePath { get; set; } = "";
     public List<string> ProjectMEnabledFolders { get; set; } = new();
     public double ProjectMColorSampleDelaySeconds { get; set; } = 1.0;
-    public bool ProjectMPresetLogEnabled { get; set; }
+    public bool ProjectMPresetHistoryEnabled { get; set; } = true;
     /// <summary>
     /// 0 = off, 1 = log black presets, 2 = log and move to Deactivated folder.
     /// </summary>

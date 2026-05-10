@@ -560,7 +560,7 @@ public partial class DmdWindow : JukeboxWindow
             : System.IO.Path.Combine(AppContext.BaseDirectory, "presets", "textures");
         ProjectMRenderer.EnabledFolders = settings.ProjectMEnabledFolders;
         ProjectMRenderer.ColorSampleDelaySeconds = Math.Clamp(settings.ProjectMColorSampleDelaySeconds, 0.1, 30.0);
-        ProjectMPresetLog.Enabled = settings.ProjectMPresetLogEnabled;
+        ProjectMPresetLog.Enabled = settings.ProjectMPresetHistoryEnabled;
         ProjectMRenderer.PresetMonitorMode = Math.Clamp(settings.ProjectMPresetMonitor, 0, 2);
         ProjectMRenderer.BlackCheckRequiredHits = Math.Clamp(settings.ProjectMPresetMonitorBlackHits, 1, 20);
         ProjectMRenderer.BlackCheckIntervalSeconds = Math.Clamp(settings.ProjectMPresetMonitorIntervalSeconds, 0.5, 30.0);
