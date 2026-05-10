@@ -134,7 +134,7 @@ public partial class DmdWindow : JukeboxWindow
                 vmLoaded.PropertyChanged += (_, args) =>
                 {
                     if (args.PropertyName == nameof(JukeboxViewModel.PlayTransitioning))
-                        _ = _dofClient?.TriggerAsync('E', 110, vmLoaded.PlayTransitioning ? 1 : 0);
+                        _dofClient?.Trigger('E', 110, vmLoaded.PlayTransitioning ? 1 : 0);
                 };
                 vmLoaded.SearchResults.CollectionChanged += (_, args) =>
                 {
@@ -221,7 +221,7 @@ public partial class DmdWindow : JukeboxWindow
                 try
                 {
                     if (_lastDofColorNumber >= 0)
-                        await _dofClient.TriggerAsync('E', _lastDofColorNumber, 0);
+                        _dofClient.Trigger('E', _lastDofColorNumber, 0);
                 }
                 catch { /* best-effort */ }
             }
@@ -1845,7 +1845,7 @@ public partial class DmdWindow : JukeboxWindow
                 if (await EnsureDofStartedAsync())
                 {
                     if (!wasAlreadyConnected)
-                        _ = _dofClient!.TriggerPulseAsync('E', 111);
+                        _dofClient!.TriggerPulse('E', 111);
                 }
                 else
                     _dofStartupEnabled = false;
@@ -1887,7 +1887,7 @@ public partial class DmdWindow : JukeboxWindow
             // Turn off any active color band trigger
             if (_dofClient?.IsConnected == true && _lastDofColorNumber >= 0)
             {
-                _dofClient.TriggerAsync('E', _lastDofColorNumber, 0);
+                _dofClient.Trigger('E', _lastDofColorNumber, 0);
                 _lastDofColorNumber = -1;
             }
         }
@@ -1914,10 +1914,10 @@ public partial class DmdWindow : JukeboxWindow
 
             // Turn off previous color
             if (_lastDofColorNumber >= 0)
-                _dofClient.TriggerAsync('E', _lastDofColorNumber, 0);
+                _dofClient.Trigger('E', _lastDofColorNumber, 0);
 
-            // Turn on new color
-            _dofClient.TriggerAsync('E', newNumber, 1);
+                            // Turn on new color
+                            _dofClient.Trigger('E', newNumber, 1);
             _lastDofColorNumber = newNumber;
         });
     }

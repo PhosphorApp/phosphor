@@ -1,11 +1,13 @@
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
+using System.Threading.Channels;
 
 namespace VpinJukebox;
 
 /// <summary>
 /// Client that manages the DofBridge.exe process and sends DOF trigger commands via named pipe.
+/// Uses a single-reader channel to guarantee FIFO command ordering.
 /// </summary>
 public class DofClient : IDisposable, IAsyncDisposable
 {
@@ -15,8 +17,17 @@ public class DofClient : IDisposable, IAsyncDisposable
     private NamedPipeClientStream? _pipe;
     private BinaryWriter? _writer;
     private bool _disposed;
-    private readonly object _writeLock = new();
     private readonly Dictionary<(char Type, int Number), int> _activeTriggers = new();
+
+    // FIFO command queue — unbounded, single consumer
+    private readonly Channel<(char Type, int Number, int Value)> _commandChannel =
+        Channel.CreateUnbounded<(char, int, int)>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = false
+        });
+    private Task? _consumerTask;
+    private CancellationTokenSource? _consumerCts;
 
     public bool IsConnected => _pipe?.IsConnected == true;
 
@@ -97,6 +108,10 @@ public class DofClient : IDisposable, IAsyncDisposable
             _pipe = pipe;
             _writer = new BinaryWriter(pipe);
 
+            // Start the single consumer that drains commands in FIFO order
+            _consumerCts = new CancellationTokenSource();
+            _consumerTask = Task.Run(() => ProcessCommandQueueAsync(_consumerCts.Token));
+
             DebugLog.Log("[DOF] Connected to DofBridge.");
             return true;
         }
@@ -109,47 +124,81 @@ public class DofClient : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Sends a DOF trigger command to the bridge process asynchronously.
+    /// Enqueues a DOF trigger command. Returns immediately; order is guaranteed by the consumer.
     /// </summary>
-    public Task TriggerAsync(char tableElementType, int number, int value)
+    public void Trigger(char tableElementType, int number, int value)
     {
-        if (_disposed || _writer == null || _pipe?.IsConnected != true)
-            return Task.CompletedTask;
+        if (_disposed) return;
 
-        return Task.Run(() =>
+        if (!_commandChannel.Writer.TryWrite((tableElementType, number, value)))
         {
-            lock (_writeLock)
+            DebugLog.Log($"[DOF] Failed to enqueue trigger {tableElementType}{number}={value}");
+        }
+    }
+
+    /// <summary>
+    /// Enqueues a pulse trigger: value 1 followed by value 0.
+    /// The consumer processes them in order with a 50ms delay between.
+    /// </summary>
+    public void TriggerPulse(char tableElementType, int number)
+    {
+        Trigger(tableElementType, number, 1);
+        Trigger(tableElementType, number, -1); // sentinel: -1 means "delay then send 0"
+    }
+
+    /// <summary>
+    /// Single consumer loop — guarantees strict FIFO ordering of all commands.
+    /// </summary>
+    private async Task ProcessCommandQueueAsync(CancellationToken ct)
+    {
+        try
+        {
+            await foreach (var (type, number, value) in _commandChannel.Reader.ReadAllAsync(ct))
             {
+                if (_writer == null || _pipe?.IsConnected != true)
+                    continue;
+
                 try
                 {
-                    DebugLog.Log($"[DOF] Trigger {tableElementType}{number}={value}");
-                    _writer.Write(tableElementType);
-                    _writer.Write(number);
-                    _writer.Write(value);
-                    _writer.Flush();
-
-                    var key = (tableElementType, number);
-                    if (value != 0)
-                        _activeTriggers[key] = value;
+                    if (value == -1)
+                    {
+                        // Pulse sentinel: delay then send 0
+                        await Task.Delay(50, ct);
+                        WriteTrigger(type, number, 0);
+                    }
                     else
-                        _activeTriggers.Remove(key);
+                    {
+                        WriteTrigger(type, number, value);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
                 }
                 catch (Exception ex)
                 {
                     DebugLog.Log($"[DOF] Trigger failed: {ex.Message}");
                 }
             }
-        });
+        }
+        catch (OperationCanceledException) { }
+
+        DebugLog.Log("[DOF] Command queue consumer exited.");
     }
 
-    /// <summary>
-    /// Sends a pulse trigger: value 1 followed by value 0 after a 50ms delay.
-    /// </summary>
-    public async Task TriggerPulseAsync(char tableElementType, int number)
+    private void WriteTrigger(char type, int number, int value)
     {
-        await TriggerAsync(tableElementType, number, 1);
-        await Task.Delay(50);
-        await TriggerAsync(tableElementType, number, 0);
+        DebugLog.Log($"[DOF] Trigger {type}{number}={value}");
+        _writer!.Write(type);
+        _writer.Write(number);
+        _writer.Write(value);
+        _writer.Flush();
+
+        var key = (type, number);
+        if (value != 0)
+            _activeTriggers[key] = value;
+        else
+            _activeTriggers.Remove(key);
     }
 
     /// <summary>
@@ -161,32 +210,36 @@ public class DofClient : IDisposable, IAsyncDisposable
         _disposed = true;
 
         DebugLog.Log("[DOF] Shutting down DofBridge.");
-        lock (_writeLock)
-        {
-            try
-            {
-                if (_writer != null && _pipe?.IsConnected == true)
-                {
-                    // Turn off all active triggers before shutdown
-                    foreach (var ((type, number), _) in _activeTriggers)
-                    {
-                        DebugLog.Log($"[DOF] Auto-off {type}{number}=0");
-                        _writer.Write(type);
-                        _writer.Write(number);
-                        _writer.Write(0);
-                    }
-                    _writer.Flush();
-                    _activeTriggers.Clear();
 
-                    _writer.Write('\0'); // shutdown command
-                    _writer.Flush();
-                }
-            }
-            catch (Exception ex)
+        // Stop the consumer
+        _consumerCts?.Cancel();
+        _commandChannel.Writer.TryComplete();
+        _consumerTask?.Wait(2000);
+
+        try
+        {
+            if (_writer != null && _pipe?.IsConnected == true)
             {
-                DebugLog.Log($"[DOF] Shutdown send failed: {ex.Message}");
+                // Turn off all active triggers before shutdown
+                foreach (var ((type, number), _) in _activeTriggers)
+                {
+                    DebugLog.Log($"[DOF] Auto-off {type}{number}=0");
+                    _writer.Write(type);
+                    _writer.Write(number);
+                    _writer.Write(0);
+                }
+                _writer.Flush();
+                _activeTriggers.Clear();
+
+                _writer.Write('\0'); // shutdown command
+                _writer.Flush();
             }
         }
+        catch (Exception ex)
+        {
+            DebugLog.Log($"[DOF] Shutdown send failed: {ex.Message}");
+        }
+
 
         Cleanup();
     }
@@ -199,41 +252,47 @@ public class DofClient : IDisposable, IAsyncDisposable
         if (_disposed) return;
         _disposed = true;
 
-        await Task.Run(() =>
+        DebugLog.Log("[DOF] Shutting down DofBridge.");
+
+        _consumerCts?.Cancel();
+        _commandChannel.Writer.TryComplete();
+        if (_consumerTask != null)
         {
-            DebugLog.Log("[DOF] Shutting down DofBridge.");
-            lock (_writeLock)
+            try { await _consumerTask.WaitAsync(TimeSpan.FromSeconds(2)); }
+            catch (TimeoutException) { }
+        }
+
+        try
+        {
+            if (_writer != null && _pipe?.IsConnected == true)
             {
-                try
+                foreach (var ((type, number), _) in _activeTriggers)
                 {
-                    if (_writer != null && _pipe?.IsConnected == true)
-                    {
-                        foreach (var ((type, number), _) in _activeTriggers)
-                        {
-                            DebugLog.Log($"[DOF] Auto-off {type}{number}=0");
-                            _writer.Write(type);
-                            _writer.Write(number);
-                            _writer.Write(0);
-                        }
-                        _writer.Flush();
-                        _activeTriggers.Clear();
+                    DebugLog.Log($"[DOF] Auto-off {type}{number}=0");
+                    _writer.Write(type);
+                    _writer.Write(number);
+                    _writer.Write(0);
+                }
+                _writer.Flush();
+                _activeTriggers.Clear();
 
-                        _writer.Write('\0');
-                        _writer.Flush();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    DebugLog.Log($"[DOF] Shutdown send failed: {ex.Message}");
-                }
+                _writer.Write('\0');
+                _writer.Flush();
             }
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Log($"[DOF] Shutdown send failed: {ex.Message}");
+        }
 
-            Cleanup();
-        });
+        Cleanup();
     }
 
     private void Cleanup()
     {
+        _consumerCts?.Dispose();
+        _consumerCts = null;
+
         _writer?.Dispose();
         _writer = null;
 

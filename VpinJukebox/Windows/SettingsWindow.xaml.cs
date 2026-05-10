@@ -1210,8 +1210,9 @@ public partial class SettingsWindow : JukeboxWindow
         {
             var topName = System.IO.Path.GetFileName(topDir);
 
-            // Never show the Deactivated folder in the enabled-folders tree
-            if (topName.Equals("Deactivated", StringComparison.OrdinalIgnoreCase))
+            // Never show the Deactivated or Deleted folders in the enabled-folders tree
+            if (topName.Equals("Deactivated", StringComparison.OrdinalIgnoreCase) ||
+                topName.Equals("Deleted", StringComparison.OrdinalIgnoreCase))
                 continue;
             var topItem = new System.Windows.Controls.TreeViewItem
             {
@@ -1767,7 +1768,7 @@ public partial class SettingsWindow : JukeboxWindow
             if (!int.TryParse(TbDofTestNumber.Text.Trim(), out var number))
                 number = 101;
 
-            await _testDofClient.TriggerAsync(element, number, value);
+            _testDofClient.Trigger(element, number, value);
             DofTestStatusText.Text = $"Sent {element}{number} = {value}";
         }
         catch (Exception ex)

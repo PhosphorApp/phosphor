@@ -865,8 +865,10 @@ public partial class PresetBrowserWindow : Window
         _playfieldProxy?.WithProjectMRenderer(r =>
         {
             if (r == null) return;
-            r.ReloadPlaylist();
+            // Unlock first so the duration is restored before ReloadPlaylist
+            // triggers play_next, which starts the internal timer.
             r.LockPreset(false);
+            r.ReloadPlaylist();
         });
     }
 }
