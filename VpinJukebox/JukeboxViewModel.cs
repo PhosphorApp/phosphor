@@ -1948,11 +1948,14 @@ public partial class JukeboxViewModel : ObservableObject
     /// If something is playing, stop it. Otherwise start the queue
     /// (or play the given fallback item if the queue is empty).
     /// </summary>
+    private int _lastPlayedQueueIndex = -1;
+
     [RelayCommand]
     private void TogglePlayStop(VideoItem? fallbackItem)
     {
         if (IsPlaying)
         {
+            _lastPlayedQueueIndex = _queueIndex;
             StopPlayback();
         }
         else if (fallbackItem != null)
@@ -1961,8 +1964,11 @@ public partial class JukeboxViewModel : ObservableObject
         }
         else if (Queue.Count > 0)
         {
-            QueueIndex = -1;
-            PlayNext();
+            int resumeIndex = _lastPlayedQueueIndex >= 0 && _lastPlayedQueueIndex < Queue.Count
+                ? _lastPlayedQueueIndex
+                : 0;
+            _lastPlayedQueueIndex = -1;
+            PlayFromQueueIndex(resumeIndex);
         }
     }
 

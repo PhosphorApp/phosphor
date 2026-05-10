@@ -135,6 +135,8 @@ public partial class DmdWindow : JukeboxWindow
                 {
                     if (args.PropertyName == nameof(JukeboxViewModel.PlayTransitioning))
                         _dofClient?.Trigger('E', 110, vmLoaded.PlayTransitioning ? 1 : 0);
+                    if (args.PropertyName == nameof(JukeboxViewModel.CurrentQueueItem) && vmLoaded.CurrentQueueItem != null)
+                        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => QueueList.ScrollIntoView(vmLoaded.CurrentQueueItem));
                 };
                 vmLoaded.SearchResults.CollectionChanged += (_, args) =>
                 {
