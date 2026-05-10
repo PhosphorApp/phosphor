@@ -20,3 +20,7 @@ todo:
 
 -move hide cursor to settings, add option for how long to wait before hiding cursor 
 -rename setup to General. Move DOF to new Tab. 
+
+----
+todo 5-10
+consider stop button behavior - should it pause? 

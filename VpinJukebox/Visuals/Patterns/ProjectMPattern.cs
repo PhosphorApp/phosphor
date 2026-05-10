@@ -89,6 +89,24 @@ public sealed class ProjectMPattern : BlobPatternBase
             return;
         }
 
+        // If the owning window hasn't settled yet (e.g. still expanding to monitor),
+        // wait for LayoutSettled so we initialize at the final resolution.
+        var window = Window.GetWindow(_canvas);
+        if (window is JukeboxWindow jw && !jw.IsLayoutSettled)
+        {
+            _deferredOnComplete = onComplete;
+            void OnSettled()
+            {
+                jw.LayoutSettled -= OnSettled;
+                var cb = _deferredOnComplete;
+                _deferredOnComplete = null;
+                if (cb != null && !_disposed)
+                    EnterCore(cb);
+            }
+            jw.LayoutSettled += OnSettled;
+            return;
+        }
+
         EnterCore(onComplete);
     }
 
@@ -98,15 +116,56 @@ public sealed class ProjectMPattern : BlobPatternBase
             return;
 
         _canvas.LayoutUpdated -= OnDeferredLayout;
+
+        // Now wait for the window to finish settling (expand, etc.)
+        var window = Window.GetWindow(_canvas);
+        if (window is JukeboxWindow jw && !jw.IsLayoutSettled)
+        {
+            void OnSettled()
+            {
+                jw.LayoutSettled -= OnSettled;
+                var cb = _deferredOnComplete;
+                _deferredOnComplete = null;
+                if (cb != null && !_disposed)
+                    EnterCore(cb);
+            }
+            jw.LayoutSettled += OnSettled;
+            return;
+        }
+
         var callback = _deferredOnComplete;
         _deferredOnComplete = null;
         if (callback != null && !_disposed)
             EnterCore(callback);
     }
 
+    private void OnCanvasSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_disposed || _renderer == null || !_renderer.IsAvailable || _image == null)
+            return;
+
+        int w = Math.Max(1, (int)(e.NewSize.Width * ProjectMRenderer.RenderScale));
+        int h = Math.Max(1, (int)(e.NewSize.Height * ProjectMRenderer.RenderScale));
+        if (w == _pixelWidth && h == _pixelHeight)
+            return;
+
+        _pixelWidth = w;
+        _pixelHeight = h;
+        if (_renderer.Resize(_pixelWidth, _pixelHeight))
+        {
+            _image.Width = e.NewSize.Width;
+            _image.Height = e.NewSize.Height;
+            _image.Source = _renderer.ImageSource;
+        }
+    }
+
     private void EnterCore(Action onComplete)
     {
         CreateBlobs();
+
+        // Listen for runtime size changes (drag-resize, F11 toggle) so we
+        // can resize the renderer in-place instead of recreating it.
+        _canvas.SizeChanged += OnCanvasSizeChanged;
 
         if (_image == null) { onComplete(); return; }
 
@@ -135,6 +194,7 @@ public sealed class ProjectMPattern : BlobPatternBase
     public override void Exit(Action onComplete)
     {
         _canvas.LayoutUpdated -= OnDeferredLayout;
+        _canvas.SizeChanged -= OnCanvasSizeChanged;
         _deferredOnComplete = null;
         StopMotion();
 
@@ -303,6 +363,7 @@ public sealed class ProjectMPattern : BlobPatternBase
         _disposed = true;
         try
         {
+            _canvas.SizeChanged -= OnCanvasSizeChanged;
             StopMotion();
             CleanupCanvas();
         }

@@ -329,6 +329,40 @@ public sealed class ProjectMRenderer : IDisposable
     }
 
     /// <summary>
+    /// Resizes the renderer to new dimensions without recreating the OpenGL
+    /// context or reloading presets. Must be called on the UI thread.
+    /// </summary>
+    public bool Resize(int newWidth, int newHeight)
+    {
+        if (!_initialized || _disposed || _projectM == IntPtr.Zero)
+            return false;
+        if (newWidth < 1 || newHeight < 1)
+            return false;
+        if (newWidth == _width && newHeight == _height)
+            return true;
+
+        lock (_nativeLock)
+        {
+            if (!_initialized || _disposed || _projectM == IntPtr.Zero)
+                return false;
+
+            _width = newWidth;
+            _height = newHeight;
+
+            wglMakeCurrent(_hdc, _hglrc);
+            glViewport(0, 0, _width, _height);
+            projectm_set_window_size(_projectM, (uint)_width, (uint)_height);
+
+            _bitmap = new WriteableBitmap(_width, _height, 96, 96, PixelFormats.Bgra32, null);
+            _pixelBuffer = new byte[_width * _height * 4];
+            _flippedBuffer = new byte[_width * _height * 4];
+
+            Log($"Resized to {_width}x{_height}");
+            return true;
+        }
+    }
+
+    /// <summary>
     /// Switches to a specific preset by index.
     /// </summary>
     public void SetPreset(uint index, bool hardCut = true)

@@ -156,6 +156,21 @@ public class JukeboxWindow : Window
     /// </summary>
     public bool CheckWindowPositionOnStartup { get; set; } = true;
 
+    /// <summary>
+    /// Raised once after the window has reached its final startup size
+    /// (either the saved layout or after expanding to the monitor).
+    /// </summary>
+    public event Action? LayoutSettled;
+
+    /// <summary>True after <see cref="LayoutSettled"/> has fired.</summary>
+    public bool IsLayoutSettled { get; private set; }
+
+    private void RaiseLayoutSettled()
+    {
+        IsLayoutSettled = true;
+        LayoutSettled?.Invoke();
+    }
+
     public void ApplyLayout(WindowLayout layout)
     {
         _layout = layout;
@@ -180,8 +195,19 @@ public class JukeboxWindow : Window
             {
                 Loaded -= OnLoadedExpand;
                 ExpandToCurrentMonitor();
+                RaiseLayoutSettled();
             }
             Loaded += OnLoadedExpand;
+        }
+        else
+        {
+            // Not expanding — settled once Loaded fires
+            void OnLoadedSettled(object s, RoutedEventArgs a)
+            {
+                Loaded -= OnLoadedSettled;
+                RaiseLayoutSettled();
+            }
+            Loaded += OnLoadedSettled;
         }
     }
 

@@ -124,6 +124,11 @@ public partial class PlayfieldWindow : JukeboxWindow
         if (!_blobsInitialized || ScreensaverCanvas.ActualWidth <= 0)
             return;
 
+        // Self-rendering patterns (ProjectM, Mandelbrot) handle their own
+        // resize via the canvas SizeChanged event — no need to recreate.
+        if (IsSelfRenderingPattern)
+            return;
+
         CreateBlobs();
     }
 
