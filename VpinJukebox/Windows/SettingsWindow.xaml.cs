@@ -329,6 +329,12 @@ public partial class SettingsWindow : JukeboxWindow
         CbProjectMHardCut.IsChecked = settings.ProjectMHardCutEnabled;
         SliderProjectMRenderScale.Value = settings.ProjectMRenderScale * 100;
         TxtProjectMRenderScale.Text = $"{(int)(settings.ProjectMRenderScale * 100)}%";
+        switch (settings.ProjectMPresetMonitor)
+        {
+            case 1: RbPresetMonitorSkip.IsChecked = true; break;
+            case 2: RbPresetMonitorDeactivate.IsChecked = true; break;
+            default: RbPresetMonitorOff.IsChecked = true; break;
+        }
         PopulateProjectMFolderTree(settings);
         UpdateProjectMTuningVisibility();
 
@@ -1318,6 +1324,11 @@ public partial class SettingsWindow : JukeboxWindow
             TxtProjectMRenderScale.Text = $"{(int)e.NewValue}%";
     }
 
+    private void RbPresetMonitor_Checked(object sender, RoutedEventArgs e)
+    {
+        // No additional logic needed — value is read at save time
+    }
+
     private void BtnPresetBrowser_Click(object sender, RoutedEventArgs e)
     {
         var presetPath = !string.IsNullOrEmpty(_settings.ProjectMPresetPath)
@@ -1495,6 +1506,8 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.ProjectMHardCutEnabled = CbProjectMHardCut.IsChecked == true;
         _settings.ProjectMBeatSensitivity = (float)SliderProjectMBeatSensitivity.Value;
         _settings.ProjectMRenderScale = SliderProjectMRenderScale.Value / 100.0;
+        _settings.ProjectMPresetMonitor = RbPresetMonitorDeactivate.IsChecked == true ? 2
+            : RbPresetMonitorSkip.IsChecked == true ? 1 : 0;
         _settings.ProjectMEnabledFolders = CollectProjectMEnabledFolders();
         _settings.MandelbrotUseGpu = CbMandelbrotUseGpu.IsChecked == true ? 1 : 0;
         _settings.MandelbrotAdaptiveIterations = CbMandelbrotAdaptiveIterations.IsChecked == true;

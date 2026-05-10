@@ -804,9 +804,112 @@ public partial class JukeboxViewModel : ObservableObject
 
         _currentSearchQuery = query;
 
+        // Check for playlist: prefix
+        // Quoted form: playlist:"Classic Rock Hits" guitar → name=Classic Rock Hits, filter=guitar
+        // Unquoted ID: playlist:PLxxxxxxx guitar → id=PLxxxxxxx, filter=guitar
+        // Unquoted name: playlist:classic rock hits → searches "classic rock hits" as playlist name, no filter
+        var playlistQuotedMatch = Regex.Match(query, @"playlist:""([^""]+)""", RegexOptions.IgnoreCase);
+        var playlistMatch = !playlistQuotedMatch.Success
+            ? Regex.Match(query, @"playlist:(.+)", RegexOptions.IgnoreCase)
+            : null;
         // Check for channel: prefix (e.g. "godzilla channel:vpinworkshop")
         var channelMatch = Regex.Match(query, @"channel:(\S+)", RegexOptions.IgnoreCase);
-        if (channelMatch.Success)
+
+        if (playlistQuotedMatch.Success)
+        {
+            var playlistIdOrName = playlistQuotedMatch.Groups[1].Value.Trim();
+            var filterTerms = Regex.Replace(query, @"playlist:""[^""]+""", "", RegexOptions.IgnoreCase).Trim();
+
+            try
+            {
+                // Try as a direct playlist ID first (e.g. PLxxxxxxx or URL)
+                var playlistId = playlistIdOrName;
+                try
+                {
+                    // YoutubeExplode can parse playlist IDs from URLs or raw IDs
+                    var resolved = YoutubeExplode.Playlists.PlaylistId.Parse(playlistIdOrName);
+                    playlistId = resolved.Value;
+                }
+                catch
+                {
+                    // If it doesn't parse as an ID, search for the playlist by name
+                    var found = false;
+                    await foreach (var result in _youtube.Search.GetPlaylistsAsync(playlistIdOrName))
+                    {
+                        playlistId = result.Id.Value;
+                        StatusText = $"Found playlist: {result.Title}";
+                        found = true;
+                        break;
+                    }
+                    if (!found)
+                    {
+                        StatusText = $"Could not find playlist: {playlistIdOrName}";
+                        IsSearching = false;
+                        return;
+                    }
+                }
+
+                var videos = AsVideos(_youtube.Playlists.GetVideosAsync(playlistId));
+                _searchEnumerator = string.IsNullOrEmpty(filterTerms)
+                    ? videos.GetAsyncEnumerator()
+                    : FilterVideosAsync(videos, filterTerms).GetAsyncEnumerator();
+            }
+            catch (Exception ex)
+            {
+                StatusText = $"Could not load playlist: {playlistIdOrName}";
+                DebugLog.LogException("Playlist lookup", ex);
+                IsSearching = false;
+                return;
+            }
+        }
+        else if (playlistMatch is { Success: true })
+        {
+            // Unquoted playlist: — everything after the prefix is the playlist name/ID, no filter
+            var playlistIdOrName = playlistMatch.Groups[1].Value.Trim();
+            var filterTerms = "";
+
+            try
+            {
+                var playlistId = playlistIdOrName;
+                try
+                {
+                    var resolved = YoutubeExplode.Playlists.PlaylistId.Parse(playlistIdOrName);
+                    playlistId = resolved.Value;
+                    // If it parsed as an ID, remaining text before "playlist:" is filter
+                    filterTerms = Regex.Replace(query, @"playlist:\S+", "", RegexOptions.IgnoreCase).Trim();
+                }
+                catch
+                {
+                    var found = false;
+                    await foreach (var result in _youtube.Search.GetPlaylistsAsync(playlistIdOrName))
+                    {
+                        playlistId = result.Id.Value;
+                        StatusText = $"Found playlist: {result.Title}";
+                        found = true;
+                        break;
+                    }
+                    if (!found)
+                    {
+                        StatusText = $"Could not find playlist: {playlistIdOrName}";
+                        IsSearching = false;
+                        return;
+                    }
+                }
+
+                var videos = AsVideos(_youtube.Playlists.GetVideosAsync(playlistId));
+                _searchEnumerator = string.IsNullOrEmpty(filterTerms)
+                    ? videos.GetAsyncEnumerator()
+                    : FilterVideosAsync(videos, filterTerms).GetAsyncEnumerator();
+            }
+            catch (Exception ex)
+            {
+                StatusText = $"Could not load playlist: {playlistIdOrName}";
+                DebugLog.LogException("Playlist lookup", ex);
+                IsSearching = false;
+                return;
+            }
+        }
+        else if (channelMatch.Success)
         {
             var channelName = channelMatch.Groups[1].Value;
             var filterTerms = Regex.Replace(query, @"channel:\S+", "", RegexOptions.IgnoreCase).Trim();
@@ -2319,14 +2422,21 @@ public partial class JukeboxViewModel : ObservableObject
 
     // ── AutoDJ ──
 
-    private const int AutoDjTargetQueueSize = 10;
+    private const int AutoDjRefillThreshold = 5;
+    private const int AutoDjBatchSize = 10;
     private readonly HashSet<string> _autoDjUsedIds = new();
     private readonly Random _autoDjRng = new();
 
     private async Task AutoDjFillQueue()
     {
         if (_isAutoDjFilling || !_autoDjEnabled) return;
+
+        // Only refill when fewer than 5 items remain ahead of the current position
+        int remaining = Queue.Count - Math.Max(_queueIndex, 0);
+        if (remaining >= AutoDjRefillThreshold && Queue.Count > 0) return;
+
         _isAutoDjFilling = true;
+        int targetSize = Queue.Count + AutoDjBatchSize;
 
         try
         {
@@ -2335,9 +2445,9 @@ public partial class JukeboxViewModel : ObservableObject
                 c.Name == ActiveCategory && !string.IsNullOrEmpty(c.SearchTerm));
 
             if (genreCat != null)
-                await AutoDjFromGenre(genreCat);
+                await AutoDjFromGenre(genreCat, targetSize);
             else
-                await AutoDjFromVideo();
+                await AutoDjFromVideo(targetSize);
 
             if (_autoDjEnabled && Queue.Count > 0)
                 StatusText = $"AutoDJ active — {Queue.Count} in queue";
@@ -2348,7 +2458,7 @@ public partial class JukeboxViewModel : ObservableObject
         }
     }
 
-    private async Task AutoDjFromGenre(Category genre)
+    private async Task AutoDjFromGenre(Category genre, int targetSize)
     {
         StatusText = $"AutoDJ: browsing {genre.Name}...";
 
@@ -2377,7 +2487,7 @@ public partial class JukeboxViewModel : ObservableObject
 
             foreach (var video in shuffled)
             {
-                if (Queue.Count >= AutoDjTargetQueueSize) break;
+                if (Queue.Count >= targetSize) break;
                 var videoId = video.Id.Value;
                 if (_autoDjUsedIds.Contains(videoId)) continue;
                 if (Queue.Any(q => q.VideoId == videoId)) continue;
@@ -2406,7 +2516,7 @@ public partial class JukeboxViewModel : ObservableObject
         }
     }
 
-    private async Task AutoDjFromVideo()
+    private async Task AutoDjFromVideo(int targetSize)
     {
         // Use the title of the currently playing (or most recent) track to find similar content,
         // since the channel/author name often doesn't reflect the actual music.
@@ -2429,10 +2539,29 @@ public partial class JukeboxViewModel : ObservableObject
 
         try
         {
-            var searchResults = _youtube.Search.GetVideosAsync(query);
-            await foreach (var video in searchResults)
+            // Fetch a page of results and randomize so we don't always pick the same top results
+            var pool = new List<YoutubeExplode.Search.VideoSearchResult>();
+            var enumerator = _youtube.Search.GetVideosAsync(query).GetAsyncEnumerator();
+            try
             {
-                if (Queue.Count >= AutoDjTargetQueueSize) break;
+                int fetched = 0;
+                while (fetched < 50 && await enumerator.MoveNextAsync())
+                {
+                    pool.Add(enumerator.Current);
+                    fetched++;
+                }
+            }
+            finally
+            {
+                try { await enumerator.DisposeAsync(); }
+                catch { /* enumerator may be faulted */ }
+            }
+
+            var shuffled = pool.OrderBy(_ => _autoDjRng.Next()).ToList();
+
+            foreach (var video in shuffled)
+            {
+                if (Queue.Count >= targetSize) break;
                 var videoId = video.Id.Value;
                 if (_autoDjUsedIds.Contains(videoId)) continue;
                 if (Queue.Any(q => q.VideoId == videoId)) continue;

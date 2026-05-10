@@ -94,9 +94,11 @@
                           KeyDown="SearchBox_KeyDown" SelectionChanged="SearchBox_SelectionChanged"
                           IsTextSearchEnabled="False"
                           IsKeyboardFocusWithinChanged="SearchBox_FocusChanged"/>
-                <TextBlock x:Name="SearchPlaceholder" Text="SEARCH"
+                <TextBlock x:Name="SearchPlaceholder"
                            FontSize="18" Foreground="#666" IsHitTestVisible="False"
-                           VerticalAlignment="Center" Margin="14,0,0,0"/>
+                           VerticalAlignment="Center" Margin="14,0,0,0">
+                    <Run Text="SEARCH" /><Run Text="  (also try 'channel:&lt;name&gt;' or 'playlist:&lt;name&gt;')" Foreground="#444" FontSize="13"/>
+                </TextBlock>
             </Grid>
         </DockPanel>
 

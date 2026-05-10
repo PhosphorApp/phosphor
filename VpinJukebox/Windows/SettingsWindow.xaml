@@ -482,9 +482,6 @@
                                     <TextBlock x:Name="TxtProjectMBeatSensitivity" Foreground="{StaticResource TextDimBrush}"
                                                VerticalAlignment="Center" Margin="8,0,0,0"/>
                                 </StackPanel>
-                                <CheckBox x:Name="CbProjectMHardCut" Content="Enable hard cuts (beat-driven)"
-                                           Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
-                                           ToolTip="Allow beat-driven instant preset switches."/>
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Render Scale:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Width="110"/>
@@ -495,6 +492,25 @@
                                             ToolTip="Resolution multiplier (20%–100%). Lower values improve performance."/>
                                     <TextBlock x:Name="TxtProjectMRenderScale" Foreground="{StaticResource TextDimBrush}"
                                                VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <CheckBox x:Name="CbProjectMHardCut" Content="Enable hard cuts (beat-driven)"
+                                           Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
+                                           ToolTip="Allow beat-driven instant preset switches."/>
+
+                                <TextBlock Text="Auto skip black presets:" Foreground="{StaticResource TextBrush}"
+                                           Margin="0,12,0,2"/>
+                                <TextBlock Text="Some presets require reactive audio or may render all black. This setting detects and skips these presets."
+                                           FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,4" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                    <RadioButton x:Name="RbPresetMonitorOff" Content="Off" GroupName="PresetMonitor"
+                                                 Foreground="{StaticResource TextBrush}" Margin="0,0,12,0"
+                                                 Checked="RbPresetMonitor_Checked"/>
+                                    <RadioButton x:Name="RbPresetMonitorSkip" Content="Skip" GroupName="PresetMonitor"
+                                                 Foreground="{StaticResource TextBrush}" Margin="0,0,12,0"
+                                                 Checked="RbPresetMonitor_Checked"/>
+                                    <RadioButton x:Name="RbPresetMonitorDeactivate" Content="Deactivate and Skip" GroupName="PresetMonitor"
+                                                 Foreground="{StaticResource TextBrush}" Margin="0,0,12,0"
+                                                 Checked="RbPresetMonitor_Checked"/>
                                 </StackPanel>
 
                                 <TextBlock Text="Preset Folders" FontSize="11" FontWeight="SemiBold"
