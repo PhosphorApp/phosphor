@@ -52,21 +52,51 @@ public partial class PresetBrowserWindow : Window
 
     // ── History ────────────────────────────────────────────────────
 
+    private List<HistoryItem> _allHistoryItems = new();
+
     private void PopulateHistory()
     {
         var entries = ProjectMPresetLog.GetEntries();
-        var items = new List<HistoryItem>();
+        _allHistoryItems = new List<HistoryItem>();
+
+        // Build a lookup of the most recent monitor entry per preset path
+        var monitorEntries = ProjectMPresetMonitorLog.GetEntries();
+        var monitorLookup = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        foreach (var me in monitorEntries)
+        {
+            monitorLookup[me.PresetPath] = me.TopAvgLuminance;
+        }
 
         // Most recent first
         for (int i = entries.Count - 1; i >= 0; i--)
         {
             var entry = entries[i];
-            var display = $"{entry.Timestamp:MM/dd HH:mm:ss}  {entry.PresetPath}";
-            items.Add(new HistoryItem { Display = display, PresetRelativePath = entry.PresetPath });
+            var isFlagged = monitorLookup.TryGetValue(entry.PresetPath, out var luminance);
+            var display = isFlagged
+                ? $"* {entry.Timestamp:MM/dd HH:mm:ss}  {entry.PresetPath} ({luminance:F2})"
+                : $"{entry.Timestamp:MM/dd HH:mm:ss}  {entry.PresetPath}";
+            _allHistoryItems.Add(new HistoryItem { Display = display, PresetRelativePath = entry.PresetPath, IsFlagged = isFlagged });
         }
 
-        CbHistory.DisplayMemberPath = nameof(HistoryItem.Display);
-        CbHistory.ItemsSource = items;
+        // Show filter checkbox only if there are flagged items
+        CbFilterFlagged.Visibility = _allHistoryItems.Any(h => h.IsFlagged)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        ApplyHistoryFilter();
+    }
+
+    private void ApplyHistoryFilter()
+    {
+        var filtered = CbFilterFlagged.IsChecked == true
+            ? _allHistoryItems.Where(h => h.IsFlagged).ToList()
+            : _allHistoryItems;
+        CbHistory.ItemsSource = filtered;
+    }
+
+    private void CbFilterFlagged_Changed(object sender, RoutedEventArgs e)
+    {
+        ApplyHistoryFilter();
     }
 
     private void CbHistory_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -891,5 +921,7 @@ public class HistoryItem
 {
     public string Display { get; set; } = "";
     public string PresetRelativePath { get; set; } = "";
+    public bool IsFlagged { get; set; }
+    public FontWeight ItemFontWeight => IsFlagged ? FontWeights.Bold : FontWeights.Normal;
     public override string ToString() => Display;
 }

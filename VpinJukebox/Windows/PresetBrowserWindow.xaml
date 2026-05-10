@@ -17,6 +17,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="3*"/>
                 <RowDefinition Height="8"/>
                 <RowDefinition Height="2*"/>
@@ -39,11 +40,27 @@
                 <TextBlock Text="History:" Foreground="{StaticResource TextBrush}"
                            VerticalAlignment="Center" Margin="0,0,8,0" FontSize="12"/>
                 <ComboBox x:Name="CbHistory" SelectionChanged="CbHistory_SelectionChanged"
-                          FontSize="11" MaxDropDownHeight="350"/>
+                          FontSize="11" MaxDropDownHeight="350">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Display}" FontWeight="{Binding ItemFontWeight}"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
             </DockPanel>
 
+            <!-- Filter flagged presets -->
+            <CheckBox x:Name="CbFilterFlagged" Grid.Row="2" Margin="0,0,0,4"
+                      VerticalAlignment="Top" FontSize="11"
+                      Foreground="{StaticResource TextBrush}"
+                      Visibility="Collapsed"
+                      Checked="CbFilterFlagged_Changed" Unchecked="CbFilterFlagged_Changed">
+                <TextBlock Text="Show only flagged presets" FontSize="11"
+                           Foreground="{StaticResource TextBrush}"/>
+            </CheckBox>
+
             <!-- ═══ ACTIVE PRESETS (top) ═══ -->
-            <Border Grid.Row="2" Background="{StaticResource SurfaceBrush}"
+            <Border Grid.Row="3" Background="{StaticResource SurfaceBrush}"
                     CornerRadius="6" Padding="10">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -146,7 +163,7 @@
              </Border>
 
             <!-- ═══ DEACTIVATED PRESETS (bottom) ═══ -->
-            <Border Grid.Row="4" Background="{StaticResource SurfaceBrush}"
+            <Border Grid.Row="5" Background="{StaticResource SurfaceBrush}"
                     CornerRadius="6" Padding="10">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -247,7 +264,7 @@
             </Border>
 
             <!-- ═══ FAVORITES (bottom) ═══ -->
-            <Border Grid.Row="6" Background="{StaticResource SurfaceBrush}"
+            <Border Grid.Row="7" Background="{StaticResource SurfaceBrush}"
                     CornerRadius="6" Padding="10">
                 <Grid>
                     <Grid.RowDefinitions>

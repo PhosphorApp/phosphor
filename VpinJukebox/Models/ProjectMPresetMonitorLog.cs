@@ -58,6 +58,14 @@ public static class ProjectMPresetMonitorLog
         }
     }
 
+    public static List<ProjectMPresetMonitorEntry> GetEntries()
+    {
+        lock (_lock)
+        {
+            return new List<ProjectMPresetMonitorEntry>(Entries);
+        }
+    }
+
     private static List<ProjectMPresetMonitorEntry> Load()
     {
         try

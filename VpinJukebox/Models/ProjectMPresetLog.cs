@@ -19,7 +19,7 @@ public class ProjectMPresetLogEntry
 /// </summary>
 public static class ProjectMPresetLog
 {
-    private const int MaxEntries = 256;
+    private const int MaxEntries = 1024;
 
     private static readonly string LogPath = Path.Combine(
         AppDomain.CurrentDomain.BaseDirectory, "projectm_preset_history.json");
