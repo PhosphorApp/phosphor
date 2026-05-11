@@ -12,6 +12,8 @@ public class GenreCategoryEntry
     public string Icon { get; set; } = "";
     public string SearchTerm { get; set; } = "";
     public bool IsVisible { get; set; } = true;
+    public bool IsSeparator { get; set; }
+    public bool IsLineBreak { get; set; }
 }
 
 /// <summary>

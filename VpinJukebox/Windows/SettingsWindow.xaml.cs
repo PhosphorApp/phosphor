@@ -18,6 +18,8 @@ public class CategoryVisibilityItem
     /// True for reserved/special categories (e.g. History) whose search term should not be edited.
     /// </summary>
     public bool IsSpecial { get; set; }
+    public bool IsSeparator { get; set; }
+    public bool IsLineBreak { get; set; }
     /// <summary>
     /// The search term when the settings window was opened, used to detect changes.
     /// </summary>
@@ -400,7 +402,9 @@ public partial class SettingsWindow : JukeboxWindow
                 SearchTerm = entry.SearchTerm,
                 OriginalSearchTerm = entry.SearchTerm,
                 IsVisible = !settings.HiddenCategories.Contains(entry.Name),
-                IsSpecial = entry.Name == "History"
+                IsSpecial = entry.Name == "History",
+                IsSeparator = entry.IsSeparator,
+                IsLineBreak = entry.IsLineBreak
             });
         }
         CategoryListView.ItemsSource = _categoryVisibilityItems;
@@ -1479,7 +1483,9 @@ public partial class SettingsWindow : JukeboxWindow
             Name = i.Name,
             Icon = i.Icon,
             SearchTerm = i.SearchTerm,
-            IsVisible = i.IsVisible
+            IsVisible = i.IsVisible,
+            IsSeparator = i.IsSeparator,
+            IsLineBreak = i.IsLineBreak
         }).ToList());
         _LogStep("GenreCategoryStore.Save");
         _settings.ShowStatusText = CbShowStatusText.IsChecked == true;
@@ -1854,6 +1860,40 @@ public partial class SettingsWindow : JukeboxWindow
         UpdateCategoryVisibilityText();
     }
 
+    private void CategoryAddSeparator_Click(object sender, RoutedEventArgs e)
+    {
+        var newItem = new CategoryVisibilityItem
+        {
+            Name = "",
+            Icon = "",
+            SearchTerm = "",
+            IsVisible = true,
+            IsSeparator = true,
+        };
+        _categoryVisibilityItems.Add(newItem);
+        CategoryListView.ItemsSource = null;
+        CategoryListView.ItemsSource = _categoryVisibilityItems;
+        CategoryListView.ScrollIntoView(newItem);
+        UpdateCategoryVisibilityText();
+    }
+
+    private void CategoryAddLineBreak_Click(object sender, RoutedEventArgs e)
+    {
+        var newItem = new CategoryVisibilityItem
+        {
+            Name = "",
+            Icon = "",
+            SearchTerm = "",
+            IsVisible = true,
+            IsLineBreak = true,
+        };
+        _categoryVisibilityItems.Add(newItem);
+        CategoryListView.ItemsSource = null;
+        CategoryListView.ItemsSource = _categoryVisibilityItems;
+        CategoryListView.ScrollIntoView(newItem);
+        UpdateCategoryVisibilityText();
+    }
+
     private void CategoryRemove_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not System.Windows.Controls.Button btn || btn.DataContext is not CategoryVisibilityItem item)
@@ -1901,8 +1941,8 @@ public partial class SettingsWindow : JukeboxWindow
 
     private void UpdateCategoryVisibilityText()
     {
-        int visible = _categoryVisibilityItems.Count(i => i.IsVisible);
-        int total = _categoryVisibilityItems.Count;
+        int visible = _categoryVisibilityItems.Count(i => i.IsVisible && !i.IsSeparator && !i.IsLineBreak);
+        int total = _categoryVisibilityItems.Count(i => !i.IsSeparator && !i.IsLineBreak);
         CategoryVisibilitySummary.Text = $"{visible}/{total} categories visible. Icon, name, and search term can be modified.";
     }
 

@@ -531,6 +531,16 @@ public partial class JukeboxViewModel : ObservableObject
         // Then genre categories (excluding hidden ones)
         foreach (var entry in _genreCategories)
         {
+            if (entry.IsSeparator)
+            {
+                items.Add(new Category { IsSeparator = true });
+                continue;
+            }
+            if (entry.IsLineBreak)
+            {
+                items.Add(new Category { IsLineBreak = true });
+                continue;
+            }
             if (entry.IsVisible)
                 items.Add(new Category { Name = entry.Name, Icon = entry.Icon, SearchTerm = entry.SearchTerm });
         }

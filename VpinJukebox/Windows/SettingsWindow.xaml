@@ -657,7 +657,20 @@
                                                 <DockPanel>
                                                     <CheckBox IsChecked="{Binding IsVisible, Mode=TwoWay}" VerticalAlignment="Center" Margin="0,0,4,0"
                                                               DockPanel.Dock="Left"
-                                                              Checked="CategoryVisibility_Changed" Unchecked="CategoryVisibility_Changed"/>
+                                                              Checked="CategoryVisibility_Changed" Unchecked="CategoryVisibility_Changed">
+                                                        <CheckBox.Style>
+                                                            <Style TargetType="CheckBox">
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsSeparator}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsLineBreak}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </CheckBox.Style>
+                                                    </CheckBox>
                                                     <Button Content="▲" FontSize="9" Width="20" Height="20"
                                                             Background="Transparent" Foreground="{StaticResource TextDimBrush}"
                                                             BorderThickness="0" Cursor="Hand" ToolTip="Move up"
@@ -686,6 +699,43 @@
                                                             </ControlTemplate>
                                                         </Button.Template>
                                                     </Button>
+                                                    <Button Content="✕" FontSize="10" Width="20" Height="20"
+                                                            Background="Transparent" Foreground="{StaticResource TextDimBrush}"
+                                                            BorderThickness="0" Cursor="Hand" ToolTip="Remove"
+                                                            VerticalAlignment="Center" Margin="4,0,0,0"
+                                                            DockPanel.Dock="Right"
+                                                            Click="CategoryRemove_Click"/>
+                                                    <!-- Separator label -->
+                                                    <TextBlock Text="── Separator ──" Foreground="{StaticResource TextDimBrush}"
+                                                               FontSize="11" VerticalAlignment="Center" Margin="4,0,0,0"
+                                                               FontStyle="Italic">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsSeparator}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                    <!-- Line break label -->
+                                                    <TextBlock Text="── Line Break ──" Foreground="{StaticResource TextDimBrush}"
+                                                               FontSize="11" VerticalAlignment="Center" Margin="4,0,0,0"
+                                                               FontStyle="Italic">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsLineBreak}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                    <!-- Normal category fields (hidden for separators/line breaks) -->
                                                     <Button Content="{Binding Icon}" FontSize="16" Width="30" Height="26"
                                                             Background="Transparent" Foreground="{StaticResource TextBrush}" BorderThickness="0" Cursor="Hand"
                                                             ToolTip="Click to change icon" VerticalAlignment="Center"
@@ -707,20 +757,10 @@
                                                                         <Setter Property="IsEnabled" Value="False"/>
                                                                         <Setter Property="Foreground" Value="#888"/>
                                                                     </DataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </Button.Style>
-                                                    </Button>
-                                                    <Button Content="✕" FontSize="10" Width="20" Height="20"
-                                                            Background="Transparent" Foreground="{StaticResource TextDimBrush}"
-                                                            BorderThickness="0" Cursor="Hand" ToolTip="Remove category"
-                                                            VerticalAlignment="Center" Margin="4,0,0,0"
-                                                            DockPanel.Dock="Right"
-                                                            Click="CategoryRemove_Click">
-                                                        <Button.Style>
-                                                            <Style TargetType="Button">
-                                                                <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsSpecial}" Value="True">
+                                                                    <DataTrigger Binding="{Binding IsSeparator}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsLineBreak}" Value="True">
                                                                         <Setter Property="Visibility" Value="Collapsed"/>
                                                                     </DataTrigger>
                                                                 </Style.Triggers>
@@ -739,6 +779,12 @@
                                                                         <Setter Property="IsEnabled" Value="False"/>
                                                                         <Setter Property="Opacity" Value="0.6"/>
                                                                     </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsSeparator}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsLineBreak}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
                                                                 </Style.Triggers>
                                                             </Style>
                                                         </TextBox.Style>
@@ -755,6 +801,12 @@
                                                                         <Setter Property="Opacity" Value="0.4"/>
                                                                         <Setter Property="ToolTip" Value="Reserved category"/>
                                                                     </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsSeparator}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsLineBreak}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
                                                                 </Style.Triggers>
                                                             </Style>
                                                         </TextBox.Style>
@@ -763,11 +815,23 @@
                                             </DataTemplate>
                                         </ListView.ItemTemplate>
                                     </ListView>
-                                    <Button Content="＋ Add Category" FontSize="11" Padding="8,4" Margin="0,4,0,0"
-                                            HorizontalAlignment="Left" Cursor="Hand"
-                                            Background="{StaticResource SurfaceBrush}" Foreground="{StaticResource TextBrush}"
-                                            BorderBrush="#444" BorderThickness="1"
-                                            Click="CategoryAdd_Click"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                        <Button Content="＋ Add Category" FontSize="11" Padding="8,4"
+                                                HorizontalAlignment="Left" Cursor="Hand"
+                                                Background="{StaticResource SurfaceBrush}" Foreground="{StaticResource TextBrush}"
+                                                BorderBrush="#444" BorderThickness="1"
+                                                Click="CategoryAdd_Click"/>
+                                        <Button Content="＋ Separator" FontSize="11" Padding="8,4" Margin="4,0,0,0"
+                                                HorizontalAlignment="Left" Cursor="Hand"
+                                                Background="{StaticResource SurfaceBrush}" Foreground="{StaticResource TextDimBrush}"
+                                                BorderBrush="#444" BorderThickness="1"
+                                                Click="CategoryAddSeparator_Click"/>
+                                        <Button Content="＋ Line Break" FontSize="11" Padding="8,4" Margin="4,0,0,0"
+                                                HorizontalAlignment="Left" Cursor="Hand"
+                                                Background="{StaticResource SurfaceBrush}" Foreground="{StaticResource TextDimBrush}"
+                                                BorderBrush="#444" BorderThickness="1"
+                                                Click="CategoryAddLineBreak_Click"/>
+                                    </StackPanel>
                                 </StackPanel>
                             </DockPanel>
                             <DockPanel Margin="0,0,0,8">

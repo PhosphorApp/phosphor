@@ -1094,6 +1094,7 @@ public partial class DmdWindow : JukeboxWindow
         {
             var catIndex = i;
             var cat = vm.Categories[catIndex];
+            if (cat.IsSeparator || cat.IsLineBreak) continue;
             var el = GetCategoryElement(catIndex);
             if (cat.IsNewPlaylist)
                 ring.Add(new NavEntry(el, cat.Name, () => NewPlaylist_Click(this, new RoutedEventArgs())));

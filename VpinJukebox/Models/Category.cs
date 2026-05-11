@@ -5,6 +5,8 @@ public class Category
     public string Name { get; set; } = "";
     public string Icon { get; set; } = "";
     public string SearchTerm { get; set; } = "";
+    public bool IsSeparator { get; set; }
+    public bool IsLineBreak { get; set; }
     public bool IsPlaylist { get; set; }
     public bool IsNewPlaylist { get; set; }
     public string? PlexLibraryKey { get; set; }
