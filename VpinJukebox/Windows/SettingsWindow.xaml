@@ -1086,9 +1086,12 @@
                                 <TextBox x:Name="TbDofRomName" Width="160" HorizontalAlignment="Left"
                                          ToolTip="The ROM name used to look up effects in the DOF configuration. Must match an entry in your DOF config."/>
                             </DockPanel>
-                            <CheckBox x:Name="CbDofColorBand" Content="Blob playfield color triggers (E120–E126)"
+                            <CheckBox x:Name="CbDofSimulator" Content="Use DOF simulator (DOF bridge app logs communication)"
                                        Foreground="{StaticResource TextBrush}" Margin="24,8,0,0"
-                                       ToolTip="Send ROYGBIV color band triggers based on the playfield blob hue. Uses DOF codes E120 (Red) through E126 (Violet)."/>
+                                       ToolTip="Enable DOF simulator mode. The DOF bridge application will log all communication instead of sending to real hardware."/>
+                            <CheckBox x:Name="CbDofColorBand" Content="Blob playfield color triggers (E120–E127)"
+                                       Foreground="{StaticResource TextBrush}" Margin="24,8,0,0"
+                                       ToolTip="Send ROYGBIV color band triggers based on the playfield blob hue. Uses DOF codes E120 (Red) through E127 (Violet)."/>
                             <CheckBox x:Name="CbDofPresetChanged" Content="Visualization preset changed (E130-E136)"
                                        Foreground="{StaticResource TextBrush}" Margin="24,8,0,0"
                                        ToolTip="Send a trigger when the visualization preset changes. Uses DOF codes E130–E136."
@@ -1106,7 +1109,7 @@
                                          ToolTip="Table element type character (e.g. E, S, W, L)"/>
                                 <TextBlock Text="Number:" Foreground="{StaticResource TextBrush}"
                                            VerticalAlignment="Center" Margin="10,0,4,0"/>
-                                <TextBox x:Name="TbDofTestNumber" Text="101" Width="100"
+                                <TextBox x:Name="TbDofTestNumber" Text="120" Width="100"
                                          VerticalAlignment="Center"
                                          ToolTip="Table element number"/>
                                 <TextBlock Text="Value:" Foreground="{StaticResource TextBrush}"

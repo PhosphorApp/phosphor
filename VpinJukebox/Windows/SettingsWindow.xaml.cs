@@ -197,6 +197,7 @@ public partial class SettingsWindow : JukeboxWindow
         CbAutoPlayQueue.IsChecked = settings.AutoPlayQueueOnStart;
         CbDofEnabled.IsChecked = settings.DofEnabled;
         TbDofRomName.Text = settings.DofRomName;
+        CbDofSimulator.IsChecked = settings.DofSimulator;
         CbDofColorBand.IsChecked = settings.DofColorBand;
         CbDofPresetChanged.IsChecked = settings.DofPresetChanged;
 
@@ -584,7 +585,7 @@ public partial class SettingsWindow : JukeboxWindow
                 Width = Width,
                 Height = Height
             };
-            _settings.Save();
+            _ = _settings.SaveAsync();
         };
 
         // Restore last tab and scroll position
@@ -1406,6 +1407,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.AutoPlayQueueOnStart = CbAutoPlayQueue.IsChecked == true;
         _settings.DofEnabled = CbDofEnabled.IsChecked == true;
         _settings.DofRomName = string.IsNullOrWhiteSpace(TbDofRomName.Text) ? "vpinjukebox" : TbDofRomName.Text.Trim();
+        _settings.DofSimulator = CbDofSimulator.IsChecked == true;
         _settings.DofColorBand = CbDofColorBand.IsChecked == true;
         _settings.DofPresetChanged = CbDofPresetChanged.IsChecked == true;
         _settings.DmdScreensaver = CbDmdScreensaver.IsChecked == true;
@@ -1533,7 +1535,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.PlexStereoAudio = CbPlexStereo.IsChecked == true;
         _settings.PlexLibraries = _plexLibraries.ToList();
         Saved = true;
-        _settings.Save();
+        _ = _settings.SaveAsync();
 
         // Fire event before updating originals so change-detection properties
         // still reflect what actually changed during this apply cycle

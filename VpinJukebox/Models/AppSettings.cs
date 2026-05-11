@@ -162,7 +162,43 @@ public class AppSettings
     public void Save()
     {
         var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(SettingsPath, json);
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                File.WriteAllText(SettingsPath, json);
+                return;
+            }
+            catch (IOException) when (attempt < 2)
+            {
+                Thread.Sleep(100);
+            }
+            catch (IOException ex)
+            {
+                DebugLog.Log("Settings", $"Save failed after retries: {ex.Message}");
+            }
+        }
+    }
+
+    public async Task SaveAsync()
+    {
+        var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                await File.WriteAllTextAsync(SettingsPath, json).ConfigureAwait(false);
+                return;
+            }
+            catch (IOException) when (attempt < 2)
+            {
+                await Task.Delay(100).ConfigureAwait(false);
+            }
+            catch (IOException ex)
+            {
+                DebugLog.Log("Settings", $"SaveAsync failed after retries: {ex.Message}");
+            }
+        }
     }
 
     public void SaveDefaults()

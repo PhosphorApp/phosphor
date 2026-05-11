@@ -82,6 +82,7 @@ public partial class DmdWindow : JukeboxWindow
     private int _lastDofColorNumber = -1;
     private bool _dofColorBandEnabled;
     private bool _dofStartupEnabled;
+    private bool _settingsAppliedDuringDialog;
     private DateTime _lastDofColorChangeTime;
     private readonly SemaphoreSlim _dofStartLock = new(1, 1);
 
@@ -298,10 +299,7 @@ public partial class DmdWindow : JukeboxWindow
             vm.VolumeChanged += v =>
             {
                 if (_appSettings != null)
-                {
                     _appSettings.Volume = v;
-                    _appSettings.Save();
-                }
             };
         }
     }
@@ -331,7 +329,7 @@ public partial class DmdWindow : JukeboxWindow
                     _appSettings.DmdQueueSplitterSize = QueueBorder.ActualWidth;
                 else
                     _appSettings.DmdQueueSplitterSize = QueueBorder.ActualHeight;
-                _appSettings.Save();
+                _ = _appSettings.SaveAsync();
             }));
     }
 
@@ -1569,6 +1567,7 @@ public partial class DmdWindow : JukeboxWindow
             try
             {
                 await ApplySettingsFromWindow(settingsWindow);
+                _settingsAppliedDuringDialog = true;
                 _dimIdleTimer.Stop();
             }
             catch (Exception ex)
@@ -1576,11 +1575,12 @@ public partial class DmdWindow : JukeboxWindow
                 DebugLog.Log("Settings", $"SettingsApplied handler failed: {ex}");
             }
         };
+        _settingsAppliedDuringDialog = false;
         settingsWindow.ShowDialog();
 
         Activate();
 
-        if (settingsWindow.Saved)
+        if (settingsWindow.Saved && !_settingsAppliedDuringDialog)
         {
             try
             {
@@ -1623,6 +1623,9 @@ public partial class DmdWindow : JukeboxWindow
     {
         if (_appSettings == null) return;
 
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        void LogStep(string step) { DebugLog.Log("ApplySettings", $"{step}: {sw.ElapsedMilliseconds}ms"); sw.Restart(); }
+
         _playfieldProxy?.SetStaticImage(_appSettings.PlayfieldStaticImagePath);
         _playfieldProxy?.SetVideoPath(_appSettings.PlayfieldVideoPath);
         _playfieldProxy?.SetMode(settingsWindow.SelectedPlayfieldMode);
@@ -1630,40 +1633,44 @@ public partial class DmdWindow : JukeboxWindow
         _backglassProxy?.SetShowVideoInfo(_appSettings.ShowVideoInfo);
         if (!_showVideoInfo) { VideoInfoText.Visibility = Visibility.Collapsed; VideoInfoText.Text = ""; }
         TitleTextBlock.Text = _appSettings.TitleText;
-        _backglassProxy?.SetScreensaverSettings(_appSettings.ScreensaverIntensity, _appSettings.ScreensaverSpeed);
+        LogStep("Playfield/VideoInfo");
+
+        if (settingsWindow.SpeedChanged)
+        {
+            _backglassProxy?.SetScreensaverSettings(_appSettings.ScreensaverIntensity, _appSettings.ScreensaverSpeed);
+            _playfieldProxy?.SetScreensaverSettings(_appSettings.ScreensaverIntensity, _appSettings.ScreensaverSpeed);
+            _topperWindow?.SetScreensaverSettings(_appSettings.ScreensaverIntensity, _appSettings.ScreensaverSpeed);
+            SetScreensaverSettings(_appSettings.ScreensaverIntensity, _appSettings.ScreensaverSpeed);
+            LogStep("ScreensaverSettings (changed)");
+        }
+
         if (settingsWindow.LogoChanged)
         {
             _backglassProxy?.SetLogoText(_appSettings.LogoText);
             _backglassProxy?.SetLogoSpin(_appSettings.LogoSpin);
             _backglassProxy?.SetLogoRings(_appSettings.LogoRings);
-        }
-        _playfieldProxy?.SetScreensaverSettings(_appSettings.ScreensaverIntensity, _appSettings.ScreensaverSpeed);
-        _playfieldProxy?.SetOledSleepDefeat(_appSettings.OledSleepDefeatSeconds, _appSettings.OledSleepDefeatDurationSeconds, _appSettings.OledSleepDefeatIntensity);
-        _topperWindow?.SetScreensaverSettings(_appSettings.ScreensaverIntensity, _appSettings.ScreensaverSpeed);
-        if (settingsWindow.LogoChanged)
-        {
             _topperWindow?.SetLogoText(_appSettings.LogoText);
             _topperWindow?.SetLogoSpin(_appSettings.LogoSpin);
             _topperWindow?.SetLogoRings(_appSettings.LogoRings);
-        }
-        _topperWindow?.SetDistortion(_appSettings.TopperDistortion);
-        _backglassProxy?.SetLogoDim(_appSettings.BackglassLogoDimEnabled, _appSettings.BackglassLogoDimOpacity, _appSettings.BackglassLogoDimTimeoutSeconds);
-        if (settingsWindow.LogoChanged)
-        {
             _backglassProxy?.SetLogoMorphColor(_appSettings.BackglassLogoMorphColor);
-        }
-        _backglassProxy?.SetAudioOnly(_appSettings.BackglassAudioOnly);
-        if (settingsWindow.LogoChanged)
-        {
             if (_appSettings.ShowTopper)
                 _topperWindow?.SetLogoMorphColor(_appSettings.BackglassLogoMorphColor);
             else
                 _topperWindow?.SetLogoMorphColor(false);
+            LogStep("Logo (changed)");
         }
+
+        _playfieldProxy?.SetOledSleepDefeat(_appSettings.OledSleepDefeatSeconds, _appSettings.OledSleepDefeatDurationSeconds, _appSettings.OledSleepDefeatIntensity);
+        _topperWindow?.SetDistortion(_appSettings.TopperDistortion);
+        _backglassProxy?.SetLogoDim(_appSettings.BackglassLogoDimEnabled, _appSettings.BackglassLogoDimOpacity, _appSettings.BackglassLogoDimTimeoutSeconds);
+        _backglassProxy?.SetAudioOnly(_appSettings.BackglassAudioOnly);
+        LogStep("BackglassDim/AudioOnly/OLED");
+
         if (settingsWindow.BackglassBlobsChanged)
         {
             _backglassProxy?.SetBlobPattern(_appSettings.BackglassBlobPattern);
             _backglassProxy?.SetBlobCount(_appSettings.BackglassBlobCount);
+            LogStep("BackglassBlobs (changed)");
         }
         BlobTransition.ExcludeMandelbrotFromRandom = _appSettings.ExcludeMandelbrotFromRandom;
         MandelbrotPattern.MandelbrotMaxHz = _appSettings.MandelbrotMaxHz;
@@ -1678,6 +1685,7 @@ public partial class DmdWindow : JukeboxWindow
             _backglassProxy?.RestartMandelbrot();
             _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.RestartMandelbrot());
             RestartMandelbrot();
+            LogStep("Mandelbrot restart (changed)");
         }
         BlobTransition.ExcludeProjectMFromRandom = _appSettings.ExcludeProjectMFromRandom;
         ProjectMRenderer.PresetDuration = _appSettings.ProjectMPresetDuration;
@@ -1702,7 +1710,9 @@ public partial class DmdWindow : JukeboxWindow
             _backglassProxy?.RestartProjectM();
             _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.RestartProjectM());
             RestartProjectM();
+            LogStep("ProjectM restart (changed)");
         }
+        LogStep("Mandelbrot/ProjectM statics");
         if (settingsWindow.PlayfieldBlobsChanged)
         {
             _playfieldProxy?.SetBlobCount(_appSettings.PlayfieldBlobCount);
@@ -1723,14 +1733,18 @@ public partial class DmdWindow : JukeboxWindow
         }
         if (settingsWindow.DmdRotationChanged)
             SetDmdRotation(_appSettings.DmdRotation);
+        LogStep("Blobs/Rotation");
+
         SetQueuePosition(_appSettings.DmdQueuePosition);
         if (_appSettings.DmdScreensaver != (ScreensaverCanvas.Visibility == Visibility.Visible))
             SetDmdScreensaver(_appSettings.DmdScreensaver);
         SetDmdScreensaverDim(_appSettings.DmdScreensaverDimEnabled, _appSettings.DmdScreensaverDimOpacity, _appSettings.DmdScreensaverDimTimeoutSeconds, _appSettings.DmdScreensaverDimDarkBlobs, _appSettings.SwapPlayfieldDmdOnDim, _appSettings.ApplyDefaultDmdOnSwap);
-        SetScreensaverSettings(_appSettings.ScreensaverIntensity, _appSettings.ScreensaverSpeed);
+        if (!settingsWindow.SpeedChanged)
+            SetScreensaverSettings(_appSettings.ScreensaverIntensity, _appSettings.ScreensaverSpeed);
         if (settingsWindow.ReactiveBlobsChanged)
             ApplyReactiveBlobs(_appSettings.ReactiveBlobs);
         ApplyResizable(_appSettings.ResizableWindows);
+        LogStep("DMD/Queue/Resizable");
 
         // Show/hide backglass window
         if (_appSettings.ShowBackglass)
@@ -1749,6 +1763,7 @@ public partial class DmdWindow : JukeboxWindow
             _topperWindow?.Show();
         else
             _topperWindow?.Hide();
+        LogStep("Show/Hide windows");
 
         // Update cache settings
         if (DataContext is JukeboxViewModel vm)
@@ -1770,6 +1785,7 @@ public partial class DmdWindow : JukeboxWindow
             if (!string.IsNullOrWhiteSpace(_appSettings.PlexServerUrl) && !string.IsNullOrWhiteSpace(_appSettings.PlexToken))
                 vm.ConfigurePlex(_appSettings.PlexServerUrl, _appSettings.PlexToken, _appSettings.PlexLibraries, _appSettings.PlexStereoAudio);
         }
+        LogStep("Cache/ViewModel");
 
         if (settingsWindow.WindowsReset)
             ResetAllWindows();
@@ -1785,6 +1801,7 @@ public partial class DmdWindow : JukeboxWindow
                 await _dofClient.DisposeAsync();
                 _dofClient = null;
             }
+            LogStep("DOF (changed)");
         }
 
         ApplyTrackListSettings(_appSettings.ResultColumns, _appSettings.ResultFontSizeModifier);
@@ -1794,6 +1811,7 @@ public partial class DmdWindow : JukeboxWindow
         SetTrackButtonSize(_appSettings.DmdTrackButtonSizeModifier);
         SetMinorButtonLocation(_appSettings.DmdMinorButtonLocation);
         SetShowStatusText(_appSettings.ShowStatusText);
+        LogStep("TrackList/Buttons/Status");
     }
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e) => OpenSettings();
