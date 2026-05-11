@@ -969,7 +969,7 @@ public partial class JukeboxViewModel : ObservableObject
         if (genreEntry != null)
         {
             _playlistCacheSource = "youtube";
-            _playlistCacheName = genreEntry.Name;
+            _playlistCacheName = genreEntry.Id;
         }
 
         await LoadMoreResults(25);

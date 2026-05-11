@@ -7,6 +7,7 @@ namespace VpinJukebox;
 /// </summary>
 public class GenreCategoryEntry
 {
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "";
     public string Icon { get; set; } = "";
     public string SearchTerm { get; set; } = "";
@@ -39,7 +40,21 @@ public static class GenreCategoryStore
                 var json = File.ReadAllText(FilePath);
                 var entries = JsonSerializer.Deserialize<List<GenreCategoryEntry>>(json, JsonOptions);
                 if (entries != null && entries.Count > 0)
+                {
+                    // Back-fill IDs for entries migrated from older versions
+                    bool needsSave = false;
+                    foreach (var e in entries)
+                    {
+                        if (string.IsNullOrEmpty(e.Id))
+                        {
+                            e.Id = Guid.NewGuid().ToString("N");
+                            needsSave = true;
+                        }
+                    }
+                    if (needsSave)
+                        Save(entries);
                     return entries;
+                }
             }
         }
         catch (Exception ex)

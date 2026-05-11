@@ -59,6 +59,29 @@ public sealed class PlaylistCache
     public bool Enabled { get; set; }
     public int MaxAgeHours { get; set; }
 
+    /// <summary>
+    /// Deletes the cache file for a specific source/key combination from the default cache directory.
+    /// </summary>
+    public static void InvalidateCacheFile(string source, string key, string? cacheSubDir = null)
+    {
+        var dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, cacheSubDir ?? "yt_pl_cache");
+        var safe = string.Concat((source + "_" + key).Select(c =>
+            char.IsLetterOrDigit(c) || c == '_' || c == '-' ? c : '_')).ToLowerInvariant();
+        var path = Path.Combine(dir, safe + ".json");
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+                DebugLog.Log("PlaylistCache", $"Invalidated cache file: {path}");
+            }
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Log("PlaylistCache", $"Failed to invalidate cache file {path}: {ex.Message}");
+        }
+    }
+
     public PlaylistCache(bool enabled, int maxAgeHours, string? cacheSubDir = null)
     {
         Enabled = enabled;

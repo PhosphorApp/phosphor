@@ -9,6 +9,7 @@ namespace VpinJukebox;
 
 public class CategoryVisibilityItem
 {
+    public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public string Icon { get; set; } = "";
     public string SearchTerm { get; set; } = "";
@@ -17,6 +18,10 @@ public class CategoryVisibilityItem
     /// True for reserved/special categories (e.g. History) whose search term should not be edited.
     /// </summary>
     public bool IsSpecial { get; set; }
+    /// <summary>
+    /// The search term when the settings window was opened, used to detect changes.
+    /// </summary>
+    public string OriginalSearchTerm { get; set; } = "";
 }
 
 public partial class SettingsWindow : JukeboxWindow
@@ -389,9 +394,11 @@ public partial class SettingsWindow : JukeboxWindow
         {
             _categoryVisibilityItems.Add(new CategoryVisibilityItem
             {
+                Id = entry.Id,
                 Name = entry.Name,
                 Icon = entry.Icon,
                 SearchTerm = entry.SearchTerm,
+                OriginalSearchTerm = entry.SearchTerm,
                 IsVisible = !settings.HiddenCategories.Contains(entry.Name),
                 IsSpecial = entry.Name == "History"
             });
@@ -1450,9 +1457,19 @@ public partial class SettingsWindow : JukeboxWindow
             .Where(i => !i.IsVisible)
             .Select(i => i.Name)
             .ToList();
+        // Invalidate playlist cache for categories whose search term changed
+        foreach (var item in _categoryVisibilityItems)
+        {
+            if (item.SearchTerm != item.OriginalSearchTerm && !string.IsNullOrEmpty(item.Id))
+            {
+                PlaylistCache.InvalidateCacheFile("youtube", item.Id);
+                item.OriginalSearchTerm = item.SearchTerm;
+            }
+        }
         // Persist category changes (icon, search term, visibility) to categories.json
         GenreCategoryStore.Save(_categoryVisibilityItems.Select(i => new GenreCategoryEntry
         {
+            Id = i.Id,
             Name = i.Name,
             Icon = i.Icon,
             SearchTerm = i.SearchTerm,
@@ -1838,6 +1855,30 @@ public partial class SettingsWindow : JukeboxWindow
         UpdateCategoryVisibilityText();
     }
 
+    private void CategoryMoveUp_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button btn || btn.DataContext is not CategoryVisibilityItem item)
+            return;
+        var index = _categoryVisibilityItems.IndexOf(item);
+        if (index <= 0) return;
+        _categoryVisibilityItems.RemoveAt(index);
+        _categoryVisibilityItems.Insert(index - 1, item);
+        CategoryListView.ItemsSource = null;
+        CategoryListView.ItemsSource = _categoryVisibilityItems;
+    }
+
+    private void CategoryMoveDown_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button btn || btn.DataContext is not CategoryVisibilityItem item)
+            return;
+        var index = _categoryVisibilityItems.IndexOf(item);
+        if (index < 0 || index >= _categoryVisibilityItems.Count - 1) return;
+        _categoryVisibilityItems.RemoveAt(index);
+        _categoryVisibilityItems.Insert(index + 1, item);
+        CategoryListView.ItemsSource = null;
+        CategoryListView.ItemsSource = _categoryVisibilityItems;
+    }
+
     private void SaveDefaultSettings_Click(object sender, RoutedEventArgs e)
     {
         _settings.SaveDefaults();
@@ -1851,7 +1892,7 @@ public partial class SettingsWindow : JukeboxWindow
     {
         int visible = _categoryVisibilityItems.Count(i => i.IsVisible);
         int total = _categoryVisibilityItems.Count;
-        CategoryVisibilitySummary.Text = $"{visible}/{total} categories visible";
+        CategoryVisibilitySummary.Text = $"{visible}/{total} categories visible. Icon, name, and search term can be modified.";
     }
 
     private async void DofTestSend_Click(object sender, RoutedEventArgs e)
