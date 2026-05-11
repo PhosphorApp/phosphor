@@ -624,21 +624,123 @@
                                Foreground="{StaticResource TextDimBrush}" Margin="20,8,0,0" TextWrapping="Wrap" FontSize="11"/>
                             <TextBlock Text="APPEARANCE &amp; LAYOUT" FontSize="12" FontWeight="Bold"
                                  Foreground="{StaticResource AccentBrush}" Margin="0,12,0,12"/>
-                            <DockPanel Margin="0,0,0,8">
-                                <TextBlock Text="Category Visibility:" Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Width="110"/>
-                                <ComboBox x:Name="CbCategoryVisibility" IsEditable="True" IsReadOnly="True" Width="200" HorizontalAlignment="Left"
-                                          Background="{StaticResource Surface2Brush}"
-                                          Foreground="{StaticResource TextBrush}"
-                                          FontSize="12" BorderBrush="#333">
-                                    <ComboBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <CheckBox Content="{Binding Name}" IsChecked="{Binding IsVisible, Mode=TwoWay}"
-                                                      Foreground="{StaticResource TextBrush}" FontSize="12"
-                                                      Checked="CategoryVisibility_Changed" Unchecked="CategoryVisibility_Changed"/>
-                                        </DataTemplate>
-                                    </ComboBox.ItemTemplate>
-                                </ComboBox>
+                            <DockPanel Margin="0,0,0,4">
+                                <TextBlock Text="Categories:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Top" Width="110" Margin="0,4,0,0"/>
+                                <StackPanel>
+                                    <TextBlock x:Name="CategoryVisibilitySummary" Foreground="{StaticResource TextDimBrush}" FontSize="11" Margin="0,0,0,4"/>
+                                    <ListView x:Name="CategoryListView" MaxHeight="300"
+                                              Background="{StaticResource Surface2Brush}"
+                                              BorderBrush="#333" BorderThickness="1"
+                                              ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                              HorizontalContentAlignment="Stretch">
+                                        <ListView.ItemContainerStyle>
+                                            <Style TargetType="ListViewItem">
+                                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                                <Setter Property="Padding" Value="2"/>
+                                                <Setter Property="Margin" Value="0"/>
+                                                <Setter Property="Background" Value="Transparent"/>
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="ListViewItem">
+                                                            <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter/>
+                                                            </Border>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </ListView.ItemContainerStyle>
+                                        <ListView.ItemTemplate>
+                                            <DataTemplate>
+                                                <DockPanel>
+                                                    <CheckBox IsChecked="{Binding IsVisible, Mode=TwoWay}" VerticalAlignment="Center" Margin="0,0,4,0"
+                                                              DockPanel.Dock="Left"
+                                                              Checked="CategoryVisibility_Changed" Unchecked="CategoryVisibility_Changed"/>
+                                                    <Button Content="{Binding Icon}" FontSize="16" Width="30" Height="26"
+                                                            Background="Transparent" Foreground="{StaticResource TextBrush}" BorderThickness="0" Cursor="Hand"
+                                                            ToolTip="Click to change icon" VerticalAlignment="Center"
+                                                            DockPanel.Dock="Left"
+                                                            Click="CategoryIcon_Click">
+                                                        <Button.Style>
+                                                            <Style TargetType="Button">
+                                                                <Setter Property="Template">
+                                                                    <Setter.Value>
+                                                                        <ControlTemplate TargetType="Button">
+                                                                            <Border Background="Transparent">
+                                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                            </Border>
+                                                                        </ControlTemplate>
+                                                                    </Setter.Value>
+                                                                </Setter>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsSpecial}" Value="True">
+                                                                        <Setter Property="IsEnabled" Value="False"/>
+                                                                        <Setter Property="Foreground" Value="#888"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Button.Style>
+                                                    </Button>
+                                                    <Button Content="✕" FontSize="10" Width="20" Height="20"
+                                                            Background="Transparent" Foreground="{StaticResource TextDimBrush}"
+                                                            BorderThickness="0" Cursor="Hand" ToolTip="Remove category"
+                                                            VerticalAlignment="Center" Margin="4,0,0,0"
+                                                            DockPanel.Dock="Right"
+                                                            Click="CategoryRemove_Click">
+                                                        <Button.Style>
+                                                            <Style TargetType="Button">
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsSpecial}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Button.Style>
+                                                    </Button>
+                                                    <TextBox Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                             Background="{StaticResource SurfaceBrush}" Foreground="{StaticResource TextBrush}"
+                                                             BorderBrush="#444" BorderThickness="1" FontSize="12" FontWeight="SemiBold"
+                                                             Padding="4,2" Width="110" VerticalAlignment="Center" Margin="2,0,4,0"
+                                                             DockPanel.Dock="Left">
+                                                        <TextBox.Style>
+                                                            <Style TargetType="TextBox">
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsSpecial}" Value="True">
+                                                                        <Setter Property="IsEnabled" Value="False"/>
+                                                                        <Setter Property="Opacity" Value="0.6"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBox.Style>
+                                                    </TextBox>
+                                                    <TextBox Text="{Binding SearchTerm, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                             Background="{StaticResource SurfaceBrush}" Foreground="{StaticResource TextBrush}"
+                                                             BorderBrush="#444" BorderThickness="1" FontSize="11" Padding="4,2"
+                                                             VerticalAlignment="Center">
+                                                        <TextBox.Style>
+                                                            <Style TargetType="TextBox">
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsSpecial}" Value="True">
+                                                                        <Setter Property="IsEnabled" Value="False"/>
+                                                                        <Setter Property="Opacity" Value="0.4"/>
+                                                                        <Setter Property="ToolTip" Value="Reserved category"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBox.Style>
+                                                    </TextBox>
+                                                </DockPanel>
+                                            </DataTemplate>
+                                        </ListView.ItemTemplate>
+                                    </ListView>
+                                    <Button Content="＋ Add Category" FontSize="11" Padding="8,4" Margin="0,4,0,0"
+                                            HorizontalAlignment="Left" Cursor="Hand"
+                                            Background="{StaticResource SurfaceBrush}" Foreground="{StaticResource TextBrush}"
+                                            BorderBrush="#444" BorderThickness="1"
+                                            Click="CategoryAdd_Click"/>
+                                </StackPanel>
                             </DockPanel>
                             <DockPanel Margin="0,0,0,8">
                                 <TextBlock Text="Rotation:" Foreground="{StaticResource TextBrush}"

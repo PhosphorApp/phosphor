@@ -97,7 +97,7 @@
                 <TextBlock x:Name="SearchPlaceholder"
                            FontSize="18" Foreground="#666" IsHitTestVisible="False"
                            VerticalAlignment="Center" Margin="14,0,0,0">
-                    <Run Text="SEARCH" /><Run Text="  (also try 'channel:&lt;name&gt;' or 'playlist:&lt;name&gt;')" Foreground="#444" FontSize="13"/>
+                    <Run Text="SEARCH" /><Run Text="  ...try channel:&lt;name&gt;, playlist:&lt;name&gt;, min:5m, max:30m" Foreground="#444" FontSize="13"/>
                 </TextBlock>
             </Grid>
         </DockPanel>

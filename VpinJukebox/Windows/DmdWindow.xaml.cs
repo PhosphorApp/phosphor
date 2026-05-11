@@ -1768,7 +1768,7 @@ public partial class DmdWindow : JukeboxWindow
         // Update cache settings
         if (DataContext is JukeboxViewModel vm)
         {
-            vm.SetHiddenCategories(_appSettings.HiddenCategories);
+            vm.ReloadGenreCategories();
             vm.Cache?.UpdateSettings(_appSettings.CacheEnabled, _appSettings.CacheMaxSizeGb, _appSettings.CacheMaxClipLengthMinutes);
             vm.SetupPrefetch(_appSettings.PrefetchEnabled);
             vm.SetupThumbnailCache(_appSettings.ThumbnailCacheEnabled, _appSettings.ThumbnailCacheMaxSizeMb);
@@ -2798,7 +2798,7 @@ public partial class DmdWindow : JukeboxWindow
         _topperWindow?.ResetPosition(0, 0, 800, 300);
     }
 
-    private static readonly string[] PlaylistIconChoices =
+    internal static readonly string[] PlaylistIconChoices =
     [
         "📋", "🎸", "🥁", "🎷", "🎹", "🎺", "🎤", "🎧",
         "🔥", "🌟", "🎉", "🌛", "⚡", "💀", "🌈", "🏝",
@@ -2812,7 +2812,7 @@ public partial class DmdWindow : JukeboxWindow
     /// Loads the emoji keyword dictionary from emoji_keywords.json.
     /// Falls back to an empty dictionary if the file is missing or invalid.
     /// </summary>
-    private static Dictionary<string, string[]> GetEmojiKeywords()
+    internal static Dictionary<string, string[]> GetEmojiKeywords()
     {
         if (_emojiKeywords != null)
             return _emojiKeywords;
@@ -2841,7 +2841,7 @@ public partial class DmdWindow : JukeboxWindow
     /// <summary>
     /// Returns emoji that match any word in the given text, ordered by number of keyword matches (best first).
     /// </summary>
-    private static List<string> SuggestIcons(string text)
+    internal static List<string> SuggestIcons(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
             return [];
@@ -2882,7 +2882,7 @@ public partial class DmdWindow : JukeboxWindow
     /// Populates the icon grid with icons matching the text, plus all default icons.
     /// Suggested matches appear first with a highlight.
     /// </summary>
-    private static void UpdateIconGrid(WrapPanel iconGrid, System.Windows.Controls.ComboBox iconPicker, string text,
+    internal static void UpdateIconGrid(WrapPanel iconGrid, System.Windows.Controls.ComboBox iconPicker, string text,
         System.Windows.Media.Brush surfaceBrush, System.Windows.Media.Brush textBrush, System.Windows.Media.Brush accentBrush)
     {
         iconGrid.Children.Clear();

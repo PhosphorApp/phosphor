@@ -10,7 +10,13 @@ namespace VpinJukebox;
 public class CategoryVisibilityItem
 {
     public string Name { get; set; } = "";
+    public string Icon { get; set; } = "";
+    public string SearchTerm { get; set; } = "";
     public bool IsVisible { get; set; } = true;
+    /// <summary>
+    /// True for reserved/special categories (e.g. History) whose search term should not be edited.
+    /// </summary>
+    public bool IsSpecial { get; set; }
 }
 
 public partial class SettingsWindow : JukeboxWindow
@@ -379,15 +385,18 @@ public partial class SettingsWindow : JukeboxWindow
         CbMinorButtonLocation.SelectedIndex = (int)settings.DmdMinorButtonLocation;
 
         // Category visibility
-        foreach (var name in JukeboxViewModel.AllGenreCategoryNames)
+        foreach (var entry in GenreCategoryStore.Load())
         {
             _categoryVisibilityItems.Add(new CategoryVisibilityItem
             {
-                Name = name,
-                IsVisible = !settings.HiddenCategories.Contains(name)
+                Name = entry.Name,
+                Icon = entry.Icon,
+                SearchTerm = entry.SearchTerm,
+                IsVisible = !settings.HiddenCategories.Contains(entry.Name),
+                IsSpecial = entry.Name == "History"
             });
         }
-        CbCategoryVisibility.ItemsSource = _categoryVisibilityItems;
+        CategoryListView.ItemsSource = _categoryVisibilityItems;
         UpdateCategoryVisibilityText();
 
         // Hide cursor timeout dropdown
@@ -1441,6 +1450,14 @@ public partial class SettingsWindow : JukeboxWindow
             .Where(i => !i.IsVisible)
             .Select(i => i.Name)
             .ToList();
+        // Persist category changes (icon, search term, visibility) to categories.json
+        GenreCategoryStore.Save(_categoryVisibilityItems.Select(i => new GenreCategoryEntry
+        {
+            Name = i.Name,
+            Icon = i.Icon,
+            SearchTerm = i.SearchTerm,
+            IsVisible = i.IsVisible
+        }).ToList());
         _settings.ShowStatusText = CbShowStatusText.IsChecked == true;
         var cursorTimeoutValues = new[] { 0, 15, 30, 45, 60, 120, 180, 240, 300, 360, 420, 480, 540, 600 };
         _settings.HideCursorTimeoutSeconds = CbHideCursorTimeout.SelectedIndex >= 0 && CbHideCursorTimeout.SelectedIndex < cursorTimeoutValues.Length
@@ -1727,6 +1744,100 @@ public partial class SettingsWindow : JukeboxWindow
         UpdateCategoryVisibilityText();
     }
 
+    private void CategoryIcon_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button btn || btn.DataContext is not CategoryVisibilityItem item)
+            return;
+
+        var popup = new System.Windows.Controls.Primitives.Popup
+        {
+            StaysOpen = false,
+            PlacementTarget = btn,
+            Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom,
+        };
+
+        var surfaceBrush = (System.Windows.Media.Brush)FindResource("SurfaceBrush");
+        var textBrush = (System.Windows.Media.Brush)FindResource("TextBrush");
+        var accentBrush = (System.Windows.Media.Brush)FindResource("AccentBrush");
+
+        var border = new System.Windows.Controls.Border
+        {
+            Background = (System.Windows.Media.Brush)FindResource("Surface2Brush"),
+            BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x44, 0x44, 0x44)),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(6),
+            MaxWidth = 320,
+        };
+
+        var wrapPanel = new System.Windows.Controls.WrapPanel();
+        var shown = new HashSet<string>();
+
+        void AddIcon(string emoji, bool isSuggested)
+        {
+            if (!shown.Add(emoji)) return;
+            var iconBtn = new System.Windows.Controls.Button
+            {
+                Content = emoji,
+                FontSize = 20,
+                Width = 36,
+                Height = 36,
+                Margin = new Thickness(2),
+                Padding = new Thickness(0),
+                Background = isSuggested ? accentBrush : surfaceBrush,
+                Foreground = textBrush,
+                BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x44, 0x44, 0x44)),
+                BorderThickness = new Thickness(1),
+                Cursor = System.Windows.Input.Cursors.Hand,
+            };
+            iconBtn.Click += (_, _) =>
+            {
+                item.Icon = emoji;
+                btn.Content = emoji;
+                popup.IsOpen = false;
+            };
+            wrapPanel.Children.Add(iconBtn);
+        }
+
+        var suggestions = DmdWindow.SuggestIcons(item.Name);
+        foreach (var s in suggestions)
+            AddIcon(s, true);
+        foreach (var icon in DmdWindow.PlaylistIconChoices)
+            AddIcon(icon, false);
+
+        border.Child = wrapPanel;
+        popup.Child = border;
+        popup.IsOpen = true;
+    }
+
+    private void CategoryAdd_Click(object sender, RoutedEventArgs e)
+    {
+        var newItem = new CategoryVisibilityItem
+        {
+            Name = "New Category",
+            Icon = "📋",
+            SearchTerm = "",
+            IsVisible = true,
+            IsSpecial = false,
+        };
+        _categoryVisibilityItems.Add(newItem);
+        CategoryListView.ItemsSource = null;
+        CategoryListView.ItemsSource = _categoryVisibilityItems;
+        CategoryListView.ScrollIntoView(newItem);
+        UpdateCategoryVisibilityText();
+    }
+
+    private void CategoryRemove_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button btn || btn.DataContext is not CategoryVisibilityItem item)
+            return;
+        if (item.IsSpecial) return;
+
+        _categoryVisibilityItems.Remove(item);
+        CategoryListView.ItemsSource = null;
+        CategoryListView.ItemsSource = _categoryVisibilityItems;
+        UpdateCategoryVisibilityText();
+    }
+
     private void SaveDefaultSettings_Click(object sender, RoutedEventArgs e)
     {
         _settings.SaveDefaults();
@@ -1740,7 +1851,7 @@ public partial class SettingsWindow : JukeboxWindow
     {
         int visible = _categoryVisibilityItems.Count(i => i.IsVisible);
         int total = _categoryVisibilityItems.Count;
-        CbCategoryVisibility.Text = $"{visible}/{total} visible";
+        CategoryVisibilitySummary.Text = $"{visible}/{total} categories visible";
     }
 
     private async void DofTestSend_Click(object sender, RoutedEventArgs e)

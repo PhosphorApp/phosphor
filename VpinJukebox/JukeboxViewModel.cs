@@ -20,40 +20,35 @@ public partial class JukeboxViewModel : ObservableObject
     private PrefetchCache? _prefetch;
     private readonly PlexService _plex = new();
 
-    // ── Genre categories (static) ──
-    private static readonly List<Category> GenreCategories =
-    [
-        new() { Name = "History", Icon = "🕐", SearchTerm = "" },
-        new() { Name = "Rock", Icon = "🎸", SearchTerm = "rock music videos" },
-        new() { Name = "Pop", Icon = "🎤", SearchTerm = "pop music videos" },
-        new() { Name = "Hip Hop", Icon = "🎧", SearchTerm = "hip hop music videos" },
-        new() { Name = "R&B", Icon = "🎷", SearchTerm = "r&b music videos" },
-        new() { Name = "Country", Icon = "🤠", SearchTerm = "country music videos" },
-        new() { Name = "Metal", Icon = "🤘", SearchTerm = "heavy metal music videos" },
-        new() { Name = "Electronic", Icon = "🎹", SearchTerm = "electronic dance music videos" },
-        new() { Name = "Concerts", Icon = "🎪", SearchTerm = "full concert live performance" },
-        new() { Name = "80s", Icon = "📼", SearchTerm = "80s music videos" },
-        new() { Name = "90s", Icon = "💿", SearchTerm = "90s music videos" },
-        new() { Name = "2000s", Icon = "🔥", SearchTerm = "2000s music videos" },
-        new() { Name = "Classic Rock", Icon = "🎵", SearchTerm = "classic rock music videos" },
-        new() { Name = "Jazz", Icon = "🎺", SearchTerm = "jazz music videos" },
-        new() { Name = "Reggae", Icon = "🌴", SearchTerm = "reggae music videos" },
-        new() { Name = "Punk", Icon = "⚡", SearchTerm = "punk rock music videos" },
-        new() { Name = "Ambience", Icon = "🕯️", SearchTerm = "relaxing ambience fireplace cozy holiday background video" },
-        new() { Name = "Tutorials", Icon = "🕹️", SearchTerm = "pinball tutorial how to play" },
-        new() { Name = "Table Guides", Icon = "📖", SearchTerm = "kongedam pinball tutorials" },
-    ];
+    // ── Genre categories (loaded from categories.json) ──
+    private List<GenreCategoryEntry> _genreCategories = [];
+
+    /// <summary>
+    /// Returns the loaded genre category entries (for use in settings UI).
+    /// </summary>
+    public IReadOnlyList<GenreCategoryEntry> GenreCategories => _genreCategories;
 
     /// <summary>
     /// Returns the names of all built-in genre categories (for use in settings UI).
     /// </summary>
-    public static IReadOnlyList<string> AllGenreCategoryNames => GenreCategories.Select(c => c.Name).ToList();
-
-    private HashSet<string> _hiddenCategories = new(StringComparer.OrdinalIgnoreCase);
+    public IReadOnlyList<string> AllGenreCategoryNames => _genreCategories.Select(c => c.Name).ToList();
 
     public void SetHiddenCategories(IEnumerable<string> hidden)
     {
-        _hiddenCategories = new HashSet<string>(hidden, StringComparer.OrdinalIgnoreCase);
+        var hiddenSet = new HashSet<string>(hidden, StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in _genreCategories)
+            entry.IsVisible = !hiddenSet.Contains(entry.Name);
+        GenreCategoryStore.Save(_genreCategories);
+        RebuildCategories();
+    }
+
+    /// <summary>
+    /// Reloads genre categories from the persisted categories.json file and rebuilds the UI.
+    /// Call this after the settings window has saved category edits (name, icon, additions, removals).
+    /// </summary>
+    public void ReloadGenreCategories()
+    {
+        _genreCategories = GenreCategoryStore.Load();
         RebuildCategories();
     }
 
@@ -464,6 +459,16 @@ public partial class JukeboxViewModel : ObservableObject
         _ = SafeFireAndForget(_prefetch.PrefetchAsync(nextId, VideoQuality, StereoAudio));
     }
 
+    // ── Duration filter ──
+    /// <summary>
+    /// Maximum number of items to scan when a duration filter (min:/max:) is active.
+    /// Prevents runaway enumeration when few results match the filter.
+    /// </summary>
+    private const int MaxDurationScanCount = 500;
+    private TimeSpan? _durationMin;
+    private TimeSpan? _durationMax;
+    private int _durationScanned;
+
     // ── Pagination state ──
     private IAsyncEnumerator<IVideo>? _searchEnumerator;
     private CancellationTokenSource _searchCts = new();
@@ -483,6 +488,7 @@ public partial class JukeboxViewModel : ObservableObject
         _history = PlayHistory.Load();
         _playlists = new PlaylistManager();
         _searchHistory = SearchHistory.Load();
+        _genreCategories = GenreCategoryStore.Load();
         RebuildCategories();
         RefreshSearchSuggestions();
         LoadQueue();
@@ -523,10 +529,10 @@ public partial class JukeboxViewModel : ObservableObject
         }
 
         // Then genre categories (excluding hidden ones)
-        foreach (var cat in GenreCategories)
+        foreach (var entry in _genreCategories)
         {
-            if (!_hiddenCategories.Contains(cat.Name))
-                Categories.Add(cat);
+            if (entry.IsVisible)
+                Categories.Add(new Category { Name = entry.Name, Icon = entry.Icon, SearchTerm = entry.SearchTerm });
         }
 
         // Plex library tiles (one per configured library, plus hub/playlist tiles)
@@ -804,6 +810,9 @@ public partial class JukeboxViewModel : ObservableObject
 
         _currentSearchQuery = query;
 
+        // Parse and strip duration filters (min:/max:) from the query
+        query = ParseDurationFilters(query);
+
         // Check for playlist: prefix
         // Quoted form: playlist:"Classic Rock Hits" guitar → name=Classic Rock Hits, filter=guitar
         // Unquoted ID: playlist:PLxxxxxxx guitar → id=PLxxxxxxx, filter=guitar
@@ -955,15 +964,99 @@ public partial class JukeboxViewModel : ObservableObject
         _playlistCacheSource = null;
         _playlistCacheName = null;
         _playlistCachePageIndex = 0;
-        var genreCat = GenreCategories.FirstOrDefault(c =>
+        var genreEntry = _genreCategories.FirstOrDefault(c =>
             !string.IsNullOrEmpty(c.SearchTerm) && c.SearchTerm == query);
-        if (genreCat != null)
+        if (genreEntry != null)
         {
             _playlistCacheSource = "youtube";
-            _playlistCacheName = genreCat.Name;
+            _playlistCacheName = genreEntry.Name;
         }
 
         await LoadMoreResults(25);
+    }
+
+    /// <summary>
+    /// Parses min: and max: duration tokens from the search query.
+    /// Accepts values like "5m", "1.5m", "1h", "0.5h", "90" (seconds).
+    /// Sets _durationMin/_durationMax and returns the query with those tokens removed.
+    /// </summary>
+    private string ParseDurationFilters(string query)
+    {
+        _durationMin = null;
+        _durationMax = null;
+        _durationScanned = 0;
+
+        query = Regex.Replace(query, @"min:(\S+)", m =>
+        {
+            _durationMin = ParseDurationValue(m.Groups[1].Value);
+            return "";
+        }, RegexOptions.IgnoreCase);
+
+        query = Regex.Replace(query, @"max:(\S+)", m =>
+        {
+            _durationMax = ParseDurationValue(m.Groups[1].Value);
+            return "";
+        }, RegexOptions.IgnoreCase);
+
+        return query.Trim();
+    }
+
+    /// <summary>
+    /// Parses a duration string like "5m", "1.5h", or "90" (seconds) into a TimeSpan.
+    /// </summary>
+    private static TimeSpan? ParseDurationValue(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        value = value.Trim();
+
+        if (value.EndsWith('h') || value.EndsWith('H'))
+        {
+            if (double.TryParse(value[..^1], System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var hours))
+                return TimeSpan.FromHours(hours);
+        }
+        else if (value.EndsWith('m') || value.EndsWith('M'))
+        {
+            if (double.TryParse(value[..^1], System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var minutes))
+                return TimeSpan.FromMinutes(minutes);
+        }
+        else if (value.EndsWith('s') || value.EndsWith('S'))
+        {
+            if (double.TryParse(value[..^1], System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var seconds))
+                return TimeSpan.FromSeconds(seconds);
+        }
+        else if (double.TryParse(value, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var rawSeconds))
+        {
+            return TimeSpan.FromSeconds(rawSeconds);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Returns true if the video's duration passes the active min:/max: filters.
+    /// Videos with no duration are excluded when a filter is active.
+    /// </summary>
+    private bool PassesDurationFilter(TimeSpan? duration)
+    {
+        if (_durationMin == null && _durationMax == null)
+            return true;
+
+        if (duration == null)
+            return false;
+
+        if (_durationMin != null && duration.Value < _durationMin.Value)
+            return false;
+
+        if (_durationMax != null && duration.Value > _durationMax.Value)
+            return false;
+
+        return true;
     }
 
     private static async IAsyncEnumerable<IVideo> FilterVideosAsync(
@@ -1724,6 +1817,21 @@ public partial class JukeboxViewModel : ObservableObject
                 var video = _searchEnumerator.Current;
                 if (video == null) continue;
 
+                // Duration filter: skip items that don't match, with scan cap
+                if (_durationMin != null || _durationMax != null)
+                {
+                    _durationScanned++;
+                    if (!PassesDurationFilter(video.Duration))
+                    {
+                        if (_durationScanned >= MaxDurationScanCount)
+                        {
+                            _hasMoreResults = false;
+                            StatusText = $"Scanned {_durationScanned} items — duration filter limit reached";
+                        }
+                        continue;
+                    }
+                }
+
                 try
                 {
                     SearchResults.Add(new VideoItem
@@ -1773,6 +1881,18 @@ public partial class JukeboxViewModel : ObservableObject
 
                         var video = _searchEnumerator.Current;
                         if (video == null) continue;
+
+                        // Apply duration filter to prefetch as well
+                        if (_durationMin != null || _durationMax != null)
+                        {
+                            _durationScanned++;
+                            if (!PassesDurationFilter(video.Duration))
+                            {
+                                if (_durationScanned >= MaxDurationScanCount)
+                                { _hasMoreResults = false; break; }
+                                continue;
+                            }
+                        }
 
                         try
                         {
@@ -2441,11 +2561,14 @@ public partial class JukeboxViewModel : ObservableObject
         try
         {
             // Check if we're in a genre category
-            var genreCat = GenreCategories.FirstOrDefault(c =>
+            var genreEntry = _genreCategories.FirstOrDefault(c =>
                 c.Name == ActiveCategory && !string.IsNullOrEmpty(c.SearchTerm));
 
-            if (genreCat != null)
+            if (genreEntry != null)
+            {
+                var genreCat = new Category { Name = genreEntry.Name, Icon = genreEntry.Icon, SearchTerm = genreEntry.SearchTerm };
                 await AutoDjFromGenre(genreCat, targetSize);
+            }
             else
                 await AutoDjFromVideo(targetSize);
 
