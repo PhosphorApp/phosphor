@@ -1395,8 +1395,12 @@ public partial class SettingsWindow : JukeboxWindow
 
     private void ApplySettings()
     {
+        var _sw = System.Diagnostics.Stopwatch.StartNew();
+        void _LogStep(string step) { DebugLog.Log("ApplySettings", $"{step}: {_sw.ElapsedMilliseconds}ms"); _sw.Restart(); }
+
         foreach (var entry in _entries)
             _settings.KeyBindings.ApplyEntry(entry);
+        _LogStep("KeyBindings");
 
         if (RbBlank.IsChecked == true)
             _settings.PlayfieldDisplayMode = PlayfieldMode.Blank;
@@ -1457,6 +1461,7 @@ public partial class SettingsWindow : JukeboxWindow
             .Where(i => !i.IsVisible)
             .Select(i => i.Name)
             .ToList();
+        _LogStep("HiddenCategories");
         // Invalidate playlist cache for categories whose search term changed
         foreach (var item in _categoryVisibilityItems)
         {
@@ -1466,6 +1471,7 @@ public partial class SettingsWindow : JukeboxWindow
                 item.OriginalSearchTerm = item.SearchTerm;
             }
         }
+        _LogStep("InvalidateCache");
         // Persist category changes (icon, search term, visibility) to categories.json
         GenreCategoryStore.Save(_categoryVisibilityItems.Select(i => new GenreCategoryEntry
         {
@@ -1475,6 +1481,7 @@ public partial class SettingsWindow : JukeboxWindow
             SearchTerm = i.SearchTerm,
             IsVisible = i.IsVisible
         }).ToList());
+        _LogStep("GenreCategoryStore.Save");
         _settings.ShowStatusText = CbShowStatusText.IsChecked == true;
         var cursorTimeoutValues = new[] { 0, 15, 30, 45, 60, 120, 180, 240, 300, 360, 420, 480, 540, 600 };
         _settings.HideCursorTimeoutSeconds = CbHideCursorTimeout.SelectedIndex >= 0 && CbHideCursorTimeout.SelectedIndex < cursorTimeoutValues.Length
@@ -1568,14 +1575,17 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.PlexToken = TbPlexToken.Text.Trim();
         _settings.PlexStereoAudio = CbPlexStereo.IsChecked == true;
         _settings.PlexLibraries = _plexLibraries.ToList();
+        _LogStep("AllSettings");
         Saved = true;
         _ = _settings.SaveAsync();
 
+        _LogStep("SaveAsync");
         // Fire event before updating originals so change-detection properties
         // still reflect what actually changed during this apply cycle
         try
         {
             SettingsApplied?.Invoke();
+            _LogStep("SettingsApplied event");
         }
         catch (Exception ex)
         {
@@ -1626,6 +1636,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalDofColorBand = _settings.DofColorBand;
         _originalDofPresetChanged = _settings.DofPresetChanged;
         _originalDofRomName = _settings.DofRomName;
+        _LogStep("UpdateOriginals");
     }
 
     private void CbVideoQuality_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)

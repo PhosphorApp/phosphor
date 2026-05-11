@@ -67,7 +67,7 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     // ── Categories (playlists + genres, rebuilt dynamically) ──
-    public ObservableCollection<Category> Categories { get; } = new();
+    public BulkObservableCollection<Category> Categories { get; } = new();
 
     // ── State ──
     private string _searchQuery = "";
@@ -518,21 +518,21 @@ public partial class JukeboxViewModel : ObservableObject
 
     public void RebuildCategories()
     {
-        Categories.Clear();
+        var items = new List<Category>();
 
         // Add playlist categories first (Favorites is always first)
         foreach (var pl in _playlists.Playlists)
         {
             var defaultIcon = pl.Name == "Favorites" ? "⭐" : pl.Kind == PlaylistKind.Live ? "🔎" : "📋";
             var icon = string.IsNullOrEmpty(pl.Icon) ? defaultIcon : pl.Icon;
-            Categories.Add(new Category { Name = pl.Name, Icon = icon, SearchTerm = "", IsPlaylist = true });
+            items.Add(new Category { Name = pl.Name, Icon = icon, SearchTerm = "", IsPlaylist = true });
         }
 
         // Then genre categories (excluding hidden ones)
         foreach (var entry in _genreCategories)
         {
             if (entry.IsVisible)
-                Categories.Add(new Category { Name = entry.Name, Icon = entry.Icon, SearchTerm = entry.SearchTerm });
+                items.Add(new Category { Name = entry.Name, Icon = entry.Icon, SearchTerm = entry.SearchTerm });
         }
 
         // Plex library tiles (one per configured library, plus hub/playlist tiles)
@@ -540,18 +540,21 @@ public partial class JukeboxViewModel : ObservableObject
         {
             foreach (var lib in _plexLibraries)
             {
-                Categories.Add(new Category { Name = $"Plex {lib.Title}", Icon = "🟠", PlexLibraryKey = lib.Key, PlexLibraryType = lib.Type });
+                items.Add(new Category { Name = $"Plex {lib.Title}", Icon = "🟠", PlexLibraryKey = lib.Key, PlexLibraryType = lib.Type });
 
                 if (lib.HubsEnabled)
-                    Categories.Add(new Category { Name = $"{lib.Title}: Hubs", Icon = "📡", PlexLibraryKey = lib.Key, PlexLibraryType = lib.Type, IsPlexHubList = true });
+                    items.Add(new Category { Name = $"{lib.Title}: Hubs", Icon = "📡", PlexLibraryKey = lib.Key, PlexLibraryType = lib.Type, IsPlexHubList = true });
 
                 if (lib.PlaylistsEnabled)
-                    Categories.Add(new Category { Name = $"{lib.Title}: Playlists", Icon = "📋", PlexLibraryKey = lib.Key, PlexLibraryType = lib.Type, IsPlexPlaylistList = true });
+                    items.Add(new Category { Name = $"{lib.Title}: Playlists", Icon = "📋", PlexLibraryKey = lib.Key, PlexLibraryType = lib.Type, IsPlexPlaylistList = true });
             }
         }
 
         // "New Playlist" action tile at the end
-        Categories.Add(new Category { Name = "New Playlist", Icon = "＋", IsNewPlaylist = true });
+        items.Add(new Category { Name = "New Playlist", Icon = "＋", IsNewPlaylist = true });
+
+        // Batch-update: replace all items and fire a single Reset notification
+        Categories.ReplaceAll(items);
     }
 
     // ── Category browsing ──
