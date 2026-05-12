@@ -1812,11 +1812,13 @@ public partial class DmdWindow : JukeboxWindow
         if (DataContext is JukeboxViewModel vm)
         {
             vm.ReloadGenreCategories();
+            LogStep("ReloadGenreCategories");
             vm.Cache?.UpdateSettings(_appSettings.CacheEnabled, _appSettings.CacheMaxSizeGb, _appSettings.CacheMaxClipLengthMinutes);
             vm.SetupPrefetch(_appSettings.PrefetchEnabled);
             vm.SetupThumbnailCache(_appSettings.ThumbnailCacheEnabled, _appSettings.ThumbnailCacheMaxSizeMb);
             vm.SetupPlaylistCache(_appSettings.PlaylistCacheEnabled, _appSettings.PlaylistCacheMaxAgeHours);
             vm.SetupPlexPlaylistCache(_appSettings.PlexPlaylistCacheEnabled, _appSettings.PlexPlaylistCacheMaxAgeHours);
+            LogStep("CacheSetup");
             ThumbnailCacheConverter.Cache = vm.ThumbnailCache;
             vm.VideoQuality = _appSettings.VideoQuality;
             vm.StereoAudio = _appSettings.StereoAudio;
@@ -1825,8 +1827,10 @@ public partial class DmdWindow : JukeboxWindow
             vm.FileCachingMs = _appSettings.FileCachingMs;
             vm.HttpReconnect = _appSettings.HttpReconnect;
             vm.CacheMode = _appSettings.CacheMode;
+            LogStep("VmProperties");
             if (!string.IsNullOrWhiteSpace(_appSettings.PlexServerUrl) && !string.IsNullOrWhiteSpace(_appSettings.PlexToken))
                 vm.ConfigurePlex(_appSettings.PlexServerUrl, _appSettings.PlexToken, _appSettings.PlexLibraries, _appSettings.PlexStereoAudio);
+            LogStep("ConfigurePlex");
         }
         LogStep("Cache/ViewModel");
 
