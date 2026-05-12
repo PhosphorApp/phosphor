@@ -1829,7 +1829,7 @@ public partial class DmdWindow : JukeboxWindow
             vm.CacheMode = _appSettings.CacheMode;
             LogStep("VmProperties");
             if (!string.IsNullOrWhiteSpace(_appSettings.PlexServerUrl) && !string.IsNullOrWhiteSpace(_appSettings.PlexToken))
-                vm.ConfigurePlex(_appSettings.PlexServerUrl, _appSettings.PlexToken, _appSettings.PlexLibraries, _appSettings.PlexStereoAudio);
+                vm.ConfigurePlex(_appSettings.PlexServerUrl, _appSettings.PlexToken, _appSettings.PlexLibraries, _appSettings.PlexStereoAudio, skipRebuild: true);
             LogStep("ConfigurePlex");
         }
         LogStep("Cache/ViewModel");

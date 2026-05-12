@@ -58,14 +58,15 @@ public partial class JukeboxViewModel : ObservableObject
     private List<VideoItem> _plexHubCategories = [];
     private string _activeHubParentName = "";
 
-    public void ConfigurePlex(string serverUrl, string token, List<PlexLibraryMapping> libraries, bool stereoAudio = false)
+    public void ConfigurePlex(string serverUrl, string token, List<PlexLibraryMapping> libraries, bool stereoAudio = false, bool skipRebuild = false)
     {
         _plex.Configure(serverUrl, token, stereoAudio);
         _plexStereoAudio = stereoAudio;
         _plexLibraries = libraries;
         GenreCategoryStore.SyncPlexLibraries(_genreCategories, _plexLibraries);
         GenreCategoryStore.Save(_genreCategories);
-        RebuildCategories();
+        if (!skipRebuild)
+            RebuildCategories();
     }
 
     // ── Categories (playlists + genres, rebuilt dynamically) ──
