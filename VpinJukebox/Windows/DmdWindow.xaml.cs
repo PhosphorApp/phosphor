@@ -126,7 +126,13 @@ public partial class DmdWindow : JukeboxWindow
             WirePlayButtonQueueSelection();
             WireQueueSplitter();
             if (SearchBox.Template.FindName("PART_EditableTextBox", SearchBox) is TextBox editBox)
-                editBox.TextChanged += (_, _) => UpdateSearchPlaceholder();
+            {
+                editBox.TextChanged += (_, _) =>
+                {
+                    UpdateSearchPlaceholder();
+                    FilterSearchDropdown(editBox.Text);
+                };
+            }
             if (DataContext is JukeboxViewModel vmLoaded)
             {
                 vmLoaded.Categories.CollectionChanged += (_, _) => InvalidateNavRing();
@@ -812,6 +818,42 @@ public partial class DmdWindow : JukeboxWindow
         SearchPlaceholder.Visibility = string.IsNullOrEmpty(SearchBox.Text) && !SearchBox.IsKeyboardFocusWithin
             ? Visibility.Visible
             : Visibility.Collapsed;
+    }
+
+    private bool _isFilteringDropdown;
+
+    private void FilterSearchDropdown(string text)
+    {
+        if (_isFilteringDropdown) return;
+        if (DataContext is not JukeboxViewModel vm) return;
+
+        _isFilteringDropdown = true;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                SearchBox.IsDropDownOpen = false;
+                // Restore full list
+                vm.SearchSuggestions.Clear();
+                foreach (var s in vm.AllSearchHistory)
+                    vm.SearchSuggestions.Add(s);
+                return;
+            }
+
+            var matches = vm.AllSearchHistory
+                .Where(s => s.Contains(text, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            vm.SearchSuggestions.Clear();
+            foreach (var m in matches)
+                vm.SearchSuggestions.Add(m);
+
+            SearchBox.IsDropDownOpen = matches.Count > 0;
+        }
+        finally
+        {
+            _isFilteringDropdown = false;
+        }
     }
 
     // ── Plex music drill-down handlers ──

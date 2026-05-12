@@ -294,6 +294,7 @@ public partial class JukeboxViewModel : ObservableObject
 
     // ── Search history for ComboBox ──
     public ObservableCollection<string> SearchSuggestions { get; } = new();
+    public IReadOnlyList<string> AllSearchHistory => _searchHistory.Searches;
 
     public event Action<string>? PlayRequested;
     public event Action? StopRequested;

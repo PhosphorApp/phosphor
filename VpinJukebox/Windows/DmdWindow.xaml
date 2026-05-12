@@ -93,11 +93,12 @@
                           FontSize="18" Padding="10,8"
                           KeyDown="SearchBox_KeyDown" SelectionChanged="SearchBox_SelectionChanged"
                           IsTextSearchEnabled="False"
-                          IsKeyboardFocusWithinChanged="SearchBox_FocusChanged"/>
+                          IsKeyboardFocusWithinChanged="SearchBox_FocusChanged"
+                          ToolTip="Search YouTube &#x0a;&#x0a;Modifiers:&#x0a;  channel:&lt;name&gt;&#x0a;  playlist:&lt;name&gt;&#x0a;  min:5m  max:30m"/>
                 <TextBlock x:Name="SearchPlaceholder"
-                           FontSize="18" Foreground="#666" IsHitTestVisible="False"
+                           FontSize="18" Foreground="#888" IsHitTestVisible="False"
                            VerticalAlignment="Center" Margin="14,0,0,0">
-                    <Run Text="SEARCH" /><Run Text="  ...try channel:&lt;name&gt;, playlist:&lt;name&gt;, min:5m, max:30m" Foreground="#444" FontSize="13"/>
+                    <Run Text="SEARCH" /><Run Text="  ...try channel:&lt;name&gt;, playlist:&lt;name&gt;, min:5m, max:30m" Foreground="#666" FontSize="13"/>
                 </TextBlock>
             </Grid>
         </DockPanel>
