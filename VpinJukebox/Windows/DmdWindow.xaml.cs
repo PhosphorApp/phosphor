@@ -1858,16 +1858,18 @@ public partial class DmdWindow : JukeboxWindow
         SetShowStatusText(_appSettings.ShowStatusText);
         LogStep("TrackList/Buttons/Status");
 
-        // Restart local (DMD) Mandelbrot/ProjectM renderers LAST so the heavy
-        // OpenGL/preset-loading work doesn't stall the lightweight Apply steps.
+        // Restart local (DMD) Mandelbrot/ProjectM renderers LAST and asynchronously
+        // so the heavy OpenGL/preset-loading work doesn't block the Apply path.
+        // These must run on the UI thread (OpenGL context + WriteableBitmap are
+        // thread-affine), but InvokeAsync lets the settings dialog unblock first.
         if (settingsWindow.MandelbrotSettingsChanged)
         {
-            RestartMandelbrot();
+            await Dispatcher.InvokeAsync(RestartMandelbrot);
             LogStep("Mandelbrot local restart");
         }
         if (settingsWindow.ProjectMSettingsChanged)
         {
-            RestartProjectM();
+            await Dispatcher.InvokeAsync(RestartProjectM);
             LogStep("ProjectM local restart");
         }
     }
