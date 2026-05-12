@@ -1727,8 +1727,7 @@ public partial class DmdWindow : JukeboxWindow
             _playfieldProxy?.RestartMandelbrot();
             _backglassProxy?.RestartMandelbrot();
             _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.RestartMandelbrot());
-            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, RestartMandelbrot);
-            LogStep("Mandelbrot restart (changed)");
+            LogStep("Mandelbrot restart dispatched (changed)");
         }
         BlobTransition.ExcludeProjectMFromRandom = _appSettings.ExcludeProjectMFromRandom;
         ProjectMRenderer.PresetDuration = _appSettings.ProjectMPresetDuration;
@@ -1752,8 +1751,7 @@ public partial class DmdWindow : JukeboxWindow
             _playfieldProxy?.RestartProjectM();
             _backglassProxy?.RestartProjectM();
             _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.RestartProjectM());
-            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, RestartProjectM);
-            LogStep("ProjectM restart (changed)");
+            LogStep("ProjectM restart dispatched (changed)");
         }
         LogStep("Mandelbrot/ProjectM statics");
         if (settingsWindow.PlayfieldBlobsChanged)
@@ -1859,6 +1857,19 @@ public partial class DmdWindow : JukeboxWindow
         SetMinorButtonLocation(_appSettings.DmdMinorButtonLocation);
         SetShowStatusText(_appSettings.ShowStatusText);
         LogStep("TrackList/Buttons/Status");
+
+        // Restart local (DMD) Mandelbrot/ProjectM renderers LAST so the heavy
+        // OpenGL/preset-loading work doesn't stall the lightweight Apply steps.
+        if (settingsWindow.MandelbrotSettingsChanged)
+        {
+            RestartMandelbrot();
+            LogStep("Mandelbrot local restart");
+        }
+        if (settingsWindow.ProjectMSettingsChanged)
+        {
+            RestartProjectM();
+            LogStep("ProjectM local restart");
+        }
     }
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e) => OpenSettings();
