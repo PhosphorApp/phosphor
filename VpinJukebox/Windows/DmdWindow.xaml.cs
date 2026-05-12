@@ -1727,7 +1727,7 @@ public partial class DmdWindow : JukeboxWindow
             _playfieldProxy?.RestartMandelbrot();
             _backglassProxy?.RestartMandelbrot();
             _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.RestartMandelbrot());
-            RestartMandelbrot();
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, RestartMandelbrot);
             LogStep("Mandelbrot restart (changed)");
         }
         BlobTransition.ExcludeProjectMFromRandom = _appSettings.ExcludeProjectMFromRandom;
@@ -1752,7 +1752,7 @@ public partial class DmdWindow : JukeboxWindow
             _playfieldProxy?.RestartProjectM();
             _backglassProxy?.RestartProjectM();
             _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.RestartProjectM());
-            RestartProjectM();
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, RestartProjectM);
             LogStep("ProjectM restart (changed)");
         }
         LogStep("Mandelbrot/ProjectM statics");
