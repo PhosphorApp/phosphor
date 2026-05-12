@@ -522,6 +522,8 @@ public partial class JukeboxViewModel : ObservableObject
 
     public void RebuildCategories()
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
         var items = new List<Category>();
 
         // Add playlist categories first (Favorites is always first)
@@ -568,8 +570,13 @@ public partial class JukeboxViewModel : ObservableObject
         // "New Playlist" action tile at the end
         items.Add(new Category { Name = "New Playlist", Icon = "＋", IsNewPlaylist = true });
 
+        DebugLog.Log("RebuildCategories", $"Build list ({items.Count} items): {sw.ElapsedMilliseconds}ms");
+        sw.Restart();
+
         // Batch-update: replace all items and fire a single Reset notification
         Categories.ReplaceAll(items);
+
+        DebugLog.Log("RebuildCategories", $"ReplaceAll: {sw.ElapsedMilliseconds}ms");
     }
 
     // ── Category browsing ──
