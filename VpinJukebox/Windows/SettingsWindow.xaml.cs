@@ -1808,53 +1808,104 @@ public partial class SettingsWindow : JukeboxWindow
         var textBrush = (System.Windows.Media.Brush)FindResource("TextBrush");
         var accentBrush = (System.Windows.Media.Brush)FindResource("AccentBrush");
 
+        var outerStack = new System.Windows.Controls.StackPanel();
+
+        // Search box for filtering icons
+        var searchBox = new System.Windows.Controls.TextBox
+        {
+            Background = (System.Windows.Media.Brush)FindResource("SurfaceBrush"),
+            Foreground = textBrush,
+            BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x44, 0x44, 0x44)),
+            BorderThickness = new Thickness(1),
+            FontSize = 12,
+            Padding = new Thickness(4, 2, 4, 2),
+            Margin = new Thickness(0, 0, 0, 4),
+        };
+
+        var wrapPanel = new System.Windows.Controls.WrapPanel();
+        var scrollViewer = new System.Windows.Controls.ScrollViewer
+        {
+            Content = wrapPanel,
+            MaxHeight = 250,
+            MaxWidth = 320,
+            VerticalScrollBarVisibility = System.Windows.Controls.ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = System.Windows.Controls.ScrollBarVisibility.Disabled,
+        };
+
+        void PopulateIcons(string filterText)
+        {
+            wrapPanel.Children.Clear();
+            var shown = new HashSet<string>();
+
+            void AddIcon(string emoji, bool isSuggested)
+            {
+                if (!shown.Add(emoji)) return;
+                var iconBtn = new System.Windows.Controls.Button
+                {
+                    Content = emoji,
+                    FontSize = 20,
+                    Width = 36,
+                    Height = 36,
+                    Margin = new Thickness(2),
+                    Padding = new Thickness(0),
+                    Background = isSuggested ? accentBrush : surfaceBrush,
+                    Foreground = textBrush,
+                    BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x44, 0x44, 0x44)),
+                    BorderThickness = new Thickness(1),
+                    Cursor = System.Windows.Input.Cursors.Hand,
+                };
+                iconBtn.Click += (_, _) =>
+                {
+                    item.Icon = emoji;
+                    btn.Content = emoji;
+                    popup.IsOpen = false;
+                };
+                wrapPanel.Children.Add(iconBtn);
+            }
+
+            // Keyword-matched suggestions first (from search box or category name)
+            var searchText = string.IsNullOrWhiteSpace(filterText) ? item.Name : filterText;
+            var suggestions = DmdWindow.SuggestIcons(searchText);
+            foreach (var s in suggestions)
+                AddIcon(s, true);
+
+            // Then all emoji from the keyword dictionary
+            var allEmoji = DmdWindow.GetEmojiKeywords();
+            foreach (var emoji in allEmoji.Keys)
+                AddIcon(emoji, false);
+        }
+
+        // Debounce search updates
+        var debounce = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+        debounce.Tick += (_, _) =>
+        {
+            debounce.Stop();
+            PopulateIcons(searchBox.Text);
+        };
+        searchBox.TextChanged += (_, _) =>
+        {
+            debounce.Stop();
+            debounce.Start();
+        };
+        popup.Closed += (_, _) => debounce.Stop();
+
+        PopulateIcons("");
+
+        outerStack.Children.Add(searchBox);
+        outerStack.Children.Add(scrollViewer);
+
         var border = new System.Windows.Controls.Border
         {
             Background = (System.Windows.Media.Brush)FindResource("Surface2Brush"),
             BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x44, 0x44, 0x44)),
             BorderThickness = new Thickness(1),
             Padding = new Thickness(6),
-            MaxWidth = 320,
+            Child = outerStack,
         };
 
-        var wrapPanel = new System.Windows.Controls.WrapPanel();
-        var shown = new HashSet<string>();
-
-        void AddIcon(string emoji, bool isSuggested)
-        {
-            if (!shown.Add(emoji)) return;
-            var iconBtn = new System.Windows.Controls.Button
-            {
-                Content = emoji,
-                FontSize = 20,
-                Width = 36,
-                Height = 36,
-                Margin = new Thickness(2),
-                Padding = new Thickness(0),
-                Background = isSuggested ? accentBrush : surfaceBrush,
-                Foreground = textBrush,
-                BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x44, 0x44, 0x44)),
-                BorderThickness = new Thickness(1),
-                Cursor = System.Windows.Input.Cursors.Hand,
-            };
-            iconBtn.Click += (_, _) =>
-            {
-                item.Icon = emoji;
-                btn.Content = emoji;
-                popup.IsOpen = false;
-            };
-            wrapPanel.Children.Add(iconBtn);
-        }
-
-        var suggestions = DmdWindow.SuggestIcons(item.Name);
-        foreach (var s in suggestions)
-            AddIcon(s, true);
-        foreach (var icon in DmdWindow.PlaylistIconChoices)
-            AddIcon(icon, false);
-
-        border.Child = wrapPanel;
         popup.Child = border;
         popup.IsOpen = true;
+        searchBox.Focus();
     }
 
     private void CategoryAdd_Click(object sender, RoutedEventArgs e)
