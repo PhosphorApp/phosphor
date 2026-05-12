@@ -63,6 +63,8 @@ public partial class JukeboxViewModel : ObservableObject
         _plex.Configure(serverUrl, token, stereoAudio);
         _plexStereoAudio = stereoAudio;
         _plexLibraries = libraries;
+        GenreCategoryStore.SyncPlexLibraries(_genreCategories, _plexLibraries);
+        GenreCategoryStore.Save(_genreCategories);
         RebuildCategories();
     }
 
@@ -528,7 +530,7 @@ public partial class JukeboxViewModel : ObservableObject
             items.Add(new Category { Name = pl.Name, Icon = icon, SearchTerm = "", IsPlaylist = true });
         }
 
-        // Then genre categories (excluding hidden ones)
+        // Then genre categories (excluding hidden ones) and Plex library tiles
         foreach (var entry in _genreCategories)
         {
             if (entry.IsSeparator)
@@ -541,22 +543,23 @@ public partial class JukeboxViewModel : ObservableObject
                 items.Add(new Category { IsLineBreak = true });
                 continue;
             }
-            if (entry.IsVisible)
-                items.Add(new Category { Name = entry.Name, Icon = entry.Icon, SearchTerm = entry.SearchTerm });
-        }
+            if (!entry.IsVisible) continue;
 
-        // Plex library tiles (one per configured library, plus hub/playlist tiles)
-        if (_plex.IsConfigured)
-        {
-            foreach (var lib in _plexLibraries)
+            if (entry.IsPlex)
             {
-                items.Add(new Category { Name = $"Plex {lib.Title}", Icon = "🟠", PlexLibraryKey = lib.Key, PlexLibraryType = lib.Type });
+                // Plex library tile + optional hubs/playlists as a group
+                items.Add(new Category { Name = entry.Name, Icon = entry.Icon, PlexLibraryKey = entry.PlexLibraryKey, PlexLibraryType = entry.PlexLibraryType });
 
-                if (lib.HubsEnabled)
-                    items.Add(new Category { Name = $"{lib.Title}: Hubs", Icon = "📡", PlexLibraryKey = lib.Key, PlexLibraryType = lib.Type, IsPlexHubList = true });
+                var title = entry.Name.StartsWith("Plex ") ? entry.Name[5..] : entry.Name;
+                if (entry.PlexHubsEnabled)
+                    items.Add(new Category { Name = $"{title}: Hubs", Icon = "📡", PlexLibraryKey = entry.PlexLibraryKey, PlexLibraryType = entry.PlexLibraryType, IsPlexHubList = true });
 
-                if (lib.PlaylistsEnabled)
-                    items.Add(new Category { Name = $"{lib.Title}: Playlists", Icon = "📋", PlexLibraryKey = lib.Key, PlexLibraryType = lib.Type, IsPlexPlaylistList = true });
+                if (entry.PlexPlaylistsEnabled)
+                    items.Add(new Category { Name = $"{title}: Playlists", Icon = "📋", PlexLibraryKey = entry.PlexLibraryKey, PlexLibraryType = entry.PlexLibraryType, IsPlexPlaylistList = true });
+            }
+            else
+            {
+                items.Add(new Category { Name = entry.Name, Icon = entry.Icon, SearchTerm = entry.SearchTerm });
             }
         }
 

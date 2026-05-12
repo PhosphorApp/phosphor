@@ -20,6 +20,11 @@ public class CategoryVisibilityItem
     public bool IsSpecial { get; set; }
     public bool IsSeparator { get; set; }
     public bool IsLineBreak { get; set; }
+    public bool IsPlex { get; set; }
+    public string? PlexLibraryKey { get; set; }
+    public string? PlexLibraryType { get; set; }
+    public bool PlexHubsEnabled { get; set; }
+    public bool PlexPlaylistsEnabled { get; set; }
     /// <summary>
     /// The search term when the settings window was opened, used to detect changes.
     /// </summary>
@@ -404,7 +409,12 @@ public partial class SettingsWindow : JukeboxWindow
                 IsVisible = !settings.HiddenCategories.Contains(entry.Name),
                 IsSpecial = entry.Name == "History",
                 IsSeparator = entry.IsSeparator,
-                IsLineBreak = entry.IsLineBreak
+                IsLineBreak = entry.IsLineBreak,
+                IsPlex = entry.IsPlex,
+                PlexLibraryKey = entry.PlexLibraryKey,
+                PlexLibraryType = entry.PlexLibraryType,
+                PlexHubsEnabled = entry.PlexHubsEnabled,
+                PlexPlaylistsEnabled = entry.PlexPlaylistsEnabled
             });
         }
         CategoryListView.ItemsSource = _categoryVisibilityItems;
@@ -1485,7 +1495,11 @@ public partial class SettingsWindow : JukeboxWindow
             SearchTerm = i.SearchTerm,
             IsVisible = i.IsVisible,
             IsSeparator = i.IsSeparator,
-            IsLineBreak = i.IsLineBreak
+            IsLineBreak = i.IsLineBreak,
+            PlexLibraryKey = i.PlexLibraryKey,
+            PlexLibraryType = i.PlexLibraryType,
+            PlexHubsEnabled = i.PlexHubsEnabled,
+            PlexPlaylistsEnabled = i.PlexPlaylistsEnabled
         }).ToList());
         _LogStep("GenreCategoryStore.Save");
         _settings.ShowStatusText = CbShowStatusText.IsChecked == true;
@@ -1898,7 +1912,7 @@ public partial class SettingsWindow : JukeboxWindow
     {
         if (sender is not System.Windows.Controls.Button btn || btn.DataContext is not CategoryVisibilityItem item)
             return;
-        if (item.IsSpecial) return;
+        if (item.IsSpecial || item.IsPlex) return;
 
         _categoryVisibilityItems.Remove(item);
         CategoryListView.ItemsSource = null;

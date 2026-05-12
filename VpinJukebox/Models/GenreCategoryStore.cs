@@ -14,6 +14,13 @@ public class GenreCategoryEntry
     public bool IsVisible { get; set; } = true;
     public bool IsSeparator { get; set; }
     public bool IsLineBreak { get; set; }
+
+    // Plex fields (when set, this entry represents a Plex library tile)
+    public string? PlexLibraryKey { get; set; }
+    public string? PlexLibraryType { get; set; }
+    public bool PlexHubsEnabled { get; set; }
+    public bool PlexPlaylistsEnabled { get; set; }
+    public bool IsPlex => PlexLibraryKey != null;
 }
 
 /// <summary>
@@ -65,6 +72,48 @@ public static class GenreCategoryStore
         }
 
         return [];
+    }
+
+    /// <summary>
+    /// Ensures the genre category list contains entries for all current Plex libraries
+    /// and removes entries for libraries that no longer exist. Preserves user customizations
+    /// (icon, position) for existing entries. New entries are appended at the end.
+    /// </summary>
+    public static void SyncPlexLibraries(List<GenreCategoryEntry> entries, IReadOnlyList<PlexLibraryMapping> libraries)
+    {
+        // Build set of current library keys
+        var currentKeys = new HashSet<string>(libraries.Select(l => l.Key));
+
+        // Remove entries for libraries that no longer exist
+        entries.RemoveAll(e => e.IsPlex && !currentKeys.Contains(e.PlexLibraryKey!));
+
+        // Add/update entries for each library
+        foreach (var lib in libraries)
+        {
+            var existing = entries.FirstOrDefault(e => e.PlexLibraryKey == lib.Key);
+            if (existing != null)
+            {
+                // Update title and hub/playlist flags (user may have toggled these)
+                existing.Name = $"Plex {lib.Title}";
+                existing.PlexHubsEnabled = lib.HubsEnabled;
+                existing.PlexPlaylistsEnabled = lib.PlaylistsEnabled;
+                existing.PlexLibraryType = lib.Type;
+            }
+            else
+            {
+                entries.Add(new GenreCategoryEntry
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    Name = $"Plex {lib.Title}",
+                    Icon = "\U0001f7e0",
+                    PlexLibraryKey = lib.Key,
+                    PlexLibraryType = lib.Type,
+                    PlexHubsEnabled = lib.HubsEnabled,
+                    PlexPlaylistsEnabled = lib.PlaylistsEnabled,
+                    IsVisible = true
+                });
+            }
+        }
     }
 
     /// <summary>

@@ -720,6 +720,9 @@
                                                                     <DataTrigger Binding="{Binding IsSpecial}" Value="True">
                                                                         <Setter Property="Visibility" Value="Collapsed"/>
                                                                     </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsPlex}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
                                                                 </Style.Triggers>
                                                             </Style>
                                                         </Button.Style>
@@ -798,6 +801,10 @@
                                                                         <Setter Property="IsEnabled" Value="False"/>
                                                                         <Setter Property="Opacity" Value="0.6"/>
                                                                     </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsPlex}" Value="True">
+                                                                        <Setter Property="IsEnabled" Value="False"/>
+                                                                        <Setter Property="Opacity" Value="0.6"/>
+                                                                    </DataTrigger>
                                                                     <DataTrigger Binding="{Binding IsSeparator}" Value="True">
                                                                         <Setter Property="Visibility" Value="Collapsed"/>
                                                                     </DataTrigger>
@@ -819,6 +826,11 @@
                                                                         <Setter Property="IsEnabled" Value="False"/>
                                                                         <Setter Property="Opacity" Value="0.4"/>
                                                                         <Setter Property="ToolTip" Value="Reserved category"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsPlex}" Value="True">
+                                                                        <Setter Property="IsEnabled" Value="False"/>
+                                                                        <Setter Property="Opacity" Value="0.4"/>
+                                                                        <Setter Property="ToolTip" Value="Plex library"/>
                                                                     </DataTrigger>
                                                                     <DataTrigger Binding="{Binding IsSeparator}" Value="True">
                                                                         <Setter Property="Visibility" Value="Collapsed"/>
