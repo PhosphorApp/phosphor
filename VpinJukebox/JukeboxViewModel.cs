@@ -2190,6 +2190,12 @@ public partial class JukeboxViewModel : ObservableObject
     /// </summary>
     private int _lastPlayedQueueIndex = -1;
 
+    /// <summary>
+    /// Set to true when PlayNext() triggers a queue transition (not a direct selection).
+    /// Consumed and cleared by the playback-started handler.
+    /// </summary>
+    public bool IsQueueTransition { get; set; }
+
     [RelayCommand]
     private void TogglePlayStop(VideoItem? fallbackItem)
     {
@@ -2364,6 +2370,7 @@ public partial class JukeboxViewModel : ObservableObject
             }
         }
 
+        IsQueueTransition = true;
         QueueIndex = nextIndex;
         PlayNow(Queue[nextIndex]);
 

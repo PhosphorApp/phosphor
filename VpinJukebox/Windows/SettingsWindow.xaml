@@ -452,9 +452,9 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Preset Duration:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Width="110"/>
-                                    <Slider x:Name="SliderProjectMPresetDuration" Minimum="5" Maximum="120"
+                                    <Slider x:Name="SliderProjectMPresetDuration" Minimum="0" Maximum="18"
                                             Width="150" VerticalAlignment="Center"
-                                            IsSnapToTickEnabled="True" TickFrequency="5"
+                                            IsSnapToTickEnabled="True" TickFrequency="1"
                                             ValueChanged="SliderProjectMPresetDuration_ValueChanged"
                                             ToolTip="Seconds between automatic preset transitions."/>
                                     <TextBlock x:Name="TxtProjectMPresetDuration" Foreground="{StaticResource TextDimBrush}"
@@ -496,6 +496,9 @@
                                 <CheckBox x:Name="CbProjectMHardCut" Content="Enable hard cuts (beat-driven)"
                                            Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
                                            ToolTip="Allow beat-driven instant preset switches."/>
+                                <CheckBox x:Name="CbProjectMNewVisualOnTrackChange" Content="New visual on track change"
+                                           Foreground="{StaticResource TextBrush}" Margin="0,4,0,0"
+                                           ToolTip="Automatically switch to a new ProjectM preset when the queue advances to the next track."/>
 
                                 <TextBlock Text="Auto skip black presets:" Foreground="{StaticResource TextBrush}"
                                            Margin="0,12,0,2"/>

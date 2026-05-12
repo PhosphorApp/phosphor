@@ -2739,6 +2739,14 @@ public partial class DmdWindow : JukeboxWindow
         _backglassProxy?.OnSongChanged();
         _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.OnSongChanged());
 
+        // Switch ProjectM preset on queue transition if enabled
+        if (_appSettings?.ProjectMNewVisualOnTrackChange == true
+            && DataContext is JukeboxViewModel vm && vm.IsQueueTransition)
+        {
+            vm.IsQueueTransition = false;
+            _playfieldProxy?.WithProjectMRenderer(r => r?.PlayNext(hardCut: false));
+        }
+
         // DMD's own blobs
         if (_ssBlobPatternSetting != BlobPattern.RandomPerSong || _ssTransitioning || _ssCurrentPattern == null)
             return;

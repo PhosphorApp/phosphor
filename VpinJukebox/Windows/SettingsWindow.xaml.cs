@@ -339,13 +339,14 @@ public partial class SettingsWindow : JukeboxWindow
         CbExcludeProjectM.IsChecked = settings.ExcludeProjectMFromRandom;
 
         // ProjectM tuning
-        SliderProjectMPresetDuration.Value = settings.ProjectMPresetDuration;
-        TxtProjectMPresetDuration.Text = $"{(int)settings.ProjectMPresetDuration}s";
+        SliderProjectMPresetDuration.Value = PresetDurationToIndex(settings.ProjectMPresetDuration);
+        TxtProjectMPresetDuration.Text = FormatPresetDuration((int)settings.ProjectMPresetDuration);
         SliderProjectMSoftCut.Value = settings.ProjectMSoftCutDuration;
         TxtProjectMSoftCut.Text = $"{(int)settings.ProjectMSoftCutDuration}s";
         SliderProjectMBeatSensitivity.Value = settings.ProjectMBeatSensitivity;
         TxtProjectMBeatSensitivity.Text = $"{settings.ProjectMBeatSensitivity:F1}";
         CbProjectMHardCut.IsChecked = settings.ProjectMHardCutEnabled;
+        CbProjectMNewVisualOnTrackChange.IsChecked = settings.ProjectMNewVisualOnTrackChange;
         SliderProjectMRenderScale.Value = settings.ProjectMRenderScale * 100;
         TxtProjectMRenderScale.Text = $"{(int)(settings.ProjectMRenderScale * 100)}%";
         switch (settings.ProjectMPresetMonitor)
@@ -1331,10 +1332,30 @@ public partial class SettingsWindow : JukeboxWindow
         return result;
     }
 
+    private static readonly int[] PresetDurationSteps = { 5, 10, 15, 20, 25, 30, 45, 60, 120, 300, 600, 900, 1200, 1800, 3600, 7200, 14400, 43200, 86400 };
+
+    private static int PresetDurationFromIndex(int index) =>
+        index >= 0 && index < PresetDurationSteps.Length ? PresetDurationSteps[index] : 30;
+
+    private static int PresetDurationToIndex(double seconds)
+    {
+        int best = 0;
+        double bestDist = double.MaxValue;
+        for (int i = 0; i < PresetDurationSteps.Length; i++)
+        {
+            double dist = Math.Abs(PresetDurationSteps[i] - seconds);
+            if (dist < bestDist) { bestDist = dist; best = i; }
+        }
+        return best;
+    }
+
+    private static string FormatPresetDuration(int seconds) =>
+        seconds >= 3600 ? $"{seconds / 3600}hr" : seconds >= 60 ? $"{seconds / 60}m" : $"{seconds}s";
+
     private void SliderProjectMPresetDuration_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (TxtProjectMPresetDuration != null)
-            TxtProjectMPresetDuration.Text = $"{(int)e.NewValue}s";
+            TxtProjectMPresetDuration.Text = FormatPresetDuration(PresetDurationFromIndex((int)e.NewValue));
     }
 
     private void SliderProjectMSoftCut_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -1564,9 +1585,10 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.DmdBlobCount = (int)SliderBlobCountDmd.Value;
         _settings.ExcludeMandelbrotFromRandom = CbExcludeMandelbrot.IsChecked == true;
         _settings.ExcludeProjectMFromRandom = CbExcludeProjectM.IsChecked == true;
-        _settings.ProjectMPresetDuration = SliderProjectMPresetDuration.Value;
+        _settings.ProjectMPresetDuration = PresetDurationFromIndex((int)SliderProjectMPresetDuration.Value);
         _settings.ProjectMSoftCutDuration = SliderProjectMSoftCut.Value;
         _settings.ProjectMHardCutEnabled = CbProjectMHardCut.IsChecked == true;
+        _settings.ProjectMNewVisualOnTrackChange = CbProjectMNewVisualOnTrackChange.IsChecked == true;
         _settings.ProjectMBeatSensitivity = (float)SliderProjectMBeatSensitivity.Value;
         _settings.ProjectMRenderScale = SliderProjectMRenderScale.Value / 100.0;
         _settings.ProjectMPresetMonitor = RbPresetMonitorDeactivate.IsChecked == true ? 2

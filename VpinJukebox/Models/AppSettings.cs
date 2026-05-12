@@ -89,6 +89,7 @@ public class AppSettings
     public double ProjectMPresetDuration { get; set; } = 30.0;
     public double ProjectMSoftCutDuration { get; set; } = 3.0;
     public bool ProjectMHardCutEnabled { get; set; } = true;
+    public bool ProjectMNewVisualOnTrackChange { get; set; }
     public int ProjectMMeshSize { get; set; } = 48;
     public double ProjectMRenderScale { get; set; } = 0.5;
     public float ProjectMBeatSensitivity { get; set; } = 1.0f;
