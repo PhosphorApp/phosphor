@@ -774,7 +774,7 @@ public sealed class ProjectMRenderer : IDisposable
             bmp.Freeze();
 
             string safeName = string.Join("_", presetName.Split(Path.GetInvalidFileNameChars()));
-            string dir = Path.Combine(PresetPath ?? ".", "_BlackFrames");
+            string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs", "BlackFrames");
             Directory.CreateDirectory(dir);
             string path = Path.Combine(dir, $"{safeName}.png");
 
