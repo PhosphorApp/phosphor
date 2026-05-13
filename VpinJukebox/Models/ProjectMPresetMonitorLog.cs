@@ -48,7 +48,7 @@ public static class ProjectMPresetMonitorLog
                 Timestamp = DateTime.Now,
                 PresetPath = presetRelativePath,
                 Action = action,
-                TopAvgLuminance = topAvgLuminance,
+                TopAvgLuminance = Math.Round(topAvgLuminance, 3),
             });
 
             while (Entries.Count > MaxEntries)

@@ -117,7 +117,7 @@ public sealed class ProjectMRenderer : IDisposable
     public static double BlackCheckPercentile { get; set; } = 5.0;
 
     /// <summary>Luminance threshold below which a frame is considered black.</summary>
-    public static double BlackCheckLuminanceThreshold { get; set; } = 10.0;
+    public static double BlackCheckLuminanceThreshold { get; set; } = 4.0;
 
     /// <summary>When true, saves a PNG snapshot of each confirmed black frame for diagnostics.</summary>
     public static bool SaveBlackFrame { get; set; }

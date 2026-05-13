@@ -105,7 +105,7 @@ public class AppSettings
     public int ProjectMPresetMonitorBlackHits { get; set; } = 5;
     public double ProjectMPresetMonitorIntervalSeconds { get; set; } = 2.5;
     public double ProjectMPresetMonitorPercentile { get; set; } = 5.0;
-    public double ProjectMPresetMonitorThreshold { get; set; } = 10.0;
+    public double ProjectMPresetMonitorThreshold { get; set; } = 4.0;
     /// <summary>
     /// When true, saves a PNG snapshot of each confirmed black frame for diagnostics.
     /// </summary>
