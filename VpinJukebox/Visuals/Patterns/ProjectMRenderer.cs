@@ -116,6 +116,9 @@ public sealed class ProjectMRenderer : IDisposable
     /// <summary>Top percentile (0-100) of brightest pixels to average for black-frame detection.</summary>
     public static double BlackCheckPercentile { get; set; } = 5.0;
 
+    /// <summary>Luminance threshold below which a frame is considered black.</summary>
+    public static double BlackCheckLuminanceThreshold { get; set; } = 10.0;
+
     // Black-frame detection state
     private long _blackCheckTargetTick = -1;
     private int _blackCheckHitCount;
@@ -624,14 +627,15 @@ public sealed class ProjectMRenderer : IDisposable
             }
 
             // Sample dominant color after preset switch delay
+            ColorAnalysis? colorAnalysis = null;
             if (_colorSampleTargetTick >= 0 && _colorSampleWatch.ElapsedTicks >= _colorSampleTargetTick)
             {
                 _colorSampleTargetTick = -1;
                 try
                 {
-                    var analysis = FrameColorAnalyzer.GetDominantColorBand(_width, _height);
-                    Log($"Dominant color band: {analysis.Color} (brightness: {analysis.Brightness:F3})");
-                    ColorBandChanged?.Invoke(analysis);
+                    colorAnalysis = FrameColorAnalyzer.GetDominantColorBand(_width, _height);
+                    Log($"Dominant color band: {colorAnalysis.Value.Color} (brightness: {colorAnalysis.Value.Brightness:F3}, luminance: {colorAnalysis.Value.TopAvgLuminance:F2})");
+                    ColorBandChanged?.Invoke(colorAnalysis.Value);
                 }
                 catch (Exception ex)
                 {
@@ -646,7 +650,20 @@ public sealed class ProjectMRenderer : IDisposable
                 _blackCheckTargetTick = -1;
                 try
                 {
-                    if (IsFrameBlack())
+                    // First check: use luminance from color analysis if available (free — no extra glReadPixels)
+                    bool isBlack;
+                    double luminance;
+                    if (_blackCheckHitCount == 0 && colorAnalysis.HasValue)
+                    {
+                        luminance = colorAnalysis.Value.TopAvgLuminance;
+                        isBlack = luminance < BlackCheckLuminanceThreshold;
+                    }
+                    else
+                    {
+                        isBlack = IsFrameBlack(out luminance);
+                    }
+
+                    if (isBlack)
                     {
                         _blackCheckHitCount++;
                         if (_blackCheckHitCount >= BlackCheckRequiredHits)
@@ -658,8 +675,8 @@ public sealed class ProjectMRenderer : IDisposable
                                 relativeName = relativeName[PresetPath.Length..].TrimStart('\\', '/');
                             relativeName = relativeName.Replace('\\', '/');
 
-                            Log($"Black frame CONFIRMED ({_blackCheckHitCount}/{BlackCheckRequiredHits}) — preset: {relativeName}");
-                            ProjectMPresetMonitorLog.Add(relativeName, PresetMonitorMode >= 2 ? "black_moved" : "black_logged");
+                            Log($"Black frame CONFIRMED ({_blackCheckHitCount}/{BlackCheckRequiredHits}) — preset: {relativeName} (luminance: {luminance:F2})");
+                            ProjectMPresetMonitorLog.Add(relativeName, PresetMonitorMode >= 2 ? "black_moved" : "black_logged", luminance);
 
                             if (path != null)
                                 BlackPresetDetected?.Invoke(path);
@@ -736,7 +753,7 @@ public sealed class ProjectMRenderer : IDisposable
     /// falsely flagged.
     /// Must be called while the GL context is current and inside _nativeLock.
     /// </summary>
-    private bool IsFrameBlack(int sampleStep = 4, double luminanceThreshold = 10.0)
+    private bool IsFrameBlack(out double topAvgLuminance, int sampleStep = 4)
     {
         int pixelCount = _width * _height;
         byte[] pixels = new byte[pixelCount * 4];
@@ -753,7 +770,7 @@ public sealed class ProjectMRenderer : IDisposable
         }
 
         int sampleCount = ((_height - 1) / sampleStep + 1) * ((_width - 1) / sampleStep + 1);
-        if (sampleCount == 0) return true;
+        if (sampleCount == 0) { topAvgLuminance = 0; return true; }
 
         byte[] luminances = new byte[sampleCount];
         int idx = 0;
@@ -777,8 +794,8 @@ public sealed class ProjectMRenderer : IDisposable
         for (int j = 0; j < topCount; j++)
             topSum += luminances[j];
 
-        double topAvg = (double)topSum / topCount;
-        return topAvg < luminanceThreshold;
+        topAvgLuminance = (double)topSum / topCount;
+        return topAvgLuminance < BlackCheckLuminanceThreshold;
     }
 
     /// <summary>

@@ -571,6 +571,7 @@ public partial class DmdWindow : JukeboxWindow
         ProjectMRenderer.BlackCheckRequiredHits = Math.Clamp(settings.ProjectMPresetMonitorBlackHits, 1, 20);
         ProjectMRenderer.BlackCheckIntervalSeconds = Math.Clamp(settings.ProjectMPresetMonitorIntervalSeconds, 0.5, 30.0);
         ProjectMRenderer.BlackCheckPercentile = Math.Clamp(settings.ProjectMPresetMonitorPercentile, 1.0, 50.0);
+        ProjectMRenderer.BlackCheckLuminanceThreshold = Math.Clamp(settings.ProjectMPresetMonitorThreshold, 1.0, 100.0);
         if (settings.ExcludeMandelbrotFromRandom && BlobTransition.CurrentRandomPattern == BlobPattern.Mandelbrot)
             BlobTransition.CurrentRandomPattern = BlobTransition.PickRandom(new Random());
         _backglassProxy.SetBlobCount(settings.BackglassBlobCount);
@@ -1746,6 +1747,7 @@ public partial class DmdWindow : JukeboxWindow
         ProjectMRenderer.ColorSampleDelaySeconds = Math.Clamp(_appSettings.ProjectMColorSampleDelaySeconds, 0.1, 30.0);
         ProjectMRenderer.BlackCheckRequiredHits = Math.Clamp(_appSettings.ProjectMPresetMonitorBlackHits, 1, 20);
         ProjectMRenderer.BlackCheckIntervalSeconds = Math.Clamp(_appSettings.ProjectMPresetMonitorIntervalSeconds, 0.5, 30.0);
+        ProjectMRenderer.BlackCheckLuminanceThreshold = Math.Clamp(_appSettings.ProjectMPresetMonitorThreshold, 1.0, 100.0);
         if (settingsWindow.ProjectMRestartRequired)
         {
             _playfieldProxy?.RestartProjectM();

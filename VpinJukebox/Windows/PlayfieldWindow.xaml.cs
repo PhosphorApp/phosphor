@@ -484,7 +484,7 @@ public partial class PlayfieldWindow : JukeboxWindow
         {
             pmPattern.Renderer.ColorBandChanged += analysis =>
             {
-                var tagged = new ColorAnalysis(analysis.Color, analysis.Brightness, SelfRendering: true);
+                var tagged = new ColorAnalysis(analysis.Color, analysis.Brightness, analysis.TopAvgLuminance, SelfRendering: true);
                 _lastColorAnalysis = tagged;
                 BlobColorBandChanged?.Invoke(tagged);
             };

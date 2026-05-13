@@ -15,6 +15,7 @@ internal static class FrameColorAnalyzer
     /// of the actual visible content.
     /// </summary>
     private const int BlackPixelThreshold = 30; // ~4% of max 765 (255*3)
+    private const double TopPercentile = 5.0;
 
     // Reusable pixel buffer to avoid allocating megabytes every frame.
     // Only accessed from the render thread so no locking is needed.
@@ -53,6 +54,11 @@ internal static class FrameColorAnalyzer
 
         long totalR = 0, totalG = 0, totalB = 0;
         int samples = 0;
+        int totalSamples = 0;
+
+        // Collect per-pixel luminance for top-percentile calculation
+        int estimatedSamples = (((height - 1) / sampleStep) + 1) * (((width - 1) / sampleStep) + 1);
+        byte[] luminances = new byte[estimatedSamples];
 
         for (int y = 0; y < height; y += sampleStep)
         {
@@ -64,7 +70,11 @@ internal static class FrameColorAnalyzer
                 byte g = pixels[i + 1];
                 byte b = pixels[i + 2];
 
-                // Skip near-black pixels so dark backgrounds don't dilute brightness
+                // Approximate luminance: (2R + 3G + B) / 6
+                luminances[totalSamples] = (byte)((r * 2 + g * 3 + b) / 6);
+                totalSamples++;
+
+                // Skip near-black pixels so dark backgrounds don't dilute color/brightness
                 if (r + g + b <= BlackPixelThreshold)
                     continue;
 
@@ -75,15 +85,28 @@ internal static class FrameColorAnalyzer
             }
         }
 
+        // Compute top-percentile luminance (brightest 5% of ALL sampled pixels)
+        double topAvgLuminance = 0;
+        if (totalSamples > 0)
+        {
+            Array.Sort(luminances, 0, totalSamples, Comparer<byte>.Create((a, b) => b.CompareTo(a)));
+            int topCount = Math.Max(1, (int)(totalSamples * TopPercentile / 100.0));
+            long topSum = 0;
+            for (int j = 0; j < topCount; j++)
+                topSum += luminances[j];
+            topAvgLuminance = (double)topSum / topCount;
+        }
+
         if (samples == 0)
-            return new ColorAnalysis(RoygbivColor.Red, 0f);
+            return new ColorAnalysis(RoygbivColor.Red, 0f, topAvgLuminance);
 
         double avgR = (double)totalR / samples / 255.0;
         double avgG = (double)totalG / samples / 255.0;
         double avgB = (double)totalB / samples / 255.0;
 
         RgbToHsb(avgR, avgG, avgB, out double hue, out double saturation, out double brightness);
-        return RoygbivHelper.Analyze(hue, saturation, brightness);
+        var result = RoygbivHelper.Analyze(hue, saturation, brightness);
+        return new ColorAnalysis(result.Color, result.Brightness, topAvgLuminance, result.SelfRendering);
     }
 
     private static void RgbToHsb(double r, double g, double b, out double hue, out double saturation, out double brightness)

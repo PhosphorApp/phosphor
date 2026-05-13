@@ -16,7 +16,7 @@ public enum RoygbivColor
 /// Result of color analysis containing the classified color band and relative brightness (0.0–1.0).
 /// </summary>
 /// <param name="SelfRendering">True when the analysis comes from a self-rendering pattern (ProjectM, Mandelbrot) rather than blob animation.</param>
-public readonly record struct ColorAnalysis(RoygbivColor Color, float Brightness, bool SelfRendering = false);
+public readonly record struct ColorAnalysis(RoygbivColor Color, float Brightness, double TopAvgLuminance = 0, bool SelfRendering = false);
 
 public static class RoygbivHelper
 {
@@ -32,7 +32,7 @@ public static class RoygbivHelper
             ? RoygbivColor.White
             : FromHue(hue);
 
-        return new ColorAnalysis(color, (float)brightness);
+        return new ColorAnalysis(color, (float)brightness, 0);
     }
 
     public static RoygbivColor FromHue(double hue)
