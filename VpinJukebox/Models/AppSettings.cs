@@ -106,6 +106,10 @@ public class AppSettings
     public double ProjectMPresetMonitorIntervalSeconds { get; set; } = 2.5;
     public double ProjectMPresetMonitorPercentile { get; set; } = 5.0;
     public double ProjectMPresetMonitorThreshold { get; set; } = 10.0;
+    /// <summary>
+    /// When true, saves a PNG snapshot of each confirmed black frame for diagnostics.
+    /// </summary>
+    public bool ProjectMPresetMonitorSaveBlackFrame { get; set; }
     public int DmdRotation { get; set; }
     public QueuePosition DmdQueuePosition { get; set; } = QueuePosition.Right;
     public int DmdPlayButtonSizeModifier { get; set; }

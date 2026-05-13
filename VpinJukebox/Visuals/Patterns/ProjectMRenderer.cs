@@ -119,6 +119,9 @@ public sealed class ProjectMRenderer : IDisposable
     /// <summary>Luminance threshold below which a frame is considered black.</summary>
     public static double BlackCheckLuminanceThreshold { get; set; } = 10.0;
 
+    /// <summary>When true, saves a PNG snapshot of each confirmed black frame for diagnostics.</summary>
+    public static bool SaveBlackFrame { get; set; }
+
     // Black-frame detection state
     private long _blackCheckTargetTick = -1;
     private int _blackCheckHitCount;
@@ -691,6 +694,14 @@ public sealed class ProjectMRenderer : IDisposable
                             Log($"Black frame CONFIRMED ({_blackCheckHitCount}/{BlackCheckRequiredHits}) — preset: {relativeName} (luminance: {luminance:F2})");
                             ProjectMPresetMonitorLog.Add(relativeName, PresetMonitorMode >= 2 ? "black_moved" : "black_logged", luminance);
 
+                            if (SaveBlackFrame)
+                            {
+                                byte[] snapshot = _flippedBuffer.ToArray();
+                                int w = _width, h = _height;
+                                string name = relativeName;
+                                Task.Run(() => SaveBlackFrameSnapshot(snapshot, w, h, name));
+                            }
+
                             if (path != null)
                                 BlackPresetDetected?.Invoke(path);
                         }
@@ -744,6 +755,39 @@ public sealed class ProjectMRenderer : IDisposable
         finally
         {
             Monitor.Exit(_nativeLock);
+        }
+    }
+
+    /// <summary>
+    /// Saves a PNG snapshot of a black frame for diagnostics.
+    /// Called on a background thread with a snapshot of the flipped BGRA pixel data.
+    /// </summary>
+    private static void SaveBlackFrameSnapshot(byte[] pixels, int width, int height, string presetName)
+    {
+        try
+        {
+            var bmp = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgra32, null);
+            bmp.Lock();
+            Marshal.Copy(pixels, 0, bmp.BackBuffer, pixels.Length);
+            bmp.AddDirtyRect(new Int32Rect(0, 0, width, height));
+            bmp.Unlock();
+            bmp.Freeze();
+
+            string safeName = string.Join("_", presetName.Split(Path.GetInvalidFileNameChars()));
+            string dir = Path.Combine(PresetPath ?? ".", "_BlackFrames");
+            Directory.CreateDirectory(dir);
+            string path = Path.Combine(dir, $"{safeName}.png");
+
+            using var stream = File.Create(path);
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bmp));
+            encoder.Save(stream);
+
+            Log($"Black frame snapshot saved: {path}");
+        }
+        catch (Exception ex)
+        {
+            Log($"Failed to save black frame snapshot: {ex.Message}");
         }
     }
 
