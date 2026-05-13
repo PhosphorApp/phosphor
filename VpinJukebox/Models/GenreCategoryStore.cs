@@ -37,11 +37,18 @@ public static class GenreCategoryStore
         WriteIndented = true
     };
 
+    // In-memory cache to avoid re-reading the file immediately after Save,
+    // which can stall for seconds due to Windows Defender real-time scanning.
+    private static List<GenreCategoryEntry>? _cachedEntries;
+
     /// <summary>
     /// Loads categories from categories.json. Returns an empty list if the file is missing or invalid.
     /// </summary>
     public static List<GenreCategoryEntry> Load()
     {
+        if (_cachedEntries != null)
+            return _cachedEntries;
+
         try
         {
             if (File.Exists(FilePath))
@@ -62,6 +69,7 @@ public static class GenreCategoryStore
                     }
                     if (needsSave)
                         Save(entries);
+                    _cachedEntries = entries;
                     return entries;
                 }
             }
@@ -125,10 +133,17 @@ public static class GenreCategoryStore
         {
             var json = JsonSerializer.Serialize(entries, JsonOptions);
             File.WriteAllText(FilePath, json);
+            _cachedEntries = entries;
         }
         catch (Exception ex)
         {
+            _cachedEntries = null;
             DebugLog.Log("GenreCategoryStore", $"Failed to save categories.json: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// Invalidates the in-memory cache, forcing the next Load to read from disk.
+    /// </summary>
+    public static void InvalidateCache() => _cachedEntries = null;
 }

@@ -876,6 +876,12 @@ public partial class BackglassWindow : JukeboxWindow
             SetBlobPattern(_blobPatternSetting);
     }
 
+    public void ApplyProjectMTuning()
+    {
+        if (_blobPattern == BlobPattern.ProjectM && _currentPattern is ProjectMPattern pm)
+            pm.ApplyTuningSettings();
+    }
+
     /// <summary>
     /// If the pattern is RandomPerSong, smoothly transition to a new random pattern.
     /// </summary>

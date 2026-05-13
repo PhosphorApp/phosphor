@@ -1609,8 +1609,8 @@ public partial class DmdWindow : JukeboxWindow
         {
             try
             {
-                await ApplySettingsFromWindow(settingsWindow);
                 _settingsAppliedDuringDialog = true;
+                await ApplySettingsFromWindow(settingsWindow);
                 _dimIdleTimer.Stop();
             }
             catch (Exception ex)
@@ -1746,12 +1746,19 @@ public partial class DmdWindow : JukeboxWindow
         ProjectMRenderer.ColorSampleDelaySeconds = Math.Clamp(_appSettings.ProjectMColorSampleDelaySeconds, 0.1, 30.0);
         ProjectMRenderer.BlackCheckRequiredHits = Math.Clamp(_appSettings.ProjectMPresetMonitorBlackHits, 1, 20);
         ProjectMRenderer.BlackCheckIntervalSeconds = Math.Clamp(_appSettings.ProjectMPresetMonitorIntervalSeconds, 0.5, 30.0);
-        if (settingsWindow.ProjectMSettingsChanged)
+        if (settingsWindow.ProjectMRestartRequired)
         {
             _playfieldProxy?.RestartProjectM();
             _backglassProxy?.RestartProjectM();
             _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.RestartProjectM());
-            LogStep("ProjectM restart dispatched (changed)");
+            LogStep("ProjectM restart dispatched (structural change)");
+        }
+        else if (settingsWindow.ProjectMTuningChanged)
+        {
+            _playfieldProxy?.ApplyProjectMTuning();
+            _backglassProxy?.ApplyProjectMTuning();
+            _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.ApplyProjectMTuning());
+            LogStep("ProjectM tuning applied in-place");
         }
         LogStep("Mandelbrot/ProjectM statics");
         if (settingsWindow.PlayfieldBlobsChanged)
@@ -1801,9 +1808,9 @@ public partial class DmdWindow : JukeboxWindow
 
         // Show/hide topper window
         if (_appSettings.ShowTopper)
-            _topperWindow?.Show();
+            _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.Show());
         else
-            _topperWindow?.Hide();
+            _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.Hide());
         LogStep("Show/Hide windows");
 
         // Update cache settings
@@ -1867,10 +1874,15 @@ public partial class DmdWindow : JukeboxWindow
             await Dispatcher.InvokeAsync(RestartMandelbrot);
             LogStep("Mandelbrot local restart");
         }
-        if (settingsWindow.ProjectMSettingsChanged)
+        if (settingsWindow.ProjectMRestartRequired)
         {
             await Dispatcher.InvokeAsync(RestartProjectM);
             LogStep("ProjectM local restart");
+        }
+        else if (settingsWindow.ProjectMTuningChanged)
+        {
+            await Dispatcher.InvokeAsync(ApplyProjectMTuning);
+            LogStep("ProjectM local tuning applied");
         }
     }
 
@@ -2742,6 +2754,12 @@ public partial class DmdWindow : JukeboxWindow
     {
         if (_ssBlobPattern == BlobPattern.ProjectM)
             SetBlobPattern(_ssBlobPatternSetting);
+    }
+
+    private void ApplyProjectMTuning()
+    {
+        if (_ssBlobPattern == BlobPattern.ProjectM && _ssCurrentPattern is ProjectMPattern pm)
+            pm.ApplyTuningSettings();
     }
 
     /// <summary>

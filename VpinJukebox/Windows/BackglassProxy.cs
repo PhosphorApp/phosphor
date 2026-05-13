@@ -117,6 +117,9 @@ public sealed class BackglassProxy
     public void RestartProjectM() =>
         _dispatcher.BeginInvoke(() => _window.RestartProjectM());
 
+    public void ApplyProjectMTuning() =>
+        _dispatcher.BeginInvoke(() => _window.ApplyProjectMTuning());
+
     public void OnSongChanged() =>
         _dispatcher.BeginInvoke(() => _window.OnSongChanged());
 

@@ -141,15 +141,28 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.DofRomName != _originalDofRomName;
 
     public bool ProjectMSettingsChanged =>
+        ProjectMRestartRequired || ProjectMTuningChanged;
+
+    /// <summary>
+    /// True when structural settings changed that require a full ProjectM restart
+    /// (render scale, preset/texture paths, enabled folders).
+    /// </summary>
+    public bool ProjectMRestartRequired =>
         Math.Abs(_settings.ProjectMRenderScale - _originalProjectMRenderScale) > 0.001 ||
+        _settings.ProjectMPresetPath != _originalProjectMPresetPath ||
+        _settings.ProjectMTexturePath != _originalProjectMTexturePath ||
+        !_settings.ProjectMEnabledFolders.SequenceEqual(_originalProjectMEnabledFolders);
+
+    /// <summary>
+    /// True when only tuning parameters changed that can be applied in-place
+    /// (duration, soft cut, hard cut, beat sensitivity, mesh size).
+    /// </summary>
+    public bool ProjectMTuningChanged =>
         _settings.ProjectMMeshSize != _originalProjectMMeshSize ||
         Math.Abs(_settings.ProjectMPresetDuration - _originalProjectMPresetDuration) > 0.001 ||
         Math.Abs(_settings.ProjectMSoftCutDuration - _originalProjectMSoftCut) > 0.001 ||
         _settings.ProjectMHardCutEnabled != _originalProjectMHardCut ||
-        Math.Abs(_settings.ProjectMBeatSensitivity - _originalProjectMBeatSensitivity) > 0.001 ||
-        _settings.ProjectMPresetPath != _originalProjectMPresetPath ||
-        _settings.ProjectMTexturePath != _originalProjectMTexturePath ||
-        !_settings.ProjectMEnabledFolders.SequenceEqual(_originalProjectMEnabledFolders);
+        Math.Abs(_settings.ProjectMBeatSensitivity - _originalProjectMBeatSensitivity) > 0.001;
 
     public bool MandelbrotSettingsChanged =>
         _settings.MandelbrotUseGpu != _originalMandelbrotUseGpu ||
@@ -337,6 +350,7 @@ public partial class SettingsWindow : JukeboxWindow
         SliderBlobCountDmd.Value = settings.DmdBlobCount;
         CbExcludeMandelbrot.IsChecked = settings.ExcludeMandelbrotFromRandom;
         CbExcludeProjectM.IsChecked = settings.ExcludeProjectMFromRandom;
+        UpdateBlobCountSliderStates();
 
         // ProjectM tuning
         SliderProjectMPresetDuration.Value = PresetDurationToIndex(settings.ProjectMPresetDuration);
@@ -1195,6 +1209,28 @@ public partial class SettingsWindow : JukeboxWindow
     {
         UpdateMandelbrotTuningVisibility();
         UpdateProjectMTuningVisibility();
+        UpdateBlobCountSliderStates();
+    }
+
+    /// <summary>
+    /// Hides blob-count sliders and their labels for patterns that don't use blobs (ProjectM, Mandelbrot).
+    /// </summary>
+    private void UpdateBlobCountSliderStates()
+    {
+        SetSliderForPattern(CbBlobPatternPlayfield, SliderBlobCountPlayfield, TxtBlobCountPlayfield);
+        SetSliderForPattern(CbBlobPatternBackglass, SliderBlobCountBackglass, TxtBlobCountBackglass);
+        SetSliderForPattern(CbBlobPatternTopper, SliderBlobCountTopper, TxtBlobCountTopper);
+        SetSliderForPattern(CbBlobPatternDmd, SliderBlobCountDmd, TxtBlobCountDmd);
+
+        static void SetSliderForPattern(System.Windows.Controls.ComboBox? cb, System.Windows.Controls.Slider? slider, System.Windows.Controls.TextBlock? label)
+        {
+            if (cb == null || slider == null) return;
+            var name = cb.SelectedItem as string ?? "";
+            var visible = name != "ProjectM" && name != "Mandelbrot";
+            var vis = visible ? Visibility.Visible : Visibility.Collapsed;
+            slider.Visibility = vis;
+            if (label != null) label.Visibility = vis;
+        }
     }
 
     private void UpdateMandelbrotTuningVisibility()

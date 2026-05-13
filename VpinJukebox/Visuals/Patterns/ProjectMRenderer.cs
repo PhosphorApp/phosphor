@@ -363,6 +363,26 @@ public sealed class ProjectMRenderer : IDisposable
     }
 
     /// <summary>
+    /// Applies tuning parameters (duration, sensitivity, mesh, etc.) to the
+    /// running projectM instance without recreating the OpenGL context or
+    /// reloading presets. Must be called on the UI/render thread.
+    /// </summary>
+    public void ApplyTuningSettings()
+    {
+        if (!_initialized || _disposed || _projectM == IntPtr.Zero) return;
+        lock (_nativeLock)
+        {
+            if (!_initialized || _disposed || _projectM == IntPtr.Zero) return;
+            projectm_set_preset_duration(_projectM, _isBrowsing ? 999999.0 : PresetDuration);
+            projectm_set_soft_cut_duration(_projectM, SoftCutDuration);
+            projectm_set_hard_cut_enabled(_projectM, _isBrowsing ? false : HardCutEnabled);
+            projectm_set_beat_sensitivity(_projectM, BeatSensitivity);
+            projectm_set_mesh_size(_projectM, MeshSize, MeshSize);
+            Log($"Tuning applied in-place: duration={PresetDuration}s, softCut={SoftCutDuration}s, hardCut={HardCutEnabled}, beat={BeatSensitivity}, mesh={MeshSize}");
+        }
+    }
+
+    /// <summary>
     /// Switches to a specific preset by index.
     /// </summary>
     public void SetPreset(uint index, bool hardCut = true)

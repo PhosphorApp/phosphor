@@ -31,6 +31,12 @@ public sealed class ProjectMPattern : BlobPatternBase
     /// </summary>
     public ProjectMRenderer? Renderer => _renderer;
 
+    /// <summary>
+    /// Applies tuning-only settings (duration, sensitivity, mesh, etc.) to the
+    /// running renderer without a full restart.
+    /// </summary>
+    public void ApplyTuningSettings() => _renderer?.ApplyTuningSettings();
+
     public ProjectMPattern(BlobPatternConfig config)
         : base(config) { }
 
