@@ -122,6 +122,9 @@ public sealed class ProjectMRenderer : IDisposable
     /// <summary>When true, saves a PNG snapshot of each confirmed black frame for diagnostics.</summary>
     public static bool SaveBlackFrame { get; set; }
 
+    /// <summary>When true, saves a PNG snapshot of each color-sampled frame for diagnostics.</summary>
+    public static bool SaveColorSampleFrame { get; set; }
+
     // Black-frame detection state
     private long _blackCheckTargetTick = -1;
     private int _blackCheckHitCount;
@@ -652,6 +655,19 @@ public sealed class ProjectMRenderer : IDisposable
                     colorAnalysis = FrameColorAnalyzer.GetDominantColorBand(_pixelBuffer, _width, _height, isBgra: true);
                     Log($"Dominant color band: {colorAnalysis.Value.Color} (brightness: {colorAnalysis.Value.Brightness:F3}, luminance: {colorAnalysis.Value.TopAvgLuminance:F2})");
                     ColorBandChanged?.Invoke(colorAnalysis.Value);
+
+                    if (SaveColorSampleFrame)
+                    {
+                        byte[] snapshot = _flippedBuffer.ToArray();
+                        int w = _width, h = _height;
+                        string colorName = colorAnalysis.Value.Color.ToString();
+                        string presetRelative = _currentPresetFullPath ?? "unknown";
+                        if (!string.IsNullOrEmpty(PresetPath) && presetRelative.StartsWith(PresetPath, StringComparison.OrdinalIgnoreCase))
+                            presetRelative = presetRelative[PresetPath.Length..].TrimStart('\\', '/');
+                        presetRelative = presetRelative.Replace('\\', '/').Replace('/', '_');
+                        string fileName = $"{colorName}-{presetRelative}";
+                        Task.Run(() => SaveFrameSnapshot(snapshot, w, h, fileName, "ColorSamples"));
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -699,7 +715,7 @@ public sealed class ProjectMRenderer : IDisposable
                                 byte[] snapshot = _flippedBuffer.ToArray();
                                 int w = _width, h = _height;
                                 string name = relativeName;
-                                Task.Run(() => SaveBlackFrameSnapshot(snapshot, w, h, name));
+                                Task.Run(() => SaveFrameSnapshot(snapshot, w, h, name, "BlackFrames"));
                             }
 
                             if (path != null)
@@ -759,10 +775,10 @@ public sealed class ProjectMRenderer : IDisposable
     }
 
     /// <summary>
-    /// Saves a PNG snapshot of a black frame for diagnostics.
+    /// Saves a PNG snapshot of a frame for diagnostics.
     /// Called on a background thread with a snapshot of the flipped BGRA pixel data.
     /// </summary>
-    private static void SaveBlackFrameSnapshot(byte[] pixels, int width, int height, string presetName)
+    private static void SaveFrameSnapshot(byte[] pixels, int width, int height, string fileName, string subFolder)
     {
         try
         {
@@ -773,8 +789,8 @@ public sealed class ProjectMRenderer : IDisposable
             bmp.Unlock();
             bmp.Freeze();
 
-            string safeName = string.Join("_", presetName.Split(Path.GetInvalidFileNameChars()));
-            string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs", "BlackFrames");
+            string safeName = string.Join("_", fileName.Split(Path.GetInvalidFileNameChars()));
+            string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs", subFolder);
             Directory.CreateDirectory(dir);
             string path = Path.Combine(dir, $"{safeName}.png");
 
@@ -783,11 +799,11 @@ public sealed class ProjectMRenderer : IDisposable
             encoder.Frames.Add(BitmapFrame.Create(bmp));
             encoder.Save(stream);
 
-            Log($"Black frame snapshot saved: {path}");
+            Log($"Frame snapshot saved: {path}");
         }
         catch (Exception ex)
         {
-            Log($"Failed to save black frame snapshot: {ex.Message}");
+            Log($"Failed to save frame snapshot: {ex.Message}");
         }
     }
 

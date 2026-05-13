@@ -573,6 +573,7 @@ public partial class DmdWindow : JukeboxWindow
         ProjectMRenderer.BlackCheckPercentile = Math.Clamp(settings.ProjectMPresetMonitorPercentile, 1.0, 50.0);
         ProjectMRenderer.BlackCheckLuminanceThreshold = Math.Clamp(settings.ProjectMPresetMonitorThreshold, 1.0, 100.0);
         ProjectMRenderer.SaveBlackFrame = settings.ProjectMPresetMonitorSaveBlackFrame;
+        ProjectMRenderer.SaveColorSampleFrame = settings.ProjectMSaveColorSampleFrame;
         if (settings.ExcludeMandelbrotFromRandom && BlobTransition.CurrentRandomPattern == BlobPattern.Mandelbrot)
             BlobTransition.CurrentRandomPattern = BlobTransition.PickRandom(new Random());
         _backglassProxy.SetBlobCount(settings.BackglassBlobCount);

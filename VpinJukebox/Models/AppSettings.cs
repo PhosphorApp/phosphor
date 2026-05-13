@@ -110,6 +110,10 @@ public class AppSettings
     /// When true, saves a PNG snapshot of each confirmed black frame for diagnostics.
     /// </summary>
     public bool ProjectMPresetMonitorSaveBlackFrame { get; set; }
+    /// <summary>
+    /// When true, saves a PNG snapshot of each color-sampled frame for diagnostics.
+    /// </summary>
+    public bool ProjectMSaveColorSampleFrame { get; set; }
     public int DmdRotation { get; set; }
     public QueuePosition DmdQueuePosition { get; set; } = QueuePosition.Right;
     public int DmdPlayButtonSizeModifier { get; set; }
