@@ -626,6 +626,19 @@ public sealed class ProjectMRenderer : IDisposable
                 return;
             }
 
+            // Read pixels from the GL framebuffer (single readback for WPF display,
+            // color analysis, and black-frame detection)
+            var handle = GCHandle.Alloc(_pixelBuffer, GCHandleType.Pinned);
+            try
+            {
+                glReadPixels(0, 0, _width, _height, GL_BGRA, GL_UNSIGNED_BYTE,
+                    handle.AddrOfPinnedObject());
+            }
+            finally
+            {
+                handle.Free();
+            }
+
             // Sample dominant color after preset switch delay
             ColorAnalysis? colorAnalysis = null;
             if (_colorSampleTargetTick >= 0 && _colorSampleWatch.ElapsedTicks >= _colorSampleTargetTick)
@@ -633,7 +646,7 @@ public sealed class ProjectMRenderer : IDisposable
                 _colorSampleTargetTick = -1;
                 try
                 {
-                    colorAnalysis = FrameColorAnalyzer.GetDominantColorBand(_width, _height);
+                    colorAnalysis = FrameColorAnalyzer.GetDominantColorBand(_pixelBuffer, _width, _height, isBgra: true);
                     Log($"Dominant color band: {colorAnalysis.Value.Color} (brightness: {colorAnalysis.Value.Brightness:F3}, luminance: {colorAnalysis.Value.TopAvgLuminance:F2})");
                     ColorBandChanged?.Invoke(colorAnalysis.Value);
                 }
@@ -650,7 +663,7 @@ public sealed class ProjectMRenderer : IDisposable
                 _blackCheckTargetTick = -1;
                 try
                 {
-                    // First check: use luminance from color analysis if available (free — no extra glReadPixels)
+                    // First check: use luminance from color analysis if available
                     bool isBlack;
                     double luminance;
                     if (_blackCheckHitCount == 0 && colorAnalysis.HasValue)
@@ -660,7 +673,7 @@ public sealed class ProjectMRenderer : IDisposable
                     }
                     else
                     {
-                        isBlack = IsFrameBlack(out luminance);
+                        isBlack = IsFrameBlack(_pixelBuffer, out luminance);
                     }
 
                     if (isBlack)
@@ -703,18 +716,6 @@ public sealed class ProjectMRenderer : IDisposable
                 }
             }
 
-            // Read pixels from the GL framebuffer
-            var handle = GCHandle.Alloc(_pixelBuffer, GCHandleType.Pinned);
-            try
-            {
-                glReadPixels(0, 0, _width, _height, GL_BGRA, GL_UNSIGNED_BYTE,
-                    handle.AddrOfPinnedObject());
-            }
-            finally
-            {
-                handle.Free();
-            }
-
             // OpenGL origin is bottom-left; WPF is top-left — flip vertically
             int stride = _width * 4;
             for (int y = 0; y < _height; y++)
@@ -747,33 +748,19 @@ public sealed class ProjectMRenderer : IDisposable
     }
 
     /// <summary>
-    /// Samples the current GL framebuffer and returns true if the frame is
+    /// Analyzes the provided pixel buffer and returns true if the frame is
     /// effectively all black. Uses the average luminance of the brightest 5%
     /// of sampled pixels so that small visuals surrounded by black are not
     /// falsely flagged.
-    /// Must be called while the GL context is current and inside _nativeLock.
+    /// The buffer must contain BGRA pixel data for the current frame dimensions.
     /// </summary>
-    private bool IsFrameBlack(out double topAvgLuminance, int sampleStep = 4)
+    private bool IsFrameBlack(byte[] pixels, out double topAvgLuminance, int sampleStep = 4)
     {
-        int pixelCount = _width * _height;
-        byte[] pixels = new byte[pixelCount * 4];
-
-        var handle = GCHandle.Alloc(pixels, GCHandleType.Pinned);
-        try
-        {
-            glReadPixels(0, 0, _width, _height, GL_RGBA, GL_UNSIGNED_BYTE,
-                handle.AddrOfPinnedObject());
-        }
-        finally
-        {
-            handle.Free();
-        }
-
         int sampleCount = ((_height - 1) / sampleStep + 1) * ((_width - 1) / sampleStep + 1);
         if (sampleCount == 0) { topAvgLuminance = 0; return true; }
 
-        byte[] luminances = new byte[sampleCount];
-        int idx = 0;
+        // Counting sort via 256 buckets — O(n) and avoids allocating a luminance array
+        Span<int> counts = stackalloc int[256];
 
         for (int y = 0; y < _height; y += sampleStep)
         {
@@ -781,18 +768,22 @@ public sealed class ProjectMRenderer : IDisposable
             for (int x = 0; x < _width; x += sampleStep)
             {
                 int i = rowOffset + x * 4;
-                // Fast approximate luminance: (2R + 3G + B) / 6
-                luminances[idx++] = (byte)((pixels[i] * 2 + pixels[i + 1] * 3 + pixels[i + 2]) / 6);
+                // BGRA order: B=[i], G=[i+1], R=[i+2]
+                int lum = (pixels[i + 2] * 2 + pixels[i + 1] * 3 + pixels[i]) / 6;
+                counts[lum]++;
             }
         }
 
-        // Sort descending and average the top percentile
-        Array.Sort(luminances, (a, b) => b.CompareTo(a));
+        // Average the top percentile (brightest pixels) using the bucket counts
         int topCount = Math.Max(1, (int)(sampleCount * BlackCheckPercentile / 100.0));
-
         long topSum = 0;
-        for (int j = 0; j < topCount; j++)
-            topSum += luminances[j];
+        int remaining = topCount;
+        for (int b = 255; b >= 0 && remaining > 0; b--)
+        {
+            int take = Math.Min(counts[b], remaining);
+            topSum += (long)b * take;
+            remaining -= take;
+        }
 
         topAvgLuminance = (double)topSum / topCount;
         return topAvgLuminance < BlackCheckLuminanceThreshold;

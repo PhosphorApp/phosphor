@@ -38,9 +38,8 @@ internal static class FrameColorAnalyzer
         int requiredSize = pixelCount * 4;
         if (_pixelBuffer == null || _pixelBuffer.Length < requiredSize)
             _pixelBuffer = new byte[requiredSize];
-        byte[] pixels = _pixelBuffer;
 
-        var handle = GCHandle.Alloc(pixels, GCHandleType.Pinned);
+        var handle = GCHandle.Alloc(_pixelBuffer, GCHandleType.Pinned);
         try
         {
             ProjectMInterop.glReadPixels(0, 0, width, height,
@@ -52,13 +51,32 @@ internal static class FrameColorAnalyzer
             handle.Free();
         }
 
+        return GetDominantColorBand(_pixelBuffer, width, height, isBgra: false, sampleStep);
+    }
+
+    /// <summary>
+    /// Analyzes a pre-read pixel buffer and returns the dominant <see cref="RoygbivColor"/>
+    /// by computing the average pixel color and mapping its hue to a color band.
+    /// Near-black pixels are excluded so brightness reflects visible content only.
+    /// </summary>
+    /// <param name="pixels">Pre-read pixel buffer (RGBA or BGRA).</param>
+    /// <param name="width">Framebuffer width in pixels.</param>
+    /// <param name="height">Framebuffer height in pixels.</param>
+    /// <param name="isBgra">True if the buffer uses BGRA channel order, false for RGBA.</param>
+    /// <param name="sampleStep">Sampling stride — every Nth pixel in each axis.</param>
+    public static ColorAnalysis GetDominantColorBand(byte[] pixels, int width, int height, bool isBgra, int sampleStep = 4)
+    {
+        // Channel offsets: BGRA → B=0,G=1,R=2; RGBA → R=0,G=1,B=2
+        int rOff = isBgra ? 2 : 0;
+        int gOff = 1;
+        int bOff = isBgra ? 0 : 2;
+
         long totalR = 0, totalG = 0, totalB = 0;
         int samples = 0;
-        int totalSamples = 0;
 
-        // Collect per-pixel luminance for top-percentile calculation
-        int estimatedSamples = (((height - 1) / sampleStep) + 1) * (((width - 1) / sampleStep) + 1);
-        byte[] luminances = new byte[estimatedSamples];
+        // Counting sort via 256 buckets for top-percentile luminance
+        Span<int> counts = stackalloc int[256];
+        int totalSamples = 0;
 
         for (int y = 0; y < height; y += sampleStep)
         {
@@ -66,12 +84,13 @@ internal static class FrameColorAnalyzer
             for (int x = 0; x < width; x += sampleStep)
             {
                 int i = rowOffset + x * 4;
-                byte r = pixels[i];
-                byte g = pixels[i + 1];
-                byte b = pixels[i + 2];
+                byte r = pixels[i + rOff];
+                byte g = pixels[i + gOff];
+                byte b = pixels[i + bOff];
 
                 // Approximate luminance: (2R + 3G + B) / 6
-                luminances[totalSamples] = (byte)((r * 2 + g * 3 + b) / 6);
+                int lum = (r * 2 + g * 3 + b) / 6;
+                counts[lum]++;
                 totalSamples++;
 
                 // Skip near-black pixels so dark backgrounds don't dilute color/brightness
@@ -89,11 +108,15 @@ internal static class FrameColorAnalyzer
         double topAvgLuminance = 0;
         if (totalSamples > 0)
         {
-            Array.Sort(luminances, 0, totalSamples, Comparer<byte>.Create((a, b) => b.CompareTo(a)));
             int topCount = Math.Max(1, (int)(totalSamples * TopPercentile / 100.0));
             long topSum = 0;
-            for (int j = 0; j < topCount; j++)
-                topSum += luminances[j];
+            int remaining = topCount;
+            for (int bucket = 255; bucket >= 0 && remaining > 0; bucket--)
+            {
+                int take = Math.Min(counts[bucket], remaining);
+                topSum += (long)bucket * take;
+                remaining -= take;
+            }
             topAvgLuminance = (double)topSum / topCount;
         }
 
