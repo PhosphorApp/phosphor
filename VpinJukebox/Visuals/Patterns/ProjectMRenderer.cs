@@ -5,7 +5,10 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Vortice.Direct3D;
 using Vortice.Direct3D9;
+using Vortice.Direct3D11;
+using Vortice.DXGI;
 using static VpinJukebox.ProjectMInterop;
 
 namespace VpinJukebox;
@@ -30,12 +33,17 @@ public sealed class ProjectMRenderer : IDisposable
 
     // ── Shared surface (zero-copy) path ──────────────────────────
     private bool _useSharedSurface;
+
+    // D3D11 device + shared texture (render target for OpenGL via WGL interop)
+    private ID3D11Device? _d3d11Device;
+    private ID3D11Texture2D? _d3d11Texture;
+
+    // D3D9Ex device + surface opened from the same DXGI shared handle (for WPF D3DImage)
     private IDirect3D9Ex? _d3d9;
     private IDirect3DDevice9Ex? _d3dDevice;
     private IDirect3DTexture9? _d3dTexture;
-    private IDirect3DSurface9? _d3dSurface;       // WGL interop target (non-shared)
-    private IDirect3DTexture9? _d3dSharedTexture;
-    private IDirect3DSurface9? _d3dSharedSurface; // D3DImage display target (shared handle)
+    private IDirect3DSurface9? _d3dSurface;
+
     private D3DImage? _d3dImage;
     private IntPtr _wglDxDevice;
     private IntPtr _wglDxObject;
@@ -429,10 +437,10 @@ public sealed class ProjectMRenderer : IDisposable
     }
 
     /// <summary>
-    /// Attempts to create a Direct3D9Ex device, a shared texture, and register it
-    /// with OpenGL via WGL_NV_DX_interop for zero-copy rendering to a WPF D3DImage.
-    /// Returns true on success; on failure the renderer falls back to WriteableBitmap.
-    /// Must be called after the GL context and GLEW are initialized.
+    /// Attempts to create a D3D11 device, a DXGI-shared texture, open it in D3D9Ex
+    /// for WPF D3DImage, and register it with OpenGL via WGL_NV_DX_interop for
+    /// zero-copy rendering. Returns true on success; on failure the renderer
+    /// falls back to WriteableBitmap. Must be called after the GL context and GLEW are initialized.
     /// </summary>
     private bool TryInitSharedSurface()
     {
@@ -465,15 +473,28 @@ public sealed class ProjectMRenderer : IDisposable
                 return false;
             }
 
-            // 3. Create D3D9Ex device
-            Log("Creating D3D9Ex device for shared surface...");
+            // 3. Create D3D11 device (BgraSupport required for DXGI shared-handle textures)
+            Log("Creating D3D11 device for shared surface...");
+            var featureLevels = new[] { FeatureLevel.Level_11_1, FeatureLevel.Level_11_0, FeatureLevel.Level_10_1, FeatureLevel.Level_10_0 };
+            D3D11.D3D11CreateDevice(
+                null,
+                DriverType.Hardware,
+                DeviceCreationFlags.BgraSupport,
+                featureLevels,
+                out _d3d11Device,
+                out _,
+                out _).CheckError();
+            Log($"D3D11 device created (feature level: {_d3d11Device!.FeatureLevel})");
+
+            // 4. Create D3D9Ex device (WPF D3DImage requires a D3D9 surface)
+            Log("Creating D3D9Ex device...");
             _d3d9 = D3D9.Direct3DCreate9Ex();
-            var presentParams = new PresentParameters
+            var presentParams = new Vortice.Direct3D9.PresentParameters
             {
                 Windowed = true,
-                SwapEffect = SwapEffect.Discard,
+                SwapEffect = Vortice.Direct3D9.SwapEffect.Discard,
                 PresentationInterval = PresentInterval.Immediate,
-                BackBufferFormat = Format.Unknown,
+                BackBufferFormat = Vortice.Direct3D9.Format.Unknown,
                 BackBufferWidth = 1,
                 BackBufferHeight = 1,
                 BackBufferCount = 1,
@@ -481,35 +502,35 @@ public sealed class ProjectMRenderer : IDisposable
 
             _d3dDevice = _d3d9.CreateDeviceEx(
                 0,
-                DeviceType.Hardware,
+                Vortice.Direct3D9.DeviceType.Hardware,
                 _hwnd,
-                CreateFlags.HardwareVertexProcessing | CreateFlags.Multithreaded | CreateFlags.FpuPreserve,
+                Vortice.Direct3D9.CreateFlags.HardwareVertexProcessing | Vortice.Direct3D9.CreateFlags.Multithreaded | Vortice.Direct3D9.CreateFlags.FpuPreserve,
                 presentParams);
 
-            // 4. Register D3D device with WGL
-            _wglDxDevice = _wglDXOpenDeviceNV(_d3dDevice.NativePointer);
+            // 5. Register D3D11 device with WGL (WGL_NV_DX_interop2 supports D3D10/11)
+            _wglDxDevice = _wglDXOpenDeviceNV(_d3d11Device.NativePointer);
             if (_wglDxDevice == IntPtr.Zero)
             {
-                Log($"wglDXOpenDeviceNV failed (Win32 error: {Marshal.GetLastWin32Error()}) — using fallback readback path");
+                Log($"wglDXOpenDeviceNV failed for D3D11 device (Win32 error: {Marshal.GetLastWin32Error()}) — using fallback readback path");
                 CleanupSharedSurface();
                 return false;
             }
-            Log($"wglDXOpenDeviceNV OK: device=0x{_wglDxDevice:X}");
+            Log($"wglDXOpenDeviceNV OK (D3D11): device=0x{_wglDxDevice:X}");
 
-            // 5. Create the shared texture and GL resources
+            // 6. Create the shared texture and GL resources
             if (!CreateSharedTextureResources())
             {
                 CleanupSharedSurface();
                 return false;
             }
 
-            // 6. Create WPF D3DImage — uses the shared-handle surface (required for cross-device access)
+            // 7. Create WPF D3DImage — uses the D3D9 surface backed by DXGI shared memory
             _d3dImage = new D3DImage();
             _d3dImage.Lock();
-            _d3dImage.SetBackBuffer(D3DResourceType.IDirect3DSurface9, _d3dSharedSurface!.NativePointer, true);
+            _d3dImage.SetBackBuffer(D3DResourceType.IDirect3DSurface9, _d3dSurface!.NativePointer, true);
             _d3dImage.Unlock();
 
-            Log($"Shared GPU surface initialized — zero-copy D3D9/GL interop active ({_width}x{_height})");
+            Log($"Shared GPU surface initialized — zero-copy D3D11/GL interop active ({_width}x{_height})");
             return true;
         }
         catch (Exception ex)
@@ -521,36 +542,61 @@ public sealed class ProjectMRenderer : IDisposable
     }
 
     /// <summary>
-    /// Creates the D3D9 shared texture, GL texture, FBO, and depth renderbuffer
-    /// for the current dimensions. Called during init and resize.
+    /// Creates the D3D11 shared texture, opens it in D3D9Ex, registers with GL,
+    /// and creates the FBO with depth/stencil for projectM rendering.
+    /// Called during init and resize.
     /// </summary>
     private bool CreateSharedTextureResources()
     {
-        if (_d3dDevice == null || _wglDxDevice == IntPtr.Zero)
+        if (_d3d11Device == null || _d3dDevice == null || _wglDxDevice == IntPtr.Zero)
             return false;
 
         Log($"Creating shared texture resources ({_width}x{_height})...");
 
-        // Create D3D9 render-target texture. Note: do NOT use a shared handle here —
-        // wglDXRegisterObjectNV is incompatible with shared-handle textures on NVIDIA.
-        // D3DImage can still access it because we use D3D9Ex and SetBackBuffer each frame.
+        // 1. Create D3D11 render-target texture with DXGI shared handle
+        var texDesc = new Texture2DDescription
+        {
+            Width = (uint)_width,
+            Height = (uint)_height,
+            MipLevels = 1,
+            ArraySize = 1,
+            Format = Vortice.DXGI.Format.B8G8R8A8_UNorm,
+            SampleDescription = new SampleDescription(1, 0),
+            Usage = Vortice.Direct3D11.ResourceUsage.Default,
+            BindFlags = BindFlags.RenderTarget | BindFlags.ShaderResource,
+            MiscFlags = Vortice.Direct3D11.ResourceOptionFlags.Shared,
+        };
+        _d3d11Texture = _d3d11Device.CreateTexture2D(texDesc);
+        Log($"  D3D11 texture created: 0x{_d3d11Texture.NativePointer:X}");
+
+        // 2. Get DXGI shared handle from D3D11 texture
+        using var dxgiResource = _d3d11Texture.QueryInterface<IDXGIResource>();
+        IntPtr sharedHandle = dxgiResource.SharedHandle;
+        if (sharedHandle == IntPtr.Zero)
+        {
+            Log("  DXGI shared handle is null — cannot share with D3D9");
+            return false;
+        }
+        Log($"  DXGI shared handle: 0x{sharedHandle:X}");
+
+        // 3. Open the shared handle in D3D9Ex as a texture (same GPU memory)
         _d3dTexture = _d3dDevice.CreateTexture(
             (uint)_width, (uint)_height, 1,
             Vortice.Direct3D9.Usage.RenderTarget,
-            Format.A8R8G8B8,
-            Pool.Default);
+            Vortice.Direct3D9.Format.A8R8G8B8,
+            Pool.Default,
+            ref sharedHandle);
         _d3dSurface = _d3dTexture.GetSurfaceLevel(0);
-        Log($"  D3D9 texture created: surface=0x{_d3dSurface.NativePointer:X}");
+        Log($"  D3D9 texture opened from shared handle: surface=0x{_d3dSurface.NativePointer:X}");
 
-        // Create GL texture that will share the D3D surface
+        // 4. Create GL texture and register the D3D11 texture with WGL_NV_DX_interop
         glGenTextures(1, out _glTexture);
         Log($"  GL texture created: id={_glTexture}");
 
-        // Register the D3D texture with OpenGL via WGL_NV_DX_interop
-        // Note: must pass the IDirect3DTexture9 pointer (not surface) when target is GL_TEXTURE_2D
+        // Register the D3D11 texture with OpenGL
         _wglDxObject = _wglDXRegisterObjectNV!(
             _wglDxDevice,
-            _d3dTexture.NativePointer,
+            _d3d11Texture.NativePointer,
             _glTexture,
             GL_TEXTURE_2D,
             WGL_ACCESS_WRITE_DISCARD_NV);
@@ -563,7 +609,7 @@ public sealed class ProjectMRenderer : IDisposable
         }
         Log($"  wglDXRegisterObjectNV OK: handle=0x{_wglDxObject:X}");
 
-        // Create FBO and attach the shared texture as color attachment
+        // 5. Create FBO and attach the shared texture as color attachment
         _glGenFramebuffers!(1, out _glFbo);
         _glBindFramebuffer!(GL_FRAMEBUFFER, _glFbo);
         Log($"  FBO created: id={_glFbo}");
@@ -588,27 +634,13 @@ public sealed class ProjectMRenderer : IDisposable
         }
         Log($"  FBO complete — shared texture resources ready");
 
-        // Leave FBO bound — projectM will render into it
         _glBindFramebuffer!(GL_FRAMEBUFFER, 0);
-
-        // Create a second D3D9 texture WITH a shared handle for D3DImage display.
-        // WPF's internal D3D device needs a shared handle to access cross-device textures.
-        // We'll StretchRect (GPU-side copy) from the WGL interop surface to this one each frame.
-        IntPtr sharedHandle = IntPtr.Zero;
-        _d3dSharedTexture = _d3dDevice.CreateTexture(
-            (uint)_width, (uint)_height, 1,
-            Vortice.Direct3D9.Usage.RenderTarget,
-            Format.A8R8G8B8,
-            Pool.Default,
-            ref sharedHandle);
-        _d3dSharedSurface = _d3dSharedTexture.GetSurfaceLevel(0);
-        Log($"  D3D9 shared display texture created: surface=0x{_d3dSharedSurface.NativePointer:X}, handle=0x{sharedHandle:X}");
 
         return true;
     }
 
     /// <summary>
-    /// Tears down only the shared texture/FBO resources (not the D3D device or WGL device handle).
+    /// Tears down only the shared texture/FBO resources (not the devices or WGL device handle).
     /// Used during resize to recreate at new dimensions.
     /// </summary>
     private void DestroySharedTextureResources()
@@ -641,14 +673,12 @@ public sealed class ProjectMRenderer : IDisposable
         _d3dSurface = null;
         _d3dTexture?.Dispose();
         _d3dTexture = null;
-        _d3dSharedSurface?.Dispose();
-        _d3dSharedSurface = null;
-        _d3dSharedTexture?.Dispose();
-        _d3dSharedTexture = null;
+        _d3d11Texture?.Dispose();
+        _d3d11Texture = null;
     }
 
     /// <summary>
-    /// Full cleanup of all shared surface resources including D3D device.
+    /// Full cleanup of all shared surface resources including devices.
     /// </summary>
     private void CleanupSharedSurface()
     {
@@ -667,6 +697,8 @@ public sealed class ProjectMRenderer : IDisposable
             _d3dDevice = null;
             _d3d9?.Dispose();
             _d3d9 = null;
+            _d3d11Device?.Dispose();
+            _d3d11Device = null;
         }
         catch (Exception ex) when (ex is FileNotFoundException or FileLoadException or TypeLoadException)
         {
@@ -706,10 +738,10 @@ public sealed class ProjectMRenderer : IDisposable
                 {
                     // Recreate shared texture resources at new size
                     DestroySharedTextureResources();
-                    if (CreateSharedTextureResources() && _d3dSharedSurface != null)
+                    if (CreateSharedTextureResources() && _d3dSurface != null)
                     {
                         _d3dImage!.Lock();
-                        _d3dImage.SetBackBuffer(D3DResourceType.IDirect3DSurface9, _d3dSharedSurface.NativePointer, true);
+                        _d3dImage.SetBackBuffer(D3DResourceType.IDirect3DSurface9, _d3dSurface.NativePointer, true);
                         _d3dImage.Unlock();
                     }
                     else
@@ -1108,21 +1140,12 @@ public sealed class ProjectMRenderer : IDisposable
             _wglDXUnlockObjectsNV!(_wglDxDevice, 1, [_wglDxObject]);
         }
 
-        // GPU-side copy from the WGL interop surface (non-shared) to the shared-handle
-        // surface that WPF's internal D3D device can access cross-device.
-        try
-        {
-            var fullRect = new Vortice.Direct3D9.Rect(0, 0, _width, _height);
-            _d3dDevice!.StretchRect(_d3dSurface!, fullRect, _d3dSharedSurface!, fullRect, Vortice.Direct3D9.TextureFilter.None);
-        }
-        catch (Exception ex)
-        {
-            if (_frameCount <= 5 || (_frameCount % 300) == 0)
-                Log($"  StretchRect FAILED (frame #{_frameCount}): {ex.Message}");
-            return;
-        }
+        // GPU-side synchronization: D3D11 flush ensures all writes are committed
+        // before WPF/D3D9 reads from the shared surface.
+        _d3d11Device?.ImmediateContext.Flush();
 
-        // Update D3DImage with the shared-handle surface
+        // Update D3DImage — the D3D9 surface is backed by the same DXGI shared memory
+        // that the D3D11 texture writes to, so no copy is needed.
         try
         {
             if (!_d3dImage!.IsFrontBufferAvailable)
@@ -1132,7 +1155,7 @@ public sealed class ProjectMRenderer : IDisposable
                 return;
             }
             _d3dImage.Lock();
-            _d3dImage.SetBackBuffer(D3DResourceType.IDirect3DSurface9, _d3dSharedSurface!.NativePointer, true);
+            _d3dImage.SetBackBuffer(D3DResourceType.IDirect3DSurface9, _d3dSurface!.NativePointer, true);
             _d3dImage.AddDirtyRect(new Int32Rect(0, 0, _width, _height));
             _d3dImage.Unlock();
             if (_frameCount <= 3)
