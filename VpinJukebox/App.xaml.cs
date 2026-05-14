@@ -123,10 +123,23 @@ public partial class App : Application
                 _dmdWindow.Focus();
             });
 
-            // Auto-play queue on start if enabled and queue has items
-            if (_settings.AutoPlayQueueOnStart && viewModel.Queue.Count > 0)
+            // Restore last queue position
+            int restoreIndex = _settings.LastQueueIndex;
+            if (restoreIndex >= 0 && restoreIndex < viewModel.Queue.Count)
             {
-                DebugLog.Log("App", "Deferred startup: auto-playing queue");
+                if (_settings.AutoPlayQueueOnStart)
+                {
+                    DebugLog.Log("App", $"Deferred startup: auto-playing queue from index {restoreIndex}");
+                    viewModel.PlayFromQueueIndex(restoreIndex);
+                }
+                else
+                {
+                    viewModel.QueueIndex = restoreIndex;
+                }
+            }
+            else if (_settings.AutoPlayQueueOnStart && viewModel.Queue.Count > 0)
+            {
+                DebugLog.Log("App", "Deferred startup: auto-playing queue from start");
                 viewModel.PlayCommand.Execute(null);
             }
 
@@ -257,6 +270,7 @@ public partial class App : Application
         {
             _settings.RepeatEnabled = vmSettings.RepeatEnabled;
             _settings.AutoDjEnabled = vmSettings.AutoDjEnabled;
+            _settings.LastQueueIndex = vmSettings.LastKnownQueueIndex;
         }
         _settings.Save();
 

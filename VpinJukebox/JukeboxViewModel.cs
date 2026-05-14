@@ -242,9 +242,18 @@ public partial class JukeboxViewModel : ObservableObject
         set
         {
             if (SetProperty(ref _queueIndex, value))
+            {
+                if (value >= 0)
+                    LastKnownQueueIndex = value;
                 OnPropertyChanged(nameof(CurrentQueueItem));
+            }
         }
     }
+
+    /// <summary>
+    /// Remembers the last non-negative queue index for persistence across sessions.
+    /// </summary>
+    public int LastKnownQueueIndex { get; private set; } = -1;
 
     /// <summary>
     /// The queue item currently being played, or null if nothing is playing.
@@ -2254,8 +2263,13 @@ public partial class JukeboxViewModel : ObservableObject
         }
         else if (!IsPlaying && Queue.Count > 0)
         {
-            QueueIndex = -1; // Reset so PlayNext starts at 0
-            PlayNext();
+            if (_queueIndex >= 0 && _queueIndex < Queue.Count)
+                PlayFromQueueIndex(_queueIndex);
+            else
+            {
+                QueueIndex = -1; // Reset so PlayNext starts at 0
+                PlayNext();
+            }
         }
     }
 

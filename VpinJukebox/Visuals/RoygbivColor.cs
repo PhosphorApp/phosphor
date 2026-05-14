@@ -43,7 +43,7 @@ public static class RoygbivHelper
             < 30 => RoygbivColor.Red,
             < 60 => RoygbivColor.Orange,
             < 90 => RoygbivColor.Yellow,
-            < 150 => RoygbivColor.Green,
+            < 180 => RoygbivColor.Green,
             < 210 => RoygbivColor.Blue,
             < 270 => RoygbivColor.Indigo,
             < 330 => RoygbivColor.Violet,
