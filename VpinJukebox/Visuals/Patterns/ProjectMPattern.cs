@@ -76,6 +76,14 @@ public sealed class ProjectMPattern : BlobPatternBase
             Opacity = 0,
         };
 
+        // D3DImage shared surface renders with OpenGL's bottom-left origin;
+        // flip vertically so it displays correctly in WPF's top-left coordinate system.
+        if (_renderer != null && _renderer.IsUsingSharedSurface)
+        {
+            _image.RenderTransformOrigin = new System.Windows.Point(0.5, 0.5);
+            _image.RenderTransform = new ScaleTransform(1, -1);
+        }
+
         _brushes.Add(new SolidColorBrush(Colors.Black));
         _gradBrushes.Add(new RadialGradientBrush());
 
@@ -162,6 +170,17 @@ public sealed class ProjectMPattern : BlobPatternBase
             _image.Width = e.NewSize.Width;
             _image.Height = e.NewSize.Height;
             _image.Source = _renderer.ImageSource;
+
+            // Update flip transform in case render path changed during resize fallback
+            if (_renderer.IsUsingSharedSurface)
+            {
+                _image.RenderTransformOrigin = new System.Windows.Point(0.5, 0.5);
+                _image.RenderTransform = new ScaleTransform(1, -1);
+            }
+            else
+            {
+                _image.RenderTransform = null;
+            }
         }
     }
 

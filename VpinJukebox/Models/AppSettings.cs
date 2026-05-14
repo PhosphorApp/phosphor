@@ -102,6 +102,12 @@ public class AppSettings
     /// 0 = off, 1 = log black presets, 2 = log and move to Deactivated folder.
     /// </summary>
     public int ProjectMPresetMonitor { get; set; }
+    /// <summary>
+    /// When true, projectM renders via the software readback path (glReadPixels + WriteableBitmap).
+    /// When false, attempts the zero-copy D3D9/GL shared-surface path. The shared-surface path is
+    /// faster but renders black on some NVIDIA + WPF D3DImage configurations.
+    /// </summary>
+    public bool ProjectMSoftwareRender { get; set; } = true;
     public int ProjectMPresetMonitorBlackHits { get; set; } = 5;
     public double ProjectMPresetMonitorIntervalSeconds { get; set; } = 2.5;
     public double ProjectMPresetMonitorPercentile { get; set; } = 5.0;

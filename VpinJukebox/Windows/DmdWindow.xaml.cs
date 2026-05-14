@@ -568,6 +568,7 @@ public partial class DmdWindow : JukeboxWindow
         ProjectMRenderer.ColorSampleDelaySeconds = Math.Clamp(settings.ProjectMColorSampleDelaySeconds, 0.1, 30.0);
         ProjectMPresetLog.Enabled = settings.ProjectMPresetHistoryEnabled;
         ProjectMRenderer.PresetMonitorMode = Math.Clamp(settings.ProjectMPresetMonitor, 0, 2);
+        ProjectMRenderer.SoftwareRender = settings.ProjectMSoftwareRender;
         ProjectMRenderer.BlackCheckRequiredHits = Math.Clamp(settings.ProjectMPresetMonitorBlackHits, 1, 20);
         ProjectMRenderer.BlackCheckIntervalSeconds = Math.Clamp(settings.ProjectMPresetMonitorIntervalSeconds, 0.5, 30.0);
         ProjectMRenderer.BlackCheckPercentile = Math.Clamp(settings.ProjectMPresetMonitorPercentile, 1.0, 50.0);

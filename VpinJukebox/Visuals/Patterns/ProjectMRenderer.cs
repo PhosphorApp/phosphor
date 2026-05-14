@@ -2,16 +2,18 @@ using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Security;
 using System.Windows;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Vortice.Direct3D9;
 using static VpinJukebox.ProjectMInterop;
 
 namespace VpinJukebox;
 
 /// <summary>
-/// Manages a hidden OpenGL context, a projectM instance, and pixel readback
-/// to a <see cref="WriteableBitmap"/> for WPF display. Same architecture as
-/// <see cref="MandelbrotGpuRenderer"/> — fully self-contained and disposable.
+/// Manages a hidden OpenGL context, a projectM instance, and either a
+/// zero-copy D3D9/OpenGL shared surface (<see cref="D3DImage"/>) or a
+/// fallback pixel-readback path (<see cref="WriteableBitmap"/>) for WPF display.
 /// </summary>
 public sealed class ProjectMRenderer : IDisposable
 {
@@ -20,14 +22,52 @@ public sealed class ProjectMRenderer : IDisposable
     private IntPtr _hglrc;
     private IntPtr _projectM;
     private IntPtr _playlist;
-    private WriteableBitmap? _bitmap;
-    private byte[]? _pixelBuffer;
-    private byte[]? _flippedBuffer;
     private int _width;
     private int _height;
     private volatile bool _disposed;
     private volatile bool _initialized;
     private bool _isBrowsing;
+
+    // ── Shared surface (zero-copy) path ──────────────────────────
+    private bool _useSharedSurface;
+    private IDirect3D9Ex? _d3d9;
+    private IDirect3DDevice9Ex? _d3dDevice;
+    private IDirect3DTexture9? _d3dTexture;
+    private IDirect3DSurface9? _d3dSurface;       // WGL interop target (non-shared)
+    private IDirect3DTexture9? _d3dSharedTexture;
+    private IDirect3DSurface9? _d3dSharedSurface; // D3DImage display target (shared handle)
+    private D3DImage? _d3dImage;
+    private IntPtr _wglDxDevice;
+    private IntPtr _wglDxObject;
+    private uint _glTexture;
+    private uint _glFbo;
+    private uint _glDepthRb;
+
+    // WGL_NV_DX_interop function pointers
+    private WglDXOpenDeviceNVDelegate? _wglDXOpenDeviceNV;
+    private WglDXCloseDeviceNVDelegate? _wglDXCloseDeviceNV;
+    private WglDXRegisterObjectNVDelegate? _wglDXRegisterObjectNV;
+    private WglDXUnregisterObjectNVDelegate? _wglDXUnregisterObjectNV;
+    private WglDXLockObjectsNVDelegate? _wglDXLockObjectsNV;
+    private WglDXUnlockObjectsNVDelegate? _wglDXUnlockObjectsNV;
+
+    // GL extension function pointers
+    private GlGenFramebuffersDelegate? _glGenFramebuffers;
+    private GlDeleteFramebuffersDelegate? _glDeleteFramebuffers;
+    private GlBindFramebufferDelegate? _glBindFramebuffer;
+    private GlFramebufferTexture2DDelegate? _glFramebufferTexture2D;
+    private GlGenRenderbuffersDelegate? _glGenRenderbuffers;
+    private GlDeleteRenderbuffersDelegate? _glDeleteRenderbuffers;
+    private GlBindRenderbufferDelegate? _glBindRenderbuffer;
+    private GlRenderbufferStorageDelegate? _glRenderbufferStorage;
+    private GlFramebufferRenderbufferDelegate? _glFramebufferRenderbuffer;
+    private GlCheckFramebufferStatusDelegate? _glCheckFramebufferStatus;
+    private GlBlitFramebufferDelegate? _glBlitFramebuffer;
+
+    // ── Fallback (readback) path ─────────────────────────────────
+    private WriteableBitmap? _bitmap;
+    private byte[]? _pixelBuffer;
+    private byte[]? _flippedBuffer;
 
     /// <summary>
     /// Serializes all native projectM/OpenGL calls to prevent concurrent access
@@ -35,8 +75,11 @@ public sealed class ProjectMRenderer : IDisposable
     /// </summary>
     private readonly object _nativeLock = new();
 
-    public ImageSource? ImageSource => _bitmap;
+    public ImageSource? ImageSource => _useSharedSurface ? (ImageSource?)_d3dImage : _bitmap;
     public bool IsAvailable => _initialized && !_disposed;
+
+    /// <summary>True when the zero-copy D3D9/GL shared surface path is active.</summary>
+    public bool IsUsingSharedSurface => _useSharedSurface;
 
     /// <summary>Gets the total number of presets in the playlist.</summary>
     public uint PresetCount => _playlist != IntPtr.Zero ? projectm_playlist_size(_playlist) : 0;
@@ -100,6 +143,13 @@ public sealed class ProjectMRenderer : IDisposable
     /// Preset monitor mode: 0 = off, 1 = log black presets, 2 = log and move to Deactivated.
     /// </summary>
     public static int PresetMonitorMode { get; set; }
+
+    /// <summary>
+    /// When true, renders via the software readback path. When false, attempts the
+    /// zero-copy D3D9/GL shared-surface path (faster but renders black on some
+    /// NVIDIA + WPF D3DImage configurations).
+    /// </summary>
+    public static bool SoftwareRender { get; set; } = true;
 
     /// <summary>
     /// Raised when a preset is confirmed black after multiple consecutive samples.
@@ -237,6 +287,41 @@ public sealed class ProjectMRenderer : IDisposable
 
             glViewport(0, 0, _width, _height);
 
+            // Resolve GL extension function pointers needed for FBO rendering
+            _glGenFramebuffers = GetGlProc<GlGenFramebuffersDelegate>("glGenFramebuffers");
+            _glDeleteFramebuffers = GetGlProc<GlDeleteFramebuffersDelegate>("glDeleteFramebuffers");
+            _glBindFramebuffer = GetGlProc<GlBindFramebufferDelegate>("glBindFramebuffer");
+            _glFramebufferTexture2D = GetGlProc<GlFramebufferTexture2DDelegate>("glFramebufferTexture2D");
+            _glGenRenderbuffers = GetGlProc<GlGenRenderbuffersDelegate>("glGenRenderbuffers");
+            _glDeleteRenderbuffers = GetGlProc<GlDeleteRenderbuffersDelegate>("glDeleteRenderbuffers");
+            _glBindRenderbuffer = GetGlProc<GlBindRenderbufferDelegate>("glBindRenderbuffer");
+            _glRenderbufferStorage = GetGlProc<GlRenderbufferStorageDelegate>("glRenderbufferStorage");
+            _glFramebufferRenderbuffer = GetGlProc<GlFramebufferRenderbufferDelegate>("glFramebufferRenderbuffer");
+            _glCheckFramebufferStatus = GetGlProc<GlCheckFramebufferStatusDelegate>("glCheckFramebufferStatus");
+            _glBlitFramebuffer = GetGlProc<GlBlitFramebufferDelegate>("glBlitFramebuffer");
+
+            // Try to set up D3D9/GL shared surface for zero-copy WPF display.
+            // Opt-in only: the shared-surface path works on some systems but renders
+            // black on others due to WPF D3DImage / D3D9Ex cross-device interop issues.
+            // Controlled by the ProjectMSoftwareRender setting (default true = use fallback).
+            if (!SoftwareRender)
+            {
+                try
+                {
+                    _useSharedSurface = TryInitSharedSurface();
+                }
+                catch (Exception ex) when (ex is FileNotFoundException or FileLoadException or TypeLoadException)
+                {
+                    Log($"Shared surface unavailable (missing dependency: {ex.Message}) — using fallback readback path");
+                    _useSharedSurface = false;
+                }
+            }
+            else
+            {
+                Log("Software render mode enabled (ProjectMSoftwareRender=true) — using fallback readback path");
+                _useSharedSurface = false;
+            }
+
             // Create projectM instance
             _projectM = projectm_create();
             if (_projectM == IntPtr.Zero)
@@ -314,13 +399,19 @@ public sealed class ProjectMRenderer : IDisposable
                 Log($"WARNING: Preset path not found or empty: '{PresetPath}'");
             }
 
-            // WriteableBitmap for WPF display (same as MandelbrotGpuRenderer)
-            _bitmap = new WriteableBitmap(_width, _height, 96, 96, PixelFormats.Bgra32, null);
+            // Fallback: WriteableBitmap + glReadPixels path
+            if (!_useSharedSurface)
+            {
+                _bitmap = new WriteableBitmap(_width, _height, 96, 96, PixelFormats.Bgra32, null);
+            }
+
+            // Pixel buffers for color/black-frame analysis (needed regardless of surface mode)
             _pixelBuffer = new byte[_width * _height * 4];
             _flippedBuffer = new byte[_width * _height * 4];
 
             _initialized = true;
-            Log("Initialization complete — projectM renderer ready");
+            var renderPath = _useSharedSurface ? "SHARED SURFACE (zero-copy D3D9/GL)" : "FALLBACK (WriteableBitmap + glReadPixels)";
+            Log($"Initialization complete — render path: {renderPath} ({_width}x{_height})");
             return true;
         }
         catch (DllNotFoundException ex)
@@ -335,6 +426,253 @@ public sealed class ProjectMRenderer : IDisposable
             Dispose();
             return false;
         }
+    }
+
+    /// <summary>
+    /// Attempts to create a Direct3D9Ex device, a shared texture, and register it
+    /// with OpenGL via WGL_NV_DX_interop for zero-copy rendering to a WPF D3DImage.
+    /// Returns true on success; on failure the renderer falls back to WriteableBitmap.
+    /// Must be called after the GL context and GLEW are initialized.
+    /// </summary>
+    private bool TryInitSharedSurface()
+    {
+        try
+        {
+            // 1. Check for WGL_NV_DX_interop extension
+            _wglDXOpenDeviceNV = GetWglProc<WglDXOpenDeviceNVDelegate>("wglDXOpenDeviceNV");
+            _wglDXCloseDeviceNV = GetWglProc<WglDXCloseDeviceNVDelegate>("wglDXCloseDeviceNV");
+            _wglDXRegisterObjectNV = GetWglProc<WglDXRegisterObjectNVDelegate>("wglDXRegisterObjectNV");
+            _wglDXUnregisterObjectNV = GetWglProc<WglDXUnregisterObjectNVDelegate>("wglDXUnregisterObjectNV");
+            _wglDXLockObjectsNV = GetWglProc<WglDXLockObjectsNVDelegate>("wglDXLockObjectsNV");
+            _wglDXUnlockObjectsNV = GetWglProc<WglDXUnlockObjectsNVDelegate>("wglDXUnlockObjectsNV");
+
+            if (_wglDXOpenDeviceNV == null || _wglDXCloseDeviceNV == null ||
+                _wglDXRegisterObjectNV == null || _wglDXUnregisterObjectNV == null ||
+                _wglDXLockObjectsNV == null || _wglDXUnlockObjectsNV == null)
+            {
+                Log("WGL_NV_DX_interop not available — using fallback readback path");
+                return false;
+            }
+
+            // 2. Check for required GL FBO functions
+            if (_glGenFramebuffers == null || _glBindFramebuffer == null ||
+                _glFramebufferTexture2D == null || _glCheckFramebufferStatus == null ||
+                _glGenRenderbuffers == null || _glBindRenderbuffer == null ||
+                _glRenderbufferStorage == null || _glFramebufferRenderbuffer == null ||
+                _glBlitFramebuffer == null)
+            {
+                Log("GL framebuffer extensions not available — using fallback readback path");
+                return false;
+            }
+
+            // 3. Create D3D9Ex device
+            Log("Creating D3D9Ex device for shared surface...");
+            _d3d9 = D3D9.Direct3DCreate9Ex();
+            var presentParams = new PresentParameters
+            {
+                Windowed = true,
+                SwapEffect = SwapEffect.Discard,
+                PresentationInterval = PresentInterval.Immediate,
+                BackBufferFormat = Format.Unknown,
+                BackBufferWidth = 1,
+                BackBufferHeight = 1,
+                BackBufferCount = 1,
+            };
+
+            _d3dDevice = _d3d9.CreateDeviceEx(
+                0,
+                DeviceType.Hardware,
+                _hwnd,
+                CreateFlags.HardwareVertexProcessing | CreateFlags.Multithreaded | CreateFlags.FpuPreserve,
+                presentParams);
+
+            // 4. Register D3D device with WGL
+            _wglDxDevice = _wglDXOpenDeviceNV(_d3dDevice.NativePointer);
+            if (_wglDxDevice == IntPtr.Zero)
+            {
+                Log($"wglDXOpenDeviceNV failed (Win32 error: {Marshal.GetLastWin32Error()}) — using fallback readback path");
+                CleanupSharedSurface();
+                return false;
+            }
+            Log($"wglDXOpenDeviceNV OK: device=0x{_wglDxDevice:X}");
+
+            // 5. Create the shared texture and GL resources
+            if (!CreateSharedTextureResources())
+            {
+                CleanupSharedSurface();
+                return false;
+            }
+
+            // 6. Create WPF D3DImage — uses the shared-handle surface (required for cross-device access)
+            _d3dImage = new D3DImage();
+            _d3dImage.Lock();
+            _d3dImage.SetBackBuffer(D3DResourceType.IDirect3DSurface9, _d3dSharedSurface!.NativePointer, true);
+            _d3dImage.Unlock();
+
+            Log($"Shared GPU surface initialized — zero-copy D3D9/GL interop active ({_width}x{_height})");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log($"Shared surface init failed: {ex.Message} — using fallback readback path");
+            CleanupSharedSurface();
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Creates the D3D9 shared texture, GL texture, FBO, and depth renderbuffer
+    /// for the current dimensions. Called during init and resize.
+    /// </summary>
+    private bool CreateSharedTextureResources()
+    {
+        if (_d3dDevice == null || _wglDxDevice == IntPtr.Zero)
+            return false;
+
+        Log($"Creating shared texture resources ({_width}x{_height})...");
+
+        // Create D3D9 render-target texture. Note: do NOT use a shared handle here —
+        // wglDXRegisterObjectNV is incompatible with shared-handle textures on NVIDIA.
+        // D3DImage can still access it because we use D3D9Ex and SetBackBuffer each frame.
+        _d3dTexture = _d3dDevice.CreateTexture(
+            (uint)_width, (uint)_height, 1,
+            Vortice.Direct3D9.Usage.RenderTarget,
+            Format.A8R8G8B8,
+            Pool.Default);
+        _d3dSurface = _d3dTexture.GetSurfaceLevel(0);
+        Log($"  D3D9 texture created: surface=0x{_d3dSurface.NativePointer:X}");
+
+        // Create GL texture that will share the D3D surface
+        glGenTextures(1, out _glTexture);
+        Log($"  GL texture created: id={_glTexture}");
+
+        // Register the D3D texture with OpenGL via WGL_NV_DX_interop
+        // Note: must pass the IDirect3DTexture9 pointer (not surface) when target is GL_TEXTURE_2D
+        _wglDxObject = _wglDXRegisterObjectNV!(
+            _wglDxDevice,
+            _d3dTexture.NativePointer,
+            _glTexture,
+            GL_TEXTURE_2D,
+            WGL_ACCESS_WRITE_DISCARD_NV);
+
+        if (_wglDxObject == IntPtr.Zero)
+        {
+            uint glErr = glGetError();
+            Log($"  wglDXRegisterObjectNV FAILED (glError: 0x{glErr:X}, Win32: {Marshal.GetLastWin32Error()})");
+            return false;
+        }
+        Log($"  wglDXRegisterObjectNV OK: handle=0x{_wglDxObject:X}");
+
+        // Create FBO and attach the shared texture as color attachment
+        _glGenFramebuffers!(1, out _glFbo);
+        _glBindFramebuffer!(GL_FRAMEBUFFER, _glFbo);
+        Log($"  FBO created: id={_glFbo}");
+
+        // Lock for GL access to attach
+        _wglDXLockObjectsNV!(_wglDxDevice, 1, [_wglDxObject]);
+        _glFramebufferTexture2D!(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _glTexture, 0);
+
+        // Create depth/stencil renderbuffer (projectM needs depth/stencil)
+        _glGenRenderbuffers!(1, out _glDepthRb);
+        _glBindRenderbuffer!(GL_RENDERBUFFER, _glDepthRb);
+        _glRenderbufferStorage!(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, _width, _height);
+        _glFramebufferRenderbuffer!(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, _glDepthRb);
+
+        var status = _glCheckFramebufferStatus!(GL_FRAMEBUFFER);
+        _wglDXUnlockObjectsNV!(_wglDxDevice, 1, [_wglDxObject]);
+
+        if (status != GL_FRAMEBUFFER_COMPLETE)
+        {
+            Log($"  GL framebuffer incomplete: 0x{status:X}");
+            return false;
+        }
+        Log($"  FBO complete — shared texture resources ready");
+
+        // Leave FBO bound — projectM will render into it
+        _glBindFramebuffer!(GL_FRAMEBUFFER, 0);
+
+        // Create a second D3D9 texture WITH a shared handle for D3DImage display.
+        // WPF's internal D3D device needs a shared handle to access cross-device textures.
+        // We'll StretchRect (GPU-side copy) from the WGL interop surface to this one each frame.
+        IntPtr sharedHandle = IntPtr.Zero;
+        _d3dSharedTexture = _d3dDevice.CreateTexture(
+            (uint)_width, (uint)_height, 1,
+            Vortice.Direct3D9.Usage.RenderTarget,
+            Format.A8R8G8B8,
+            Pool.Default,
+            ref sharedHandle);
+        _d3dSharedSurface = _d3dSharedTexture.GetSurfaceLevel(0);
+        Log($"  D3D9 shared display texture created: surface=0x{_d3dSharedSurface.NativePointer:X}, handle=0x{sharedHandle:X}");
+
+        return true;
+    }
+
+    /// <summary>
+    /// Tears down only the shared texture/FBO resources (not the D3D device or WGL device handle).
+    /// Used during resize to recreate at new dimensions.
+    /// </summary>
+    private void DestroySharedTextureResources()
+    {
+        if (_wglDxObject != IntPtr.Zero && _wglDXUnregisterObjectNV != null)
+        {
+            _wglDXUnregisterObjectNV(_wglDxDevice, _wglDxObject);
+            _wglDxObject = IntPtr.Zero;
+        }
+
+        if (_glFbo != 0 && _glDeleteFramebuffers != null)
+        {
+            _glDeleteFramebuffers(1, ref _glFbo);
+            _glFbo = 0;
+        }
+
+        if (_glDepthRb != 0 && _glDeleteRenderbuffers != null)
+        {
+            _glDeleteRenderbuffers(1, ref _glDepthRb);
+            _glDepthRb = 0;
+        }
+
+        if (_glTexture != 0)
+        {
+            glDeleteTextures(1, ref _glTexture);
+            _glTexture = 0;
+        }
+
+        _d3dSurface?.Dispose();
+        _d3dSurface = null;
+        _d3dTexture?.Dispose();
+        _d3dTexture = null;
+        _d3dSharedSurface?.Dispose();
+        _d3dSharedSurface = null;
+        _d3dSharedTexture?.Dispose();
+        _d3dSharedTexture = null;
+    }
+
+    /// <summary>
+    /// Full cleanup of all shared surface resources including D3D device.
+    /// </summary>
+    private void CleanupSharedSurface()
+    {
+        try
+        {
+            DestroySharedTextureResources();
+
+            if (_wglDxDevice != IntPtr.Zero && _wglDXCloseDeviceNV != null)
+            {
+                _wglDXCloseDeviceNV(_wglDxDevice);
+                _wglDxDevice = IntPtr.Zero;
+            }
+
+            _d3dImage = null;
+            _d3dDevice?.Dispose();
+            _d3dDevice = null;
+            _d3d9?.Dispose();
+            _d3d9 = null;
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or FileLoadException or TypeLoadException)
+        {
+            // Vortice assembly not loaded — nothing to clean up
+        }
+        _useSharedSurface = false;
     }
 
     /// <summary>
@@ -362,7 +700,38 @@ public sealed class ProjectMRenderer : IDisposable
             glViewport(0, 0, _width, _height);
             projectm_set_window_size(_projectM, (uint)_width, (uint)_height);
 
-            _bitmap = new WriteableBitmap(_width, _height, 96, 96, PixelFormats.Bgra32, null);
+            if (_useSharedSurface)
+            {
+                try
+                {
+                    // Recreate shared texture resources at new size
+                    DestroySharedTextureResources();
+                    if (CreateSharedTextureResources() && _d3dSharedSurface != null)
+                    {
+                        _d3dImage!.Lock();
+                        _d3dImage.SetBackBuffer(D3DResourceType.IDirect3DSurface9, _d3dSharedSurface.NativePointer, true);
+                        _d3dImage.Unlock();
+                    }
+                    else
+                    {
+                        // Fall back to readback path
+                        Log("Shared surface resize failed — falling back to readback");
+                        CleanupSharedSurface();
+                        _bitmap = new WriteableBitmap(_width, _height, 96, 96, PixelFormats.Bgra32, null);
+                    }
+                }
+                catch (Exception ex) when (ex is FileNotFoundException or FileLoadException or TypeLoadException)
+                {
+                    Log($"Shared surface resize failed (missing dependency: {ex.Message}) — falling back to readback");
+                    CleanupSharedSurface();
+                    _bitmap = new WriteableBitmap(_width, _height, 96, 96, PixelFormats.Bgra32, null);
+                }
+            }
+            else
+            {
+                _bitmap = new WriteableBitmap(_width, _height, 96, 96, PixelFormats.Bgra32, null);
+            }
+
             _pixelBuffer = new byte[_width * _height * 4];
             _flippedBuffer = new byte[_width * _height * 4];
 
@@ -590,16 +959,27 @@ public sealed class ProjectMRenderer : IDisposable
     }
 
     /// <summary>
-    /// Render one frame and copy pixels to the WriteableBitmap.
+    /// Render one frame. When using the shared GPU surface path, projectM renders
+    /// directly into a D3D9-shared FBO — no pixel readback is needed for display.
+    /// Readback via glReadPixels is only performed when color/black-frame analysis
+    /// is pending (infrequent, timer-driven).
     /// Must be called on the UI thread.
     /// </summary>
     [HandleProcessCorruptedStateExceptions]
     [SecurityCritical]
     public void RenderFrame()
     {
-        if (!_initialized || _disposed || _projectM == IntPtr.Zero || _bitmap == null
-            || _pixelBuffer == null || _flippedBuffer == null)
+        if (!_initialized || _disposed || _projectM == IntPtr.Zero)
             return;
+
+        if (_useSharedSurface)
+        {
+            if (_d3dImage == null) return;
+        }
+        else
+        {
+            if (_bitmap == null || _pixelBuffer == null || _flippedBuffer == null) return;
+        }
 
         // If another native call (e.g. PreviewPreset) is in progress, skip this frame
         // rather than blocking the UI thread or risking concurrent native access.
@@ -620,7 +1000,48 @@ public sealed class ProjectMRenderer : IDisposable
                 return;
             }
 
-            // Render — guard against AccessViolationException from corrupt native state
+            if (_useSharedSurface)
+                RenderFrameSharedSurface();
+            else
+                RenderFrameFallback();
+        }
+        catch (Exception ex)
+        {
+            Log($"RenderFrame exception: {ex.Message}");
+        }
+        finally
+        {
+            Monitor.Exit(_nativeLock);
+        }
+    }
+
+    private int _lockFailCount;
+    private int _frameCount;
+
+    /// <summary>
+    /// Zero-copy render path: renders into the D3D9-shared FBO, then marks
+    /// the D3DImage dirty. Only does glReadPixels when analysis is needed.
+    /// </summary>
+    private void RenderFrameSharedSurface()
+    {
+        // Lock the shared texture for OpenGL access
+        if (!_wglDXLockObjectsNV!(_wglDxDevice, 1, [_wglDxObject]))
+        {
+            _lockFailCount++;
+            if (_lockFailCount <= 5 || (_lockFailCount % 100) == 0)
+            {
+                uint glErr = glGetError();
+                Log($"wglDXLockObjectsNV failed (count: {_lockFailCount}, glError: 0x{glErr:X}, Win32: {Marshal.GetLastWin32Error()})");
+            }
+            return;
+        }
+
+        try
+        {
+            // Bind our FBO so projectM renders into the shared D3D texture
+            _glBindFramebuffer!(GL_FRAMEBUFFER, _glFbo);
+            glViewport(0, 0, _width, _height);
+
             try
             {
                 projectm_opengl_render_frame(_projectM);
@@ -632,145 +1053,248 @@ public sealed class ProjectMRenderer : IDisposable
                 return;
             }
 
-            // Read pixels from the GL framebuffer (single readback for WPF display,
-            // color analysis, and black-frame detection)
-            var handle = GCHandle.Alloc(_pixelBuffer, GCHandleType.Pinned);
-            try
+            // projectM renders with alpha=0, which causes WPF D3DImage to display
+            // the texture as fully transparent (appears black). Force alpha to 1
+            // by clearing only the alpha channel — RGB is preserved via colorMask.
+            glColorMask(0, 0, 0, 1);
+            glClearColor(0f, 0f, 0f, 1f);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glColorMask(1, 1, 1, 1);
+
+            _frameCount++;
+            if (_frameCount <= 3)
             {
-                glReadPixels(0, 0, _width, _height, GL_BGRA, GL_UNSIGNED_BYTE,
-                    handle.AddrOfPinnedObject());
-            }
-            finally
-            {
-                handle.Free();
+                uint glErr = glGetError();
+                if (glErr != 0)
+                    Log($"GL error after render frame #{_frameCount}: 0x{glErr:X}");
+                else
+                    Log($"Shared surface frame #{_frameCount} rendered OK");
             }
 
-            // Sample dominant color after preset switch delay
-            ColorAnalysis? colorAnalysis = null;
-            if (_colorSampleTargetTick >= 0 && _colorSampleWatch.ElapsedTicks >= _colorSampleTargetTick)
+            // Determine if we need pixel readback for analysis this frame
+            bool needReadback = (_colorSampleTargetTick >= 0 && _colorSampleWatch.ElapsedTicks >= _colorSampleTargetTick)
+                || (_blackCheckTargetTick >= 0 && _colorSampleWatch.ElapsedTicks >= _blackCheckTargetTick);
+
+            if (needReadback && _pixelBuffer != null && _flippedBuffer != null)
             {
-                _colorSampleTargetTick = -1;
+                var handle = GCHandle.Alloc(_pixelBuffer, GCHandleType.Pinned);
                 try
                 {
-                    colorAnalysis = FrameColorAnalyzer.GetDominantColorBand(_pixelBuffer, _width, _height, isBgra: true);
-                    Log($"Dominant color band: {colorAnalysis.Value.Color} (brightness: {colorAnalysis.Value.Brightness:F3}, luminance: {colorAnalysis.Value.TopAvgLuminance:F2})");
-                    ColorBandChanged?.Invoke(colorAnalysis.Value);
-
-                    if (SaveColorSampleFrame)
-                    {
-                        byte[] snapshot = _flippedBuffer.ToArray();
-                        int w = _width, h = _height;
-                        string colorName = colorAnalysis.Value.Color.ToString();
-                        string presetRelative = _currentPresetFullPath ?? "unknown";
-                        if (!string.IsNullOrEmpty(PresetPath) && presetRelative.StartsWith(PresetPath, StringComparison.OrdinalIgnoreCase))
-                            presetRelative = presetRelative[PresetPath.Length..].TrimStart('\\', '/');
-                        presetRelative = presetRelative.Replace('\\', '/').Replace('/', '_');
-                        string fileName = $"{colorName}-{presetRelative}";
-                        Task.Run(() => SaveFrameSnapshot(snapshot, w, h, fileName, "ColorSamples"));
-                    }
+                    glReadPixels(0, 0, _width, _height, GL_BGRA, GL_UNSIGNED_BYTE,
+                        handle.AddrOfPinnedObject());
                 }
-                catch (Exception ex)
+                finally
                 {
-                    Log($"Color sampling failed: {ex.Message}");
+                    handle.Free();
                 }
+
+                // Flip for analysis snapshots
+                int stride = _width * 4;
+                for (int y = 0; y < _height; y++)
+                    Buffer.BlockCopy(_pixelBuffer, (_height - 1 - y) * stride, _flippedBuffer, y * stride, stride);
+
+                PerformColorAndBlackAnalysis();
             }
 
-            // Black-frame monitor: check after preset switch settle time, requires
-            // BlackCheckRequiredHits consecutive positives spaced BlackCheckIntervalSeconds apart.
-            if (_blackCheckTargetTick >= 0 && _colorSampleWatch.ElapsedTicks >= _blackCheckTargetTick)
-            {
-                _blackCheckTargetTick = -1;
-                try
-                {
-                    // First check: use luminance from color analysis if available
-                    bool isBlack;
-                    double luminance;
-                    if (_blackCheckHitCount == 0 && colorAnalysis.HasValue)
-                    {
-                        luminance = colorAnalysis.Value.TopAvgLuminance;
-                        isBlack = luminance < BlackCheckLuminanceThreshold;
-                    }
-                    else
-                    {
-                        isBlack = IsFrameBlack(_pixelBuffer, out luminance);
-                    }
-
-                    if (isBlack)
-                    {
-                        _blackCheckHitCount++;
-                        if (_blackCheckHitCount >= BlackCheckRequiredHits)
-                        {
-                            // Confirmed black after all required checks
-                            var path = _currentPresetFullPath;
-                            var relativeName = path ?? "unknown";
-                            if (!string.IsNullOrEmpty(PresetPath) && relativeName.StartsWith(PresetPath, StringComparison.OrdinalIgnoreCase))
-                                relativeName = relativeName[PresetPath.Length..].TrimStart('\\', '/');
-                            relativeName = relativeName.Replace('\\', '/');
-
-                            Log($"Black frame CONFIRMED ({_blackCheckHitCount}/{BlackCheckRequiredHits}) — preset: {relativeName} (luminance: {luminance:F2})");
-                            ProjectMPresetMonitorLog.Add(relativeName, PresetMonitorMode >= 2 ? "black_moved" : "black_logged", luminance);
-
-                            if (SaveBlackFrame)
-                            {
-                                byte[] snapshot = _flippedBuffer.ToArray();
-                                int w = _width, h = _height;
-                                string name = relativeName;
-                                Task.Run(() => SaveFrameSnapshot(snapshot, w, h, name, "BlackFrames"));
-                            }
-
-                            if (path != null)
-                                BlackPresetDetected?.Invoke(path);
-                        }
-                        else
-                        {
-                            // Schedule next recheck
-                            Log($"Black frame detected ({_blackCheckHitCount}/{BlackCheckRequiredHits}) — rechecking in {BlackCheckIntervalSeconds}s");
-                            _blackCheckTargetTick = _colorSampleWatch.ElapsedTicks
-                                + (long)(BlackCheckIntervalSeconds * System.Diagnostics.Stopwatch.Frequency);
-                        }
-                    }
-                    else
-                    {
-                        // Non-black frame breaks the streak — stop checking this preset
-                        if (_blackCheckHitCount > 0)
-                            Log($"Black frame streak broken ({_blackCheckHitCount}/{BlackCheckRequiredHits}) — preset is OK");
-                        _blackCheckHitCount = 0;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Log($"Black-frame check failed: {ex.Message}");
-                }
-            }
-
-            // OpenGL origin is bottom-left; WPF is top-left — flip vertically
-            int stride = _width * 4;
-            for (int y = 0; y < _height; y++)
-            {
-                Buffer.BlockCopy(_pixelBuffer, (_height - 1 - y) * stride,
-                    _flippedBuffer, y * stride, stride);
-            }
-
-            // Copy to WriteableBitmap (same pattern as MandelbrotGpuRenderer)
-            try
-            {
-                _bitmap.Lock();
-                Marshal.Copy(_flippedBuffer, 0, _bitmap.BackBuffer, _flippedBuffer.Length);
-                _bitmap.AddDirtyRect(new Int32Rect(0, 0, _width, _height));
-                _bitmap.Unlock();
-            }
-            catch
-            {
-                try { _bitmap.Unlock(); } catch { }
-            }
-        }
-        catch (Exception ex)
-        {
-            Log($"RenderFrame exception: {ex.Message}");
+            // Unbind FBO
+            _glBindFramebuffer!(GL_FRAMEBUFFER, 0);
         }
         finally
         {
-            Monitor.Exit(_nativeLock);
+            // Flush GL commands so the shared texture content is visible to D3D
+            glFlush();
+
+            // Unlock — hand back to D3D
+            _wglDXUnlockObjectsNV!(_wglDxDevice, 1, [_wglDxObject]);
+        }
+
+        // GPU-side copy from the WGL interop surface (non-shared) to the shared-handle
+        // surface that WPF's internal D3D device can access cross-device.
+        try
+        {
+            var fullRect = new Vortice.Direct3D9.Rect(0, 0, _width, _height);
+            _d3dDevice!.StretchRect(_d3dSurface!, fullRect, _d3dSharedSurface!, fullRect, Vortice.Direct3D9.TextureFilter.None);
+        }
+        catch (Exception ex)
+        {
+            if (_frameCount <= 5 || (_frameCount % 300) == 0)
+                Log($"  StretchRect FAILED (frame #{_frameCount}): {ex.Message}");
+            return;
+        }
+
+        // Update D3DImage with the shared-handle surface
+        try
+        {
+            if (!_d3dImage!.IsFrontBufferAvailable)
+            {
+                if (_frameCount <= 5 || (_frameCount % 300) == 0)
+                    Log($"D3DImage.IsFrontBufferAvailable=false at frame {_frameCount} — display may be black");
+                return;
+            }
+            _d3dImage.Lock();
+            _d3dImage.SetBackBuffer(D3DResourceType.IDirect3DSurface9, _d3dSharedSurface!.NativePointer, true);
+            _d3dImage.AddDirtyRect(new Int32Rect(0, 0, _width, _height));
+            _d3dImage.Unlock();
+            if (_frameCount <= 3)
+                Log($"  D3DImage updated (frame #{_frameCount}, frontBuffer={_d3dImage.IsFrontBufferAvailable}, pixelW={_d3dImage.PixelWidth}, pixelH={_d3dImage.PixelHeight})");
+        }
+        catch
+        {
+            try { _d3dImage!.Unlock(); } catch { }
+        }
+    }
+
+    /// <summary>
+    /// Fallback render path: renders to the default framebuffer, reads back
+    /// all pixels via glReadPixels, and copies to a WriteableBitmap.
+    /// </summary>
+    private void RenderFrameFallback()
+    {
+        // Render — guard against AccessViolationException from corrupt native state
+        try
+        {
+            projectm_opengl_render_frame(_projectM);
+        }
+        catch (AccessViolationException ex)
+        {
+            Log($"FATAL: AccessViolationException in projectm_opengl_render_frame: {ex.Message}");
+            _initialized = false;
+            return;
+        }
+
+        // Read pixels from the GL framebuffer
+        var handle = GCHandle.Alloc(_pixelBuffer, GCHandleType.Pinned);
+        try
+        {
+            glReadPixels(0, 0, _width, _height, GL_BGRA, GL_UNSIGNED_BYTE,
+                handle.AddrOfPinnedObject());
+        }
+        finally
+        {
+            handle.Free();
+        }
+
+        PerformColorAndBlackAnalysis();
+
+        // OpenGL origin is bottom-left; WPF is top-left — flip vertically
+        int stride = _width * 4;
+        for (int y = 0; y < _height; y++)
+        {
+            Buffer.BlockCopy(_pixelBuffer!, (_height - 1 - y) * stride,
+                _flippedBuffer!, y * stride, stride);
+        }
+
+        // Copy to WriteableBitmap
+        try
+        {
+            _bitmap!.Lock();
+            Marshal.Copy(_flippedBuffer!, 0, _bitmap.BackBuffer, _flippedBuffer!.Length);
+            _bitmap.AddDirtyRect(new Int32Rect(0, 0, _width, _height));
+            _bitmap.Unlock();
+        }
+        catch
+        {
+            try { _bitmap!.Unlock(); } catch { }
+        }
+    }
+
+    /// <summary>
+    /// Runs the color sampling and black-frame detection analysis on the current
+    /// pixel buffer contents. Called from both render paths when readback is available.
+    /// </summary>
+    private void PerformColorAndBlackAnalysis()
+    {
+        // Sample dominant color after preset switch delay
+        ColorAnalysis? colorAnalysis = null;
+        if (_colorSampleTargetTick >= 0 && _colorSampleWatch.ElapsedTicks >= _colorSampleTargetTick)
+        {
+            _colorSampleTargetTick = -1;
+            try
+            {
+                colorAnalysis = FrameColorAnalyzer.GetDominantColorBand(_pixelBuffer!, _width, _height, isBgra: true);
+                Log($"Dominant color band: {colorAnalysis.Value.Color} (brightness: {colorAnalysis.Value.Brightness:F3}, luminance: {colorAnalysis.Value.TopAvgLuminance:F2})");
+                ColorBandChanged?.Invoke(colorAnalysis.Value);
+
+                if (SaveColorSampleFrame)
+                {
+                    byte[] snapshot = _flippedBuffer!.ToArray();
+                    int w = _width, h = _height;
+                    string colorName = colorAnalysis.Value.Color.ToString();
+                    string presetRelative = _currentPresetFullPath ?? "unknown";
+                    if (!string.IsNullOrEmpty(PresetPath) && presetRelative.StartsWith(PresetPath, StringComparison.OrdinalIgnoreCase))
+                        presetRelative = presetRelative[PresetPath.Length..].TrimStart('\\', '/');
+                    presetRelative = presetRelative.Replace('\\', '/').Replace('/', '_');
+                    string fileName = $"{colorName}-{presetRelative}";
+                    Task.Run(() => SaveFrameSnapshot(snapshot, w, h, fileName, "ColorSamples"));
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"Color sampling failed: {ex.Message}");
+            }
+        }
+
+        // Black-frame monitor
+        if (_blackCheckTargetTick >= 0 && _colorSampleWatch.ElapsedTicks >= _blackCheckTargetTick)
+        {
+            _blackCheckTargetTick = -1;
+            try
+            {
+                bool isBlack;
+                double luminance;
+                if (_blackCheckHitCount == 0 && colorAnalysis.HasValue)
+                {
+                    luminance = colorAnalysis.Value.TopAvgLuminance;
+                    isBlack = luminance < BlackCheckLuminanceThreshold;
+                }
+                else
+                {
+                    isBlack = IsFrameBlack(_pixelBuffer!, out luminance);
+                }
+
+                if (isBlack)
+                {
+                    _blackCheckHitCount++;
+                    if (_blackCheckHitCount >= BlackCheckRequiredHits)
+                    {
+                        var path = _currentPresetFullPath;
+                        var relativeName = path ?? "unknown";
+                        if (!string.IsNullOrEmpty(PresetPath) && relativeName.StartsWith(PresetPath, StringComparison.OrdinalIgnoreCase))
+                            relativeName = relativeName[PresetPath.Length..].TrimStart('\\', '/');
+                        relativeName = relativeName.Replace('\\', '/');
+
+                        Log($"Black frame CONFIRMED ({_blackCheckHitCount}/{BlackCheckRequiredHits}) — preset: {relativeName} (luminance: {luminance:F2})");
+                        ProjectMPresetMonitorLog.Add(relativeName, PresetMonitorMode >= 2 ? "black_moved" : "black_logged", luminance);
+
+                        if (SaveBlackFrame)
+                        {
+                            byte[] snapshot = _flippedBuffer!.ToArray();
+                            int w = _width, h = _height;
+                            string name = relativeName;
+                            Task.Run(() => SaveFrameSnapshot(snapshot, w, h, name, "BlackFrames"));
+                        }
+
+                        if (path != null)
+                            BlackPresetDetected?.Invoke(path);
+                    }
+                    else
+                    {
+                        Log($"Black frame detected ({_blackCheckHitCount}/{BlackCheckRequiredHits}) — rechecking in {BlackCheckIntervalSeconds}s");
+                        _blackCheckTargetTick = _colorSampleWatch.ElapsedTicks
+                            + (long)(BlackCheckIntervalSeconds * System.Diagnostics.Stopwatch.Frequency);
+                    }
+                }
+                else
+                {
+                    if (_blackCheckHitCount > 0)
+                        Log($"Black frame streak broken ({_blackCheckHitCount}/{BlackCheckRequiredHits}) — preset is OK");
+                    _blackCheckHitCount = 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"Black-frame check failed: {ex.Message}");
+            }
         }
     }
 
@@ -937,6 +1461,9 @@ public sealed class ProjectMRenderer : IDisposable
                     _projectM = IntPtr.Zero;
                 }
 
+                // Clean up shared surface resources before destroying GL context
+                CleanupSharedSurface();
+
                 if (_hglrc != IntPtr.Zero)
                 {
                     wglMakeCurrent(IntPtr.Zero, IntPtr.Zero);
@@ -963,6 +1490,7 @@ public sealed class ProjectMRenderer : IDisposable
         }
 
         _bitmap = null;
+        _d3dImage = null;
         _pixelBuffer = null;
         _flippedBuffer = null;
     }
