@@ -72,6 +72,9 @@ internal static class ProjectMInterop
     public static extern void glFlush();
 
     [DllImport("opengl32.dll")]
+    public static extern void glFinish();
+
+    [DllImport("opengl32.dll")]
     public static extern void glClearColor(float r, float g, float b, float a);
 
     [DllImport("opengl32.dll")]
@@ -90,6 +93,7 @@ internal static class ProjectMInterop
     // GL constants
     public const uint GL_BGRA = 0x80E1;
     public const uint GL_RGBA = 0x1908;
+    public const int GL_RGBA8 = 0x8058;
     public const uint GL_UNSIGNED_BYTE = 0x1401;
 
     [StructLayout(LayoutKind.Sequential)]
@@ -285,6 +289,25 @@ internal static class ProjectMInterop
     public delegate void GlBlitFramebufferDelegate(int srcX0, int srcY0, int srcX1, int srcY1,
         int dstX0, int dstY0, int dstX1, int dstY1, uint mask, uint filter);
 
+    // ── PBO (Pixel Buffer Object) ────────────────────────────────
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    public delegate void GlGenBuffersDelegate(int n, out uint buffers);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    public delegate void GlDeleteBuffersDelegate(int n, ref uint buffers);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    public delegate void GlBindBufferDelegate(uint target, uint buffer);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    public delegate void GlBufferDataDelegate(uint target, IntPtr size, IntPtr data, uint usage);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    public delegate IntPtr GlMapBufferDelegate(uint target, uint access);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public delegate bool GlUnmapBufferDelegate(uint target);
+
+    public const uint GL_PIXEL_PACK_BUFFER = 0x88EB;
+    public const uint GL_STREAM_READ = 0x88E1;
+    public const uint GL_READ_ONLY = 0x88B8;
+
     // ── WGL_NV_DX_interop ────────────────────────────────────────
     // Despite the "NV" name, these are widely supported on AMD and Intel GPUs too.
 
@@ -305,6 +328,8 @@ internal static class ProjectMInterop
     [return: MarshalAs(UnmanagedType.Bool)]
     public delegate bool WglDXUnlockObjectsNVDelegate(IntPtr hDevice, int count, IntPtr[] hObjects);
 
+    public const uint WGL_ACCESS_READ_ONLY_NV = 0x0000;
+    public const uint WGL_ACCESS_READ_WRITE_NV = 0x0001;
     public const uint WGL_ACCESS_WRITE_DISCARD_NV = 0x0002;
 
     /// <summary>

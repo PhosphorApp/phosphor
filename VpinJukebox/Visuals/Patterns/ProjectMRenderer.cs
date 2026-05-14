@@ -38,18 +38,27 @@ public sealed class ProjectMRenderer : IDisposable
     private ID3D11Device? _d3d11Device;
     private ID3D11Texture2D? _d3d11Texture;
 
-    // D3D9Ex device + surface opened from the same DXGI shared handle (for WPF D3DImage)
+    // D3D9Ex device + surfaces for WPF D3DImage display
     private IDirect3D9Ex? _d3d9;
     private IDirect3DDevice9Ex? _d3dDevice;
-    private IDirect3DTexture9? _d3dTexture;
-    private IDirect3DSurface9? _d3dSurface;
+    private IDirect3DTexture9? _d3dTexture;       // System-memory texture for pixel upload
+    private IDirect3DSurface9? _d3dSurface;       // Surface of _d3dTexture (LockRect target)
+    private IDirect3DTexture9? _d3dRtTexture;     // Render-target texture (Pool.Default, for D3DImage)
+    private IDirect3DSurface9? _d3dRtSurface;     // Surface of _d3dRtTexture
 
     private D3DImage? _d3dImage;
     private IntPtr _wglDxDevice;
     private IntPtr _wglDxObject;
-    private uint _glTexture;
-    private uint _glFbo;
+    private uint _glTexture;      // Interop texture (shared with D3D11)
+    private uint _glFbo;          // Interop FBO (blit target)
     private uint _glDepthRb;
+
+    // Separate render FBO — projectM renders here, then we blit to the interop FBO.
+    // This avoids driver issues where complex multi-pass rendering directly into
+    // an interop-registered texture doesn't flush properly.
+    private uint _glRenderFbo;
+    private uint _glRenderTex;
+    private uint _glRenderDepthRb;
 
     // WGL_NV_DX_interop function pointers
     private WglDXOpenDeviceNVDelegate? _wglDXOpenDeviceNV;
@@ -71,6 +80,19 @@ public sealed class ProjectMRenderer : IDisposable
     private GlFramebufferRenderbufferDelegate? _glFramebufferRenderbuffer;
     private GlCheckFramebufferStatusDelegate? _glCheckFramebufferStatus;
     private GlBlitFramebufferDelegate? _glBlitFramebuffer;
+
+    // PBO extension function pointers
+    private GlGenBuffersDelegate? _glGenBuffers;
+    private GlDeleteBuffersDelegate? _glDeleteBuffers;
+    private GlBindBufferDelegate? _glBindBuffer;
+    private GlBufferDataDelegate? _glBufferData;
+    private GlMapBufferDelegate? _glMapBuffer;
+    private GlUnmapBufferDelegate? _glUnmapBuffer;
+
+    // PBO async readback state (double-buffered)
+    private uint[] _pbos = new uint[2];
+    private int _pboIndex;
+    private bool _pboFirstFrame = true;
 
     // ── Fallback (readback) path ─────────────────────────────────
     private WriteableBitmap? _bitmap;
@@ -307,6 +329,12 @@ public sealed class ProjectMRenderer : IDisposable
             _glFramebufferRenderbuffer = GetGlProc<GlFramebufferRenderbufferDelegate>("glFramebufferRenderbuffer");
             _glCheckFramebufferStatus = GetGlProc<GlCheckFramebufferStatusDelegate>("glCheckFramebufferStatus");
             _glBlitFramebuffer = GetGlProc<GlBlitFramebufferDelegate>("glBlitFramebuffer");
+            _glGenBuffers = GetGlProc<GlGenBuffersDelegate>("glGenBuffers");
+            _glDeleteBuffers = GetGlProc<GlDeleteBuffersDelegate>("glDeleteBuffers");
+            _glBindBuffer = GetGlProc<GlBindBufferDelegate>("glBindBuffer");
+            _glBufferData = GetGlProc<GlBufferDataDelegate>("glBufferData");
+            _glMapBuffer = GetGlProc<GlMapBufferDelegate>("glMapBuffer");
+            _glUnmapBuffer = GetGlProc<GlUnmapBufferDelegate>("glUnmapBuffer");
 
             // Try to set up D3D9/GL shared surface for zero-copy WPF display.
             // Opt-in only: the shared-surface path works on some systems but renders
@@ -418,7 +446,7 @@ public sealed class ProjectMRenderer : IDisposable
             _flippedBuffer = new byte[_width * _height * 4];
 
             _initialized = true;
-            var renderPath = _useSharedSurface ? "SHARED SURFACE (zero-copy D3D9/GL)" : "FALLBACK (WriteableBitmap + glReadPixels)";
+            var renderPath = _useSharedSurface ? "PBO ASYNC READBACK (D3DImage)" : "FALLBACK (WriteableBitmap + glReadPixels)";
             Log($"Initialization complete — render path: {renderPath} ({_width}x{_height})");
             return true;
         }
@@ -441,52 +469,29 @@ public sealed class ProjectMRenderer : IDisposable
     /// for WPF D3DImage, and register it with OpenGL via WGL_NV_DX_interop for
     /// zero-copy rendering. Returns true on success; on failure the renderer
     /// falls back to WriteableBitmap. Must be called after the GL context and GLEW are initialized.
+    /// <summary>
+    /// Initializes the D3D9Ex + D3DImage display surface and GL PBO async readback.
+    /// This avoids both the expensive WriteableBitmap path AND the broken WGL_NV_DX_interop.
+    /// GL renders into a regular FBO, PBO async-reads the pixels, and we memcpy into
+    /// a D3D9Ex render-target surface that D3DImage displays directly.
     /// </summary>
     private bool TryInitSharedSurface()
     {
         try
         {
-            // 1. Check for WGL_NV_DX_interop extension
-            _wglDXOpenDeviceNV = GetWglProc<WglDXOpenDeviceNVDelegate>("wglDXOpenDeviceNV");
-            _wglDXCloseDeviceNV = GetWglProc<WglDXCloseDeviceNVDelegate>("wglDXCloseDeviceNV");
-            _wglDXRegisterObjectNV = GetWglProc<WglDXRegisterObjectNVDelegate>("wglDXRegisterObjectNV");
-            _wglDXUnregisterObjectNV = GetWglProc<WglDXUnregisterObjectNVDelegate>("wglDXUnregisterObjectNV");
-            _wglDXLockObjectsNV = GetWglProc<WglDXLockObjectsNVDelegate>("wglDXLockObjectsNV");
-            _wglDXUnlockObjectsNV = GetWglProc<WglDXUnlockObjectsNVDelegate>("wglDXUnlockObjectsNV");
-
-            if (_wglDXOpenDeviceNV == null || _wglDXCloseDeviceNV == null ||
-                _wglDXRegisterObjectNV == null || _wglDXUnregisterObjectNV == null ||
-                _wglDXLockObjectsNV == null || _wglDXUnlockObjectsNV == null)
-            {
-                Log("WGL_NV_DX_interop not available — using fallback readback path");
-                return false;
-            }
-
-            // 2. Check for required GL FBO functions
+            // 1. Check for required GL functions
             if (_glGenFramebuffers == null || _glBindFramebuffer == null ||
                 _glFramebufferTexture2D == null || _glCheckFramebufferStatus == null ||
                 _glGenRenderbuffers == null || _glBindRenderbuffer == null ||
                 _glRenderbufferStorage == null || _glFramebufferRenderbuffer == null ||
-                _glBlitFramebuffer == null)
+                _glGenBuffers == null || _glBindBuffer == null || _glBufferData == null ||
+                _glMapBuffer == null || _glUnmapBuffer == null)
             {
-                Log("GL framebuffer extensions not available — using fallback readback path");
+                Log("GL FBO/PBO extensions not available — using fallback readback path");
                 return false;
             }
 
-            // 3. Create D3D11 device (BgraSupport required for DXGI shared-handle textures)
-            Log("Creating D3D11 device for shared surface...");
-            var featureLevels = new[] { FeatureLevel.Level_11_1, FeatureLevel.Level_11_0, FeatureLevel.Level_10_1, FeatureLevel.Level_10_0 };
-            D3D11.D3D11CreateDevice(
-                null,
-                DriverType.Hardware,
-                DeviceCreationFlags.BgraSupport,
-                featureLevels,
-                out _d3d11Device,
-                out _,
-                out _).CheckError();
-            Log($"D3D11 device created (feature level: {_d3d11Device!.FeatureLevel})");
-
-            // 4. Create D3D9Ex device (WPF D3DImage requires a D3D9 surface)
+            // 2. Create D3D9Ex device (WPF D3DImage requires a D3D9 surface)
             Log("Creating D3D9Ex device...");
             _d3d9 = D3D9.Direct3DCreate9Ex();
             var presentParams = new Vortice.Direct3D9.PresentParameters
@@ -507,30 +512,20 @@ public sealed class ProjectMRenderer : IDisposable
                 Vortice.Direct3D9.CreateFlags.HardwareVertexProcessing | Vortice.Direct3D9.CreateFlags.Multithreaded | Vortice.Direct3D9.CreateFlags.FpuPreserve,
                 presentParams);
 
-            // 5. Register D3D11 device with WGL (WGL_NV_DX_interop2 supports D3D10/11)
-            _wglDxDevice = _wglDXOpenDeviceNV(_d3d11Device.NativePointer);
-            if (_wglDxDevice == IntPtr.Zero)
-            {
-                Log($"wglDXOpenDeviceNV failed for D3D11 device (Win32 error: {Marshal.GetLastWin32Error()}) — using fallback readback path");
-                CleanupSharedSurface();
-                return false;
-            }
-            Log($"wglDXOpenDeviceNV OK (D3D11): device=0x{_wglDxDevice:X}");
-
-            // 6. Create the shared texture and GL resources
+            // 3. Create the render FBO, D3D9 surface, and PBOs
             if (!CreateSharedTextureResources())
             {
                 CleanupSharedSurface();
                 return false;
             }
 
-            // 7. Create WPF D3DImage — uses the D3D9 surface backed by DXGI shared memory
+            // 4. Create WPF D3DImage
             _d3dImage = new D3DImage();
             _d3dImage.Lock();
-            _d3dImage.SetBackBuffer(D3DResourceType.IDirect3DSurface9, _d3dSurface!.NativePointer, true);
+            _d3dImage.SetBackBuffer(D3DResourceType.IDirect3DSurface9, _d3dRtSurface!.NativePointer, true);
             _d3dImage.Unlock();
 
-            Log($"Shared GPU surface initialized — zero-copy D3D11/GL interop active ({_width}x{_height})");
+            Log($"PBO async readback surface initialized ({_width}x{_height})");
             return true;
         }
         catch (Exception ex)
@@ -548,94 +543,67 @@ public sealed class ProjectMRenderer : IDisposable
     /// </summary>
     private bool CreateSharedTextureResources()
     {
-        if (_d3d11Device == null || _d3dDevice == null || _wglDxDevice == IntPtr.Zero)
+        if (_d3dDevice == null)
             return false;
 
-        Log($"Creating shared texture resources ({_width}x{_height})...");
+        Log($"Creating texture resources ({_width}x{_height})...");
 
-        // 1. Create D3D11 render-target texture with DXGI shared handle
-        var texDesc = new Texture2DDescription
-        {
-            Width = (uint)_width,
-            Height = (uint)_height,
-            MipLevels = 1,
-            ArraySize = 1,
-            Format = Vortice.DXGI.Format.B8G8R8A8_UNorm,
-            SampleDescription = new SampleDescription(1, 0),
-            Usage = Vortice.Direct3D11.ResourceUsage.Default,
-            BindFlags = BindFlags.RenderTarget | BindFlags.ShaderResource,
-            MiscFlags = Vortice.Direct3D11.ResourceOptionFlags.Shared,
-        };
-        _d3d11Texture = _d3d11Device.CreateTexture2D(texDesc);
-        Log($"  D3D11 texture created: 0x{_d3d11Texture.NativePointer:X}");
+        // 1. Create D3D9Ex system-memory surface for pixel upload (offscreen plain — only valid type for SystemMemory under D3D9Ex)
+        _d3dSurface = _d3dDevice.CreateOffscreenPlainSurface(
+            (uint)_width, (uint)_height,
+            Vortice.Direct3D9.Format.A8R8G8B8,
+            Pool.SystemMemory);
+        Log($"  D3D9 system-memory surface created: 0x{_d3dSurface.NativePointer:X}");
 
-        // 2. Get DXGI shared handle from D3D11 texture
-        using var dxgiResource = _d3d11Texture.QueryInterface<IDXGIResource>();
-        IntPtr sharedHandle = dxgiResource.SharedHandle;
-        if (sharedHandle == IntPtr.Zero)
-        {
-            Log("  DXGI shared handle is null — cannot share with D3D9");
-            return false;
-        }
-        Log($"  DXGI shared handle: 0x{sharedHandle:X}");
-
-        // 3. Open the shared handle in D3D9Ex as a texture (same GPU memory)
-        _d3dTexture = _d3dDevice.CreateTexture(
+        // Create a render-target texture for D3DImage (Pool.Default required for display)
+        IntPtr noShare2 = IntPtr.Zero;
+        _d3dRtTexture = _d3dDevice.CreateTexture(
             (uint)_width, (uint)_height, 1,
             Vortice.Direct3D9.Usage.RenderTarget,
             Vortice.Direct3D9.Format.A8R8G8B8,
             Pool.Default,
-            ref sharedHandle);
-        _d3dSurface = _d3dTexture.GetSurfaceLevel(0);
-        Log($"  D3D9 texture opened from shared handle: surface=0x{_d3dSurface.NativePointer:X}");
+            ref noShare2);
+        _d3dRtSurface = _d3dRtTexture.GetSurfaceLevel(0);
+        Log($"  D3D9 render-target surface created: 0x{_d3dRtSurface.NativePointer:X}");
 
-        // 4. Create GL texture and register the D3D11 texture with WGL_NV_DX_interop
-        glGenTextures(1, out _glTexture);
-        Log($"  GL texture created: id={_glTexture}");
+        // 2. Create GL render FBO (projectM renders here)
+        _glGenFramebuffers!(1, out _glRenderFbo);
+        _glBindFramebuffer!(GL_FRAMEBUFFER, _glRenderFbo);
 
-        // Register the D3D11 texture with OpenGL
-        _wglDxObject = _wglDXRegisterObjectNV!(
-            _wglDxDevice,
-            _d3d11Texture.NativePointer,
-            _glTexture,
-            GL_TEXTURE_2D,
-            WGL_ACCESS_WRITE_DISCARD_NV);
+        glGenTextures(1, out _glRenderTex);
+        glBindTexture(GL_TEXTURE_2D, _glRenderTex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, _width, _height, 0, GL_BGRA, GL_UNSIGNED_BYTE, IntPtr.Zero);
+        _glFramebufferTexture2D!(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _glRenderTex, 0);
 
-        if (_wglDxObject == IntPtr.Zero)
-        {
-            uint glErr = glGetError();
-            Log($"  wglDXRegisterObjectNV FAILED (glError: 0x{glErr:X}, Win32: {Marshal.GetLastWin32Error()})");
-            return false;
-        }
-        Log($"  wglDXRegisterObjectNV OK: handle=0x{_wglDxObject:X}");
-
-        // 5. Create FBO and attach the shared texture as color attachment
-        _glGenFramebuffers!(1, out _glFbo);
-        _glBindFramebuffer!(GL_FRAMEBUFFER, _glFbo);
-        Log($"  FBO created: id={_glFbo}");
-
-        // Lock for GL access to attach
-        _wglDXLockObjectsNV!(_wglDxDevice, 1, [_wglDxObject]);
-        _glFramebufferTexture2D!(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _glTexture, 0);
-
-        // Create depth/stencil renderbuffer (projectM needs depth/stencil)
-        _glGenRenderbuffers!(1, out _glDepthRb);
-        _glBindRenderbuffer!(GL_RENDERBUFFER, _glDepthRb);
+        _glGenRenderbuffers!(1, out _glRenderDepthRb);
+        _glBindRenderbuffer!(GL_RENDERBUFFER, _glRenderDepthRb);
         _glRenderbufferStorage!(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, _width, _height);
-        _glFramebufferRenderbuffer!(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, _glDepthRb);
+        _glFramebufferRenderbuffer!(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, _glRenderDepthRb);
 
         var status = _glCheckFramebufferStatus!(GL_FRAMEBUFFER);
-        _wglDXUnlockObjectsNV!(_wglDxDevice, 1, [_wglDxObject]);
-
         if (status != GL_FRAMEBUFFER_COMPLETE)
         {
-            Log($"  GL framebuffer incomplete: 0x{status:X}");
+            Log($"  Render GL framebuffer incomplete: 0x{status:X}");
             return false;
         }
-        Log($"  FBO complete — shared texture resources ready");
-
+        Log($"  Render FBO created: id={_glRenderFbo}, tex={_glRenderTex}");
         _glBindFramebuffer!(GL_FRAMEBUFFER, 0);
 
+        // 3. Create double-buffered PBOs for async readback
+        int bufferSize = _width * _height * 4;
+        _glGenBuffers!(1, out _pbos[0]);
+        _glGenBuffers!(1, out _pbos[1]);
+        for (int i = 0; i < 2; i++)
+        {
+            _glBindBuffer!(GL_PIXEL_PACK_BUFFER, _pbos[i]);
+            _glBufferData!(GL_PIXEL_PACK_BUFFER, (IntPtr)bufferSize, IntPtr.Zero, GL_STREAM_READ);
+        }
+        _glBindBuffer!(GL_PIXEL_PACK_BUFFER, 0);
+        _pboIndex = 0;
+        _pboFirstFrame = true;
+        Log($"  PBOs created: [{_pbos[0]}, {_pbos[1]}] ({bufferSize} bytes each)");
+
+        Log($"  Texture resources ready");
         return true;
     }
 
@@ -645,12 +613,7 @@ public sealed class ProjectMRenderer : IDisposable
     /// </summary>
     private void DestroySharedTextureResources()
     {
-        if (_wglDxObject != IntPtr.Zero && _wglDXUnregisterObjectNV != null)
-        {
-            _wglDXUnregisterObjectNV(_wglDxDevice, _wglDxObject);
-            _wglDxObject = IntPtr.Zero;
-        }
-
+        // Cleanup interop FBO (no longer used but kept for safety)
         if (_glFbo != 0 && _glDeleteFramebuffers != null)
         {
             _glDeleteFramebuffers(1, ref _glFbo);
@@ -669,12 +632,44 @@ public sealed class ProjectMRenderer : IDisposable
             _glTexture = 0;
         }
 
+        // Cleanup render FBO resources
+        if (_glRenderFbo != 0 && _glDeleteFramebuffers != null)
+        {
+            _glDeleteFramebuffers(1, ref _glRenderFbo);
+            _glRenderFbo = 0;
+        }
+        if (_glRenderDepthRb != 0 && _glDeleteRenderbuffers != null)
+        {
+            _glDeleteRenderbuffers(1, ref _glRenderDepthRb);
+            _glRenderDepthRb = 0;
+        }
+        if (_glRenderTex != 0)
+        {
+            glDeleteTextures(1, ref _glRenderTex);
+            _glRenderTex = 0;
+        }
+
+        // Cleanup PBOs
+        if (_glDeleteBuffers != null)
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                if (_pbos[i] != 0)
+                {
+                    _glDeleteBuffers(1, ref _pbos[i]);
+                    _pbos[i] = 0;
+                }
+            }
+        }
+
+        _d3dRtSurface?.Dispose();
+        _d3dRtSurface = null;
+        _d3dRtTexture?.Dispose();
+        _d3dRtTexture = null;
         _d3dSurface?.Dispose();
         _d3dSurface = null;
         _d3dTexture?.Dispose();
         _d3dTexture = null;
-        _d3d11Texture?.Dispose();
-        _d3d11Texture = null;
     }
 
     /// <summary>
@@ -686,19 +681,11 @@ public sealed class ProjectMRenderer : IDisposable
         {
             DestroySharedTextureResources();
 
-            if (_wglDxDevice != IntPtr.Zero && _wglDXCloseDeviceNV != null)
-            {
-                _wglDXCloseDeviceNV(_wglDxDevice);
-                _wglDxDevice = IntPtr.Zero;
-            }
-
             _d3dImage = null;
             _d3dDevice?.Dispose();
             _d3dDevice = null;
             _d3d9?.Dispose();
             _d3d9 = null;
-            _d3d11Device?.Dispose();
-            _d3d11Device = null;
         }
         catch (Exception ex) when (ex is FileNotFoundException or FileLoadException or TypeLoadException)
         {
@@ -738,10 +725,10 @@ public sealed class ProjectMRenderer : IDisposable
                 {
                     // Recreate shared texture resources at new size
                     DestroySharedTextureResources();
-                    if (CreateSharedTextureResources() && _d3dSurface != null)
+                    if (CreateSharedTextureResources() && _d3dRtSurface != null)
                     {
                         _d3dImage!.Lock();
-                        _d3dImage.SetBackBuffer(D3DResourceType.IDirect3DSurface9, _d3dSurface.NativePointer, true);
+                        _d3dImage.SetBackBuffer(D3DResourceType.IDirect3DSurface9, _d3dRtSurface.NativePointer, true);
                         _d3dImage.Unlock();
                     }
                     else
@@ -1051,101 +1038,133 @@ public sealed class ProjectMRenderer : IDisposable
     private int _frameCount;
 
     /// <summary>
-    /// Zero-copy render path: renders into the D3D9-shared FBO, then marks
-    /// the D3DImage dirty. Only does glReadPixels when analysis is needed.
+    /// PBO async readback render path: renders into an FBO, uses double-buffered
+    /// PBOs for async DMA readback, copies into a D3D9 surface, then displays
+    /// via D3DImage. Much faster than WriteableBitmap: PBO readback is non-blocking
+    /// DMA, and LockRect gives a direct pointer with no WPF overhead.
     /// </summary>
     private void RenderFrameSharedSurface()
     {
-        // Lock the shared texture for OpenGL access
-        if (!_wglDXLockObjectsNV!(_wglDxDevice, 1, [_wglDxObject]))
+        // 1. Render projectM into the render FBO
+        _glBindFramebuffer!(GL_FRAMEBUFFER, _glRenderFbo);
+        glViewport(0, 0, _width, _height);
+
+        try
         {
-            _lockFailCount++;
-            if (_lockFailCount <= 5 || (_lockFailCount % 100) == 0)
-            {
-                uint glErr = glGetError();
-                Log($"wglDXLockObjectsNV failed (count: {_lockFailCount}, glError: 0x{glErr:X}, Win32: {Marshal.GetLastWin32Error()})");
-            }
+            projectm_opengl_render_frame(_projectM);
+        }
+        catch (AccessViolationException ex)
+        {
+            Log($"FATAL: AccessViolationException in projectm_opengl_render_frame: {ex.Message}");
+            _initialized = false;
+            return;
+        }
+
+        // Fix alpha: projectM renders alpha=0, force to 1
+        glColorMask(0, 0, 0, 1);
+        glClearColor(0f, 0f, 0f, 1f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glColorMask(1, 1, 1, 1);
+
+        _frameCount++;
+        if (_frameCount <= 3)
+        {
+            uint glErr = glGetError();
+            if (glErr != 0)
+                Log($"GL error after render frame #{_frameCount}: 0x{glErr:X}");
+            else
+                Log($"PBO frame #{_frameCount} rendered OK");
+        }
+
+        // 2. Double-buffered PBO async readback
+        //    Frame N: initiate readback into PBO[current], map PBO[previous] to get last frame's pixels
+        int currentPbo = _pboIndex;
+        int previousPbo = 1 - _pboIndex;
+        _pboIndex = previousPbo; // swap for next frame
+
+        // Initiate async readback of current frame into currentPbo
+        _glBindBuffer!(GL_PIXEL_PACK_BUFFER, _pbos[currentPbo]);
+        // glReadPixels with a PBO bound returns immediately — the GPU does DMA in the background
+        glReadPixels(0, 0, _width, _height, GL_BGRA, GL_UNSIGNED_BYTE, IntPtr.Zero);
+
+        _glBindFramebuffer!(GL_FRAMEBUFFER, 0);
+
+        // On the very first frame, we have no previous data to display — skip
+        if (_pboFirstFrame)
+        {
+            _pboFirstFrame = false;
+            _glBindBuffer!(GL_PIXEL_PACK_BUFFER, 0);
+            return;
+        }
+
+        // 3. Map the PREVIOUS frame's PBO (DMA should be complete by now)
+        _glBindBuffer!(GL_PIXEL_PACK_BUFFER, _pbos[previousPbo]);
+        IntPtr pboPtr = _glMapBuffer!(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
+
+        if (pboPtr == IntPtr.Zero)
+        {
+            _glBindBuffer!(GL_PIXEL_PACK_BUFFER, 0);
             return;
         }
 
         try
         {
-            // Bind our FBO so projectM renders into the shared D3D texture
-            _glBindFramebuffer!(GL_FRAMEBUFFER, _glFbo);
-            glViewport(0, 0, _width, _height);
+            // 4. Copy PBO data into the D3D9 system-memory surface via LockRect
+            var lr = _d3dSurface!.LockRect(LockFlags.Discard);
+            int stride = _width * 4;
 
-            try
+            unsafe
             {
-                projectm_opengl_render_frame(_projectM);
-            }
-            catch (AccessViolationException ex)
-            {
-                Log($"FATAL: AccessViolationException in projectm_opengl_render_frame: {ex.Message}");
-                _initialized = false;
-                return;
-            }
+                byte* src = (byte*)pboPtr;
+                byte* dst = (byte*)lr.DataPointer;
 
-            // projectM renders with alpha=0, which causes WPF D3DImage to display
-            // the texture as fully transparent (appears black). Force alpha to 1
-            // by clearing only the alpha channel — RGB is preserved via colorMask.
-            glColorMask(0, 0, 0, 1);
-            glClearColor(0f, 0f, 0f, 1f);
-            glClear(GL_COLOR_BUFFER_BIT);
-            glColorMask(1, 1, 1, 1);
+                // GL is bottom-up, D3D is top-down — flip during copy
+                for (int y = 0; y < _height; y++)
+                {
+                    Buffer.MemoryCopy(
+                        src + (_height - 1 - y) * stride,
+                        dst + y * lr.Pitch,
+                        lr.Pitch, stride);
+                }
 
-            _frameCount++;
-            if (_frameCount <= 3)
-            {
-                uint glErr = glGetError();
-                if (glErr != 0)
-                    Log($"GL error after render frame #{_frameCount}: 0x{glErr:X}");
-                else
-                    Log($"Shared surface frame #{_frameCount} rendered OK");
+                if (_frameCount <= 3)
+                {
+                    // Log center pixel for diagnostics
+                    int cx = _width / 2, cy = _height / 2;
+                    byte* row = dst + cy * lr.Pitch;
+                    Log($"  D3D9 surface center pixel BGRA = ({row[cx * 4]}, {row[cx * 4 + 1]}, {row[cx * 4 + 2]}, {row[cx * 4 + 3]})");
+                }
             }
 
-            // Determine if we need pixel readback for analysis this frame
+            _d3dSurface.UnlockRect();
+
+            // 5. Copy system-memory surface to render-target surface, then update D3DImage
+            var srcRect = new Vortice.Direct3D9.Rect(0, 0, _width, _height);
+            _d3dDevice!.UpdateSurface(_d3dSurface, srcRect, _d3dRtSurface!, new Vortice.Mathematics.Int2(0, 0));
+
+            // Analysis readback (reuse the PBO data — it's still mapped)
             bool needReadback = (_colorSampleTargetTick >= 0 && _colorSampleWatch.ElapsedTicks >= _colorSampleTargetTick)
                 || (_blackCheckTargetTick >= 0 && _colorSampleWatch.ElapsedTicks >= _blackCheckTargetTick);
 
-            if (needReadback && _pixelBuffer != null && _flippedBuffer != null)
+            if (needReadback && _flippedBuffer != null)
             {
-                var handle = GCHandle.Alloc(_pixelBuffer, GCHandleType.Pinned);
-                try
-                {
-                    glReadPixels(0, 0, _width, _height, GL_BGRA, GL_UNSIGNED_BYTE,
-                        handle.AddrOfPinnedObject());
-                }
-                finally
-                {
-                    handle.Free();
-                }
-
-                // Flip for analysis snapshots
-                int stride = _width * 4;
-                for (int y = 0; y < _height; y++)
-                    Buffer.BlockCopy(_pixelBuffer, (_height - 1 - y) * stride, _flippedBuffer, y * stride, stride);
-
+                // The D3D9 surface was just written with flipped data — re-lock to read for analysis
+                var lr2 = _d3dSurface.LockRect(LockFlags.ReadOnly);
+                Marshal.Copy(lr2.DataPointer, _flippedBuffer, 0, _flippedBuffer.Length);
+                _d3dSurface.UnlockRect();
+                // Analyzer uses _pixelBuffer; orientation doesn't matter for color/black detection
+                if (_pixelBuffer != null)
+                    Buffer.BlockCopy(_flippedBuffer, 0, _pixelBuffer, 0, _flippedBuffer.Length);
                 PerformColorAndBlackAnalysis();
             }
-
-            // Unbind FBO
-            _glBindFramebuffer!(GL_FRAMEBUFFER, 0);
         }
         finally
         {
-            // Flush GL commands so the shared texture content is visible to D3D
-            glFlush();
-
-            // Unlock — hand back to D3D
-            _wglDXUnlockObjectsNV!(_wglDxDevice, 1, [_wglDxObject]);
+            _glUnmapBuffer!(GL_PIXEL_PACK_BUFFER);
+            _glBindBuffer!(GL_PIXEL_PACK_BUFFER, 0);
         }
 
-        // GPU-side synchronization: D3D11 flush ensures all writes are committed
-        // before WPF/D3D9 reads from the shared surface.
-        _d3d11Device?.ImmediateContext.Flush();
-
-        // Update D3DImage — the D3D9 surface is backed by the same DXGI shared memory
-        // that the D3D11 texture writes to, so no copy is needed.
+        // 6. Update D3DImage with the render-target surface
         try
         {
             if (!_d3dImage!.IsFrontBufferAvailable)
@@ -1155,7 +1174,7 @@ public sealed class ProjectMRenderer : IDisposable
                 return;
             }
             _d3dImage.Lock();
-            _d3dImage.SetBackBuffer(D3DResourceType.IDirect3DSurface9, _d3dSurface!.NativePointer, true);
+            _d3dImage.SetBackBuffer(D3DResourceType.IDirect3DSurface9, _d3dRtSurface!.NativePointer, true);
             _d3dImage.AddDirtyRect(new Int32Rect(0, 0, _width, _height));
             _d3dImage.Unlock();
             if (_frameCount <= 3)
