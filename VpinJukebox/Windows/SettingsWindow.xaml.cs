@@ -846,13 +846,13 @@ public partial class SettingsWindow : JukeboxWindow
 
     private void UpdateDebugLogPathText()
     {
-        var filename = $"VPinJukebox_Debug_{DateTime.Now:yyyyMMdd}.log";
+        var filename = $"Phosphor_Debug_{DateTime.Now:yyyyMMdd}.log";
         DebugLogPathText.Text = $"Writes to logs/{filename}";
     }
 
     private void OpenDebugLog_Click(object sender, RoutedEventArgs e)
     {
-        var filename = $"VPinJukebox_Debug_{DateTime.Now:yyyyMMdd}.log";
+        var filename = $"Phosphor_Debug_{DateTime.Now:yyyyMMdd}.log";
         var logsDir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
         var path = System.IO.Path.Combine(logsDir, filename);
         if (System.IO.File.Exists(path))

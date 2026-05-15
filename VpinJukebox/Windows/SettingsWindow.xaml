@@ -1367,7 +1367,7 @@
                         <StackPanel>
                         <TextBlock Text="ABOUT" FontSize="12" FontWeight="Bold"
                                    Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
-                        <TextBlock Text="VPin Jukebox. This application may not be distributed without permission."
+                        <TextBlock Text="Phosphor - a digital jukebox prototype for vpin cabinets. This application may not be distributed without permission."
                                    FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
                                    TextWrapping="Wrap"/>
                         <TextBlock Text="DEBUG LOG" FontSize="12" FontWeight="Bold"

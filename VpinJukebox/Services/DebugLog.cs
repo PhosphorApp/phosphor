@@ -3,7 +3,7 @@ using System.IO;
 namespace VpinJukebox;
 
 /// <summary>
-/// Centralized debug logger. Writes to VPinJukebox_Debug_yyyyMMdd.log when enabled.
+/// Centralized debug logger. Writes to Phosphor_Debug_yyyyMMdd.log when enabled.
 /// </summary>
 public static class DebugLog
 {
@@ -21,7 +21,7 @@ public static class DebugLog
 
     private static string LogPath => Path.Combine(
         LogDirectory,
-        $"VPinJukebox_Debug_{DateTime.Now:yyyyMMdd}.log");
+        $"Phosphor_Debug_{DateTime.Now:yyyyMMdd}.log");
 
     public static void Log(string message)
     {

@@ -18,7 +18,7 @@ public partial class TopperWindow : JukeboxWindow
     private double _blobSpeedMultiplier = 1.0;
     private bool _logoSpin = true;
     private LogoRingsMode _logoRings = LogoRingsMode.Standard;
-    private string _logoText = "\u2022 VPIN JUKEBOX \u2022 VPIN JUKEBOX ";
+    private string _logoText = "\u2022 PHOSPHOR \u2022 PHOSPHOR ";
     private double _distortion;
     private BlobPattern _blobPattern = BlobPattern.Random;
     private BlobPattern _blobPatternSetting = BlobPattern.Random;
