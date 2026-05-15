@@ -499,6 +499,9 @@
                                 <CheckBox x:Name="CbProjectMNewVisualOnTrackChange" Content="New visual on track change"
                                            Foreground="{StaticResource TextBrush}" Margin="0,4,0,0"
                                            ToolTip="Automatically switch to a new ProjectM preset when the queue advances to the next track."/>
+                                <CheckBox x:Name="CbProjectMCompatibilityRenderer" Content="Use compatibility renderer (slower, wider GPU support)"
+                                           Foreground="{StaticResource TextBrush}" Margin="0,4,0,0"
+                                           ToolTip="Uses a safer but slower pixel readback path. Enable this if visuals appear black or glitchy on your GPU."/>
 
                                 <TextBlock Text="Auto skip black presets:" Foreground="{StaticResource TextBrush}"
                                            Margin="0,12,0,2"/>
