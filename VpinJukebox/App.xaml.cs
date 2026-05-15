@@ -18,7 +18,7 @@ public partial class App : Application
 
     private void Application_Startup(object sender, StartupEventArgs e)
     {
-        var splash = new SplashScreen("vpinjukeboxsplash.png");
+        var splash = new SplashScreen("splash.png");
         splash.Show(autoClose: false);
 
         // Global exception handlers

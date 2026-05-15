@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>Phosphor</AssemblyName>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>app.ico</ApplicationIcon>
@@ -15,7 +16,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="vpinjukeboxsplash.png" />
+    <None Remove="splash.png" />
   </ItemGroup>
 
   <ItemGroup>
@@ -36,7 +37,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Resource Include="vpinjukeboxsplash.png" />
+    <Resource Include="splash.png" />
   </ItemGroup>
 
   <ItemGroup>

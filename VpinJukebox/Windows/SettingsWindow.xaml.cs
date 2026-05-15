@@ -1108,12 +1108,12 @@ public partial class SettingsWindow : JukeboxWindow
 
     private void BtnTitleTextDefault_Click(object sender, RoutedEventArgs e)
     {
-        TbTitleText.Text = "\uD83C\uDFB5 VPIN JUKEBOX";
+        TbTitleText.Text = "\uD83C\uDFB5 PHOSPHOR";
     }
 
     private void BtnLogoTextDefault_Click(object sender, RoutedEventArgs e)
     {
-        TbLogoText.Text = "\u2022 VPIN JUKEBOX \u2022 VPIN JUKEBOX ";
+        TbLogoText.Text = "\u2022 PHOSPHOR \u2022 PHOSPHOR ";
     }
 
     private void SliderDistortion_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)

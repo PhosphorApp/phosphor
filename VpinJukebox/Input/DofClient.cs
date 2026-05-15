@@ -11,7 +11,7 @@ namespace VpinJukebox;
 /// </summary>
 public class DofClient : IDisposable, IAsyncDisposable
 {
-    private const string PipeName = "VpinJukeboxDof";
+    private const string PipeName = "PhosphorDof";
 
     private Process? _bridgeProcess;
     private NamedPipeClientStream? _pipe;

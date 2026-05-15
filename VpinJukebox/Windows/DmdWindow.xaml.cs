@@ -501,7 +501,24 @@ public partial class DmdWindow : JukeboxWindow
         SetTrackButtonSize(settings.DmdTrackButtonSizeModifier);
         SetMinorButtonLocation(settings.DmdMinorButtonLocation);
         SetShowStatusText(settings.ShowStatusText);
-        TitleTextBlock.Text = settings.TitleText;
+        SetTitleText(settings.TitleText);
+    }
+
+    /// <summary>Sets the title icon and text blocks, splitting any leading emoji and applying thin-space kerning to the remainder.</summary>
+    private void SetTitleText(string text)
+    {
+        var enumerator = System.Globalization.StringInfo.GetTextElementEnumerator(text);
+        var elements = new System.Collections.Generic.List<string>();
+        while (enumerator.MoveNext())
+            elements.Add(enumerator.GetTextElement());
+
+        // Split leading non-letter elements (emoji/symbols) as the icon
+        int splitIndex = 0;
+        while (splitIndex < elements.Count && !elements[splitIndex].Any(char.IsLetter))
+            splitIndex++;
+
+        TitleIconBlock.Text = string.Concat(elements.Take(splitIndex)).TrimEnd();
+        TitleTextBlock.Text = string.Join("\u2009", elements.Skip(splitIndex).Select(e => e.Trim()));
     }
 
     public void SetAppContext(AppSettings settings, PlayfieldProxy playfieldProxy, BackglassProxy backglassProxy, TopperWindow topperWindow)
@@ -800,6 +817,7 @@ public partial class DmdWindow : JukeboxWindow
 
     private void SearchBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (_isFilteringDropdown) return;
         if (sender is System.Windows.Controls.ComboBox cb
             && cb.SelectedItem is string selected
             && DataContext is JukeboxViewModel vm)
@@ -834,6 +852,12 @@ public partial class DmdWindow : JukeboxWindow
         _isFilteringDropdown = true;
         try
         {
+            // Grab the inner TextBox so we can preserve its state across ItemsSource changes,
+            // which WPF's editable ComboBox otherwise resets.
+            var editBox = SearchBox.Template.FindName("PART_EditableTextBox", SearchBox) as TextBox;
+            var savedText = editBox?.Text;
+            var savedCaret = editBox?.CaretIndex ?? 0;
+
             if (string.IsNullOrWhiteSpace(text))
             {
                 SearchBox.IsDropDownOpen = false;
@@ -853,6 +877,13 @@ public partial class DmdWindow : JukeboxWindow
                 vm.SearchSuggestions.Add(m);
 
             SearchBox.IsDropDownOpen = matches.Count > 0;
+
+            // Restore the text and caret that WPF may have clobbered
+            if (editBox != null && savedText != null)
+            {
+                editBox.Text = savedText;
+                editBox.CaretIndex = savedCaret;
+            }
         }
         finally
         {
@@ -1679,7 +1710,7 @@ public partial class DmdWindow : JukeboxWindow
         _showVideoInfo = _appSettings.ShowVideoInfo;
         _backglassProxy?.SetShowVideoInfo(_appSettings.ShowVideoInfo);
         if (!_showVideoInfo) { VideoInfoText.Visibility = Visibility.Collapsed; VideoInfoText.Text = ""; }
-        TitleTextBlock.Text = _appSettings.TitleText;
+        SetTitleText(_appSettings.TitleText);
         LogStep("Playfield/VideoInfo");
 
         if (settingsWindow.SpeedChanged)

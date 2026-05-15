@@ -59,7 +59,10 @@
             <Button x:Name="SettingsButtonCtrl" Content="&#x2699;" ToolTip="Settings (F10)"
                     Click="SettingsButton_Click" DockPanel.Dock="Right"
                     Width="36" Height="36" FontSize="16" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Margin="4,0,0,0"/>
-            <TextBlock x:Name="TitleTextBlock" Text="&#x1F3B5; VPIN JUKEBOX" FontSize="24" FontWeight="Bold"
+            <TextBlock x:Name="TitleIconBlock" Text="&#x1F3B5;" FontSize="16"
+                       Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"
+                       FontFamily="Segoe UI" Margin="0,0,4,0"/>
+            <TextBlock x:Name="TitleTextBlock" Text="PHOSPHOR" FontSize="16" FontWeight="Normal"
                        Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"
                        FontFamily="Segoe UI"/>
             <TextBlock x:Name="StatusBarText" Text="{Binding DisplayStatusText}"
@@ -614,7 +617,7 @@
                                     <Setter Property="Source" Value="{Binding CurrentlyPlaying.ThumbnailUrl, Converter={StaticResource ThumbnailCacheConverter}}"/>
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding CurrentlyPlaying}" Value="{x:Null}">
-                                            <Setter Property="Source" Value="/vpinjukeboxsplash.png"/>
+                                            <Setter Property="Source" Value="/splash.png"/>
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>

@@ -52,7 +52,7 @@ public class SearchHistory
             var json = File.ReadAllText(HistoryPath);
             var items = JsonSerializer.Deserialize<List<string>>(json);
             if (items != null)
-                history._searches.AddRange(items.Count > MaxEntries ? items.Take(MaxEntries) : items);
+                history._searches.AddRange((items.Count > MaxEntries ? items.Take(MaxEntries) : items).Distinct(StringComparer.OrdinalIgnoreCase));
         }
         catch { }
 

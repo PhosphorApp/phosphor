@@ -17,7 +17,7 @@ namespace DofBridge
     /// </summary>
     internal class Program
     {
-        private const string PipeName = "VpinJukeboxDof";
+        private const string PipeName = "PhosphorDof";
 
         private const string DefaultRomName = "vpinjukebox";
 

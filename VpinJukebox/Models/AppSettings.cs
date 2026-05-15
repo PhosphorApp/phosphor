@@ -129,8 +129,8 @@ public class AppSettings
     public int QueueFontSizeModifier { get; set; }
     public int DmdQueueButtonSizeModifier { get; set; }
     public double DmdQueueSplitterSize { get; set; } = -1;
-    public string TitleText { get; set; } = "\uD83C\uDFB5 VPIN JUKEBOX";
-    public string LogoText { get; set; } = "\u2022 VPIN JUKEBOX \u2022 VPIN JUKEBOX ";
+    public string TitleText { get; set; } = "\uD83C\uDFB5 PHOSPHOR";
+    public string LogoText { get; set; } = "\u2022 PHOSPHOR \u2022 PHOSPHOR ";
     public bool PrefetchEnabled { get; set; } = true;
     public VideoQualityPreference VideoQuality { get; set; } = VideoQualityPreference.High;
     public bool StereoAudio { get; set; } = true;
