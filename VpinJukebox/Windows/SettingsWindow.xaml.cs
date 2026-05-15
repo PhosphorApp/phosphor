@@ -361,6 +361,7 @@ public partial class SettingsWindow : JukeboxWindow
         TxtProjectMBeatSensitivity.Text = $"{settings.ProjectMBeatSensitivity:F1}";
         CbProjectMHardCut.IsChecked = settings.ProjectMHardCutEnabled;
         CbProjectMNewVisualOnTrackChange.IsChecked = settings.ProjectMNewVisualOnTrackChange;
+        CbProjectMCompatibilityRenderer.IsChecked = settings.ProjectMSoftwareRender;
         SliderProjectMRenderScale.Value = settings.ProjectMRenderScale * 100;
         TxtProjectMRenderScale.Text = $"{(int)(settings.ProjectMRenderScale * 100)}%";
         switch (settings.ProjectMPresetMonitor)
@@ -1625,6 +1626,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.ProjectMSoftCutDuration = SliderProjectMSoftCut.Value;
         _settings.ProjectMHardCutEnabled = CbProjectMHardCut.IsChecked == true;
         _settings.ProjectMNewVisualOnTrackChange = CbProjectMNewVisualOnTrackChange.IsChecked == true;
+        _settings.ProjectMSoftwareRender = CbProjectMCompatibilityRenderer.IsChecked == true;
         _settings.ProjectMBeatSensitivity = (float)SliderProjectMBeatSensitivity.Value;
         _settings.ProjectMRenderScale = SliderProjectMRenderScale.Value / 100.0;
         _settings.ProjectMPresetMonitor = RbPresetMonitorDeactivate.IsChecked == true ? 2
