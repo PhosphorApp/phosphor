@@ -111,6 +111,11 @@ public sealed class ProjectMRenderer : IDisposable
     /// <summary>True when the zero-copy D3D9/GL shared surface path is active.</summary>
     public bool IsUsingSharedSurface => _useSharedSurface;
 
+    /// <summary>
+    /// Describes the currently active render path, or null if no renderer has initialized.
+    /// </summary>
+    public static string? ActiveRenderPath { get; private set; }
+
     /// <summary>Gets the total number of presets in the playlist.</summary>
     public uint PresetCount => _playlist != IntPtr.Zero ? projectm_playlist_size(_playlist) : 0;
 
@@ -447,6 +452,7 @@ public sealed class ProjectMRenderer : IDisposable
 
             _initialized = true;
             var renderPath = _useSharedSurface ? "PBO ASYNC READBACK (D3DImage)" : "FALLBACK (WriteableBitmap + glReadPixels)";
+            ActiveRenderPath = renderPath;
             Log($"Initialization complete — render path: {renderPath} ({_width}x{_height})");
             return true;
         }

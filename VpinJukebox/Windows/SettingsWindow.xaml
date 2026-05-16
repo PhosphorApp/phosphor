@@ -502,6 +502,7 @@
                                 <CheckBox x:Name="CbProjectMCompatibilityRenderer" Content="Use compatibility renderer (slower, wider GPU support)"
                                            Foreground="{StaticResource TextBrush}" Margin="0,4,0,0"
                                            ToolTip="Uses a safer but slower pixel readback path. Enable this if visuals appear black or glitchy on your GPU."/>
+                                <TextBlock x:Name="TbProjectMActiveRenderer" FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="16,2,0,0"/>
 
                                 <TextBlock Text="Auto skip black presets:" Foreground="{StaticResource TextBrush}"
                                            Margin="0,12,0,2"/>

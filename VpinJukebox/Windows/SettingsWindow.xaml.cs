@@ -364,6 +364,9 @@ public partial class SettingsWindow : JukeboxWindow
         CbProjectMHardCut.IsChecked = settings.ProjectMHardCutEnabled;
         CbProjectMNewVisualOnTrackChange.IsChecked = settings.ProjectMNewVisualOnTrackChange;
         CbProjectMCompatibilityRenderer.IsChecked = settings.ProjectMSoftwareRender;
+        TbProjectMActiveRenderer.Text = ProjectMRenderer.ActiveRenderPath != null
+            ? $"Active: {ProjectMRenderer.ActiveRenderPath}"
+            : "Active: (not yet initialized)";
         SliderProjectMRenderScale.Value = settings.ProjectMRenderScale * 100;
         TxtProjectMRenderScale.Text = $"{(int)(settings.ProjectMRenderScale * 100)}%";
         switch (settings.ProjectMPresetMonitor)
@@ -1720,11 +1723,24 @@ public partial class SettingsWindow : JukeboxWindow
         _originalProjectMTexturePath = _settings.ProjectMTexturePath;
         _originalProjectMEnabledFolders = new List<string>(_settings.ProjectMEnabledFolders);
         _originalProjectMSoftwareRender = _settings.ProjectMSoftwareRender;
+        UpdateActiveRendererLabel();
         _originalDofEnabled = _settings.DofEnabled;
         _originalDofColorBand = _settings.DofColorBand;
         _originalDofPresetChanged = _settings.DofPresetChanged;
         _originalDofRomName = _settings.DofRomName;
         _LogStep("UpdateOriginals");
+    }
+
+    private void UpdateActiveRendererLabel()
+    {
+        // Update immediately with current value, then schedule a delayed
+        // refresh to capture the result after an async renderer restart.
+        void Update() => TbProjectMActiveRenderer.Text = ProjectMRenderer.ActiveRenderPath != null
+            ? $"Active: {ProjectMRenderer.ActiveRenderPath}"
+            : "Active: (not yet initialized)";
+        Update();
+        _ = Dispatcher.InvokeAsync(async () => { await System.Threading.Tasks.Task.Delay(2000); Update(); },
+            System.Windows.Threading.DispatcherPriority.Background);
     }
 
     private void CbVideoQuality_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
