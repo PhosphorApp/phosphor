@@ -37,7 +37,7 @@ public partial class DmdWindow : JukeboxWindow
     private readonly Random _ssRng = new();
     private readonly DispatcherTimer _ssColorTimer;
     private double _ssHueOffset;
-    private double _ssBlobIntensity = 0.25;
+    private double _ssBlobIntensity = 0.5;
     private double _ssBlobSpeedMultiplier = 1.0;
     private BlobPattern _ssBlobPattern = BlobPattern.Random;
     private BlobPattern _ssBlobPatternSetting = BlobPattern.Random;

@@ -24,7 +24,7 @@ public partial class BackglassWindow : JukeboxWindow
     private bool _idleAnimStarted;
     private bool _showVideoInfo;
     private DispatcherTimer? _infoTimer;
-    private double _blobIntensity = 0.25;
+    private double _blobIntensity = 0.5;
     private double _blobSpeedMultiplier = 1.0;
     private double _brightnessBoost = 1.0;
     private bool _logoSpin = true;

@@ -14,7 +14,7 @@ public partial class TopperWindow : JukeboxWindow
     private readonly DispatcherTimer _colorTimer;
     private double _hueOffset;
     private bool _animStarted;
-    private double _blobIntensity = 0.25;
+    private double _blobIntensity = 0.5;
     private double _blobSpeedMultiplier = 1.0;
     private bool _logoSpin = true;
     private LogoRingsMode _logoRings = LogoRingsMode.Standard;

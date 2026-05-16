@@ -18,7 +18,7 @@ public partial class PlayfieldWindow : JukeboxWindow
     private readonly DispatcherTimer _colorTimer;
     private readonly Random _rng = new();
     private double _hueOffset;
-    private double _blobIntensity = 0.25;
+    private double _blobIntensity = 0.5;
     private double _blobSpeedMultiplier = 1.0;
     private BlobPattern _blobPattern = BlobPattern.Random;
     private BlobPattern _blobPatternSetting = BlobPattern.Random;
