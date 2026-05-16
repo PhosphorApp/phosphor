@@ -904,6 +904,24 @@
                                            FontSize="12" BorderBrush="#333"/>
                             </DockPanel>
                             <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Header Size:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <TextBlock Text="Smaller" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <Slider x:Name="SliderHeaderSize" Minimum="-4" Maximum="6"
+                                        TickFrequency="2" IsSnapToTickEnabled="True"
+                                        Width="140" VerticalAlignment="Center"/>
+                                <TextBlock Text="Larger" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Search Bar Size:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <TextBlock Text="Smaller" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <Slider x:Name="SliderSearchBarSize" Minimum="-4" Maximum="6"
+                                        TickFrequency="2" IsSnapToTickEnabled="True"
+                                        Width="140" VerticalAlignment="Center"/>
+                                <TextBlock Text="Larger" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,0,0,8">
                                 <TextBlock Text="Queue Font Size:" Foreground="{StaticResource TextBrush}"
                                            VerticalAlignment="Center" Width="110"/>
                                 <TextBlock Text="Smaller" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
@@ -1367,7 +1385,7 @@
                         <StackPanel>
                         <TextBlock Text="ABOUT" FontSize="12" FontWeight="Bold"
                                    Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
-                        <TextBlock Text="Phosphor - a digital jukebox prototype for vpin cabinets. This application may not be distributed without permission."
+                        <TextBlock Text="Phosphor - a digital jukebox prototype for virtual pinball cabinets. This application may not be distributed without permission."
                                    FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
                                    TextWrapping="Wrap"/>
                         <TextBlock Text="DEBUG LOG" FontSize="12" FontWeight="Bold"

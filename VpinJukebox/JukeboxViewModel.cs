@@ -64,7 +64,7 @@ public partial class JukeboxViewModel : ObservableObject
         _plexStereoAudio = stereoAudio;
         _plexLibraries = libraries;
         GenreCategoryStore.SyncPlexLibraries(_genreCategories, _plexLibraries);
-        GenreCategoryStore.Save(_genreCategories);
+        GenreCategoryStore.SaveInBackground(_genreCategories);
         if (!skipRebuild)
             RebuildCategories();
     }

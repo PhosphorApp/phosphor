@@ -80,6 +80,7 @@ public partial class SettingsWindow : JukeboxWindow
     private string _originalProjectMPresetPath;
     private string _originalProjectMTexturePath;
     private List<string> _originalProjectMEnabledFolders;
+    private bool _originalProjectMSoftwareRender;
     private readonly ObservableCollection<PlexLibraryMapping> _plexLibraries = new();
     private readonly List<CategoryVisibilityItem> _categoryVisibilityItems = new();
     private bool _originalDofEnabled;
@@ -151,7 +152,8 @@ public partial class SettingsWindow : JukeboxWindow
         Math.Abs(_settings.ProjectMRenderScale - _originalProjectMRenderScale) > 0.001 ||
         _settings.ProjectMPresetPath != _originalProjectMPresetPath ||
         _settings.ProjectMTexturePath != _originalProjectMTexturePath ||
-        !_settings.ProjectMEnabledFolders.SequenceEqual(_originalProjectMEnabledFolders);
+        !_settings.ProjectMEnabledFolders.SequenceEqual(_originalProjectMEnabledFolders) ||
+        _settings.ProjectMSoftwareRender != _originalProjectMSoftwareRender;
 
     /// <summary>
     /// True when only tuning parameters changed that can be applied in-place
@@ -402,6 +404,8 @@ public partial class SettingsWindow : JukeboxWindow
             CbQueuePosition.Items.Add(pos);
         CbQueuePosition.SelectedIndex = (int)settings.DmdQueuePosition;
 
+        SliderHeaderSize.Value = settings.DmdHeaderSizeModifier;
+        SliderSearchBarSize.Value = settings.DmdSearchBarSizeModifier;
         SliderQueueFontSize.Value = settings.QueueFontSizeModifier;
         SliderQueueButtonSize.Value = settings.DmdQueueButtonSizeModifier;
         SliderPlayButtonSize.Value = settings.DmdPlayButtonSizeModifier;
@@ -573,6 +577,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalProjectMPresetPath = settings.ProjectMPresetPath;
         _originalProjectMTexturePath = settings.ProjectMTexturePath;
         _originalProjectMEnabledFolders = new List<string>(settings.ProjectMEnabledFolders);
+        _originalProjectMSoftwareRender = settings.ProjectMSoftwareRender;
         _originalDofEnabled = settings.DofEnabled;
         _originalDofColorBand = settings.DofColorBand;
         _originalDofPresetChanged = settings.DofPresetChanged;
@@ -1523,6 +1528,8 @@ public partial class SettingsWindow : JukeboxWindow
         if (newQueuePos != _settings.DmdQueuePosition)
             _settings.DmdQueueSplitterSize = -1; // Reset splitter when position changes
         _settings.DmdQueuePosition = newQueuePos;
+        _settings.DmdHeaderSizeModifier = Math.Clamp((int)SliderHeaderSize.Value, -4, 6);
+        _settings.DmdSearchBarSizeModifier = Math.Clamp((int)SliderSearchBarSize.Value, -4, 6);
         _settings.QueueFontSizeModifier = Math.Clamp((int)SliderQueueFontSize.Value, -12, 24);
         _settings.DmdQueueButtonSizeModifier = Math.Clamp((int)SliderQueueButtonSize.Value, -12, 24);
         _settings.DmdPlayButtonSizeModifier = Math.Clamp((int)SliderPlayButtonSize.Value, -12, 36);
@@ -1545,7 +1552,7 @@ public partial class SettingsWindow : JukeboxWindow
         }
         _LogStep("InvalidateCache");
         // Persist category changes (icon, search term, visibility) to categories.json
-        GenreCategoryStore.Save(_categoryVisibilityItems.Select(i => new GenreCategoryEntry
+        GenreCategoryStore.SaveInBackground(_categoryVisibilityItems.Select(i => new GenreCategoryEntry
         {
             Id = i.Id,
             Name = i.Name,
@@ -1712,6 +1719,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalProjectMPresetPath = _settings.ProjectMPresetPath;
         _originalProjectMTexturePath = _settings.ProjectMTexturePath;
         _originalProjectMEnabledFolders = new List<string>(_settings.ProjectMEnabledFolders);
+        _originalProjectMSoftwareRender = _settings.ProjectMSoftwareRender;
         _originalDofEnabled = _settings.DofEnabled;
         _originalDofColorBand = _settings.DofColorBand;
         _originalDofPresetChanged = _settings.DofPresetChanged;

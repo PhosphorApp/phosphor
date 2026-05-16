@@ -126,6 +126,8 @@ public class AppSettings
     public int DmdGenreIconSizeModifier { get; set; }
     public int DmdTrackButtonSizeModifier { get; set; }
     public MinorButtonLocation DmdMinorButtonLocation { get; set; } = MinorButtonLocation.Queue;
+    public int DmdHeaderSizeModifier { get; set; }
+    public int DmdSearchBarSizeModifier { get; set; }
     public int QueueFontSizeModifier { get; set; }
     public int DmdQueueButtonSizeModifier { get; set; }
     public double DmdQueueSplitterSize { get; set; } = -1;
@@ -169,6 +171,8 @@ public class AppSettings
     private static readonly string DefaultSettingsPath = Path.Combine(
         AppDomain.CurrentDomain.BaseDirectory, "default_settings.json");
 
+    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+
     /// <summary>
     /// The default settings loaded from default_settings.json (or code defaults if the file is missing).
     /// Always available for reference by other features.
@@ -177,7 +181,7 @@ public class AppSettings
 
     public void Save()
     {
-        var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
+        var json = JsonSerializer.Serialize(this, JsonOptions);
         for (int attempt = 0; attempt < 3; attempt++)
         {
             try
@@ -196,30 +200,33 @@ public class AppSettings
         }
     }
 
-    public async Task SaveAsync()
+    public Task SaveAsync()
     {
-        var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
-        for (int attempt = 0; attempt < 3; attempt++)
+        var json = JsonSerializer.Serialize(this, JsonOptions);
+        return Task.Run(async () =>
         {
-            try
+            for (int attempt = 0; attempt < 3; attempt++)
             {
-                await File.WriteAllTextAsync(SettingsPath, json).ConfigureAwait(false);
-                return;
+                try
+                {
+                    await File.WriteAllTextAsync(SettingsPath, json).ConfigureAwait(false);
+                    return;
+                }
+                catch (IOException) when (attempt < 2)
+                {
+                    await Task.Delay(100).ConfigureAwait(false);
+                }
+                catch (IOException ex)
+                {
+                    DebugLog.Log("Settings", $"SaveAsync failed after retries: {ex.Message}");
+                }
             }
-            catch (IOException) when (attempt < 2)
-            {
-                await Task.Delay(100).ConfigureAwait(false);
-            }
-            catch (IOException ex)
-            {
-                DebugLog.Log("Settings", $"SaveAsync failed after retries: {ex.Message}");
-            }
-        }
+        });
     }
 
     public void SaveDefaults()
     {
-        var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
+        var json = JsonSerializer.Serialize(this, JsonOptions);
         File.WriteAllText(DefaultSettingsPath, json);
         Defaults = LoadDefaults();
     }

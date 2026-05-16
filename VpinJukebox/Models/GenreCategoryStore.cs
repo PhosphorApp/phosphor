@@ -143,6 +143,26 @@ public static class GenreCategoryStore
     }
 
     /// <summary>
+    /// Updates the in-memory cache immediately and writes to disk on a background thread.
+    /// </summary>
+    public static void SaveInBackground(List<GenreCategoryEntry> entries)
+    {
+        _cachedEntries = entries;
+        var json = JsonSerializer.Serialize(entries, JsonOptions);
+        Task.Run(() =>
+        {
+            try
+            {
+                File.WriteAllText(FilePath, json);
+            }
+            catch (Exception ex)
+            {
+                DebugLog.Log("GenreCategoryStore", $"Failed to save categories.json: {ex.Message}");
+            }
+        });
+    }
+
+    /// <summary>
     /// Invalidates the in-memory cache, forcing the next Load to read from disk.
     /// </summary>
     public static void InvalidateCache() => _cachedEntries = null;

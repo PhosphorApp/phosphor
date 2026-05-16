@@ -4,7 +4,7 @@
         xmlns:local="clr-namespace:VpinJukebox"
         xmlns:sys="clr-namespace:System;assembly=System.Runtime"
         xmlns:vwp="clr-namespace:WpfToolkit.Controls;assembly=VirtualizingWrapPanel"
-        Title="DMD - VPin Jukebox"
+        Title="Phosphor DMD - UI"
         Background="{StaticResource BgBrush}">
 
     <local:JukeboxWindow.Resources>

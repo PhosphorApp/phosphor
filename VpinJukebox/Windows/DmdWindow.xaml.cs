@@ -496,6 +496,8 @@ public partial class DmdWindow : JukeboxWindow
         SetQueuePosition(settings.DmdQueuePosition);
         ApplyTrackListSettings(settings.ResultColumns, settings.ResultFontSizeModifier);
         SetPlayButtonSize(settings.DmdPlayButtonSizeModifier);
+        SetHeaderSize(settings.DmdHeaderSizeModifier);
+        SetSearchBarSize(settings.DmdSearchBarSizeModifier);
         SetQueueButtonSize(settings.DmdQueueButtonSizeModifier);
         SetGenreIconSize(settings.DmdGenreIconSizeModifier);
         SetTrackButtonSize(settings.DmdTrackButtonSizeModifier);
@@ -823,6 +825,10 @@ public partial class DmdWindow : JukeboxWindow
             && DataContext is JukeboxViewModel vm)
         {
             vm.SearchQuery = selected.Trim();
+            cb.IsDropDownOpen = false;
+            vm.SearchCommand.Execute(null);
+            ResultsList.Focus();
+            SaveLivePlaylistButton.IsEnabled = !string.IsNullOrWhiteSpace(selected);
         }
         UpdateSearchPlaceholder();
     }
@@ -848,6 +854,7 @@ public partial class DmdWindow : JukeboxWindow
     {
         if (_isFilteringDropdown) return;
         if (DataContext is not JukeboxViewModel vm) return;
+        if (!SearchBox.IsKeyboardFocusWithin) return;
 
         _isFilteringDropdown = true;
         try
@@ -1782,6 +1789,7 @@ public partial class DmdWindow : JukeboxWindow
         ProjectMRenderer.BlackCheckRequiredHits = Math.Clamp(_appSettings.ProjectMPresetMonitorBlackHits, 1, 20);
         ProjectMRenderer.BlackCheckIntervalSeconds = Math.Clamp(_appSettings.ProjectMPresetMonitorIntervalSeconds, 0.5, 30.0);
         ProjectMRenderer.BlackCheckLuminanceThreshold = Math.Clamp(_appSettings.ProjectMPresetMonitorThreshold, 1.0, 100.0);
+        ProjectMRenderer.SoftwareRender = _appSettings.ProjectMSoftwareRender;
         if (settingsWindow.ProjectMRestartRequired)
         {
             _playfieldProxy?.RestartProjectM();
@@ -1893,6 +1901,8 @@ public partial class DmdWindow : JukeboxWindow
         }
 
         ApplyTrackListSettings(_appSettings.ResultColumns, _appSettings.ResultFontSizeModifier);
+        SetHeaderSize(_appSettings.DmdHeaderSizeModifier);
+        SetSearchBarSize(_appSettings.DmdSearchBarSizeModifier);
         SetPlayButtonSize(_appSettings.DmdPlayButtonSizeModifier);
         SetQueueButtonSize(_appSettings.DmdQueueButtonSizeModifier);
         SetGenreIconSize(_appSettings.DmdGenreIconSizeModifier);
@@ -2063,6 +2073,52 @@ public partial class DmdWindow : JukeboxWindow
         const double smallButtonFontOffset = 12; // smaller than size offset = less padding, larger icons
         Resources["SmallButtonFontSize"] = Math.Max(4, fontSize - smallButtonFontOffset);
         Resources["SmallButtonSize"] = Math.Max(8, buttonDim - smallButtonSizeOffset);
+    }
+
+    public void SetSearchBarSize(int modifier)
+    {
+        double baseFontSize = 16 + modifier;
+        double searchFontSize = 18 + modifier;
+        double padding = Math.Max(4, 8 + modifier);
+        double buttonPadding = Math.Max(6, 14 + modifier);
+        double controlHeight = Math.Max(28, 40 + (modifier * 3));
+
+        SearchBox.FontSize = Math.Max(10, searchFontSize);
+        SearchBox.Height = controlHeight;
+        SearchPlaceholder.FontSize = Math.Max(10, searchFontSize);
+        SearchPlaceholder.Margin = new Thickness(Math.Max(6, 14 + modifier), 0, 0, 0);
+        // Update the smaller hint text run if present
+        if (SearchPlaceholder.Inlines.Count > 1 && SearchPlaceholder.Inlines.LastInline is System.Windows.Documents.Run hintRun)
+            hintRun.FontSize = Math.Max(8, 13 + modifier);
+        SaveLivePlaylistButton.FontSize = Math.Max(10, baseFontSize);
+        SaveLivePlaylistButton.Padding = new Thickness(buttonPadding, padding, buttonPadding, padding);
+        SaveLivePlaylistButton.Height = controlHeight;
+        SearchButtonCtrl.FontSize = Math.Max(10, baseFontSize);
+        SearchButtonCtrl.Padding = new Thickness(buttonPadding, padding, buttonPadding, padding);
+        SearchButtonCtrl.Height = controlHeight;
+        HomeButton.FontSize = Math.Max(10, baseFontSize);
+        HomeButton.Padding = new Thickness(buttonPadding, padding, buttonPadding, padding);
+        HomeButton.Height = controlHeight;
+    }
+
+    public void SetHeaderSize(int modifier)
+    {
+        double baseFontSize = 16 + modifier;
+        double baseButtonDim = 36 + (modifier * 2);
+        double statusFontSize = 11 + modifier;
+        TitleIconBlock.FontSize = Math.Max(10, baseFontSize);
+        TitleTextBlock.FontSize = Math.Max(10, baseFontSize);
+        StatusBarText.FontSize = Math.Max(8, statusFontSize);
+        VideoInfoText.FontSize = Math.Max(8, statusFontSize);
+        SettingsButtonCtrl.Width = Math.Max(24, baseButtonDim);
+        SettingsButtonCtrl.Height = Math.Max(24, baseButtonDim);
+        SettingsButtonCtrl.FontSize = Math.Max(10, baseFontSize);
+        FullscreenButton.Width = Math.Max(24, baseButtonDim);
+        FullscreenButton.Height = Math.Max(24, baseButtonDim);
+        FullscreenButton.FontSize = Math.Max(10, baseFontSize);
+        CloseAppButton.Width = Math.Max(24, baseButtonDim);
+        CloseAppButton.Height = Math.Max(24, baseButtonDim);
+        CloseAppButton.FontSize = Math.Max(10, baseFontSize);
     }
 
     public void SetQueueButtonSize(int modifier)
