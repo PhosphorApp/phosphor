@@ -2358,8 +2358,9 @@ public partial class DmdWindow : JukeboxWindow
         // Create dark blobs on-demand directly on DimBlobCanvas
         if (_dimDarkBlobsEnabled)
         {
-            CreateDarkBlobs();
             DimBlobCanvas.Visibility = Visibility.Visible;
+            DimBlobCanvas.UpdateLayout();
+            CreateDarkBlobs();
         }
 
         // Animate dim overlay in
