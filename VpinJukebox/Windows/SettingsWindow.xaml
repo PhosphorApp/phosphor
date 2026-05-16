@@ -604,16 +604,35 @@
                             </DockPanel>
                             <CheckBox x:Name="CbDmdDimDarkBlobs" Content="Show dark blobs when dimmed on the DMD"
                                       Foreground="{StaticResource TextBrush}" Margin="24,8,0,0"/>
-                            <TextBlock Text="SWAP DMD &amp; PLAYFIELD" FontSize="12" FontWeight="Bold"
+                            <TextBlock Text="SWAP DMD SCREEN" FontSize="12" FontWeight="Bold"
                                 Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
-                            <TextBlock Text="After timout, the DMD and playfield can swap positions for a larger UI while browsing, then showing the screensaver to prevent burn-in."
+                            <TextBlock Text="After timeout, the DMD and another screen can swap positions for better readability, preference, or burn-in protection."
                                        Foreground="{StaticResource TextDimBrush}" TextWrapping="Wrap" Margin="0,0,0,8"/>
-                            <CheckBox x:Name="CbSwapPlayfieldDmdOnDim" Content="Swap Playfield and DMD when dimmed"
-                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
-                                      IsEnabled="{Binding IsChecked, ElementName=CbDmdScreensaverDim}"/>
+                            <TextBlock Text="Swap is only active when 'Dim screen after idle timeout' is checked."
+                                       Foreground="{StaticResource AccentBrush}" FontWeight="Bold" FontSize="11"
+                                       TextWrapping="Wrap" Margin="0,0,0,4">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsChecked, ElementName=CbDmdScreensaverDim}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <StackPanel Margin="0,8,0,0">
+                                <RadioButton x:Name="RbSwapOff" Content="Off" GroupName="DmdSwap"
+                                             Foreground="{StaticResource TextBrush}" Margin="0,0,0,4"/>
+                                <RadioButton x:Name="RbSwapPlayfield" Content="Swap with Playfield" GroupName="DmdSwap"
+                                             Foreground="{StaticResource TextBrush}" Margin="0,0,0,4"/>
+                                <RadioButton x:Name="RbSwapBackglass" Content="Swap with Backglass" GroupName="DmdSwap"
+                                             Foreground="{StaticResource TextBrush}" Margin="0,0,0,0"/>
+                            </StackPanel>
                             <CheckBox x:Name="CbApplyDefaultDmdOnSwap" Content="Apply default settings to DMD when swapped"
                                       Foreground="{StaticResource TextBrush}" Margin="20,8,0,0"/>
-                            <TextBlock Text="To configure swap:&#10;1) Set up your DMD and Playfield screens for how you'd like them after the swap. Then, use this button to save as the default settings."
+                            <TextBlock Text="To configure swap:&#10;1) Set up your DMD and target screen for how you'd like them after the swap. Then, use this button to save as the default settings."
                                        Foreground="{StaticResource TextDimBrush}" Margin="20,8,0,0" TextWrapping="Wrap" FontSize="11"/>
                             <StackPanel Orientation="Horizontal" Margin="20,10,0,0">
                                 <Button x:Name="BtnSaveDefaultSettings" Content="Save Default Settings"

@@ -282,7 +282,12 @@ public partial class SettingsWindow : JukeboxWindow
 
         CbDmdScreensaverDim.IsChecked = settings.DmdScreensaverDimEnabled;
         CbDmdDimDarkBlobs.IsChecked = settings.DmdScreensaverDimDarkBlobs;
-        CbSwapPlayfieldDmdOnDim.IsChecked = settings.SwapPlayfieldDmdOnDim;
+        switch (settings.DmdSwapTarget)
+        {
+            case DmdSwapMode.Playfield: RbSwapPlayfield.IsChecked = true; break;
+            case DmdSwapMode.Backglass: RbSwapBackglass.IsChecked = true; break;
+            default: RbSwapOff.IsChecked = true; break;
+        }
         CbApplyDefaultDmdOnSwap.IsChecked = settings.ApplyDefaultDmdOnSwap;
 
         // Dim opacity dropdown
@@ -1520,7 +1525,9 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.BackglassAudioOnly = CbBackglassAudioOnly.IsChecked == true;
         _settings.DmdScreensaverDimEnabled = CbDmdScreensaverDim.IsChecked == true;
         _settings.DmdScreensaverDimDarkBlobs = CbDmdDimDarkBlobs.IsChecked == true;
-        _settings.SwapPlayfieldDmdOnDim = CbSwapPlayfieldDmdOnDim.IsChecked == true;
+        _settings.DmdSwapTarget = RbSwapBackglass.IsChecked == true ? DmdSwapMode.Backglass
+            : RbSwapPlayfield.IsChecked == true ? DmdSwapMode.Playfield
+            : DmdSwapMode.Off;
         _settings.ApplyDefaultDmdOnSwap = CbApplyDefaultDmdOnSwap.IsChecked == true;
         _settings.DmdScreensaverDimOpacity = CbDmdDimOpacity.SelectedIndex * 5;
         var timeoutValues = new[] { 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 300, 360, 420, 480, 540, 600 };

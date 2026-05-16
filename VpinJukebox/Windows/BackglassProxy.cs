@@ -83,6 +83,36 @@ public sealed class BackglassProxy
     public void ResetPosition(double left, double top, double width, double height) =>
         _dispatcher.BeginInvoke(() => _window.ResetPosition(left, top, width, height));
 
+    /// <summary>
+    /// Reads the backglass window's current bounds (synchronously on its thread).
+    /// </summary>
+    public (double Left, double Top, double Width, double Height) GetBounds() =>
+        _dispatcher.Invoke(() => (_window.Left, _window.Top, _window.Width, _window.Height));
+
+    /// <summary>
+    /// Sets the backglass window's bounds.
+    /// </summary>
+    public void SetBounds(double left, double top, double width, double height) =>
+        _dispatcher.BeginInvoke(() =>
+        {
+            _window.Left = left;
+            _window.Top = top;
+            _window.Width = width;
+            _window.Height = height;
+        });
+
+    /// <summary>
+    /// Animates a blur effect onto the backglass window.
+    /// </summary>
+    public void AnimateApplyBlur(double targetRadius, double durationSeconds, Action? onCompleted = null) =>
+        _dispatcher.BeginInvoke(() => _window.AnimateApplyBlur(targetRadius, durationSeconds, onCompleted));
+
+    /// <summary>
+    /// Animates the blur away from the backglass window.
+    /// </summary>
+    public void AnimateRemoveBlur(double durationSeconds, Action? onCompleted = null) =>
+        _dispatcher.BeginInvoke(() => _window.AnimateRemoveBlur(durationSeconds, onCompleted));
+
     public bool CheckWindowPositionOnStartup
     {
         set => _dispatcher.BeginInvoke(() => _window.CheckWindowPositionOnStartup = value);

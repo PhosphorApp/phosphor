@@ -54,7 +54,7 @@ public partial class DmdWindow : JukeboxWindow
     private double _dimOpacity = 0.8;
     private bool _isDimmed;
     private bool _dimDarkBlobsEnabled = true;
-    private bool _swapPlayfieldDmdOnDim;
+    private DmdSwapMode _dmdSwapMode;
     private bool _applyDefaultDmdOnSwap;
     private bool _isSwapped;
     private bool _applyingSwapLayout;
@@ -629,7 +629,7 @@ public partial class DmdWindow : JukeboxWindow
 
         // Single creation point — SetDmdScreensaver will create blobs if enabled
         SetDmdScreensaver(settings.DmdScreensaver);
-        SetDmdScreensaverDim(settings.DmdScreensaverDimEnabled, settings.DmdScreensaverDimOpacity, settings.DmdScreensaverDimTimeoutSeconds, settings.DmdScreensaverDimDarkBlobs, settings.SwapPlayfieldDmdOnDim, settings.ApplyDefaultDmdOnSwap);
+        SetDmdScreensaverDim(settings.DmdScreensaverDimEnabled, settings.DmdScreensaverDimOpacity, settings.DmdScreensaverDimTimeoutSeconds, settings.DmdScreensaverDimDarkBlobs, settings.DmdSwapTarget, settings.ApplyDefaultDmdOnSwap);
         ApplyReactiveBlobs(settings.ReactiveBlobs);
 
         // DOF color band — subscribe to playfield blob color changes
@@ -1834,7 +1834,7 @@ public partial class DmdWindow : JukeboxWindow
         SetQueuePosition(_appSettings.DmdQueuePosition);
         if (_appSettings.DmdScreensaver != (ScreensaverCanvas.Visibility == Visibility.Visible))
             SetDmdScreensaver(_appSettings.DmdScreensaver);
-        SetDmdScreensaverDim(_appSettings.DmdScreensaverDimEnabled, _appSettings.DmdScreensaverDimOpacity, _appSettings.DmdScreensaverDimTimeoutSeconds, _appSettings.DmdScreensaverDimDarkBlobs, _appSettings.SwapPlayfieldDmdOnDim, _appSettings.ApplyDefaultDmdOnSwap);
+        SetDmdScreensaverDim(_appSettings.DmdScreensaverDimEnabled, _appSettings.DmdScreensaverDimOpacity, _appSettings.DmdScreensaverDimTimeoutSeconds, _appSettings.DmdScreensaverDimDarkBlobs, _appSettings.DmdSwapTarget, _appSettings.ApplyDefaultDmdOnSwap);
         if (!settingsWindow.SpeedChanged)
             SetScreensaverSettings(_appSettings.ScreensaverIntensity, _appSettings.ScreensaverSpeed);
         if (settingsWindow.ReactiveBlobsChanged)
@@ -2320,11 +2320,11 @@ public partial class DmdWindow : JukeboxWindow
         }
     }
 
-    public void SetDmdScreensaverDim(bool enabled, int opacityPercent, int timeoutSeconds, bool darkBlobs = true, bool swapPlayfieldDmd = false, bool applyDefaultDmd = false)
+    public void SetDmdScreensaverDim(bool enabled, int opacityPercent, int timeoutSeconds, bool darkBlobs = true, DmdSwapMode dmdSwapMode = DmdSwapMode.Off, bool applyDefaultDmd = false)
     {
         _dimScreensaverEnabled = enabled;
         _dimDarkBlobsEnabled = darkBlobs;
-        _swapPlayfieldDmdOnDim = swapPlayfieldDmd;
+        _dmdSwapMode = dmdSwapMode;
         _applyDefaultDmdOnSwap = applyDefaultDmd;
         _dimOpacity = Math.Clamp(opacityPercent / 100.0, 0.0, 1.0);
         _dimIdleTimer.Stop();
@@ -2371,10 +2371,10 @@ public partial class DmdWindow : JukeboxWindow
             EasingFunction = new System.Windows.Media.Animation.QuadraticEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseInOut }
         };
 
-        // After dim completes, swap Playfield and DMD window positions if enabled
+        // After dim completes, swap DMD with target window if enabled
         anim.Completed += (_, _) =>
         {
-            if (_swapPlayfieldDmdOnDim && _playfieldProxy != null && _appSettings?.ShowPlayfield == true && !_isSwapped)
+            if (_dmdSwapMode == DmdSwapMode.Playfield && _playfieldProxy != null && _appSettings?.ShowPlayfield == true && !_isSwapped)
             {
                 _isSwapped = true;
                 _applyingSwapLayout = true;
@@ -2433,6 +2433,66 @@ public partial class DmdWindow : JukeboxWindow
                                     Activate();
                                     HideMouseCursor();
                                     _playfieldProxy!.HideCursor();
+                                });
+                            });
+                        };
+                        fadeInTimer.Start();
+                    });
+                });
+            }
+            else if (_dmdSwapMode == DmdSwapMode.Backglass && _backglassProxy != null && _appSettings?.ShowBackglass == true && !_isSwapped)
+            {
+                _isSwapped = true;
+                _applyingSwapLayout = true;
+
+                AnimateApplyBlur(35, 0.5);
+                _backglassProxy.AnimateApplyBlur(35, 0.5, () =>
+                {
+                    Dispatcher.BeginInvoke(() =>
+                    {
+                        if (_applyDefaultDmdOnSwap && _appSettings != null)
+                        {
+                            _preSwapResultColumns = _appSettings.ResultColumns;
+                            _preSwapResultFontSizeModifier = _appSettings.ResultFontSizeModifier;
+                            _preSwapDmdRotation = _appSettings.DmdRotation;
+                            _preSwapQueuePosition = _appSettings.DmdQueuePosition;
+                            _preSwapPlayButtonSizeModifier = _appSettings.DmdPlayButtonSizeModifier;
+                            _preSwapQueueButtonSizeModifier = _appSettings.DmdQueueButtonSizeModifier;
+                            _preSwapGenreIconSizeModifier = _appSettings.DmdGenreIconSizeModifier;
+                            _preSwapTrackButtonSizeModifier = _appSettings.DmdTrackButtonSizeModifier;
+                            _preSwapQueueFontSizeModifier = _appSettings.QueueFontSizeModifier;
+                            _preSwapQueueSplitterSize = _appSettings.DmdQueueSplitterSize;
+
+                            var d = AppSettings.Defaults;
+                            ApplyTrackListSettings(d.ResultColumns, d.ResultFontSizeModifier);
+                            SetDmdRotation(d.DmdRotation);
+                            SetPlayButtonSize(d.DmdPlayButtonSizeModifier);
+                            SetQueueButtonSize(d.DmdQueueButtonSizeModifier);
+                            SetGenreIconSize(d.DmdGenreIconSizeModifier);
+                            SetTrackButtonSize(d.DmdTrackButtonSizeModifier);
+                            _appSettings.QueueFontSizeModifier = d.QueueFontSizeModifier;
+                            _appSettings.DmdQueueSplitterSize = d.DmdQueueSplitterSize;
+                            SetQueuePosition(d.DmdQueuePosition);
+                        }
+
+                        SwapWithBackglass();
+
+                        var fadeInTimer = new DispatcherTimer(DispatcherPriority.Normal)
+                        {
+                            Interval = TimeSpan.FromMilliseconds(100)
+                        };
+                        fadeInTimer.Tick += (_, _) =>
+                        {
+                            fadeInTimer.Stop();
+                            AnimateRemoveBlur(0.8);
+                            _backglassProxy!.AnimateRemoveBlur(0.8, () =>
+                            {
+                                Dispatcher.BeginInvoke(() =>
+                                {
+                                    _applyingSwapLayout = false;
+                                    Activate();
+                                    HideMouseCursor();
+                                    _backglassProxy!.HideCursor();
                                 });
                             });
                         };
@@ -2518,8 +2578,8 @@ public partial class DmdWindow : JukeboxWindow
         };
         DimOverlay.BeginAnimation(OpacityProperty, anim);
 
-        // Swap back Playfield and DMD window positions
-        if (_isSwapped && _playfieldProxy != null)
+        // Swap back DMD and target window positions
+        if (_isSwapped && _dmdSwapMode == DmdSwapMode.Playfield && _playfieldProxy != null)
         {
             _applyingSwapLayout = true;
 
@@ -2570,6 +2630,53 @@ public partial class DmdWindow : JukeboxWindow
                 });
             });
         }
+        else if (_isSwapped && _dmdSwapMode == DmdSwapMode.Backglass && _backglassProxy != null)
+        {
+            _applyingSwapLayout = true;
+
+            AnimateApplyBlur(35, 0.5);
+            _backglassProxy.AnimateApplyBlur(35, 0.5, () =>
+            {
+                Dispatcher.BeginInvoke(() =>
+                {
+                    if (_applyDefaultDmdOnSwap && _appSettings != null)
+                    {
+                        _appSettings.QueueFontSizeModifier = _preSwapQueueFontSizeModifier;
+                        _appSettings.DmdQueueSplitterSize = _preSwapQueueSplitterSize;
+                        ApplyTrackListSettings(_preSwapResultColumns, _preSwapResultFontSizeModifier);
+                        SetDmdRotation(_preSwapDmdRotation);
+                        SetPlayButtonSize(_preSwapPlayButtonSizeModifier);
+                        SetQueueButtonSize(_preSwapQueueButtonSizeModifier);
+                        SetGenreIconSize(_preSwapGenreIconSizeModifier);
+                        SetTrackButtonSize(_preSwapTrackButtonSizeModifier);
+                        SetQueuePosition(_preSwapQueuePosition);
+                    }
+
+                    _isSwapped = false;
+                    SwapWithBackglass();
+
+                    var fadeInTimer = new DispatcherTimer(DispatcherPriority.Normal)
+                    {
+                        Interval = TimeSpan.FromMilliseconds(100)
+                    };
+                    fadeInTimer.Tick += (_, _) =>
+                    {
+                        fadeInTimer.Stop();
+                        AnimateRemoveBlur(0.8);
+                        _backglassProxy!.AnimateRemoveBlur(0.8, () =>
+                        {
+                            Dispatcher.BeginInvoke(() =>
+                            {
+                                _applyingSwapLayout = false;
+                                Activate();
+                                _backglassProxy!.ShowCursor();
+                            });
+                        });
+                    };
+                    fadeInTimer.Start();
+                });
+            });
+        }
     }
 
     private static void SwapWindowPositions(Window a, Window b)
@@ -2609,6 +2716,24 @@ public partial class DmdWindow : JukeboxWindow
         Top = pf.Top;
         Width = pf.Width;
         Height = pf.Height;
+    }
+
+    /// <summary>
+    /// Cross-thread swap of DMD and backglass window positions.
+    /// Must be called on the DMD thread.
+    /// </summary>
+    private void SwapWithBackglass()
+    {
+        if (_backglassProxy == null) return;
+
+        var bg = _backglassProxy.GetBounds();
+
+        _backglassProxy.SetBounds(Left, Top, Width, Height);
+
+        Left = bg.Left;
+        Top = bg.Top;
+        Width = bg.Width;
+        Height = bg.Height;
     }
 
     private void FadeDmdToBlack(double durationSeconds, Action? onCompleted = null)

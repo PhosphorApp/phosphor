@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Media.Effects;
 using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
@@ -1379,5 +1380,44 @@ public partial class BackglassWindow : JukeboxWindow
             };
             rotate.BeginAnimation(WpfMedia.RotateTransform.AngleProperty, spin);
         }
+    }
+
+    public void AnimateApplyBlur(double targetRadius, double durationSeconds, Action? onCompleted = null)
+    {
+        if (Content is not FrameworkElement root) { onCompleted?.Invoke(); return; }
+
+        var blur = new BlurEffect { Radius = 0, RenderingBias = RenderingBias.Performance };
+        root.Effect = blur;
+
+        var anim = new DoubleAnimation
+        {
+            To = targetRadius,
+            Duration = TimeSpan.FromSeconds(durationSeconds),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
+        };
+        anim.Completed += (_, _) => onCompleted?.Invoke();
+        blur.BeginAnimation(BlurEffect.RadiusProperty, anim);
+    }
+
+    public void AnimateRemoveBlur(double durationSeconds, Action? onCompleted = null)
+    {
+        if (Content is not FrameworkElement root || root.Effect is not BlurEffect blur)
+        {
+            onCompleted?.Invoke();
+            return;
+        }
+
+        var anim = new DoubleAnimation
+        {
+            To = 0.0,
+            Duration = TimeSpan.FromSeconds(durationSeconds),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
+        };
+        anim.Completed += (_, _) =>
+        {
+            root.Effect = null;
+            onCompleted?.Invoke();
+        };
+        blur.BeginAnimation(BlurEffect.RadiusProperty, anim);
     }
 }

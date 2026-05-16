@@ -47,7 +47,7 @@ public class AppSettings
     public int DmdScreensaverDimOpacity { get; set; } = 80;
     public int DmdScreensaverDimTimeoutSeconds { get; set; } = 60;
     public bool DmdScreensaverDimDarkBlobs { get; set; } = true;
-    public bool SwapPlayfieldDmdOnDim { get; set; }
+    public DmdSwapMode DmdSwapTarget { get; set; }
     public bool ApplyDefaultDmdOnSwap { get; set; }
     public bool BackglassLogoDimEnabled { get; set; }
     public int BackglassLogoDimOpacity { get; set; } = 80;
@@ -328,6 +328,13 @@ public enum PlayButtonSize
     Normal,
     Large,
     ExtraLarge
+}
+
+public enum DmdSwapMode
+{
+    Off,
+    Playfield,
+    Backglass
 }
 
 public enum CacheMode
