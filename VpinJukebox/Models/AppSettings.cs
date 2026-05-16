@@ -152,6 +152,8 @@ public class AppSettings
     public bool RepeatEnabled { get; set; }
     public bool AutoDjEnabled { get; set; }
     public bool AutoPlayQueueOnStart { get; set; }
+    public string StartupDittiPath { get; set; } = "";
+    public bool EnableStartupDitti { get; set; }
     public int LastQueueIndex { get; set; } = -1;
     public bool DofEnabled { get; set; }
     public bool DofSimulator { get; set; }

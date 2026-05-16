@@ -228,6 +228,8 @@ public partial class SettingsWindow : JukeboxWindow
         CbShowPlayfield.IsChecked = settings.ShowPlayfield;
         CbShowTopper.IsChecked = settings.ShowTopper;
         CbAutoPlayQueue.IsChecked = settings.AutoPlayQueueOnStart;
+        TbStartupDittiPath.Text = settings.StartupDittiPath;
+        CbEnableStartupDitti.IsChecked = settings.EnableStartupDitti;
         CbDofEnabled.IsChecked = settings.DofEnabled;
         TbDofRomName.Text = settings.DofRomName;
         CbDofSimulator.IsChecked = settings.DofSimulator;
@@ -761,6 +763,23 @@ public partial class SettingsWindow : JukeboxWindow
         }
         if (dlg.ShowDialog(this) == true)
             TbStaticImagePath.Text = dlg.FileName;
+    }
+
+    private void BrowseStartupDitti_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Select Startup Ditti Audio",
+            Filter = "Audio files|*.mp3;*.m4a;*.ogg;*.wav;*.flac;*.wma;*.aac|All files|*.*"
+        };
+        if (!string.IsNullOrWhiteSpace(TbStartupDittiPath.Text))
+        {
+            var dir = System.IO.Path.GetDirectoryName(TbStartupDittiPath.Text);
+            if (!string.IsNullOrEmpty(dir) && System.IO.Directory.Exists(dir))
+                dlg.InitialDirectory = dir;
+        }
+        if (dlg.ShowDialog(this) == true)
+            TbStartupDittiPath.Text = dlg.FileName;
     }
 
     private void BrowseVideo_Click(object sender, RoutedEventArgs e)
@@ -1510,6 +1529,8 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.ShowPlayfield = CbShowPlayfield.IsChecked == true;
         _settings.ShowTopper = CbShowTopper.IsChecked == true;
         _settings.AutoPlayQueueOnStart = CbAutoPlayQueue.IsChecked == true;
+        _settings.StartupDittiPath = TbStartupDittiPath.Text;
+        _settings.EnableStartupDitti = CbEnableStartupDitti.IsChecked == true;
         _settings.DofEnabled = CbDofEnabled.IsChecked == true;
         _settings.DofRomName = string.IsNullOrWhiteSpace(TbDofRomName.Text) ? "vpinjukebox" : TbDofRomName.Text.Trim();
         _settings.DofSimulator = CbDofSimulator.IsChecked == true;

@@ -617,7 +617,10 @@
                                     <Setter Property="Source" Value="{Binding CurrentlyPlaying.ThumbnailUrl, Converter={StaticResource ThumbnailCacheConverter}}"/>
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding CurrentlyPlaying}" Value="{x:Null}">
-                                            <Setter Property="Source" Value="/splash.png"/>
+                                            <Setter Property="Source" Value="/default_thumb.png"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding CurrentlyPlaying.ThumbnailUrl}" Value="">
+                                            <Setter Property="Source" Value="/default_thumb.png"/>
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>

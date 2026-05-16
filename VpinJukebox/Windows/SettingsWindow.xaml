@@ -118,6 +118,24 @@
                                                     IsEnabled="{Binding IsChecked, ElementName=CbShowTopper}"/>
                                         </WrapPanel>
 
+                                        <!-- ═══ SECTION: Audio ═══ -->
+                                        <TextBlock Text="AUDIO" FontSize="12" FontWeight="Bold"
+                                                   Foreground="{StaticResource AccentBrush}" Margin="0,16,0,6"/>
+                                        <TextBlock Text="Startup Ditti:" Foreground="{StaticResource TextBrush}"
+                                                   Margin="0,0,0,4"/>
+                                        <DockPanel Margin="0,0,0,4">
+                                            <Button DockPanel.Dock="Right" Content="Browse…" Padding="8,4" Margin="6,0,0,0"
+                                                    Click="BrowseStartupDitti_Click"/>
+                                            <TextBox x:Name="TbStartupDittiPath" Foreground="{StaticResource TextBrush}"
+                                                     Background="{StaticResource SurfaceBrush}" VerticalAlignment="Center"
+                                                     IsReadOnly="True"/>
+                                        </DockPanel>
+                                        <CheckBox x:Name="CbEnableStartupDitti" Content="Enable Startup Ditti"
+                                                  Foreground="{StaticResource TextBrush}" Margin="0,4,0,2"/>
+                                        <TextBlock Text="Startup sound plays on app startup unless 'Auto play queue on start' is enabled. Sound will play once until finished or other audio is started."
+                                                   FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="18,0,0,8"
+                                                   TextWrapping="Wrap"/>
+
                                         <!-- ═══ SECTION: Video ═══ -->
                                         <TextBlock Text="VIDEO" FontSize="12" FontWeight="Bold"
                                                    Foreground="{StaticResource AccentBrush}" Margin="0,16,0,6"/>

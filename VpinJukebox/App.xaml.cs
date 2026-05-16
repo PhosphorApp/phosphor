@@ -2,6 +2,7 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using LibVLCSharp.Shared;
 using NAudio.CoreAudioApi;
 
 namespace VpinJukebox;
@@ -15,6 +16,8 @@ public partial class App : Application
     private Thread? _backglassThread;
     private TopperWindow? _topperWindow;
     private DmdWindow _dmdWindow = null!;
+    private LibVLC? _dittiVlc;
+    private MediaPlayer? _dittiPlayer;
 
     private void Application_Startup(object sender, StartupEventArgs e)
     {
@@ -142,6 +145,9 @@ public partial class App : Application
                 DebugLog.Log("App", "Deferred startup: auto-playing queue from start");
                 viewModel.PlayCommand.Execute(null);
             }
+
+            // Play startup ditti if enabled and auto-play queue is not active
+            PlayStartupDitti(viewModel);
 
             LogWindowsAudioLevel("Startup");
             DebugLog.Log("App", "Deferred startup complete");
@@ -274,6 +280,9 @@ public partial class App : Application
         }
         _settings.Save();
 
+        // Stop startup ditti if still playing
+        DisposeStartupDitti();
+
         // Prune thumbnail cache on exit
         if (_dmdWindow.DataContext is JukeboxViewModel vm)
             vm.ThumbnailCache?.Prune();
@@ -288,6 +297,73 @@ public partial class App : Application
         _topperWindow?.Close();
 
         Shutdown();
+    }
+
+    private void PlayStartupDitti(JukeboxViewModel viewModel)
+    {
+        DebugLog.Log("Ditti", $"PlayStartupDitti called: Enabled={_settings.EnableStartupDitti}, Path='{_settings.StartupDittiPath}', AutoPlay={_settings.AutoPlayQueueOnStart}, QueueCount={viewModel.Queue.Count}");
+        if (!_settings.EnableStartupDitti) { DebugLog.Log("Ditti", "Skipped: not enabled"); return; }
+        if (string.IsNullOrWhiteSpace(_settings.StartupDittiPath)) { DebugLog.Log("Ditti", "Skipped: no path"); return; }
+        if (!System.IO.File.Exists(_settings.StartupDittiPath)) { DebugLog.Log("Ditti", $"Skipped: file not found: {_settings.StartupDittiPath}"); return; }
+        if (_settings.AutoPlayQueueOnStart && viewModel.Queue.Count > 0) { DebugLog.Log("Ditti", "Skipped: auto-play queue active"); return; }
+
+        try
+        {
+            _dittiVlc = new LibVLC("--no-video-title-show");
+            _dittiPlayer = new MediaPlayer(_dittiVlc);
+            _dittiPlayer.Volume = viewModel.Volume;
+
+            // Show in Now Playing
+            viewModel.CurrentlyPlaying = new VideoItem { Title = "Startup Ditti", VideoId = "ditti:startup" };
+
+            // Stop ditti when real playback starts or user presses stop
+            void clearDitti()
+            {
+                cleanupDittiEvents();
+                if (viewModel.CurrentlyPlaying?.VideoId == "ditti:startup")
+                    viewModel.CurrentlyPlaying = null;
+                DisposeStartupDitti();
+            }
+            void onPlay(string _) => clearDitti();
+            void onStop() => clearDitti();
+            void cleanupDittiEvents() { viewModel.PlayRequested -= onPlay; viewModel.StopRequested -= onStop; }
+            viewModel.PlayRequested += onPlay;
+            viewModel.StopRequested += onStop;
+
+            // Clear Now Playing when ditti finishes
+            _dittiPlayer.EndReached += (_, _) =>
+            {
+                cleanupDittiEvents();
+                Dispatcher.BeginInvoke(() =>
+                {
+                    if (viewModel.CurrentlyPlaying?.VideoId == "ditti:startup")
+                        viewModel.CurrentlyPlaying = null;
+                    DisposeStartupDitti();
+                });
+            };
+
+            var media = new Media(_dittiVlc, _settings.StartupDittiPath, FromType.FromPath);
+            _dittiPlayer.Play(media);
+            DebugLog.Log("App", $"Startup ditti playing: {_settings.StartupDittiPath}");
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Log("App", $"Startup ditti failed: {ex.Message}");
+            DisposeStartupDitti();
+        }
+    }
+
+    private void DisposeStartupDitti()
+    {
+        try
+        {
+            _dittiPlayer?.Stop();
+            _dittiPlayer?.Dispose();
+            _dittiVlc?.Dispose();
+        }
+        catch { }
+        _dittiPlayer = null;
+        _dittiVlc = null;
     }
 
     private static void LogWindowsAudioLevel(string context)

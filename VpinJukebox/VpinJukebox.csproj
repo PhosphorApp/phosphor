@@ -16,6 +16,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="default_thumb.png" />
     <None Remove="splash.png" />
   </ItemGroup>
 
@@ -37,6 +38,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Resource Include="default_thumb.png" />
     <Resource Include="splash.png" />
   </ItemGroup>
 
