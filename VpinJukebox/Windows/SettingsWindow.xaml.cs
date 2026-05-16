@@ -1528,8 +1528,8 @@ public partial class SettingsWindow : JukeboxWindow
         if (newQueuePos != _settings.DmdQueuePosition)
             _settings.DmdQueueSplitterSize = -1; // Reset splitter when position changes
         _settings.DmdQueuePosition = newQueuePos;
-        _settings.DmdHeaderSizeModifier = Math.Clamp((int)SliderHeaderSize.Value, -4, 6);
-        _settings.DmdSearchBarSizeModifier = Math.Clamp((int)SliderSearchBarSize.Value, -4, 6);
+        _settings.DmdHeaderSizeModifier = Math.Clamp((int)SliderHeaderSize.Value, -4, 10);
+        _settings.DmdSearchBarSizeModifier = Math.Clamp((int)SliderSearchBarSize.Value, -4, 8);
         _settings.QueueFontSizeModifier = Math.Clamp((int)SliderQueueFontSize.Value, -12, 24);
         _settings.DmdQueueButtonSizeModifier = Math.Clamp((int)SliderQueueButtonSize.Value, -12, 24);
         _settings.DmdPlayButtonSizeModifier = Math.Clamp((int)SliderPlayButtonSize.Value, -12, 36);

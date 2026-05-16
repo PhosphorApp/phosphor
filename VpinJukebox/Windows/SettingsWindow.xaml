@@ -907,7 +907,7 @@
                                 <TextBlock Text="Header Size:" Foreground="{StaticResource TextBrush}"
                                            VerticalAlignment="Center" Width="110"/>
                                 <TextBlock Text="Smaller" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                <Slider x:Name="SliderHeaderSize" Minimum="-4" Maximum="6"
+                                <Slider x:Name="SliderHeaderSize" Minimum="-4" Maximum="10"
                                         TickFrequency="2" IsSnapToTickEnabled="True"
                                         Width="140" VerticalAlignment="Center"/>
                                 <TextBlock Text="Larger" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
@@ -916,7 +916,7 @@
                                 <TextBlock Text="Search Bar Size:" Foreground="{StaticResource TextBrush}"
                                            VerticalAlignment="Center" Width="110"/>
                                 <TextBlock Text="Smaller" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                <Slider x:Name="SliderSearchBarSize" Minimum="-4" Maximum="6"
+                                <Slider x:Name="SliderSearchBarSize" Minimum="-4" Maximum="8"
                                         TickFrequency="2" IsSnapToTickEnabled="True"
                                         Width="140" VerticalAlignment="Center"/>
                                 <TextBlock Text="Larger" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="4,0,0,0"/>

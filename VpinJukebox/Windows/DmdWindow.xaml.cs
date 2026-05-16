@@ -824,11 +824,15 @@ public partial class DmdWindow : JukeboxWindow
             && cb.SelectedItem is string selected
             && DataContext is JukeboxViewModel vm)
         {
-            vm.SearchQuery = selected.Trim();
+            var trimmed = selected.Trim();
+            vm.SearchQuery = trimmed;
             cb.IsDropDownOpen = false;
             vm.SearchCommand.Execute(null);
             ResultsList.Focus();
-            SaveLivePlaylistButton.IsEnabled = !string.IsNullOrWhiteSpace(selected);
+            SaveLivePlaylistButton.IsEnabled = !string.IsNullOrWhiteSpace(trimmed);
+            // Restore text after SearchCommand rebuilds ItemsSource, which clears it
+            Dispatcher.BeginInvoke(() => { cb.Text = trimmed; UpdateSearchPlaceholder(); });
+            return;
         }
         UpdateSearchPlaceholder();
     }
@@ -2082,9 +2086,11 @@ public partial class DmdWindow : JukeboxWindow
         double padding = Math.Max(4, 8 + modifier);
         double buttonPadding = Math.Max(6, 14 + modifier);
         double controlHeight = Math.Max(28, 40 + (modifier * 3));
+        double arrowSize = Math.Max(6, 10 + modifier);
 
         SearchBox.FontSize = Math.Max(10, searchFontSize);
         SearchBox.Height = controlHeight;
+        Application.Current.Resources["ComboBoxArrowSize"] = arrowSize;
         SearchPlaceholder.FontSize = Math.Max(10, searchFontSize);
         SearchPlaceholder.Margin = new Thickness(Math.Max(6, 14 + modifier), 0, 0, 0);
         // Update the smaller hint text run if present
