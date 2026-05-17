@@ -79,12 +79,24 @@ public partial class BackglassWindow : JukeboxWindow
     }
 
     /// <summary>
+    /// Accepts a shared LibVLC instance from the application so all
+    /// consumers reuse a single plugin-scan cost.
+    /// Must be called before <see cref="InitializeVlcCore"/>.
+    /// </summary>
+    public void SetSharedVlc(LibVLC? vlc)
+    {
+        if (vlc != null)
+            _libVLC = vlc;
+    }
+
+    /// <summary>
     /// Core LibVLC + MediaPlayer creation. Thread-safe; called once from
     /// either the background init task or synchronously as a fallback.
+    /// Reuses a shared LibVLC instance if one was provided via <see cref="SetSharedVlc"/>.
     /// </summary>
     private void InitializeVlcCore()
     {
-        var vlc = new LibVLC("--no-video-title-show", "--network-caching=3000", "--http-reconnect");
+        var vlc = _libVLC ?? new LibVLC("--no-video-title-show", "--network-caching=3000", "--http-reconnect");
         var mp = new MediaPlayer(vlc);
         // Wire EndReached on our dispatcher so the handler can touch UI
         Dispatcher.Invoke(() => mp.EndReached += OnMediaEnded);
@@ -766,18 +778,17 @@ public partial class BackglassWindow : JukeboxWindow
         _positionTimer?.Stop();
         _infoTimer?.Stop();
 
-        // Stop and dispose on a background thread to avoid deadlocking
-        // the UI thread (VLC's EndReached fires on a VLC thread and may
-        // be waiting for Dispatcher access while Stop() blocks here).
+        // Stop and dispose the MediaPlayer on a background thread to avoid
+        // deadlocking the UI thread (VLC's EndReached fires on a VLC thread
+        // and may be waiting for Dispatcher access while Stop() blocks here).
+        // The shared LibVLC instance is owned by the App and disposed at exit.
         var mp = _mediaPlayer;
-        var vlc = _libVLC;
-        if (mp != null && vlc != null)
+        if (mp != null)
         {
             Task.Run(() =>
             {
                 try { mp.Stop(); } catch { }
                 mp.Dispose();
-                vlc.Dispose();
             }).Wait(TimeSpan.FromSeconds(5));
         }
 

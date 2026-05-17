@@ -16,7 +16,8 @@ public partial class App : Application
     private Thread? _backglassThread;
     private TopperWindow? _topperWindow;
     private DmdWindow _dmdWindow = null!;
-    private LibVLC? _dittiVlc;
+    private LibVLC? _sharedVlc;
+    private Task<LibVLC?>? _sharedVlcTask;
     private MediaPlayer? _dittiPlayer;
 
     private void Application_Startup(object sender, StartupEventArgs e)
@@ -34,6 +35,24 @@ public partial class App : Application
         var appVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
         DebugLog.Log("App", $"Application starting - v{appVersion}");
         DebugLog.Log("App", "Loading settings complete");
+
+        // Pre-initialize a shared LibVLC instance on a background thread.
+        // Both the startup ditti and backglass reuse this single instance.
+        _sharedVlcTask = Task.Run(() =>
+        {
+            try
+            {
+                DebugLog.Log("App", "Pre-initializing shared LibVLC...");
+                var vlc = new LibVLC("--no-video-title-show", "--network-caching=3000", "--http-reconnect");
+                DebugLog.Log("App", "Shared LibVLC pre-initialized");
+                return vlc;
+            }
+            catch (Exception ex)
+            {
+                DebugLog.Log("App", $"Shared LibVLC pre-init failed: {ex.Message}");
+                return (LibVLC?)null;
+            }
+        });
         var viewModel = new JukeboxViewModel();
         viewModel.SetupCache(_settings.CacheEnabled, _settings.CacheMaxSizeGb, _settings.CacheMaxClipLengthMinutes);
         viewModel.SetupPrefetch(_settings.PrefetchEnabled);
@@ -215,6 +234,7 @@ public partial class App : Application
                 // Ensure pack:// URI scheme is available on this thread
                 _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
                 window = new BackglassWindow();
+                window.SetSharedVlc(EnsureSharedVlc());
                 window.DataContext = viewModel;
             }
             catch (Exception ex)
@@ -283,6 +303,14 @@ public partial class App : Application
         // Stop startup ditti if still playing
         DisposeStartupDitti();
 
+        // Wait for shared VLC task if it never completed
+        if (_sharedVlcTask != null)
+        {
+            try { _sharedVlc = _sharedVlcTask.GetAwaiter().GetResult(); }
+            catch { }
+            _sharedVlcTask = null;
+        }
+
         // Prune thumbnail cache on exit
         if (_dmdWindow.DataContext is JukeboxViewModel vm)
             vm.ThumbnailCache?.Prune();
@@ -295,6 +323,10 @@ public partial class App : Application
         _playfieldProxy?.ShutdownDispatcher();
         _playfieldThread?.Join(TimeSpan.FromSeconds(3));
         _topperWindow?.Close();
+
+        // Dispose the shared LibVLC instance last, after all consumers are done
+        try { _sharedVlc?.Dispose(); } catch { }
+        _sharedVlc = null;
 
         Shutdown();
     }
@@ -309,8 +341,9 @@ public partial class App : Application
 
         try
         {
-            _dittiVlc = new LibVLC("--no-video-title-show");
-            _dittiPlayer = new MediaPlayer(_dittiVlc);
+            var vlc = EnsureSharedVlc();
+            if (vlc == null) { DebugLog.Log("Ditti", "Skipped: shared LibVLC not available"); return; }
+            _dittiPlayer = new MediaPlayer(vlc);
             _dittiPlayer.Volume = viewModel.Volume;
 
             // Show in Now Playing
@@ -342,7 +375,7 @@ public partial class App : Application
                 });
             };
 
-            var media = new Media(_dittiVlc, _settings.StartupDittiPath, FromType.FromPath);
+            var media = new Media(vlc, _settings.StartupDittiPath, FromType.FromPath);
             _dittiPlayer.Play(media);
             DebugLog.Log("App", $"Startup ditti playing: {_settings.StartupDittiPath}");
         }
@@ -359,11 +392,26 @@ public partial class App : Application
         {
             _dittiPlayer?.Stop();
             _dittiPlayer?.Dispose();
-            _dittiVlc?.Dispose();
         }
         catch { }
         _dittiPlayer = null;
-        _dittiVlc = null;
+    }
+
+    /// <summary>
+    /// Returns the shared LibVLC instance, waiting for background init if needed.
+    /// </summary>
+    private LibVLC? EnsureSharedVlc()
+    {
+        if (_sharedVlc != null)
+            return _sharedVlc;
+
+        if (_sharedVlcTask != null)
+        {
+            _sharedVlc = _sharedVlcTask.GetAwaiter().GetResult();
+            _sharedVlcTask = null;
+        }
+
+        return _sharedVlc;
     }
 
     private static void LogWindowsAudioLevel(string context)
