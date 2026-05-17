@@ -498,6 +498,7 @@ public partial class DmdWindow : JukeboxWindow
         SetPlayButtonSize(settings.DmdPlayButtonSizeModifier);
         SetHeaderSize(settings.DmdHeaderSizeModifier);
         SetSearchBarSize(settings.DmdSearchBarSizeModifier);
+        SetSearchResultsNavSize(settings.DmdSearchResultsNavSizeModifier);
         SetQueueButtonSize(settings.DmdQueueButtonSizeModifier);
         SetGenreIconSize(settings.DmdGenreIconSizeModifier);
         SetTrackButtonSize(settings.DmdTrackButtonSizeModifier);
@@ -1909,6 +1910,7 @@ public partial class DmdWindow : JukeboxWindow
         ApplyTrackListSettings(_appSettings.ResultColumns, _appSettings.ResultFontSizeModifier);
         SetHeaderSize(_appSettings.DmdHeaderSizeModifier);
         SetSearchBarSize(_appSettings.DmdSearchBarSizeModifier);
+        SetSearchResultsNavSize(_appSettings.DmdSearchResultsNavSizeModifier);
         SetPlayButtonSize(_appSettings.DmdPlayButtonSizeModifier);
         SetQueueButtonSize(_appSettings.DmdQueueButtonSizeModifier);
         SetGenreIconSize(_appSettings.DmdGenreIconSizeModifier);
@@ -2079,6 +2081,37 @@ public partial class DmdWindow : JukeboxWindow
         const double smallButtonFontOffset = 12; // smaller than size offset = less padding, larger icons
         Resources["SmallButtonFontSize"] = Math.Max(4, fontSize - smallButtonFontOffset);
         Resources["SmallButtonSize"] = Math.Max(8, buttonDim - smallButtonSizeOffset);
+    }
+
+    public void SetSearchResultsNavSize(int modifier)
+    {
+        double fontSize = Math.Max(9, 11 + modifier);
+        double titleFontSize = Math.Max(10, 13 + modifier);
+        double padding = Math.Max(4, 8 + modifier);
+        double buttonPadding = Math.Max(6, 14 + modifier);
+        var btnThickness = new Thickness(buttonPadding, padding, buttonPadding, padding);
+
+        // Playlist action bar
+        PlaylistNavTitle.FontSize = titleFontSize;
+        PlaylistQueueAllBtn.FontSize = fontSize;
+        PlaylistQueueAllBtn.Padding = btnThickness;
+        PlaylistClearBtn.FontSize = fontSize;
+        PlaylistClearBtn.Padding = btnThickness;
+        PlaylistDeleteBtn.FontSize = fontSize;
+        PlaylistDeleteBtn.Padding = btnThickness;
+
+        // Plex music browse bar
+        PlexBackButton.FontSize = fontSize;
+        PlexBackButton.Padding = new Thickness(padding, Math.Max(2, 4 + modifier / 2), padding, Math.Max(2, 4 + modifier / 2));
+        PlexBreadcrumbText.FontSize = Math.Max(10, 12 + modifier);
+        PlexSearchArtist.FontSize = fontSize;
+        PlexSearchAlbum.FontSize = fontSize;
+        PlexSearchTrack.FontSize = fontSize;
+
+        // Plex hub/playlist browse bar
+        PlexHubBackButton.FontSize = fontSize;
+        PlexHubBackButton.Padding = new Thickness(padding, Math.Max(2, 4 + modifier / 2), padding, Math.Max(2, 4 + modifier / 2));
+        PlexHubBreadcrumbText.FontSize = Math.Max(10, 12 + modifier);
     }
 
     public void SetSearchBarSize(int modifier)

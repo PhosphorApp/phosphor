@@ -129,6 +129,7 @@ public class AppSettings
     public MinorButtonLocation DmdMinorButtonLocation { get; set; } = MinorButtonLocation.Queue;
     public int DmdHeaderSizeModifier { get; set; }
     public int DmdSearchBarSizeModifier { get; set; }
+    public int DmdSearchResultsNavSizeModifier { get; set; }
     public int QueueFontSizeModifier { get; set; }
     public int DmdQueueButtonSizeModifier { get; set; }
     public double DmdQueueSplitterSize { get; set; } = -1;
