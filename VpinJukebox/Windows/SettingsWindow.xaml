@@ -222,8 +222,8 @@
                         <StackPanel DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Top"
                                     Margin="10,0,0,0" Width="110">
                             <ToggleButton x:Name="TestModeToggle" Content="🎮 Test Mode" Padding="10,4"
-                                          FontSize="11" Cursor="Hand"
-                                          Checked="TestModeToggle_Changed" Unchecked="TestModeToggle_Changed"
+                                          FontSize="11" Cursor="Hand" Focusable="False"
+                                          Checked="TestModeToggle_Changed" Unchecked="TestModeToggle_Unchecked"
                                           ToolTip="Toggle test mode to highlight bindings when keys are pressed"/>
                             <TextBlock x:Name="TestModeStatusText" Text="" FontSize="10"
                                        Foreground="{StaticResource TextDimBrush}"

@@ -91,6 +91,7 @@ public partial class SettingsWindow : JukeboxWindow
     private DofClient? _testDofClient;
     private DofClient? _sharedDofClient;
     private bool _testModeActive;
+    private DirectInputPoller? _testDInputPoller;
 
     public PlayfieldMode SelectedPlayfieldMode { get; private set; }
     public bool Saved { get; private set; }
@@ -1036,17 +1037,25 @@ public partial class SettingsWindow : JukeboxWindow
 
     private void TestModeToggle_Changed(object sender, RoutedEventArgs e)
     {
-        _testModeActive = TestModeToggle.IsChecked == true;
+        if (TestModeToggle.IsChecked != true) return;
+
+        _testModeActive = true;
+        PreviewKeyDown += OnTestModeKey;
+        PreviewKeyUp += OnTestModeKeyUp;
+        TestModeStatusText.Text = "Press a key…";
+
+        // Pause DmdWindow's DInput poller and start our own for test mode
+        (Owner as DmdWindow)?.PauseDirectInput();
+        _testDInputPoller?.Dispose();
+        _testDInputPoller = new DirectInputPoller();
+        _testDInputPoller.ButtonPressed += OnTestModeDInputButton;
+        _testDInputPoller.Start();
+    }
+
+    private void TestModeToggle_Unchecked(object sender, RoutedEventArgs e)
+    {
         if (_testModeActive)
-        {
-            PreviewKeyDown += OnTestModeKey;
-            PreviewKeyUp += OnTestModeKeyUp;
-            TestModeStatusText.Text = "Press a key…";
-        }
-        else
-        {
             DisableTestMode();
-        }
     }
 
     private void DisableTestMode()
@@ -1057,10 +1066,21 @@ public partial class SettingsWindow : JukeboxWindow
         PreviewKeyUp -= OnTestModeKeyUp;
         TestModeStatusText.Text = "";
         ClearTestHighlight();
+
+        // Stop test DInput poller and resume DmdWindow's
+        if (_testDInputPoller != null)
+        {
+            _testDInputPoller.ButtonPressed -= OnTestModeDInputButton;
+            _testDInputPoller.Dispose();
+            _testDInputPoller = null;
+        }
+        (Owner as DmdWindow)?.ResumeDirectInput();
     }
 
     private void SettingsTabs_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
+        // Only respond to actual tab changes, not ListView selection bubbling up
+        if (e.OriginalSource != sender) return;
         if (_testModeActive)
             DisableTestMode();
     }
@@ -1112,6 +1132,43 @@ public partial class SettingsWindow : JukeboxWindow
         ClearTestHighlight();
         TestModeStatusText.Text = "Press a key…";
         e.Handled = true;
+    }
+
+    private void OnTestModeDInputButton(Guid deviceGuid, int buttonIndex)
+    {
+        // Find matching entry by DInput binding
+        KeyBindingEntry? matched = null;
+        foreach (var entry in _entries)
+        {
+            if (entry.HasDInputBinding &&
+                entry.CabinetDInputDeviceGuid == deviceGuid &&
+                entry.CabinetDInputButton == buttonIndex)
+            {
+                matched = entry;
+                break;
+            }
+        }
+
+        ClearTestHighlight();
+
+        var buttonLabel = $"Joy Btn {buttonIndex + 1}";
+        if (matched != null)
+        {
+            TestModeStatusText.Text = $"KEY:\n{buttonLabel}\n({matched.DisplayName})";
+            BindingsList.SelectedItem = matched;
+
+            BindingsList.UpdateLayout();
+            if (BindingsList.ItemContainerGenerator.ContainerFromItem(matched)
+                is System.Windows.Controls.ListViewItem lvi)
+            {
+                lvi.Background = (System.Windows.Media.Brush)FindResource("AccentBrush");
+                lvi.Foreground = (System.Windows.Media.Brush)FindResource("TextBrush");
+            }
+        }
+        else
+        {
+            TestModeStatusText.Text = $"KEY:\n{buttonLabel}\n(unbound)";
+        }
     }
 
     private void ClearTestHighlight()

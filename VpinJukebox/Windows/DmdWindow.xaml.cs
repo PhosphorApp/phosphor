@@ -661,6 +661,9 @@ public partial class DmdWindow : JukeboxWindow
 
     public void RestartDirectInputPoller() => StartDirectInputPoller();
 
+    public void PauseDirectInput() => _dinputPoller?.Stop();
+    public void ResumeDirectInput() => _dinputPoller?.Start();
+
     private void OnDInputButtonPressed(Guid deviceGuid, int buttonIndex)
     {
         // DirectInput fires on a background thread; marshal everything to the UI thread.
