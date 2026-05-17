@@ -1461,7 +1461,9 @@ public partial class DmdWindow : JukeboxWindow
 
     private void ApplyReactiveBlobs(bool enabled)
     {
-        if (enabled)
+        bool needAudio = enabled || _appSettings.ReactiveProjectM;
+        AudioReactiveService.ProjectMEnabled = _appSettings.ReactiveProjectM;
+        if (needAudio)
         {
             if (_audioReactive == null)
             {
@@ -1471,9 +1473,9 @@ public partial class DmdWindow : JukeboxWindow
             _audioReactive.ReactivityThreshold = (float)_appSettings.ReactivityThreshold;
             _audioReactive.ReactiveSpeedMs = _appSettings.ReactiveSpeedMs;
             _audioReactive.Overdrive = (float)_appSettings.ReactiveOverdrive;
-            _playfieldProxy?.SetReactiveAudio(_audioReactive);
-            _backglassProxy?.SetReactiveAudio(_audioReactive);
-            _topperWindow?.SetReactiveAudio(_audioReactive);
+            _playfieldProxy?.SetReactiveAudio(enabled ? _audioReactive : null);
+            _backglassProxy?.SetReactiveAudio(enabled ? _audioReactive : null);
+            _topperWindow?.SetReactiveAudio(enabled ? _audioReactive : null);
         }
         else
         {
@@ -3037,7 +3039,7 @@ public partial class DmdWindow : JukeboxWindow
         _backglassProxy?.HideCursor();
         _topperWindow?.Dispatcher.BeginInvoke(() =>
             System.Windows.Input.Mouse.OverrideCursor = System.Windows.Input.Cursors.None);
-        SetTitleBarButtonsVisibility(Visibility.Collapsed);
+        SetTitleBarButtonsVisibility(Visibility.Hidden);
     }
 
     private void ShowMouseCursor()

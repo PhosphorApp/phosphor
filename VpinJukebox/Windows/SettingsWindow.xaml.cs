@@ -55,6 +55,7 @@ public partial class SettingsWindow : JukeboxWindow
     private int _originalDmdBlobCount;
     private int _originalDmdRotation;
     private bool _originalReactiveBlobs;
+    private bool _originalReactiveProjectM;
     private double _originalReactivityThreshold;
     private int _originalReactiveSpeedMs;
     private double _originalReactiveOverdrive;
@@ -89,6 +90,7 @@ public partial class SettingsWindow : JukeboxWindow
     private string _originalDofRomName;
     private DofClient? _testDofClient;
     private DofClient? _sharedDofClient;
+    private bool _testModeActive;
 
     public PlayfieldMode SelectedPlayfieldMode { get; private set; }
     public bool Saved { get; private set; }
@@ -125,6 +127,7 @@ public partial class SettingsWindow : JukeboxWindow
 
     public bool ReactiveBlobsChanged =>
         _settings.ReactiveBlobs != _originalReactiveBlobs ||
+        _settings.ReactiveProjectM != _originalReactiveProjectM ||
         Math.Abs(_settings.ReactivityThreshold - _originalReactivityThreshold) > 0.001 ||
         _settings.ReactiveSpeedMs != _originalReactiveSpeedMs ||
         Math.Abs(_settings.ReactiveOverdrive - _originalReactiveOverdrive) > 0.001;
@@ -402,6 +405,7 @@ public partial class SettingsWindow : JukeboxWindow
         UpdateMandelbrotTuningVisibility();
 
         CbReactiveBlobs.IsChecked = settings.ReactiveBlobs;
+        CbReactiveProjectM.IsChecked = settings.ReactiveProjectM;
         SliderReactivityThreshold.Value = settings.ReactivityThreshold * 100;
         SliderReactiveSpeed.Value = settings.ReactiveSpeedMs;
         SliderReactiveOverdrive.Value = settings.ReactiveOverdrive * 10;
@@ -562,6 +566,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalDmdBlobCount = settings.DmdBlobCount;
         _originalDmdRotation = settings.DmdRotation;
         _originalReactiveBlobs = settings.ReactiveBlobs;
+        _originalReactiveProjectM = settings.ReactiveProjectM;
         _originalReactivityThreshold = settings.ReactivityThreshold;
         _originalReactiveSpeedMs = settings.ReactiveSpeedMs;
         _originalReactiveOverdrive = settings.ReactiveOverdrive;
@@ -1007,6 +1012,119 @@ public partial class SettingsWindow : JukeboxWindow
     private void RebindCabinetButton_Click(object sender, RoutedEventArgs e)
     {
         StartRebind(sender as Button, isPrimary: false);
+    }
+
+    private void ClearPrimaryKey_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is KeyBindingEntry entry)
+        {
+            entry.PrimaryKey = Key.None;
+            BindingsList.Items.Refresh();
+        }
+    }
+
+    private void ClearCabinetButton_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is KeyBindingEntry entry)
+        {
+            entry.CabinetButton = Key.None;
+            entry.ClearDInputBinding();
+            BindingsList.Items.Refresh();
+        }
+    }
+
+    private void TestModeToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        _testModeActive = TestModeToggle.IsChecked == true;
+        if (_testModeActive)
+        {
+            PreviewKeyDown += OnTestModeKey;
+            PreviewKeyUp += OnTestModeKeyUp;
+            TestModeStatusText.Text = "Press a key…";
+        }
+        else
+        {
+            DisableTestMode();
+        }
+    }
+
+    private void DisableTestMode()
+    {
+        _testModeActive = false;
+        TestModeToggle.IsChecked = false;
+        PreviewKeyDown -= OnTestModeKey;
+        PreviewKeyUp -= OnTestModeKeyUp;
+        TestModeStatusText.Text = "";
+        ClearTestHighlight();
+    }
+
+    private void SettingsTabs_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_testModeActive)
+            DisableTestMode();
+    }
+
+    private void OnTestModeKey(object sender, KeyEventArgs e)
+    {
+        if (_rebindingButton != null) return; // rebind in progress, ignore
+
+        var pressed = e.Key == Key.System ? e.SystemKey : e.Key;
+
+        // Find matching entry
+        KeyBindingEntry? matched = null;
+        foreach (var entry in _entries)
+        {
+            if ((entry.PrimaryKey != Key.None && entry.PrimaryKey == pressed) ||
+                (entry.CabinetButton != Key.None && entry.CabinetButton == pressed))
+            {
+                matched = entry;
+                break;
+            }
+        }
+
+        ClearTestHighlight();
+
+        if (matched != null)
+        {
+            TestModeStatusText.Text = $"KEY:\n{pressed}\n({matched.DisplayName})";
+            BindingsList.SelectedItem = matched;
+
+            // Highlight the row
+            BindingsList.UpdateLayout();
+            if (BindingsList.ItemContainerGenerator.ContainerFromItem(matched)
+                is System.Windows.Controls.ListViewItem lvi)
+            {
+                lvi.Background = (System.Windows.Media.Brush)FindResource("AccentBrush");
+                lvi.Foreground = (System.Windows.Media.Brush)FindResource("TextBrush");
+            }
+        }
+        else
+        {
+            TestModeStatusText.Text = $"KEY:\n{pressed}\n(unbound)";
+        }
+
+        e.Handled = true;
+    }
+
+    private void OnTestModeKeyUp(object sender, KeyEventArgs e)
+    {
+        ClearTestHighlight();
+        TestModeStatusText.Text = "Press a key…";
+        e.Handled = true;
+    }
+
+    private void ClearTestHighlight()
+    {
+        foreach (var item in _entries)
+        {
+            if (BindingsList.ItemContainerGenerator.ContainerFromItem(item)
+                is System.Windows.Controls.ListViewItem lvi)
+            {
+                lvi.Background = System.Windows.Media.Brushes.Transparent;
+                lvi.Foreground = (System.Windows.Media.Brush)FindResource("TextBrush");
+            }
+        }
+        BindingsList.SelectedItem = null;
     }
 
     private void StartRebind(Button? btn, bool isPrimary)
@@ -1478,6 +1596,7 @@ public partial class SettingsWindow : JukeboxWindow
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {
+        DisableTestMode();
         try
         {
             ApplySettings();
@@ -1679,6 +1798,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.MandelbrotDiscovery = CbMandelbrotDiscovery.IsChecked == true;
         _settings.MandelbrotDimming = SliderMandelbrotDimming.Value / 100.0;
         _settings.ReactiveBlobs = CbReactiveBlobs.IsChecked == true;
+        _settings.ReactiveProjectM = CbReactiveProjectM.IsChecked == true;
         _settings.ReactivityThreshold = SliderReactivityThreshold.Value / 100.0;
         _settings.ReactiveSpeedMs = (int)SliderReactiveSpeed.Value;
         _settings.ReactiveOverdrive = SliderReactiveOverdrive.Value / 10.0;
@@ -1725,6 +1845,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalDmdBlobCount = _settings.DmdBlobCount;
         _originalDmdRotation = _settings.DmdRotation;
         _originalReactiveBlobs = _settings.ReactiveBlobs;
+        _originalReactiveProjectM = _settings.ReactiveProjectM;
         _originalReactivityThreshold = _settings.ReactivityThreshold;
         _originalReactiveSpeedMs = _settings.ReactiveSpeedMs;
         _originalReactiveOverdrive = _settings.ReactiveOverdrive;
@@ -1888,6 +2009,7 @@ public partial class SettingsWindow : JukeboxWindow
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {
+        DisableTestMode();
         Saved = false;
         StopDInputCapture();
         if (_testDofClient != null && _testDofClient != _sharedDofClient)

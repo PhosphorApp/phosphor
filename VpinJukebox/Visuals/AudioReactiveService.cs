@@ -54,11 +54,18 @@ public sealed class AudioReactiveService : IDisposable
     private float[]? _stereoPool;
 
     /// <summary>
+    /// When true, <see cref="ConsumeRawPcm"/> returns PCM data for projectM.
+    /// Set from <see cref="AppSettings.ReactiveProjectM"/>.
+    /// </summary>
+    public static bool ProjectMEnabled { get; set; }
+
+    /// <summary>
     /// Consume the most recent raw PCM samples (stereo interleaved) for projectM.
-    /// Returns null if no new data is available. Thread-safe.
+    /// Returns null if <see cref="ProjectMEnabled"/> is false or no new data is available. Thread-safe.
     /// </summary>
     public static float[]? ConsumeRawPcm()
     {
+        if (!ProjectMEnabled) return null;
         lock (_pcmLock)
         {
             if (_rawPcmBuffer == null) return null;
