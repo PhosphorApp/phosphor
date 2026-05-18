@@ -508,8 +508,8 @@ public partial class SettingsWindow : JukeboxWindow
         }
         CbThumbnailCacheMaxSize.SelectedIndex = selectedThumbIndex;
 
-        // Playlist cache
-        CbPlaylistCacheEnabled.IsChecked = settings.PlaylistCacheEnabled;
+        // Category cache
+        CbCategoryCacheEnabled.IsChecked = settings.CategoryCacheEnabled;
         var ageOptions = new (string label, int hours)[]
         {
             ("1 hour", 1), ("2 hours", 2), ("4 hours", 4), ("6 hours", 6), ("12 hours", 12),
@@ -521,11 +521,22 @@ public partial class SettingsWindow : JukeboxWindow
         int selectedAgeIndex = 9; // default 7 days
         for (int ai = 0; ai < ageOptions.Length; ai++)
         {
-            CbPlaylistCacheMaxAge.Items.Add(ageOptions[ai].label);
-            if (ageOptions[ai].hours == settings.PlaylistCacheMaxAgeHours)
+            CbCategoryCacheMaxAge.Items.Add(ageOptions[ai].label);
+            if (ageOptions[ai].hours == settings.CategoryCacheMaxAgeHours)
                 selectedAgeIndex = ai;
         }
-        CbPlaylistCacheMaxAge.SelectedIndex = selectedAgeIndex;
+        CbCategoryCacheMaxAge.SelectedIndex = selectedAgeIndex;
+
+        // YouTube playlist cache
+        CbYtPlaylistCacheEnabled.IsChecked = settings.YtPlaylistCacheEnabled;
+        int selectedYtPlAgeIndex = 9;
+        for (int ai = 0; ai < ageOptions.Length; ai++)
+        {
+            CbYtPlaylistCacheMaxAge.Items.Add(ageOptions[ai].label);
+            if (ageOptions[ai].hours == settings.YtPlaylistCacheMaxAgeHours)
+                selectedYtPlAgeIndex = ai;
+        }
+        CbYtPlaylistCacheMaxAge.SelectedIndex = selectedYtPlAgeIndex;
 
         // Plex playlist cache
         CbPlexPlaylistCacheEnabled.IsChecked = settings.PlexPlaylistCacheEnabled;
@@ -830,10 +841,18 @@ public partial class SettingsWindow : JukeboxWindow
             : $"({mb:F0} MB used)";
     }
 
-    public void SetPlaylistCacheSize(long bytes)
+    public void SetCategoryCacheSize(long bytes)
     {
         double kb = bytes / 1024.0;
-        PlaylistCacheSizeText.Text = kb >= 1024
+        CategoryCacheSizeText.Text = kb >= 1024
+            ? $"({kb / 1024:F1} MB used)"
+            : $"({kb:F0} KB used)";
+    }
+
+    public void SetYtPlaylistCacheSize(long bytes)
+    {
+        double kb = bytes / 1024.0;
+        YtPlaylistCacheSizeText.Text = kb >= 1024
             ? $"({kb / 1024:F1} MB used)"
             : $"({kb:F0} KB used)";
     }
@@ -866,13 +885,23 @@ public partial class SettingsWindow : JukeboxWindow
         }
     }
 
-    private void PurgePlaylistCache_Click(object sender, RoutedEventArgs e)
+    private void PurgeCategoryCache_Click(object sender, RoutedEventArgs e)
     {
-        if (DarkConfirmDialog.Confirm("Purge Playlist Cache", "Are you sure you want to purge the playlist cache?", this)
+        if (DarkConfirmDialog.Confirm("Purge Category Cache", "Are you sure you want to purge the category cache?", this)
             && Owner?.DataContext is JukeboxViewModel vm)
         {
-            vm.PlaylistCache?.Purge();
-            SetPlaylistCacheSize(0);
+            vm.CategoryCache?.Purge();
+            SetCategoryCacheSize(0);
+        }
+    }
+
+    private void PurgeYtPlaylistCache_Click(object sender, RoutedEventArgs e)
+    {
+        if (DarkConfirmDialog.Confirm("Purge YouTube Playlist Cache", "Are you sure you want to purge the YouTube playlist cache?", this)
+            && Owner?.DataContext is JukeboxViewModel vm)
+        {
+            vm.YtPlaylistCache?.Purge();
+            SetYtPlaylistCacheSize(0);
         }
     }
 
@@ -1760,7 +1789,7 @@ public partial class SettingsWindow : JukeboxWindow
         {
             if (item.SearchTerm != item.OriginalSearchTerm && !string.IsNullOrEmpty(item.Id))
             {
-                PlaylistCache.InvalidateCacheFile("youtube", item.Id);
+                ResultCache.InvalidateCacheFile(item.Id);
                 item.OriginalSearchTerm = item.SearchTerm;
             }
         }
@@ -1796,10 +1825,13 @@ public partial class SettingsWindow : JukeboxWindow
         var thumbSizeValues = new double[] { 250, 500, 1024, 2048, 5120 };
         _settings.ThumbnailCacheMaxSizeMb = CbThumbnailCacheMaxSize.SelectedIndex >= 0 && CbThumbnailCacheMaxSize.SelectedIndex < thumbSizeValues.Length
             ? thumbSizeValues[CbThumbnailCacheMaxSize.SelectedIndex] : 500;
-        _settings.PlaylistCacheEnabled = CbPlaylistCacheEnabled.IsChecked == true;
+        _settings.CategoryCacheEnabled = CbCategoryCacheEnabled.IsChecked == true;
         var ageValues = new[] { 1, 2, 4, 6, 12, 24, 48, 72, 120, 168, 336, 504, 720, 1440, 2160, 2880, 3600, 4320 };
-        _settings.PlaylistCacheMaxAgeHours = CbPlaylistCacheMaxAge.SelectedIndex >= 0 && CbPlaylistCacheMaxAge.SelectedIndex < ageValues.Length
-            ? ageValues[CbPlaylistCacheMaxAge.SelectedIndex] : 168;
+        _settings.CategoryCacheMaxAgeHours = CbCategoryCacheMaxAge.SelectedIndex >= 0 && CbCategoryCacheMaxAge.SelectedIndex < ageValues.Length
+            ? ageValues[CbCategoryCacheMaxAge.SelectedIndex] : 168;
+        _settings.YtPlaylistCacheEnabled = CbYtPlaylistCacheEnabled.IsChecked == true;
+        _settings.YtPlaylistCacheMaxAgeHours = CbYtPlaylistCacheMaxAge.SelectedIndex >= 0 && CbYtPlaylistCacheMaxAge.SelectedIndex < ageValues.Length
+            ? ageValues[CbYtPlaylistCacheMaxAge.SelectedIndex] : 168;
         _settings.PlexPlaylistCacheEnabled = CbPlexPlaylistCacheEnabled.IsChecked == true;
         _settings.PlexPlaylistCacheMaxAgeHours = CbPlexPlaylistCacheMaxAge.SelectedIndex >= 0 && CbPlexPlaylistCacheMaxAge.SelectedIndex < ageValues.Length
             ? ageValues[CbPlexPlaylistCacheMaxAge.SelectedIndex] : 168;

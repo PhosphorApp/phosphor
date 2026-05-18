@@ -11,6 +11,7 @@ public enum PlaylistKind
 
 public class Playlist
 {
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "";
     public string Icon { get; set; } = "";
     public PlaylistKind Kind { get; set; } = PlaylistKind.Static;
@@ -126,7 +127,20 @@ public class PlaylistManager
                 Converters = { new JsonStringEnumConverter() }
             });
             if (items != null)
+            {
+                // Migrate: assign IDs to playlists that don't have one
+                bool needsSave = false;
+                foreach (var p in items)
+                {
+                    if (string.IsNullOrEmpty(p.Id))
+                    {
+                        p.Id = Guid.NewGuid().ToString("N");
+                        needsSave = true;
+                    }
+                }
                 _playlists.AddRange(items);
+                if (needsSave) Save();
+            }
         }
         catch { }
     }

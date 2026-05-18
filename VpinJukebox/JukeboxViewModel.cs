@@ -281,6 +281,7 @@ public partial class JukeboxViewModel : ObservableObject
 
     // ── Active playlist (for "Add to Playlist" default target) ──
     private string _activePlaylistName = "Favorites";
+    private string? _activePlaylistId;
     public string ActivePlaylistName
     {
         get => _activePlaylistName;
@@ -383,22 +384,31 @@ public partial class JukeboxViewModel : ObservableObject
     // ── Thumbnail cache ──
     public ThumbnailCache? ThumbnailCache { get; private set; }
 
-    // ── Playlist cache ──
-    public PlaylistCache? PlaylistCache { get; private set; }
-    public PlaylistCache? PlexPlaylistCache { get; private set; }
+    // ── Category cache ──
+    public ResultCache? CategoryCache { get; private set; }
+    public ResultCache? YtPlaylistCache { get; private set; }
+    public ResultCache? PlexPlaylistCache { get; private set; }
 
-    public void SetupPlaylistCache(bool enabled, int maxAgeHours)
+    public void SetupCategoryCache(bool enabled, int maxAgeHours)
     {
-        if (PlaylistCache == null)
-            PlaylistCache = new PlaylistCache(enabled, maxAgeHours);
+        if (CategoryCache == null)
+            CategoryCache = new ResultCache(enabled, maxAgeHours, "c_");
         else
-            PlaylistCache.UpdateSettings(enabled, maxAgeHours);
+            CategoryCache.UpdateSettings(enabled, maxAgeHours);
+    }
+
+    public void SetupYtPlaylistCache(bool enabled, int maxAgeHours)
+    {
+        if (YtPlaylistCache == null)
+            YtPlaylistCache = new ResultCache(enabled, maxAgeHours, "pl_");
+        else
+            YtPlaylistCache.UpdateSettings(enabled, maxAgeHours);
     }
 
     public void SetupPlexPlaylistCache(bool enabled, int maxAgeHours)
     {
         if (PlexPlaylistCache == null)
-            PlexPlaylistCache = new PlaylistCache(enabled, maxAgeHours, "plex_pl_cache");
+            PlexPlaylistCache = new ResultCache(enabled, maxAgeHours, "plex_", "plex_cache");
         else
             PlexPlaylistCache.UpdateSettings(enabled, maxAgeHours);
     }
@@ -612,6 +622,7 @@ public partial class JukeboxViewModel : ObservableObject
             {
                 // Live playlist — run the stored search
                 ActivePlaylistName = category.Name;
+                _activePlaylistId = playlist.Id;
                 ActiveCategory = category.Name;
                 IsViewingPlaylist = true;
                 IsViewingLivePlaylist = true;
@@ -994,16 +1005,21 @@ public partial class JukeboxViewModel : ObservableObject
 
         _hasMoreResults = true;
 
-        // Determine playlist cache key from active category
-        _playlistCacheSource = null;
-        _playlistCacheName = null;
-        _playlistCachePageIndex = 0;
+        // Determine cache key from active category or live playlist
+        _activeResultCache = null;
+        _categoryCacheName = null;
+        _categoryCachePageIndex = 0;
         var genreEntry = _genreCategories.FirstOrDefault(c =>
             !string.IsNullOrEmpty(c.SearchTerm) && c.SearchTerm == query);
         if (genreEntry != null)
         {
-            _playlistCacheSource = "youtube";
-            _playlistCacheName = genreEntry.Id;
+            _categoryCacheName = genreEntry.Id;
+            _activeResultCache = CategoryCache;
+        }
+        else if (IsViewingLivePlaylist && !string.IsNullOrEmpty(_activePlaylistId))
+        {
+            _categoryCacheName = _activePlaylistId;
+            _activeResultCache = YtPlaylistCache;
         }
 
         await LoadMoreResults(25);
@@ -1120,10 +1136,10 @@ public partial class JukeboxViewModel : ObservableObject
     private int _plexTotalSize;
     private bool _isPlexBrowsing;
 
-    // ── Playlist cache page tracking ──
-    private string? _playlistCacheSource;
-    private string? _playlistCacheName;
-    private int _playlistCachePageIndex;
+    // ── Category cache page tracking ──
+    private ResultCache? _activeResultCache;
+    private string? _categoryCacheName;
+    private int _categoryCachePageIndex;
 
     // ── History pagination ──
     private const int HistoryPageSize = 50;
@@ -1445,7 +1461,7 @@ public partial class JukeboxViewModel : ObservableObject
             // Try plex playlist cache first
             if (PlexPlaylistCache is { Enabled: true } ppc)
             {
-                var cached = ppc.TryGetPage("plex", displayName, 0, out var isLast);
+                var cached = ppc.TryGetPage(displayName, 0, out var isLast);
                 if (cached != null)
                 {
                     foreach (var v in cached)
@@ -1469,7 +1485,7 @@ public partial class JukeboxViewModel : ObservableObject
             // Store in cache
             bool hasMore = SearchResults.Count < _plexTotalSize;
             if (PlexPlaylistCache is { Enabled: true } storeCache)
-                storeCache.StorePage("plex", displayName, 0, page.Items, !hasMore);
+                storeCache.StorePage(displayName, 0, page.Items, !hasMore);
             _plexPlaylistCachePageIndex = 1;
 
             CanLoadMore = hasMore;
@@ -1612,7 +1628,7 @@ public partial class JukeboxViewModel : ObservableObject
             // Try plex playlist cache first
             if (PlexPlaylistCache is { Enabled: true } ppc && _activePlexLibraryName != null)
             {
-                var cached = ppc.TryGetPage("plex", _activePlexLibraryName, _plexLibraryCachePageIndex, out var isLast);
+                var cached = ppc.TryGetPage(_activePlexLibraryName, _plexLibraryCachePageIndex, out var isLast);
                 if (cached != null)
                 {
                     foreach (var v in cached)
@@ -1645,7 +1661,7 @@ public partial class JukeboxViewModel : ObservableObject
 
             // Store in cache
             if (PlexPlaylistCache is { Enabled: true } storeCache && _activePlexLibraryName != null)
-                storeCache.StorePage("plex", _activePlexLibraryName, _plexLibraryCachePageIndex, page.Items, !hasMore);
+                storeCache.StorePage(_activePlexLibraryName, _plexLibraryCachePageIndex, page.Items, !hasMore);
             _plexLibraryCachePageIndex++;
 
             CanLoadMore = hasMore;
@@ -1727,7 +1743,7 @@ public partial class JukeboxViewModel : ObservableObject
             // Try plex playlist cache first
             if (PlexPlaylistCache is { Enabled: true } ppc && _activePlexPlaylistName != null)
             {
-                var cached = ppc.TryGetPage("plex", _activePlexPlaylistName, _plexPlaylistCachePageIndex, out var isLast);
+                var cached = ppc.TryGetPage(_activePlexPlaylistName, _plexPlaylistCachePageIndex, out var isLast);
                 if (cached != null)
                 {
                     foreach (var v in cached)
@@ -1753,7 +1769,7 @@ public partial class JukeboxViewModel : ObservableObject
 
             // Store in cache
             if (PlexPlaylistCache is { Enabled: true } storeCache && _activePlexPlaylistName != null)
-                storeCache.StorePage("plex", _activePlexPlaylistName, _plexPlaylistCachePageIndex, page.Items, !hasMore);
+                storeCache.StorePage(_activePlexPlaylistName, _plexPlaylistCachePageIndex, page.Items, !hasMore);
             _plexPlaylistCachePageIndex++;
 
             CanLoadMore = hasMore;
@@ -1801,16 +1817,16 @@ public partial class JukeboxViewModel : ObservableObject
 
         try
         {
-            // Try playlist cache first
-            if (PlaylistCache is { Enabled: true } pc
-                && _playlistCacheSource != null && _playlistCacheName != null)
+            // Try result cache first
+            if (_activeResultCache is { Enabled: true } pc
+                && _categoryCacheName != null)
             {
-                var cached = pc.TryGetPage(_playlistCacheSource, _playlistCacheName, _playlistCachePageIndex, out var isLast);
+                var cached = pc.TryGetPage(_categoryCacheName, _categoryCachePageIndex, out var isLast);
                 if (cached != null)
                 {
                     foreach (var v in cached)
                         SearchResults.Add(v);
-                    _playlistCachePageIndex++;
+                    _categoryCachePageIndex++;
                     _hasMoreResults = !isLast;
                     CanLoadMore = _hasMoreResults;
                     StatusText = _hasMoreResults
@@ -1889,14 +1905,14 @@ public partial class JukeboxViewModel : ObservableObject
                 ? $"Showing {SearchResults.Count} results — scroll for more"
                 : $"Showing all {SearchResults.Count} results";
 
-            // Store page in playlist cache and prefetch next page
-            if (PlaylistCache is { Enabled: true } storeCache
-                && _playlistCacheSource != null && _playlistCacheName != null && loaded > 0)
+            // Store page in result cache and prefetch next page
+            if (_activeResultCache is { Enabled: true } storeCache
+                && _categoryCacheName != null && loaded > 0)
             {
                 var pageItems = SearchResults.Skip(SearchResults.Count - loaded).Take(loaded).ToList();
-                storeCache.StorePage(_playlistCacheSource, _playlistCacheName,
-                    _playlistCachePageIndex, pageItems, !_hasMoreResults);
-                _playlistCachePageIndex++;
+                storeCache.StorePage(_categoryCacheName,
+                    _categoryCachePageIndex, pageItems, !_hasMoreResults);
+                _categoryCachePageIndex++;
 
                 // Prefetch next page into cache (fetch 25 more without adding to UI)
                 if (_hasMoreResults && _searchEnumerator != null)
@@ -1945,9 +1961,9 @@ public partial class JukeboxViewModel : ObservableObject
 
                     if (prefetchItems.Count > 0)
                     {
-                        storeCache.StorePage(_playlistCacheSource, _playlistCacheName,
-                            _playlistCachePageIndex, prefetchItems, !_hasMoreResults);
-                        _playlistCachePageIndex++;
+                        storeCache.StorePage(_categoryCacheName,
+                            _categoryCachePageIndex, prefetchItems, !_hasMoreResults);
+                        _categoryCachePageIndex++;
                         CanLoadMore = _hasMoreResults;
                         DebugLog.Log("PlaylistPrefetch", $"Prefetched {prefetchItems.Count} items for next page");
                     }

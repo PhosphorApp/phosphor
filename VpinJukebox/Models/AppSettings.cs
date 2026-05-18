@@ -35,8 +35,10 @@ public class AppSettings
     public CacheMode CacheMode { get; set; } = CacheMode.Playlists;
     public bool ThumbnailCacheEnabled { get; set; } = true;
     public double ThumbnailCacheMaxSizeMb { get; set; } = 500;
-    public bool PlaylistCacheEnabled { get; set; } = true;
-    public int PlaylistCacheMaxAgeHours { get; set; } = 168;
+    public bool CategoryCacheEnabled { get; set; } = true;
+    public int CategoryCacheMaxAgeHours { get; set; } = 168;
+    public bool YtPlaylistCacheEnabled { get; set; } = true;
+    public int YtPlaylistCacheMaxAgeHours { get; set; } = 168;
     public bool PlexPlaylistCacheEnabled { get; set; } = true;
     public int PlexPlaylistCacheMaxAgeHours { get; set; } = 168;
     public KeyBindings KeyBindings { get; set; } = new();

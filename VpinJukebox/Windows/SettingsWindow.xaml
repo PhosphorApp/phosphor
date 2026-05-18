@@ -1317,13 +1317,15 @@
                                        Foreground="{StaticResource TextDimBrush}" Margin="0,8,0,6"/>
                             <Grid Margin="0,0,0,0">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="130"/>
+                                    <ColumnDefinition Width="140"/>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="130"/>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="8"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="8"/>
                                     <RowDefinition Height="Auto"/>
@@ -1337,9 +1339,9 @@
                                           Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 <TextBlock Text="Max:" Grid.Row="0" Grid.Column="1"
                                            Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                           VerticalAlignment="Center" Margin="0,-3,4,0"/>
                                 <ComboBox x:Name="CbThumbnailCacheMaxSize" Grid.Row="0" Grid.Column="2"
-                                          IsEditable="False"
+                                          IsEditable="False" VerticalAlignment="Center"
                                           Background="{StaticResource Surface2Brush}"
                                           Foreground="{StaticResource TextBrush}"
                                           FontSize="12" BorderBrush="#333"/>
@@ -1347,43 +1349,65 @@
                                            Foreground="{StaticResource TextDimBrush}"
                                            VerticalAlignment="Center" Margin="8,0,8,0"/>
                                 <Button Content="🗑 Purge" Grid.Row="0" Grid.Column="4"
-                                        Click="PurgeThumbnailCache_Click" Padding="8,4"/>
+                                        Click="PurgeThumbnailCache_Click" Padding="8,4"
+                                        VerticalAlignment="Center"/>
 
-                                <!-- Row 2: YouTube Playlists -->
-                                <CheckBox x:Name="CbPlaylistCacheEnabled" Content="YouTube Playlists"
+                                <!-- Row 2: YouTube Categories -->
+                                <CheckBox x:Name="CbCategoryCacheEnabled" Content="YouTube Categories"
                                           Grid.Row="2" Grid.Column="0"
                                           Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 <TextBlock Text="Max age:" Grid.Row="2" Grid.Column="1"
                                            Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                <ComboBox x:Name="CbPlaylistCacheMaxAge" Grid.Row="2" Grid.Column="2"
-                                          IsEditable="False"
+                                           VerticalAlignment="Center" Margin="0,-3,4,0"/>
+                                <ComboBox x:Name="CbCategoryCacheMaxAge" Grid.Row="2" Grid.Column="2"
+                                          IsEditable="False" VerticalAlignment="Center"
                                           Background="{StaticResource Surface2Brush}"
                                           Foreground="{StaticResource TextBrush}"
                                           FontSize="12" BorderBrush="#333"/>
-                                <TextBlock x:Name="PlaylistCacheSizeText" Grid.Row="2" Grid.Column="3"
+                                <TextBlock x:Name="CategoryCacheSizeText" Grid.Row="2" Grid.Column="3"
                                            Foreground="{StaticResource TextDimBrush}"
                                            VerticalAlignment="Center" Margin="8,0,8,0"/>
                                 <Button Content="🗑 Purge" Grid.Row="2" Grid.Column="4"
-                                        Click="PurgePlaylistCache_Click" Padding="8,4"/>
+                                        Click="PurgeCategoryCache_Click" Padding="8,4"
+                                        VerticalAlignment="Center"/>
 
-                                <!-- Row 4: Plex Playlists -->
-                                <CheckBox x:Name="CbPlexPlaylistCacheEnabled" Content="Plex Playlists"
+                                <!-- Row 4: YouTube Playlists -->
+                                <CheckBox x:Name="CbYtPlaylistCacheEnabled" Content="YouTube Playlists"
                                           Grid.Row="4" Grid.Column="0"
                                           Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 <TextBlock Text="Max age:" Grid.Row="4" Grid.Column="1"
                                            Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                <ComboBox x:Name="CbPlexPlaylistCacheMaxAge" Grid.Row="4" Grid.Column="2"
-                                          IsEditable="False"
+                                           VerticalAlignment="Center" Margin="0,-3,4,0"/>
+                                <ComboBox x:Name="CbYtPlaylistCacheMaxAge" Grid.Row="4" Grid.Column="2"
+                                          IsEditable="False" VerticalAlignment="Center"
                                           Background="{StaticResource Surface2Brush}"
                                           Foreground="{StaticResource TextBrush}"
                                           FontSize="12" BorderBrush="#333"/>
-                                <TextBlock x:Name="PlexPlaylistCacheSizeText" Grid.Row="4" Grid.Column="3"
+                                <TextBlock x:Name="YtPlaylistCacheSizeText" Grid.Row="4" Grid.Column="3"
                                            Foreground="{StaticResource TextDimBrush}"
                                            VerticalAlignment="Center" Margin="8,0,8,0"/>
                                 <Button Content="🗑 Purge" Grid.Row="4" Grid.Column="4"
-                                        Click="PurgePlexPlaylistCache_Click" Padding="8,4"/>
+                                        Click="PurgeYtPlaylistCache_Click" Padding="8,4"
+                                        VerticalAlignment="Center"/>
+
+                                <!-- Row 6: Plex Playlists -->
+                                <CheckBox x:Name="CbPlexPlaylistCacheEnabled" Content="Plex Playlists"
+                                          Grid.Row="6" Grid.Column="0"
+                                          Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Text="Max age:" Grid.Row="6" Grid.Column="1"
+                                           Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Margin="0,-3,4,0"/>
+                                <ComboBox x:Name="CbPlexPlaylistCacheMaxAge" Grid.Row="6" Grid.Column="2"
+                                          IsEditable="False" VerticalAlignment="Center"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"
+                                          FontSize="12" BorderBrush="#333"/>
+                                <TextBlock x:Name="PlexPlaylistCacheSizeText" Grid.Row="6" Grid.Column="3"
+                                           Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" Margin="8,0,8,0"/>
+                                <Button Content="🗑 Purge" Grid.Row="6" Grid.Column="4"
+                                        Click="PurgePlexPlaylistCache_Click" Padding="8,4"
+                                        VerticalAlignment="Center"/>
                             </Grid>
 
                             <!-- HISTORY subsection -->

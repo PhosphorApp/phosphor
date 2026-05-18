@@ -1705,7 +1705,8 @@ public partial class DmdWindow : JukeboxWindow
             settingsWindow.SetHistoryCount(vm2.HistoryCount);
             settingsWindow.SetCacheSize(vm2.Cache?.GetTotalSizeBytes() ?? 0);
             settingsWindow.SetThumbnailCacheSize(vm2.ThumbnailCache?.GetTotalSizeBytes() ?? 0);
-            settingsWindow.SetPlaylistCacheSize(vm2.PlaylistCache?.GetSizeBytes() ?? 0);
+            settingsWindow.SetCategoryCacheSize(vm2.CategoryCache?.GetSizeBytes() ?? 0);
+            settingsWindow.SetYtPlaylistCacheSize(vm2.YtPlaylistCache?.GetSizeBytes() ?? 0);
             settingsWindow.SetPlexPlaylistCacheSize(vm2.PlexPlaylistCache?.GetSizeBytes() ?? 0);
         }
         settingsWindow.SettingsApplied += async () =>
@@ -1934,7 +1935,8 @@ public partial class DmdWindow : JukeboxWindow
             vm.Cache?.UpdateSettings(_appSettings.CacheEnabled, _appSettings.CacheMaxSizeGb, _appSettings.CacheMaxClipLengthMinutes);
             vm.SetupPrefetch(_appSettings.PrefetchEnabled);
             vm.SetupThumbnailCache(_appSettings.ThumbnailCacheEnabled, _appSettings.ThumbnailCacheMaxSizeMb);
-            vm.SetupPlaylistCache(_appSettings.PlaylistCacheEnabled, _appSettings.PlaylistCacheMaxAgeHours);
+            vm.SetupCategoryCache(_appSettings.CategoryCacheEnabled, _appSettings.CategoryCacheMaxAgeHours);
+            vm.SetupYtPlaylistCache(_appSettings.YtPlaylistCacheEnabled, _appSettings.YtPlaylistCacheMaxAgeHours);
             vm.SetupPlexPlaylistCache(_appSettings.PlexPlaylistCacheEnabled, _appSettings.PlexPlaylistCacheMaxAgeHours);
             LogStep("CacheSetup");
             ThumbnailCacheConverter.Cache = vm.ThumbnailCache;
