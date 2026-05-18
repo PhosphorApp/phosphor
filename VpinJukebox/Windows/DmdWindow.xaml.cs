@@ -3100,7 +3100,7 @@ public partial class DmdWindow : JukeboxWindow
         _topperWindow?.Dispatcher.BeginInvoke(() =>
             System.Windows.Input.Mouse.OverrideCursor = null);
         _cursorIdleTimer.Stop();
-        if (MouseHideState.EnableMouseHide && _appSettings.HideCursorTimeoutSeconds == -1)
+        if (MouseHideState.EnableMouseHide && _appSettings.HideCursorTimeoutSeconds == 0)
             HideMouseCursor();
         else if (MouseHideState.EnableMouseHide && _appSettings.HideCursorTimeoutSeconds > 0)
             _cursorIdleTimer.Start();
@@ -3117,7 +3117,7 @@ public partial class DmdWindow : JukeboxWindow
     private void ApplyCursorHideTimeout()
     {
         _cursorIdleTimer.Stop();
-        if (_appSettings.HideCursorTimeoutSeconds == -1)
+        if (_appSettings.HideCursorTimeoutSeconds == 0)
         {
             HideMouseCursor();
             return;
