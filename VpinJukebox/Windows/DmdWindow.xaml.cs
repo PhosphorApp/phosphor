@@ -142,6 +142,7 @@ public partial class DmdWindow : JukeboxWindow
                 vmLoaded.Categories.CollectionChanged += (_, _) => InvalidateNavRing();
                 vmLoaded.Queue.CollectionChanged += (_, _) => InvalidateNavRing();
                 vmLoaded.PropertyChanged += (_, args) => { if (args.PropertyName == "SearchQuery") Dispatcher.BeginInvoke(UpdateSearchPlaceholder); };
+                vmLoaded.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(JukeboxViewModel.ShowCategories)) Dispatcher.BeginInvoke(() => UpdateBackNavButton(vmLoaded)); };
                 vmLoaded.PropertyChanged += (_, args) =>
                 {
                     if (args.PropertyName == nameof(JukeboxViewModel.PlayTransitioning))
@@ -929,6 +930,7 @@ public partial class DmdWindow : JukeboxWindow
             {
                 if (!await vm.PlexDrillBackAsync())
                     vm.ShowCategoryListCommand.Execute(null);
+                UpdateBackNavButton(vm);
             });
         }
     }
@@ -937,6 +939,42 @@ public partial class DmdWindow : JukeboxWindow
     {
         if (DataContext is not JukeboxViewModel vm) return;
         vm.PlexHubGoBack();
+        UpdateBackNavButton(vm);
+    }
+
+    private void BackNavButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not JukeboxViewModel vm) return;
+
+        if (vm.IsViewingPlexMusic)
+        {
+            Dispatcher.BeginInvoke(async () =>
+            {
+                if (!await vm.PlexDrillBackAsync())
+                {
+                    vm.ShowCategoryListCommand.Execute(null);
+                    ApplyNavHighlight(vm);
+                }
+                UpdateBackNavButton(vm);
+            });
+        }
+        else if (vm.IsViewingPlexHubOrPlaylist)
+        {
+            vm.PlexHubGoBack();
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => ApplyNavHighlight(vm));
+            UpdateBackNavButton(vm);
+        }
+        else
+        {
+            vm.ShowCategoryListCommand.Execute(null);
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => ApplyNavHighlight(vm));
+            UpdateBackNavButton(vm);
+        }
+    }
+
+    private void UpdateBackNavButton(JukeboxViewModel vm)
+    {
+        BackNavButton.IsEnabled = !vm.ShowCategories;
     }
 
     private void PlexSearchMode_Changed(object sender, RoutedEventArgs e)
@@ -2117,17 +2155,17 @@ public partial class DmdWindow : JukeboxWindow
         PlaylistDeleteBtn.Padding = btnThickness;
 
         // Plex music browse bar
-        PlexBackButton.FontSize = fontSize;
-        PlexBackButton.Padding = new Thickness(padding, Math.Max(2, 4 + modifier / 2), padding, Math.Max(2, 4 + modifier / 2));
         PlexBreadcrumbText.FontSize = Math.Max(10, 12 + modifier);
         PlexSearchArtist.FontSize = fontSize;
         PlexSearchAlbum.FontSize = fontSize;
         PlexSearchTrack.FontSize = fontSize;
 
         // Plex hub/playlist browse bar
-        PlexHubBackButton.FontSize = fontSize;
-        PlexHubBackButton.Padding = new Thickness(padding, Math.Max(2, 4 + modifier / 2), padding, Math.Max(2, 4 + modifier / 2));
         PlexHubBreadcrumbText.FontSize = Math.Max(10, 12 + modifier);
+
+        // Back nav button
+        BackNavButton.FontSize = Math.Max(14, 18 + modifier);
+        BackNavButton.Padding = new Thickness(padding + 4, padding, padding + 4, padding);
     }
 
     public void SetSearchBarSize(int modifier)
