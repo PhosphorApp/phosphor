@@ -227,6 +227,7 @@ public partial class SettingsWindow : JukeboxWindow
 
         CbShowVideoInfo.IsChecked = settings.ShowVideoInfo;
         CbResizableWindows.IsChecked = settings.ResizableWindows;
+        CbSetCursorOnLaunch.IsChecked = settings.SetCursorOnLaunch;
         CbCheckWindowsOnStartup.IsChecked = settings.CheckWindowsOnStartup;
         CbShowBackglass.IsChecked = settings.ShowBackglass;
         CbShowPlayfield.IsChecked = settings.ShowPlayfield;
@@ -458,7 +459,8 @@ public partial class SettingsWindow : JukeboxWindow
 
         // Hide cursor timeout dropdown
         var cursorTimeouts = new (string label, int seconds)[] {
-            ("Never", 0), ("15 seconds", 15), ("30 seconds", 30), ("45 seconds", 45), ("60 seconds", 60),
+            ("Never", 0), ("Immediately", -1), ("5 seconds", 5), ("10 seconds", 10),
+            ("15 seconds", 15), ("30 seconds", 30), ("45 seconds", 45), ("60 seconds", 60),
             ("2 minutes", 120), ("3 minutes", 180), ("4 minutes", 240), ("5 minutes", 300),
             ("6 minutes", 360), ("7 minutes", 420), ("8 minutes", 480), ("9 minutes", 540), ("10 minutes", 600)
         };
@@ -1701,6 +1703,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.PlayfieldVideoPath = TbVideoPath.Text;
         _settings.ShowVideoInfo = CbShowVideoInfo.IsChecked == true;
         _settings.ResizableWindows = CbResizableWindows.IsChecked == true;
+        _settings.SetCursorOnLaunch = CbSetCursorOnLaunch.IsChecked == true;
         _settings.CheckWindowsOnStartup = CbCheckWindowsOnStartup.IsChecked == true;
         _settings.ShowBackglass = CbShowBackglass.IsChecked == true;
         _settings.ShowPlayfield = CbShowPlayfield.IsChecked == true;
@@ -1777,7 +1780,7 @@ public partial class SettingsWindow : JukeboxWindow
         }).ToList());
         _LogStep("GenreCategoryStore.Save");
         _settings.ShowStatusText = CbShowStatusText.IsChecked == true;
-        var cursorTimeoutValues = new[] { 0, 15, 30, 45, 60, 120, 180, 240, 300, 360, 420, 480, 540, 600 };
+        var cursorTimeoutValues = new[] { 0, -1, 5, 10, 15, 30, 45, 60, 120, 180, 240, 300, 360, 420, 480, 540, 600 };
         _settings.HideCursorTimeoutSeconds = CbHideCursorTimeout.SelectedIndex >= 0 && CbHideCursorTimeout.SelectedIndex < cursorTimeoutValues.Length
             ? cursorTimeoutValues[CbHideCursorTimeout.SelectedIndex] : 15;
         _settings.CacheEnabled = CbCacheEnabled.IsChecked == true;

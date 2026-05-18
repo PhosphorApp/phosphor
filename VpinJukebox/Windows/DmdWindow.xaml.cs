@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -19,6 +20,9 @@ namespace VpinJukebox;
 
 public partial class DmdWindow : JukeboxWindow
 {
+    [DllImport("user32.dll")]
+    private static extern bool SetCursorPos(int X, int Y);
+
     private AppSettings? _appSettings;
     private PlayfieldProxy? _playfieldProxy;
     private BackglassProxy? _backglassProxy;
@@ -171,6 +175,13 @@ public partial class DmdWindow : JukeboxWindow
                     Dispatcher.BeginInvoke(DispatcherPriority.Loaded, UpdateQueueDeleteButtonPosition);
             };
         };
+    }
+
+    private void CenterCursorOnWindow()
+    {
+        var center = PointToScreen(new WpfPoint(ActualWidth / 2, ActualHeight / 2));
+        SetCursorPos((int)center.X, (int)center.Y);
+        Mouse.Synchronize();
     }
 
     /// <summary>
@@ -529,6 +540,8 @@ public partial class DmdWindow : JukeboxWindow
         DebugLog.Log("DMD", "SetAppContext: begin");
         _appSettings = settings;
         ApplyCursorHideTimeout();
+        if (settings.SetCursorOnLaunch)
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, CenterCursorOnWindow);
         _playfieldProxy = playfieldProxy;
         _backglassProxy = backglassProxy;
         _topperWindow = topperWindow;
@@ -3087,7 +3100,9 @@ public partial class DmdWindow : JukeboxWindow
         _topperWindow?.Dispatcher.BeginInvoke(() =>
             System.Windows.Input.Mouse.OverrideCursor = null);
         _cursorIdleTimer.Stop();
-        if (MouseHideState.EnableMouseHide && _appSettings.HideCursorTimeoutSeconds > 0)
+        if (MouseHideState.EnableMouseHide && _appSettings.HideCursorTimeoutSeconds == -1)
+            HideMouseCursor();
+        else if (MouseHideState.EnableMouseHide && _appSettings.HideCursorTimeoutSeconds > 0)
             _cursorIdleTimer.Start();
         SetTitleBarButtonsVisibility(Visibility.Visible);
     }
@@ -3102,6 +3117,11 @@ public partial class DmdWindow : JukeboxWindow
     private void ApplyCursorHideTimeout()
     {
         _cursorIdleTimer.Stop();
+        if (_appSettings.HideCursorTimeoutSeconds == -1)
+        {
+            HideMouseCursor();
+            return;
+        }
         ShowMouseCursor();
         if (_appSettings.HideCursorTimeoutSeconds > 0)
         {

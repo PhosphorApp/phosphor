@@ -26,6 +26,7 @@ public class AppSettings
     public WindowLayout Topper { get; set; } = new() { Left = 0, Top = 0, Width = 800, Height = 300 };
     public WindowLayout? SettingsWindowLayout { get; set; }
     public bool ResizableWindows { get; set; } = true;
+    public bool SetCursorOnLaunch { get; set; } = true;
     public bool CheckWindowsOnStartup { get; set; } = true;
     public bool CacheEnabled { get; set; }
     public double CacheMaxSizeGb { get; set; } = 5.0;

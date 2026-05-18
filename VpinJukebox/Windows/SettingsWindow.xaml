@@ -69,6 +69,9 @@
                             <CheckBox x:Name="CbResizableWindows" Content="Enable resizable windows (may show artifacts)"
                                       Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
                                       ToolTip="Allows windows to be resized by dragging the corners. This sometimes show visible artifacts, so keep this disabled when not needed or if you see visual artifacts."/>
+                            <CheckBox x:Name="CbSetCursorOnLaunch" Content="Set cursor on launch to DMD"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
+                                      ToolTip="When enabled, the mouse cursor is moved to the center of the DMD window on launch."/>
                             <CheckBox x:Name="CbAutoPlayQueue" Content="Auto play queue on start"
                                       Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
                                       ToolTip="When enabled, if there are items in the queue on launch, playback starts automatically."/>
