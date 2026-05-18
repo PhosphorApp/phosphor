@@ -117,6 +117,8 @@ public class PlexService
 
     /// <summary>
     /// Get children of a Plex metadata item (e.g. artist → albums, album → tracks).
+    /// For artists, also searches for albums by artist name to catch compilations
+    /// that may not be directly linked in the parent-child hierarchy.
     /// </summary>
     public async Task<List<VideoItem>> GetChildrenAsync(string ratingKey, PlexItemType childType, CancellationToken ct = default)
     {
@@ -126,7 +128,62 @@ public class PlexService
         if (childType == PlexItemType.Track)
             return ParseVideos(doc);
 
-        return ParsePlexItems(doc, childType);
+        var items = ParsePlexItems(doc, childType);
+
+        // For albums: also search by artist name to catch compilations that aren't direct children
+        if (childType == PlexItemType.Album)
+        {
+            try
+            {
+                // Get the artist name and section ID from the parent metadata
+                var parentUrl = $"{_serverUrl}/library/metadata/{ratingKey}?X-Plex-Token={_token}";
+                var parentDoc = await FetchJsonAsync(parentUrl, ct);
+                
+                string? artistName = null;
+                string? sectionKey = null;
+
+                if (parentDoc.RootElement.TryGetProperty("MediaContainer", out var pmc))
+                {
+                    // Extract library section ID from the MediaContainer
+                    if (pmc.TryGetProperty("librarySectionID", out var sid))
+                        sectionKey = sid.GetInt32().ToString();
+
+                    // Get artist title from the metadata
+                    if (pmc.TryGetProperty("Metadata", out var metadata) && metadata.GetArrayLength() > 0)
+                    {
+                        var m = metadata[0];
+                        artistName = m.TryGetProperty("title", out var t) ? t.GetString() : null;
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(artistName) && !string.IsNullOrEmpty(sectionKey))
+                {
+                    DiagLog($"Searching for compilation albums by '{artistName}' in section {sectionKey}");
+
+                    // Search for albums by this artist to catch compilations
+                    var searchResults = await SearchLibraryAsync(sectionKey, artistName, "artist", PlexSearchMode.Album, ct);
+                    
+                    // Merge search results, avoiding duplicates by ratingKey
+                    var existingKeys = new HashSet<string>(items.Where(i => i.PlexRatingKey != null).Select(i => i.PlexRatingKey!));
+                    
+                    foreach (var album in searchResults.Where(a => a.PlexItemType == PlexItemType.Album && a.PlexRatingKey != null))
+                    {
+                        if (!existingKeys.Contains(album.PlexRatingKey!))
+                        {
+                            items.Add(album);
+                            DiagLog($"  + Found compilation album: {album.Title} (key={album.PlexRatingKey})");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DiagLog($"Error searching for compilation albums: {ex.Message}");
+                // Continue with just the direct children if search fails
+            }
+        }
+
+        return items;
     }
 
     /// <summary>

@@ -1722,6 +1722,14 @@ public partial class DmdWindow : JukeboxWindow
             }
         };
         _settingsAppliedDuringDialog = false;
+        if (_appSettings?.MoveCursorToSettings == true)
+        {
+            settingsWindow.Loaded += (_, _) =>
+            {
+                var center = settingsWindow.PointToScreen(new WpfPoint(settingsWindow.ActualWidth / 2, settingsWindow.ActualHeight / 2));
+                SetCursorPos((int)center.X, (int)center.Y);
+            };
+        }
         settingsWindow.ShowDialog();
 
         Activate();
