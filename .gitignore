@@ -33,6 +33,5 @@ Desktop.ini
 !dependencies/DirectOutput/x86/
 !dependencies/DirectOutput/x86/DirectOutput.dll
 
-# ProjectM presets and textures
+# ProjectM presets (extracted locally, not tracked)
 dependencies/projectM/presets-cream-of-the-crop-master/
-dependencies/projectM/textures/
