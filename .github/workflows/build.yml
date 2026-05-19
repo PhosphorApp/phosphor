@@ -20,17 +20,32 @@ jobs:
       - name: Restore packages
         run: dotnet restore
 
-      - name: Build solution
-        run: dotnet build --no-restore --configuration Release
+      - name: Build Release
+        run: dotnet build --no-restore --configuration Release -p:Version=1.0.0.${{ github.run_number }} -p:AssemblyVersion=1.0.0.${{ github.run_number }} -p:FileVersion=1.0.0.${{ github.run_number }}
 
-      - name: Extract ProjectM presets
+      - name: Build Debug
+        run: dotnet build --no-restore --configuration Debug -p:Version=1.0.0.${{ github.run_number }} -p:AssemblyVersion=1.0.0.${{ github.run_number }} -p:FileVersion=1.0.0.${{ github.run_number }}
+
+      - name: Extract ProjectM presets (Release)
         run: |
           $outputDir = "VpinJukebox\bin\Release\net8.0-windows\presets"
           Expand-Archive -Path "dependencies\projectM\ProjectM_Presets_Base.zip" -DestinationPath $outputDir -Force
         shell: pwsh
 
-      - name: Upload build artifact
+      - name: Extract ProjectM presets (Debug)
+        run: |
+          $outputDir = "VpinJukebox\bin\Debug\net8.0-windows\presets"
+          Expand-Archive -Path "dependencies\projectM\ProjectM_Presets_Base.zip" -DestinationPath $outputDir -Force
+        shell: pwsh
+
+      - name: Upload Release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Phosphor
+          name: Phosphor-Release
           path: VpinJukebox/bin/Release/net8.0-windows/
+
+      - name: Upload Debug artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Phosphor-Debug
+          path: VpinJukebox/bin/Debug/net8.0-windows/

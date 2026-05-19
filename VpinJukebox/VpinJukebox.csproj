@@ -10,8 +10,9 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Deterministic>false</Deterministic>
-    <AssemblyVersion>0.9.*</AssemblyVersion>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
     <LegacyCorruptedStateExceptionsPolicy>true</LegacyCorruptedStateExceptionsPolicy>
   </PropertyGroup>
 
