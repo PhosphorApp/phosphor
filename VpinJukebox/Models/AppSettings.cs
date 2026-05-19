@@ -44,7 +44,7 @@ public class AppSettings
     public KeyBindings KeyBindings { get; set; } = new();
     public int ResultColumns { get; set; } = 2;
     public int ResultFontSizeModifier { get; set; }
-    public double ScreensaverIntensity { get; set; } = 0.25;
+    public double ScreensaverIntensity { get; set; } = 0.50;
     public double ScreensaverSpeed { get; set; } = 1.0;
     public bool DmdScreensaver { get; set; }
     public bool DmdScreensaverDimEnabled { get; set; }
