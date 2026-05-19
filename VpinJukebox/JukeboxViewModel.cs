@@ -649,7 +649,7 @@ public partial class JukeboxViewModel : ObservableObject
             _hasMoreResults = false;
             CanLoadMore = false;
             ShowCategories = false;
-            _isPlexBrowsing = false;
+            IsPlexBrowsing = false;
             await BrowsePlexHubContentAsync(category.PlexHubKey!, category.PlexHubType, category.Name);
             return;
         }
@@ -660,7 +660,7 @@ public partial class JukeboxViewModel : ObservableObject
             _hasMoreResults = false;
             CanLoadMore = false;
             ShowCategories = false;
-            _isPlexBrowsing = false;
+            IsPlexBrowsing = false;
             await BrowsePlexPlaylistContentAsync(category.PlexPlaylistKey!, category.Name);
             return;
         }
@@ -671,7 +671,7 @@ public partial class JukeboxViewModel : ObservableObject
             _hasMoreResults = false;
             CanLoadMore = false;
             ShowCategories = false;
-            _isPlexBrowsing = false;
+            IsPlexBrowsing = false;
             await BrowsePlexHubListAsync(category.PlexLibraryKey!, category.PlexLibraryType, category.Name);
             return;
         }
@@ -682,7 +682,7 @@ public partial class JukeboxViewModel : ObservableObject
             _hasMoreResults = false;
             CanLoadMore = false;
             ShowCategories = false;
-            _isPlexBrowsing = false;
+            IsPlexBrowsing = false;
             await BrowsePlexPlaylistListAsync(category.PlexLibraryType, category.Name);
             return;
         }
@@ -702,7 +702,7 @@ public partial class JukeboxViewModel : ObservableObject
             IsViewingPlaylist = false;
             _hasMoreResults = false;
             _isHistoryBrowsing = true;
-            _isPlexBrowsing = false;
+            IsPlexBrowsing = false;
             SearchResults.Clear();
             LoadMoreHistoryResults();
             ShowCategories = false;
@@ -720,7 +720,7 @@ public partial class JukeboxViewModel : ObservableObject
         ShowCategories = true;
         IsViewingPlaylist = false;
         IsViewingLivePlaylist = false;
-        _isPlexBrowsing = false;
+        IsPlexBrowsing = false;
         _isPlexHubBrowsing = false;
         _isPlexPlaylistBrowsing = false;
         _isHistoryBrowsing = false;
@@ -1135,6 +1135,11 @@ public partial class JukeboxViewModel : ObservableObject
     private const int PlexPageSize = 20;
     private int _plexTotalSize;
     private bool _isPlexBrowsing;
+    public bool IsPlexBrowsing
+    {
+        get => _isPlexBrowsing;
+        private set => SetProperty(ref _isPlexBrowsing, value);
+    }
 
     // ── Category cache page tracking ──
     private ResultCache? _activeResultCache;
@@ -1253,7 +1258,7 @@ public partial class JukeboxViewModel : ObservableObject
         _plexTotalSize = 0;
         _activePlexLibraryKey = libraryKey;
         _activePlexLibraryType = libraryType;
-        _isPlexBrowsing = true;
+        IsPlexBrowsing = true;
         _activePlexLibraryName = displayName;
         _plexLibraryCachePageIndex = 0;
 
@@ -1286,7 +1291,7 @@ public partial class JukeboxViewModel : ObservableObject
         IsSearching = true;
         StatusText = $"Loading {displayName}...";
         SearchResults.Clear();
-        _isPlexBrowsing = false;
+        IsPlexBrowsing = false;
         _isPlexHubBrowsing = true;
         _isPlexPlaylistBrowsing = false;
         _activePlexHubKey = hubKey;
@@ -1444,7 +1449,7 @@ public partial class JukeboxViewModel : ObservableObject
         IsSearching = true;
         StatusText = $"Loading {displayName}...";
         SearchResults.Clear();
-        _isPlexBrowsing = false;
+        IsPlexBrowsing = false;
         _isPlexHubBrowsing = false;
         _isPlexPlaylistBrowsing = true;
         _activePlexPlaylistKey = ratingKey;
@@ -1530,7 +1535,7 @@ public partial class JukeboxViewModel : ObservableObject
             foreach (var v in items)
                 SearchResults.Add(v);
             CanLoadMore = false;
-            _isPlexBrowsing = true;
+            IsPlexBrowsing = true;
             StatusText = $"{SearchResults.Count} albums by {artistName}";
         }
         catch (OperationCanceledException) { }
@@ -1560,7 +1565,7 @@ public partial class JukeboxViewModel : ObservableObject
             foreach (var v in items)
                 SearchResults.Add(v);
             CanLoadMore = false;
-            _isPlexBrowsing = true;
+            IsPlexBrowsing = true;
             StatusText = $"{SearchResults.Count} tracks on {albumName}";
         }
         catch (OperationCanceledException) { }
@@ -1593,7 +1598,7 @@ public partial class JukeboxViewModel : ObservableObject
             UpdatePlexBreadcrumb();
             SearchResults.Clear();
             _plexTotalSize = 0;
-            _isPlexBrowsing = true;
+            IsPlexBrowsing = true;
             _isLoadingMore = false;
             await LoadMorePlexResultsAsync();
             return true;
@@ -1635,7 +1640,7 @@ public partial class JukeboxViewModel : ObservableObject
                         SearchResults.Add(v);
                     _plexLibraryCachePageIndex++;
                     CanLoadMore = !isLast;
-                    _isPlexBrowsing = !isLast;
+                    IsPlexBrowsing = !isLast;
                     StatusText = isLast
                         ? $"Showing all {SearchResults.Count} Plex items (cached)"
                         : $"Showing {SearchResults.Count} Plex items (cached) — scroll for more";
@@ -1665,7 +1670,7 @@ public partial class JukeboxViewModel : ObservableObject
             _plexLibraryCachePageIndex++;
 
             CanLoadMore = hasMore;
-            _isPlexBrowsing = hasMore;
+            IsPlexBrowsing = hasMore;
             StatusText = hasMore
                 ? $"Showing {SearchResults.Count} of {_plexTotalSize} Plex items — scroll for more"
                 : $"Showing all {SearchResults.Count} Plex items";
@@ -1675,7 +1680,7 @@ public partial class JukeboxViewModel : ObservableObject
         {
             StatusText = $"Plex error: {ex.Message}";
             DebugLog.LogException("Plex library browse", ex);
-            _isPlexBrowsing = false;
+            IsPlexBrowsing = false;
             CanLoadMore = false;
         }
         finally
