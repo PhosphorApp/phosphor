@@ -26,6 +26,13 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
+# Allow DirectOutput dependency DLLs (overrides x64/x86 ignore above)
+!dependencies/DirectOutput/
+!dependencies/DirectOutput/x64/
+!dependencies/DirectOutput/x64/DirectOutput.dll
+!dependencies/DirectOutput/x86/
+!dependencies/DirectOutput/x86/DirectOutput.dll
+
 # ProjectM presets and textures
 dependencies/projectM/presets-cream-of-the-crop-master/
 dependencies/projectM/textures/
