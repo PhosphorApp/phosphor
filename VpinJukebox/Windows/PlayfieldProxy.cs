@@ -106,6 +106,9 @@ public sealed class PlayfieldProxy
     public void SetBlobCount(int count) =>
         _dispatcher.BeginInvoke(() => _window.SetBlobCount(count));
 
+    public void SetBlobSizeOffset(int offset) =>
+        _dispatcher.BeginInvoke(() => _window.SetBlobSizeOffset(offset));
+
     public void SetRotation(int degrees) =>
         _dispatcher.BeginInvoke(() => _window.SetRotation(degrees));
 

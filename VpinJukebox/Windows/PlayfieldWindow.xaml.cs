@@ -28,6 +28,7 @@ public partial class PlayfieldWindow : JukeboxWindow
     private double[]? _baseBlobSizes;
     private double _reactiveHueBoost;
     private int _blobCount = 10;
+    private int _blobSizeOffset;
     private bool _blobsInitialized;
     private double[] _blobHueOffsets = [];
     private ColorAnalysis? _lastColorAnalysis;
@@ -149,6 +150,7 @@ public partial class PlayfieldWindow : JukeboxWindow
             SpeedMultiplier = _blobSpeedMultiplier,
             Rng = _rng,
             BlobSizeFactory = r => sr * (0.08 + r.NextDouble() * 0.08),
+            BlobSizeOffset = _blobSizeOffset,
             UseBitmapCache = false,
         };
     }
@@ -431,6 +433,26 @@ public partial class PlayfieldWindow : JukeboxWindow
             return;
 
         // Defer creation until the canvas has a real size
+        if (ScreensaverCanvas.ActualWidth <= 0 || ScreensaverCanvas.ActualHeight <= 0)
+            return;
+
+        _baseBlobSizes = null;
+        _patternStartTime = DateTime.UtcNow;
+        _currentPattern?.Dispose();
+        _currentPattern = BlobTransition.Create(_blobPattern, MakeConfig());
+        _currentPattern.Enter(() => SubscribeProjectMColorBand());
+        SyncColorTimer();
+    }
+
+    public void SetBlobSizeOffset(int offset)
+    {
+        int clamped = Math.Clamp(offset, -12, 12);
+        bool changed = clamped != _blobSizeOffset;
+        _blobSizeOffset = clamped;
+
+        if (!_blobsInitialized || !changed)
+            return;
+
         if (ScreensaverCanvas.ActualWidth <= 0 || ScreensaverCanvas.ActualHeight <= 0)
             return;
 

@@ -156,6 +156,9 @@ public sealed class BackglassProxy
     public void SetBlobCount(int count) =>
         _dispatcher.BeginInvoke(() => _window.SetBlobCount(count));
 
+    public void SetBlobSizeOffset(int offset) =>
+        _dispatcher.BeginInvoke(() => _window.SetBlobSizeOffset(offset));
+
     public void SetShowVideoInfo(bool show) =>
         _dispatcher.BeginInvoke(() => _window.SetShowVideoInfo(show));
 

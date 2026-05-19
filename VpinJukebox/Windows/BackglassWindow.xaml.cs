@@ -37,6 +37,7 @@ public partial class BackglassWindow : JukeboxWindow
     private double[]? _baseBlobSizes;
     private double _reactiveHueBoost;
     private int _blobCount = 6;
+    private int _blobSizeOffset;
     private LibVLCSharp.WPF.VideoView? _videoView;
     private bool _logoDimEnabled;
     private double _logoDimOpacity;
@@ -809,6 +810,7 @@ public partial class BackglassWindow : JukeboxWindow
             SpeedMultiplier = _blobSpeedMultiplier,
             Rng = _rng,
             BlobSizeFactory = r => 220 + r.NextDouble() * 280,
+            BlobSizeOffset = _blobSizeOffset,
             MaxOrbitRadius = recordRadius,
             UseBitmapCache = false,
         };
@@ -924,6 +926,19 @@ public partial class BackglassWindow : JukeboxWindow
     {
         _blobCount = Math.Clamp(count, 0, 25);
         if (!_idleAnimStarted) return;
+
+        _baseBlobSizes = null;
+        _currentPattern?.Dispose();
+        _currentPattern = BlobTransition.Create(_blobPattern, MakeConfig());
+        _currentPattern.Enter(() => { });
+    }
+
+    public void SetBlobSizeOffset(int offset)
+    {
+        int clamped = Math.Clamp(offset, -12, 12);
+        bool changed = clamped != _blobSizeOffset;
+        _blobSizeOffset = clamped;
+        if (!_idleAnimStarted || !changed) return;
 
         _baseBlobSizes = null;
         _currentPattern?.Dispose();

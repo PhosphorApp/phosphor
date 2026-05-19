@@ -54,7 +54,8 @@ public sealed class LightCycleSimulator : IDisposable
     private double _gridLastHeight;
     private readonly TranslateTransform _gridTransform = new();
 
-    private const double TrailThickness = 12.0;
+    private const double TrailThicknessBase = 12.0;
+    private readonly double _sizeMultiplier;
     private const double TrailLayerOpacity = 0.25;
     private const double GridSpacing = 25.0;
     private const double GridOpacity = 0.04;       // 100% opaque
@@ -64,14 +65,16 @@ public sealed class LightCycleSimulator : IDisposable
     private const double TrailFadeDuration = 0.7;  // seconds for trail shrink-out
     private const double MinTurnInterval = 0.6;    // minimum seconds between turns
     private const double TurnCooldownTime = 0.3;   // seconds after a turn before another is allowed
-    private const double CollisionMargin = TrailThickness + 2;   // prevent any visual trail overlap
+    private double TrailThickness => TrailThicknessBase * _sizeMultiplier;
+    private double CollisionMargin => TrailThickness + 2;   // prevent any visual trail overlap
 
-    public LightCycleSimulator(List<FrameworkElement> blobs, List<BlobState> states, Canvas canvas, double speedMultiplier = 1.0)
+    public LightCycleSimulator(List<FrameworkElement> blobs, List<BlobState> states, Canvas canvas, double speedMultiplier = 1.0, double sizeMultiplier = 1.0)
     {
         _blobs = blobs;
         _blobStates = states;
         _canvas = canvas;
         _speedMultiplier = Math.Max(0.1, speedMultiplier);
+        _sizeMultiplier = sizeMultiplier;
 
         // Aqua grid background — drifts slowly for burn-in protection
         _gridLayer = new Canvas

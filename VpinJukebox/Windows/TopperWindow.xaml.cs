@@ -28,6 +28,7 @@ public partial class TopperWindow : JukeboxWindow
     private double[]? _baseBlobSizes;
     private double _reactiveHueBoost;
     private int _blobCount = 4;
+    private int _blobSizeOffset;
     private bool _morphColors;
     private readonly DispatcherTimer _morphCacheRestoreTimer = new();
 
@@ -61,6 +62,23 @@ public partial class TopperWindow : JukeboxWindow
         _currentPattern = BlobTransition.Create(pattern, MakeConfig());
         _currentPattern.Enter(() => { });
     }
+
+    public void SetBlobSizeOffset(int offset)
+    {
+        int clamped = Math.Clamp(offset, -12, 12);
+        bool changed = clamped != _blobSizeOffset;
+        _blobSizeOffset = clamped;
+        if (!_animStarted || !changed) return;
+
+        _baseBlobSizes = null;
+        _currentPattern?.Dispose();
+        _currentPattern = null;
+
+        var pattern = _blobPattern;
+        _currentPattern = BlobTransition.Create(pattern, MakeConfig());
+        _currentPattern.Enter(() => { });
+    }
+
 
     public void SetScreensaverSettings(double intensity, double speed)
     {
@@ -176,6 +194,7 @@ public partial class TopperWindow : JukeboxWindow
         SpeedMultiplier = _blobSpeedMultiplier,
         Rng = _rng,
         BlobSizeFactory = r => 180 + r.NextDouble() * 240,
+        BlobSizeOffset = _blobSizeOffset,
         UseBitmapCache = false,
     };
 

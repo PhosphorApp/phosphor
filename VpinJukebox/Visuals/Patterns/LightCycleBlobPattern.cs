@@ -39,7 +39,7 @@ public sealed class LightCycleBlobPattern : BlobPatternBase
 
     protected override void StartMotion()
     {
-        _simulator = new LightCycleSimulator(_blobs, _states, _canvas, _speedMultiplier);
+        _simulator = new LightCycleSimulator(_blobs, _states, _canvas, _speedMultiplier, _sizeMultiplier);
         _simulator.Start();
     }
 

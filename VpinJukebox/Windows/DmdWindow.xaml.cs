@@ -48,6 +48,7 @@ public partial class DmdWindow : JukeboxWindow
     private bool _ssTransitioning;
     private IBlobPattern? _ssCurrentPattern;
     private int _ssBlobCount = 6;
+    private int _ssBlobSizeOffset;
     private int _ssDarkBlobStart = -1; // kept for ScreensaverColorCycle skip guard
     private IBlobPattern? _ssDimPattern; // dark blobs created on-demand when dimmed
     private AudioReactiveService? _audioReactive;
@@ -620,6 +621,7 @@ public partial class DmdWindow : JukeboxWindow
         if (settings.ExcludeMandelbrotFromRandom && BlobTransition.CurrentRandomPattern == BlobPattern.Mandelbrot)
             BlobTransition.CurrentRandomPattern = BlobTransition.PickRandom(new Random());
         _backglassProxy.SetBlobCount(settings.BackglassBlobCount);
+        _backglassProxy.SetBlobSizeOffset(settings.BackglassBlobSizeOffset);
         _backglassProxy.SetBlobPattern(settings.BackglassBlobPattern);
         _backglassProxy.SetLogoDim(settings.BackglassLogoDimEnabled, settings.BackglassLogoDimOpacity, settings.BackglassLogoDimTimeoutSeconds);
         _backglassProxy.SetLogoMorphColor(settings.BackglassLogoMorphColor);
@@ -636,15 +638,18 @@ public partial class DmdWindow : JukeboxWindow
             _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.ApplyResetColors());
         };
         _playfieldProxy.SetBlobCount(settings.PlayfieldBlobCount);
+        _playfieldProxy.SetBlobSizeOffset(settings.PlayfieldBlobSizeOffset);
         _playfieldProxy.SetBlobPattern(settings.PlayfieldBlobPattern);
         _playfieldProxy.SetPulseDominantBlobs(settings.PlayfieldPulseDominantBlobs);
         _playfieldProxy.SetRotation(settings.PlayfieldRotation);
         _topperWindow.SetBlobCount(settings.TopperBlobCount);
+        _topperWindow.SetBlobSizeOffset(settings.TopperBlobSizeOffset);
         _topperWindow.SetBlobPattern(settings.TopperBlobPattern);
         // Configure blob state before creating anything to avoid triple-creation and brightness pop
         _ssBlobIntensity = Math.Clamp(settings.ScreensaverIntensity, 0.05, 0.8);
         _ssBlobSpeedMultiplier = Math.Clamp(settings.ScreensaverSpeed, 0.1, 5.0);
         _ssBlobCount = Math.Clamp(settings.DmdBlobCount, 0, 25);
+        _ssBlobSizeOffset = Math.Clamp(settings.DmdBlobSizeOffset, -12, 12);
         _ssBlobPatternSetting = settings.DmdBlobPattern;
         _ssBlobPattern = settings.DmdBlobPattern == BlobPattern.RandomPerSong
             ? BlobTransition.CurrentRandomPattern
@@ -1858,6 +1863,7 @@ public partial class DmdWindow : JukeboxWindow
         {
             _backglassProxy?.SetBlobPattern(_appSettings.BackglassBlobPattern);
             _backglassProxy?.SetBlobCount(_appSettings.BackglassBlobCount);
+            _backglassProxy?.SetBlobSizeOffset(_appSettings.BackglassBlobSizeOffset);
             LogStep("BackglassBlobs (changed)");
         }
         BlobTransition.ExcludeMandelbrotFromRandom = _appSettings.ExcludeMandelbrotFromRandom;
@@ -1911,6 +1917,7 @@ public partial class DmdWindow : JukeboxWindow
         if (settingsWindow.PlayfieldBlobsChanged)
         {
             _playfieldProxy?.SetBlobCount(_appSettings.PlayfieldBlobCount);
+            _playfieldProxy?.SetBlobSizeOffset(_appSettings.PlayfieldBlobSizeOffset);
             _playfieldProxy?.SetBlobPattern(_appSettings.PlayfieldBlobPattern);
         }
         _playfieldProxy?.SetPulseDominantBlobs(_appSettings.PlayfieldPulseDominantBlobs);
@@ -1919,11 +1926,13 @@ public partial class DmdWindow : JukeboxWindow
         if (settingsWindow.TopperBlobsChanged)
         {
             _topperWindow?.SetBlobCount(_appSettings.TopperBlobCount);
+            _topperWindow?.SetBlobSizeOffset(_appSettings.TopperBlobSizeOffset);
             _topperWindow?.SetBlobPattern(_appSettings.TopperBlobPattern);
         }
         if (settingsWindow.DmdBlobsChanged)
         {
             SetBlobCount(_appSettings.DmdBlobCount);
+            SetBlobSizeOffset(_appSettings.DmdBlobSizeOffset);
             SetBlobPattern(_appSettings.DmdBlobPattern);
         }
         if (settingsWindow.DmdRotationChanged)
@@ -2410,9 +2419,23 @@ public partial class DmdWindow : JukeboxWindow
             root.LayoutTransform = degrees == 0 ? Transform.Identity : new RotateTransform(degrees);
     }
 
+
     public void SetBlobCount(int count)
     {
         _ssBlobCount = Math.Clamp(count, 0, 25);
+        if (ScreensaverCanvas.Visibility == Visibility.Visible)
+        {
+            CreateScreensaverBlobs();
+            _ssColorTimer.Start();
+        }
+    }
+
+    public void SetBlobSizeOffset(int offset)
+    {
+        int clamped = Math.Clamp(offset, -12, 12);
+        bool changed = clamped != _ssBlobSizeOffset;
+        _ssBlobSizeOffset = clamped;
+        if (!changed) return;
         if (ScreensaverCanvas.Visibility == Visibility.Visible)
         {
             CreateScreensaverBlobs();
@@ -2982,6 +3005,7 @@ public partial class DmdWindow : JukeboxWindow
             SpeedMultiplier = _ssBlobSpeedMultiplier,
             Rng = _ssRng,
             BlobSizeFactory = r => (200 + r.NextDouble() * 325) * blobScale,
+            BlobSizeOffset = _ssBlobSizeOffset,
             UseBitmapCache = false,
         };
     }
@@ -3015,6 +3039,7 @@ public partial class DmdWindow : JukeboxWindow
             SpeedMultiplier = _ssBlobSpeedMultiplier,
             Rng = _ssRng,
             BlobSizeFactory = r => (195 + r.NextDouble() * 228) * blobScale,
+            BlobSizeOffset = _ssBlobSizeOffset,
             UseBitmapCache = false,
         };
 

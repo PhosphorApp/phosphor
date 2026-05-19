@@ -41,6 +41,11 @@ public sealed class BlobPatternConfig
     /// expensive than not caching at all.
     /// </summary>
     public bool UseBitmapCache { get; init; } = true;
+
+    /// <summary>
+    /// Size offset in 5% increments (-12 to 12). 0 = default, -12 = 40%, +12 = 160%.
+    /// </summary>
+    public int BlobSizeOffset { get; init; }
 }
 
 /// <summary>
@@ -58,6 +63,7 @@ public abstract class BlobPatternBase : IBlobPattern
     protected readonly Func<Random, double> _sizeFactory;
     protected readonly double _maxOrbitRadius;
     protected readonly bool _useBitmapCache;
+    protected readonly double _sizeMultiplier;
 
     protected readonly List<FrameworkElement> _blobs = new();
     protected readonly List<SolidColorBrush> _brushes = new();
@@ -83,6 +89,7 @@ public abstract class BlobPatternBase : IBlobPattern
         _sizeFactory = config.BlobSizeFactory;
         _maxOrbitRadius = config.MaxOrbitRadius;
         _useBitmapCache = config.UseBitmapCache;
+        _sizeMultiplier = 1.0 + Math.Clamp(config.BlobSizeOffset, -12, 12) * 0.05;
     }
 
     /// <summary>
@@ -154,7 +161,7 @@ public abstract class BlobPatternBase : IBlobPattern
 
         for (int i = 0; i < _blobCount; i++)
         {
-            double size = _sizeFactory(_rng);
+            double size = _sizeFactory(_rng) * _sizeMultiplier;
             var brush = new SolidColorBrush(Colors.Black);
             _brushes.Add(brush);
 

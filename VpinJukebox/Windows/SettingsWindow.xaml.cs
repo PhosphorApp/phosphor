@@ -46,13 +46,17 @@ public partial class SettingsWindow : JukeboxWindow
     private double _originalDistortion;
     private BlobPattern _originalPlayfieldBlobPattern;
     private int _originalPlayfieldBlobCount;
+    private int _originalPlayfieldBlobSizeOffset;
     private int _originalPlayfieldRotation;
     private BlobPattern _originalBackglassBlobPattern;
     private int _originalBackglassBlobCount;
+    private int _originalBackglassBlobSizeOffset;
     private BlobPattern _originalTopperBlobPattern;
     private int _originalTopperBlobCount;
+    private int _originalTopperBlobSizeOffset;
     private BlobPattern _originalDmdBlobPattern;
     private int _originalDmdBlobCount;
+    private int _originalDmdBlobSizeOffset;
     private int _originalDmdRotation;
     private bool _originalReactiveBlobs;
     private bool _originalReactiveProjectM;
@@ -103,7 +107,8 @@ public partial class SettingsWindow : JukeboxWindow
     public bool PlayfieldBlobsChanged =>
         SpeedChanged ||
         _settings.PlayfieldBlobPattern != _originalPlayfieldBlobPattern ||
-        _settings.PlayfieldBlobCount != _originalPlayfieldBlobCount;
+        _settings.PlayfieldBlobCount != _originalPlayfieldBlobCount ||
+        _settings.PlayfieldBlobSizeOffset != _originalPlayfieldBlobSizeOffset;
 
     public bool PlayfieldRotationChanged =>
         _settings.PlayfieldRotation != _originalPlayfieldRotation;
@@ -111,17 +116,20 @@ public partial class SettingsWindow : JukeboxWindow
     public bool BackglassBlobsChanged =>
         SpeedChanged ||
         _settings.BackglassBlobPattern != _originalBackglassBlobPattern ||
-        _settings.BackglassBlobCount != _originalBackglassBlobCount;
+        _settings.BackglassBlobCount != _originalBackglassBlobCount ||
+        _settings.BackglassBlobSizeOffset != _originalBackglassBlobSizeOffset;
 
     public bool TopperBlobsChanged =>
         SpeedChanged ||
         _settings.TopperBlobPattern != _originalTopperBlobPattern ||
-        _settings.TopperBlobCount != _originalTopperBlobCount;
+        _settings.TopperBlobCount != _originalTopperBlobCount ||
+        _settings.TopperBlobSizeOffset != _originalTopperBlobSizeOffset;
 
     public bool DmdBlobsChanged =>
         SpeedChanged ||
         _settings.DmdBlobPattern != _originalDmdBlobPattern ||
-        _settings.DmdBlobCount != _originalDmdBlobCount;
+        _settings.DmdBlobCount != _originalDmdBlobCount ||
+        _settings.DmdBlobSizeOffset != _originalDmdBlobSizeOffset;
 
     public bool DmdRotationChanged =>
         _settings.DmdRotation != _originalDmdRotation;
@@ -355,14 +363,19 @@ public partial class SettingsWindow : JukeboxWindow
         CbBlobPatternTopper.SelectedIndex = blobPatterns.FindIndex(p => p.Pattern == settings.TopperBlobPattern);
         CbBlobPatternDmd.SelectedIndex = blobPatterns.FindIndex(p => p.Pattern == settings.DmdBlobPattern);
         SliderBlobCountPlayfield.Value = settings.PlayfieldBlobCount;
+        SliderBlobSizePlayfield.Value = settings.PlayfieldBlobSizeOffset;
 
         foreach (var rot in new[] { "0°", "90°", "180°", "270°" })
             CbPlayfieldRotation.Items.Add(rot);
         CbPlayfieldRotation.SelectedIndex = settings.PlayfieldRotation switch { 90 => 1, 180 => 2, 270 => 3, _ => 0 };
 
+
         SliderBlobCountBackglass.Value = settings.BackglassBlobCount;
+        SliderBlobSizeBackglass.Value = settings.BackglassBlobSizeOffset;
         SliderBlobCountTopper.Value = settings.TopperBlobCount;
+        SliderBlobSizeTopper.Value = settings.TopperBlobSizeOffset;
         SliderBlobCountDmd.Value = settings.DmdBlobCount;
+        SliderBlobSizeDmd.Value = settings.DmdBlobSizeOffset;
         CbExcludeMandelbrot.IsChecked = settings.ExcludeMandelbrotFromRandom;
         CbExcludeProjectM.IsChecked = settings.ExcludeProjectMFromRandom;
         UpdateBlobCountSliderStates();
@@ -573,13 +586,17 @@ public partial class SettingsWindow : JukeboxWindow
         _originalDistortion = settings.TopperDistortion;
         _originalPlayfieldBlobPattern = settings.PlayfieldBlobPattern;
         _originalPlayfieldBlobCount = settings.PlayfieldBlobCount;
+        _originalPlayfieldBlobSizeOffset = settings.PlayfieldBlobSizeOffset;
         _originalPlayfieldRotation = settings.PlayfieldRotation;
         _originalBackglassBlobPattern = settings.BackglassBlobPattern;
         _originalBackglassBlobCount = settings.BackglassBlobCount;
+        _originalBackglassBlobSizeOffset = settings.BackglassBlobSizeOffset;
         _originalTopperBlobPattern = settings.TopperBlobPattern;
         _originalTopperBlobCount = settings.TopperBlobCount;
+        _originalTopperBlobSizeOffset = settings.TopperBlobSizeOffset;
         _originalDmdBlobPattern = settings.DmdBlobPattern;
         _originalDmdBlobCount = settings.DmdBlobCount;
+        _originalDmdBlobSizeOffset = settings.DmdBlobSizeOffset;
         _originalDmdRotation = settings.DmdRotation;
         _originalReactiveBlobs = settings.ReactiveBlobs;
         _originalReactiveProjectM = settings.ReactiveProjectM;
@@ -1416,6 +1433,23 @@ public partial class SettingsWindow : JukeboxWindow
             TxtBlobCountDmd.Text = $"{(int)e.NewValue}";
     }
 
+    private void SliderBlobSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        var slider = (System.Windows.Controls.Slider)sender;
+        string name = slider.Name;
+        int val = (int)e.NewValue;
+        string text = val == 0 ? "Default" : $"{val * 5:+#;-#}%";
+        System.Windows.Controls.TextBlock? label = name switch
+        {
+            "SliderBlobSizePlayfield" => TxtBlobSizePlayfield,
+            "SliderBlobSizeBackglass" => TxtBlobSizeBackglass,
+            "SliderBlobSizeTopper" => TxtBlobSizeTopper,
+            "SliderBlobSizeDmd" => TxtBlobSizeDmd,
+            _ => null
+        };
+        if (label != null) label.Text = text;
+    }
+
     private void SliderMandelbrotMaxHz_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (TxtMandelbrotMaxHz != null)
@@ -1454,23 +1488,26 @@ public partial class SettingsWindow : JukeboxWindow
     }
 
     /// <summary>
-    /// Hides blob-count sliders and their labels for patterns that don't use blobs (ProjectM, Mandelbrot).
+    /// Hides blob-count and blob-size sliders and their labels for patterns that don't use blobs (ProjectM, Mandelbrot).
     /// </summary>
     private void UpdateBlobCountSliderStates()
     {
-        SetSliderForPattern(CbBlobPatternPlayfield, SliderBlobCountPlayfield, TxtBlobCountPlayfield);
-        SetSliderForPattern(CbBlobPatternBackglass, SliderBlobCountBackglass, TxtBlobCountBackglass);
-        SetSliderForPattern(CbBlobPatternTopper, SliderBlobCountTopper, TxtBlobCountTopper);
-        SetSliderForPattern(CbBlobPatternDmd, SliderBlobCountDmd, TxtBlobCountDmd);
+        SetSlidersForPattern(CbBlobPatternPlayfield, SliderBlobCountPlayfield, TxtBlobCountPlayfield, SliderBlobSizePlayfield, TxtBlobSizePlayfield);
+        SetSlidersForPattern(CbBlobPatternBackglass, SliderBlobCountBackglass, TxtBlobCountBackglass, SliderBlobSizeBackglass, TxtBlobSizeBackglass);
+        SetSlidersForPattern(CbBlobPatternTopper, SliderBlobCountTopper, TxtBlobCountTopper, SliderBlobSizeTopper, TxtBlobSizeTopper);
+        SetSlidersForPattern(CbBlobPatternDmd, SliderBlobCountDmd, TxtBlobCountDmd, SliderBlobSizeDmd, TxtBlobSizeDmd);
 
-        static void SetSliderForPattern(System.Windows.Controls.ComboBox? cb, System.Windows.Controls.Slider? slider, System.Windows.Controls.TextBlock? label)
+        static void SetSlidersForPattern(System.Windows.Controls.ComboBox? cb, System.Windows.Controls.Slider? countSlider, System.Windows.Controls.TextBlock? countLabel,
+            System.Windows.Controls.Slider? sizeSlider, System.Windows.Controls.TextBlock? sizeLabel)
         {
-            if (cb == null || slider == null) return;
+            if (cb == null || countSlider == null) return;
             var name = cb.SelectedItem as string ?? "";
             var visible = name != "ProjectM" && name != "Mandelbrot";
             var vis = visible ? Visibility.Visible : Visibility.Collapsed;
-            slider.Visibility = vis;
-            if (label != null) label.Visibility = vis;
+            countSlider.Visibility = vis;
+            if (countLabel != null) countLabel.Visibility = vis;
+            if (sizeSlider != null) sizeSlider.Visibility = vis;
+            if (sizeLabel != null) sizeLabel.Visibility = vis;
         }
     }
 
@@ -1866,13 +1903,17 @@ public partial class SettingsWindow : JukeboxWindow
             .ToList();
         _settings.PlayfieldBlobPattern = CbBlobPatternPlayfield.SelectedIndex >= 0 ? blobPatternsSorted[CbBlobPatternPlayfield.SelectedIndex] : BlobPattern.Random;
         _settings.PlayfieldBlobCount = (int)SliderBlobCountPlayfield.Value;
+        _settings.PlayfieldBlobSizeOffset = (int)SliderBlobSizePlayfield.Value;
         _settings.PlayfieldRotation = CbPlayfieldRotation.SelectedIndex switch { 1 => 90, 2 => 180, 3 => 270, _ => 0 };
         _settings.BackglassBlobPattern = CbBlobPatternBackglass.SelectedIndex >= 0 ? blobPatternsSorted[CbBlobPatternBackglass.SelectedIndex] : BlobPattern.Random;
         _settings.BackglassBlobCount = (int)SliderBlobCountBackglass.Value;
+        _settings.BackglassBlobSizeOffset = (int)SliderBlobSizeBackglass.Value;
         _settings.TopperBlobPattern = CbBlobPatternTopper.SelectedIndex >= 0 ? blobPatternsSorted[CbBlobPatternTopper.SelectedIndex] : BlobPattern.Random;
         _settings.TopperBlobCount = (int)SliderBlobCountTopper.Value;
+        _settings.TopperBlobSizeOffset = (int)SliderBlobSizeTopper.Value;
         _settings.DmdBlobPattern = CbBlobPatternDmd.SelectedIndex >= 0 ? blobPatternsSorted[CbBlobPatternDmd.SelectedIndex] : BlobPattern.Random;
         _settings.DmdBlobCount = (int)SliderBlobCountDmd.Value;
+        _settings.DmdBlobSizeOffset = (int)SliderBlobSizeDmd.Value;
         _settings.ExcludeMandelbrotFromRandom = CbExcludeMandelbrot.IsChecked == true;
         _settings.ExcludeProjectMFromRandom = CbExcludeProjectM.IsChecked == true;
         _settings.ProjectMPresetDuration = PresetDurationFromIndex((int)SliderProjectMPresetDuration.Value);
@@ -1932,13 +1973,17 @@ public partial class SettingsWindow : JukeboxWindow
         _originalDistortion = _settings.TopperDistortion;
         _originalPlayfieldBlobPattern = _settings.PlayfieldBlobPattern;
         _originalPlayfieldBlobCount = _settings.PlayfieldBlobCount;
+        _originalPlayfieldBlobSizeOffset = _settings.PlayfieldBlobSizeOffset;
         _originalPlayfieldRotation = _settings.PlayfieldRotation;
         _originalBackglassBlobPattern = _settings.BackglassBlobPattern;
         _originalBackglassBlobCount = _settings.BackglassBlobCount;
+        _originalBackglassBlobSizeOffset = _settings.BackglassBlobSizeOffset;
         _originalTopperBlobPattern = _settings.TopperBlobPattern;
         _originalTopperBlobCount = _settings.TopperBlobCount;
+        _originalTopperBlobSizeOffset = _settings.TopperBlobSizeOffset;
         _originalDmdBlobPattern = _settings.DmdBlobPattern;
         _originalDmdBlobCount = _settings.DmdBlobCount;
+        _originalDmdBlobSizeOffset = _settings.DmdBlobSizeOffset;
         _originalDmdRotation = _settings.DmdRotation;
         _originalReactiveBlobs = _settings.ReactiveBlobs;
         _originalReactiveProjectM = _settings.ReactiveProjectM;

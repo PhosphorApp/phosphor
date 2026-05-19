@@ -391,7 +391,14 @@
                                            VerticalAlignment="Center" Width="25" TextAlignment="Right" Margin="12,0,4,0"/>
                                 <Slider x:Name="SliderBlobCountPlayfield" Minimum="0" Maximum="25" Value="10"
                                         Width="100" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
+                                        ToolTip="Number of blobs"
                                         ValueChanged="SliderBlobCountPlayfield_ValueChanged"/>
+                                <TextBlock x:Name="TxtBlobSizePlayfield" Text="Default" Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" Width="45" TextAlignment="Right" Margin="12,0,4,0"/>
+                                <Slider x:Name="SliderBlobSizePlayfield" Minimum="-12" Maximum="12" Value="0"
+                                        Width="100" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
+                                        ToolTip="Size of blobs"
+                                        ValueChanged="SliderBlobSize_ValueChanged"/>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
                                 <TextBlock Text="Backglass:" Foreground="{StaticResource TextBrush}"
@@ -401,7 +408,14 @@
                                            VerticalAlignment="Center" Width="25" TextAlignment="Right" Margin="12,0,4,0"/>
                                 <Slider x:Name="SliderBlobCountBackglass" Minimum="0" Maximum="25" Value="10"
                                         Width="100" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
+                                        ToolTip="Number of blobs"
                                         ValueChanged="SliderBlobCountBackglass_ValueChanged"/>
+                                <TextBlock x:Name="TxtBlobSizeBackglass" Text="Default" Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" Width="45" TextAlignment="Right" Margin="12,0,4,0"/>
+                                <Slider x:Name="SliderBlobSizeBackglass" Minimum="-12" Maximum="12" Value="0"
+                                        Width="100" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
+                                        ToolTip="Size of blobs"
+                                        ValueChanged="SliderBlobSize_ValueChanged"/>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
                                 <TextBlock Text="Topper:" Foreground="{StaticResource TextBrush}"
@@ -411,7 +425,14 @@
                                            VerticalAlignment="Center" Width="25" TextAlignment="Right" Margin="12,0,4,0"/>
                                 <Slider x:Name="SliderBlobCountTopper" Minimum="0" Maximum="25" Value="10"
                                         Width="100" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
+                                        ToolTip="Number of blobs"
                                         ValueChanged="SliderBlobCountTopper_ValueChanged"/>
+                                <TextBlock x:Name="TxtBlobSizeTopper" Text="Default" Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" Width="45" TextAlignment="Right" Margin="12,0,4,0"/>
+                                <Slider x:Name="SliderBlobSizeTopper" Minimum="-12" Maximum="12" Value="0"
+                                        Width="100" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
+                                        ToolTip="Size of blobs"
+                                        ValueChanged="SliderBlobSize_ValueChanged"/>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
                                 <TextBlock Text="DMD:" Foreground="{StaticResource TextBrush}"
@@ -421,7 +442,14 @@
                                            VerticalAlignment="Center" Width="25" TextAlignment="Right" Margin="12,0,4,0"/>
                                 <Slider x:Name="SliderBlobCountDmd" Minimum="0" Maximum="25" Value="10"
                                         Width="100" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
+                                        ToolTip="Number of blobs"
                                         ValueChanged="SliderBlobCountDmd_ValueChanged"/>
+                                <TextBlock x:Name="TxtBlobSizeDmd" Text="Default" Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" Width="45" TextAlignment="Right" Margin="12,0,4,0"/>
+                                <Slider x:Name="SliderBlobSizeDmd" Minimum="-12" Maximum="12" Value="0"
+                                        Width="100" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
+                                        ToolTip="Size of blobs"
+                                        ValueChanged="SliderBlobSize_ValueChanged"/>
                             </StackPanel>
                             <CheckBox x:Name="CbExcludeMandelbrot" Content="Exclude Mandelbrot from random choices"
                                       Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"

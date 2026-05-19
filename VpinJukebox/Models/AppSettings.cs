@@ -69,11 +69,14 @@ public class AppSettings
     public bool PlayfieldPulseDominantBlobs { get; set; }
     public BlobPattern PlayfieldBlobPattern { get; set; } = BlobPattern.Random;
     public int PlayfieldBlobCount { get; set; } = 10;
+    public int PlayfieldBlobSizeOffset { get; set; }
     public int PlayfieldRotation { get; set; } = 270;
     public BlobPattern BackglassBlobPattern { get; set; } = BlobPattern.RoughClockwise;
     public int BackglassBlobCount { get; set; } = 6;
+    public int BackglassBlobSizeOffset { get; set; }
     public BlobPattern TopperBlobPattern { get; set; } = BlobPattern.Random;
     public int TopperBlobCount { get; set; } = 4;
+    public int TopperBlobSizeOffset { get; set; }
     public bool ReactiveBlobs { get; set; }
     public bool ReactiveProjectM { get; set; } = true;
     public double ReactivityThreshold { get; set; } = 0.10;
@@ -81,6 +84,7 @@ public class AppSettings
     public double ReactiveOverdrive { get; set; } = 1.0;
     public BlobPattern DmdBlobPattern { get; set; } = BlobPattern.Random;
     public int DmdBlobCount { get; set; } = 6;
+    public int DmdBlobSizeOffset { get; set; }
     public bool ExcludeMandelbrotFromRandom { get; set; } = true;
     public int MandelbrotMaxHz { get; set; }
     public double MandelbrotRenderScale { get; set; } = 0.6;
