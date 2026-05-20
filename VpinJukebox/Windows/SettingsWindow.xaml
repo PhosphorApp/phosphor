@@ -358,9 +358,9 @@
                             </DockPanel>
                             <CheckBox x:Name="CbLogoSpin" Content="Spin logo on idle screens"
                                       Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"/>
-                            <DockPanel Margin="0,8,0,0">
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                 <TextBlock Text="Logo rings:" Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Width="70"/>
+                                           VerticalAlignment="Center" Width="100"/>
                                 <Grid Width="200" VerticalAlignment="Center">
                                     <Slider x:Name="SliderLogoRings" Minimum="0" Maximum="2" Value="2"
                                             IsSnapToTickEnabled="True" TickFrequency="1"
@@ -380,7 +380,17 @@
                                                    Foreground="{StaticResource TextDimBrush}" HorizontalAlignment="Right"/>
                                     </Grid>
                                 </Grid>
-                            </DockPanel>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <TextBlock Text="Ring brightness:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="100"/>
+                                <Slider x:Name="SliderRingBrightness" Minimum="0" Maximum="100" Value="25"
+                                        Width="200" VerticalAlignment="Center" IsMoveToPointEnabled="True"
+                                        IsSnapToTickEnabled="True" TickFrequency="5"
+                                        ValueChanged="SliderRingBrightness_ValueChanged"/>
+                                <TextBlock x:Name="RingBrightnessValueText" Text="25%" Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" Margin="8,0,0,0"/>
+                            </StackPanel>
                             <TextBlock Text="SCREENSAVER PATTERN" FontSize="12" FontWeight="Bold"
                                 Foreground="{StaticResource AccentBrush}" Margin="0,12,0,12"/>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">

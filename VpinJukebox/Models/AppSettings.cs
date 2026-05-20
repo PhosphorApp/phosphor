@@ -60,6 +60,7 @@ public class AppSettings
     public bool BackglassAudioOnly { get; set; }
     public bool LogoSpin { get; set; } = true;
     public LogoRingsMode LogoRings { get; set; } = LogoRingsMode.Standard;
+    public int LogoRingsBrightness { get; set; } = 25;
     public double TopperDistortion { get; set; }
     public bool ShowStatusText { get; set; } = true;
     public int HideCursorTimeoutSeconds { get; set; } = 15;

@@ -245,6 +245,13 @@ public partial class TopperWindow : JukeboxWindow
             DrawRecordOverlay(RecordOverlay, _logoRings);
     }
 
+    public void SetLogoRingsBrightness(int percent)
+    {
+        _recordRingsBrightness = Math.Clamp(percent / 100.0, 0.0, 1.0);
+        if (_animStarted)
+            DrawRecordOverlay(RecordOverlay, _logoRings);
+    }
+
     public void SetLogoText(string text)
     {
         _logoText = text;
@@ -300,6 +307,7 @@ public partial class TopperWindow : JukeboxWindow
     }
 
     private static LogoRingsMode _recordRingsMode = LogoRingsMode.Standard;
+    private static double _recordRingsBrightness = 1.0;
 
     private static void DrawRecordOverlay(System.Windows.Controls.Canvas canvas, LogoRingsMode ringsMode)
     {
@@ -332,10 +340,12 @@ public partial class TopperWindow : JukeboxWindow
         double labelR = maxR * 0.22;
         double grooveStart = maxR * 0.28;
 
+        double b = _recordRingsBrightness * 4.0;
+
         var hole = new Ellipse
         {
             Width = holeR * 2, Height = holeR * 2,
-            Fill = new WpfMedia.SolidColorBrush(WpfColor.FromArgb(18, 255, 255, 255)),
+            Fill = new WpfMedia.SolidColorBrush(WpfColor.FromArgb((byte)Math.Clamp(18 * b, 0, 255), 255, 255, 255)),
         };
         System.Windows.Controls.Canvas.SetLeft(hole, cx - holeR);
         System.Windows.Controls.Canvas.SetTop(hole, cy - holeR);
@@ -344,9 +354,9 @@ public partial class TopperWindow : JukeboxWindow
         var label = new Ellipse
         {
             Width = labelR * 2, Height = labelR * 2,
-            Stroke = new WpfMedia.SolidColorBrush(WpfColor.FromArgb(10, 255, 255, 255)),
+            Stroke = new WpfMedia.SolidColorBrush(WpfColor.FromArgb((byte)Math.Clamp(10 * b, 0, 255), 255, 255, 255)),
             StrokeThickness = 1,
-            Fill = new WpfMedia.SolidColorBrush(WpfColor.FromArgb(6, 255, 255, 255)),
+            Fill = new WpfMedia.SolidColorBrush(WpfColor.FromArgb((byte)Math.Clamp(6 * b, 0, 255), 255, 255, 255)),
         };
         System.Windows.Controls.Canvas.SetLeft(label, cx - labelR);
         System.Windows.Controls.Canvas.SetTop(label, cy - labelR);
@@ -357,7 +367,7 @@ public partial class TopperWindow : JukeboxWindow
             double spacing = _recordRingsMode == LogoRingsMode.Reduced ? 12.0 : 4.0;
             for (double r = grooveStart; r <= maxR; r += spacing)
             {
-                byte alpha = (byte)(5 + (r - grooveStart) / (maxR - grooveStart) * 8);
+                byte alpha = (byte)Math.Clamp((5 + (r - grooveStart) / (maxR - grooveStart) * 8) * b, 0, 255);
                 var ring = new Ellipse
                 {
                     Width = r * 2, Height = r * 2,
@@ -374,7 +384,7 @@ public partial class TopperWindow : JukeboxWindow
         var rim = new Ellipse
         {
             Width = maxR * 2, Height = maxR * 2,
-            Stroke = new WpfMedia.SolidColorBrush(WpfColor.FromArgb(15, 255, 255, 255)),
+            Stroke = new WpfMedia.SolidColorBrush(WpfColor.FromArgb((byte)Math.Clamp(15 * b, 0, 255), 255, 255, 255)),
             StrokeThickness = 1.5,
             Fill = WpfMedia.Brushes.Transparent,
         };

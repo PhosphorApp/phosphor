@@ -67,6 +67,7 @@ public partial class SettingsWindow : JukeboxWindow
     private string _originalLogoText;
     private bool _originalLogoSpin;
     private LogoRingsMode _originalLogoRings;
+    private int _originalLogoRingsBrightness;
     private bool _originalLogoMorphColor;
     private int _originalMandelbrotUseGpu;
     private bool _originalMandelbrotAdaptiveIterations;
@@ -145,6 +146,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.LogoText != _originalLogoText ||
         _settings.LogoSpin != _originalLogoSpin ||
         _settings.LogoRings != _originalLogoRings ||
+        _settings.LogoRingsBrightness != _originalLogoRingsBrightness ||
         _settings.BackglassLogoMorphColor != _originalLogoMorphColor;
 
     public bool DofSettingsChanged =>
@@ -334,6 +336,7 @@ public partial class SettingsWindow : JukeboxWindow
         CbLogoSpin.IsChecked = settings.LogoSpin;
 
         SliderLogoRings.Value = (int)settings.LogoRings;
+        SliderRingBrightness.Value = settings.LogoRingsBrightness;
 
         // Blob pattern per screen (alphabetized)
         var blobPatterns = Enum.GetValues<BlobPattern>()
@@ -607,6 +610,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalLogoText = settings.LogoText;
         _originalLogoSpin = settings.LogoSpin;
         _originalLogoRings = settings.LogoRings;
+        _originalLogoRingsBrightness = settings.LogoRingsBrightness;
         _originalLogoMorphColor = settings.BackglassLogoMorphColor;
         _originalMandelbrotUseGpu = settings.MandelbrotUseGpu;
         _originalMandelbrotAdaptiveIterations = settings.MandelbrotAdaptiveIterations;
@@ -1403,6 +1407,12 @@ public partial class SettingsWindow : JukeboxWindow
         // No live preview needed; value is read on save
     }
 
+    private void SliderRingBrightness_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (RingBrightnessValueText != null)
+            RingBrightnessValueText.Text = $"{(int)e.NewValue}%";
+    }
+
     private void SliderOledIntensity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (TxtOledIntensity != null)
@@ -1883,6 +1893,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.LogoText = TbLogoText.Text;
         _settings.LogoSpin = CbLogoSpin.IsChecked == true;
         _settings.LogoRings = (LogoRingsMode)(int)SliderLogoRings.Value;
+        _settings.LogoRingsBrightness = (int)SliderRingBrightness.Value;
         var blobPatternsSorted = Enum.GetValues<BlobPattern>()
             .OrderBy(p => p switch
             {
@@ -1994,6 +2005,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalLogoText = _settings.LogoText;
         _originalLogoSpin = _settings.LogoSpin;
         _originalLogoRings = _settings.LogoRings;
+        _originalLogoRingsBrightness = _settings.LogoRingsBrightness;
         _originalLogoMorphColor = _settings.BackglassLogoMorphColor;
         _originalMandelbrotUseGpu = _settings.MandelbrotUseGpu;
         _originalMandelbrotAdaptiveIterations = _settings.MandelbrotAdaptiveIterations;

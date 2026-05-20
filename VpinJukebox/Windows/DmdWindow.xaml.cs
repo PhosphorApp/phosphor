@@ -579,11 +579,13 @@ public partial class DmdWindow : JukeboxWindow
         _backglassProxy.SetLogoText(settings.LogoText);
         _backglassProxy.SetLogoSpin(settings.LogoSpin);
         _backglassProxy.SetLogoRings(settings.LogoRings);
+        _backglassProxy.SetLogoRingsBrightness(settings.LogoRingsBrightness);
         _playfieldProxy.SetScreensaverSettings(settings.ScreensaverIntensity, settings.ScreensaverSpeed);
         _playfieldProxy.SetOledSleepDefeat(settings.OledSleepDefeatSeconds, settings.OledSleepDefeatDurationSeconds, settings.OledSleepDefeatIntensity);
         _topperWindow.SetScreensaverSettings(settings.ScreensaverIntensity, settings.ScreensaverSpeed);
         _topperWindow.SetLogoSpin(settings.LogoSpin);
         _topperWindow.SetLogoRings(settings.LogoRings);
+        _topperWindow.SetLogoRingsBrightness(settings.LogoRingsBrightness);
         _topperWindow.SetDistortion(settings.TopperDistortion);
         BlobTransition.ExcludeMandelbrotFromRandom = settings.ExcludeMandelbrotFromRandom;
         MandelbrotPattern.MandelbrotMaxHz = settings.MandelbrotMaxHz;
@@ -1842,9 +1844,11 @@ public partial class DmdWindow : JukeboxWindow
             _backglassProxy?.SetLogoText(_appSettings.LogoText);
             _backglassProxy?.SetLogoSpin(_appSettings.LogoSpin);
             _backglassProxy?.SetLogoRings(_appSettings.LogoRings);
+            _backglassProxy?.SetLogoRingsBrightness(_appSettings.LogoRingsBrightness);
             _topperWindow?.SetLogoText(_appSettings.LogoText);
             _topperWindow?.SetLogoSpin(_appSettings.LogoSpin);
             _topperWindow?.SetLogoRings(_appSettings.LogoRings);
+            _topperWindow?.SetLogoRingsBrightness(_appSettings.LogoRingsBrightness);
             _backglassProxy?.SetLogoMorphColor(_appSettings.BackglassLogoMorphColor);
             if (_appSettings.ShowTopper)
                 _topperWindow?.SetLogoMorphColor(_appSettings.BackglassLogoMorphColor);

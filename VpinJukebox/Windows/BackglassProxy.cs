@@ -171,6 +171,9 @@ public sealed class BackglassProxy
     public void SetLogoRings(LogoRingsMode mode) =>
         _dispatcher.BeginInvoke(() => _window.SetLogoRings(mode));
 
+    public void SetLogoRingsBrightness(int percent) =>
+        _dispatcher.BeginInvoke(() => _window.SetLogoRingsBrightness(percent));
+
     public void SetLogoDim(bool enabled, int opacityPercent, int timeoutSeconds) =>
         _dispatcher.BeginInvoke(() => _window.SetLogoDim(enabled, opacityPercent, timeoutSeconds));
 
