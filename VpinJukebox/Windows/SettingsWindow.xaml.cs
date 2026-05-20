@@ -68,7 +68,7 @@ public partial class SettingsWindow : JukeboxWindow
     private bool _originalLogoSpin;
     private LogoRingsMode _originalLogoRings;
     private int _originalLogoRingsBrightness;
-    private bool _originalLogoMorphColor;
+    private LogoColorMode _originalLogoColorMode;
     private int _originalMandelbrotUseGpu;
     private bool _originalMandelbrotAdaptiveIterations;
     private int _originalMandelbrotMaxIterations;
@@ -147,7 +147,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.LogoSpin != _originalLogoSpin ||
         _settings.LogoRings != _originalLogoRings ||
         _settings.LogoRingsBrightness != _originalLogoRingsBrightness ||
-        _settings.BackglassLogoMorphColor != _originalLogoMorphColor;
+        _settings.LogoColorMode != _originalLogoColorMode;
 
     public bool DofSettingsChanged =>
         _settings.DofEnabled != _originalDofEnabled ||
@@ -295,7 +295,12 @@ public partial class SettingsWindow : JukeboxWindow
         }
         CbBackglassDimTimeout.SelectedIndex = selectedBgTimeoutIndex;
 
-        CbBackglassMorphColor.IsChecked = settings.BackglassLogoMorphColor;
+        switch (settings.LogoColorMode)
+        {
+            case LogoColorMode.SlowMorph: RbLogoColorMorph.IsChecked = true; break;
+            case LogoColorMode.Reactive: RbLogoColorReactive.IsChecked = true; break;
+            default: RbLogoColorOff.IsChecked = true; break;
+        }
         CbBackglassAudioOnly.IsChecked = settings.BackglassAudioOnly;
 
         CbDmdScreensaverDim.IsChecked = settings.DmdScreensaverDimEnabled;
@@ -611,7 +616,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalLogoSpin = settings.LogoSpin;
         _originalLogoRings = settings.LogoRings;
         _originalLogoRingsBrightness = settings.LogoRingsBrightness;
-        _originalLogoMorphColor = settings.BackglassLogoMorphColor;
+        _originalLogoColorMode = settings.LogoColorMode;
         _originalMandelbrotUseGpu = settings.MandelbrotUseGpu;
         _originalMandelbrotAdaptiveIterations = settings.MandelbrotAdaptiveIterations;
         _originalMandelbrotMaxIterations = settings.MandelbrotMaxIterations;
@@ -1800,7 +1805,9 @@ public partial class SettingsWindow : JukeboxWindow
         var bgTimeoutValues = new[] { 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 300, 360, 420, 480, 540, 600 };
         _settings.BackglassLogoDimTimeoutSeconds = CbBackglassDimTimeout.SelectedIndex >= 0 && CbBackglassDimTimeout.SelectedIndex < bgTimeoutValues.Length
             ? bgTimeoutValues[CbBackglassDimTimeout.SelectedIndex] : 60;
-        _settings.BackglassLogoMorphColor = CbBackglassMorphColor.IsChecked == true;
+        _settings.LogoColorMode = RbLogoColorReactive.IsChecked == true ? LogoColorMode.Reactive
+            : RbLogoColorMorph.IsChecked == true ? LogoColorMode.SlowMorph
+            : LogoColorMode.Off;
         _settings.BackglassAudioOnly = CbBackglassAudioOnly.IsChecked == true;
         _settings.DmdScreensaverDimEnabled = CbDmdScreensaverDim.IsChecked == true;
         _settings.DmdScreensaverDimDarkBlobs = CbDmdDimDarkBlobs.IsChecked == true;
@@ -2006,7 +2013,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalLogoSpin = _settings.LogoSpin;
         _originalLogoRings = _settings.LogoRings;
         _originalLogoRingsBrightness = _settings.LogoRingsBrightness;
-        _originalLogoMorphColor = _settings.BackglassLogoMorphColor;
+        _originalLogoColorMode = _settings.LogoColorMode;
         _originalMandelbrotUseGpu = _settings.MandelbrotUseGpu;
         _originalMandelbrotAdaptiveIterations = _settings.MandelbrotAdaptiveIterations;
         _originalMandelbrotMaxIterations = _settings.MandelbrotMaxIterations;

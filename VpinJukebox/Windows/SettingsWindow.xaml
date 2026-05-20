@@ -629,7 +629,7 @@
                                         ToolTip="Browse, preview, and activate/deactivate individual presets."/>
                             </StackPanel>
 
-                            <TextBlock Text="REACTIVE AUDIO" FontSize="12" FontWeight="Bold"
+                            <TextBlock Text="REACTIVE ELEMENTS" FontSize="12" FontWeight="Bold"
                                 Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
                             <TextBlock Text="Send audio to visualizations for pulsing/visual feedback"
                                  FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,2" Padding="0,0,0,4"
@@ -1134,8 +1134,17 @@
                                           Foreground="{StaticResource TextBrush}"
                                           FontSize="12" BorderBrush="#333"/>
                             </DockPanel>
-                            <CheckBox x:Name="CbBackglassMorphColor" Content="Morph logo colors"
-                                      Foreground="{StaticResource TextBrush}" Margin="0,0,0,8"/>
+                            <TextBlock Text="Logo Color:" Foreground="{StaticResource TextBrush}"
+                                       Margin="0,0,0,4"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <RadioButton x:Name="RbLogoColorOff" Content="Off" GroupName="LogoColor"
+                                             Foreground="{StaticResource TextBrush}" Margin="0,0,12,0"/>
+                                <RadioButton x:Name="RbLogoColorMorph" Content="Slow Morph" GroupName="LogoColor"
+                                             Foreground="{StaticResource TextBrush}" Margin="0,0,12,0"/>
+                                <RadioButton x:Name="RbLogoColorReactive" Content="Reactive" GroupName="LogoColor"
+                                             Foreground="{StaticResource TextBrush}" Margin="0,0,0,0"
+                                             ToolTip="Logo color follows the dominant playfield color (blobs/ProjectM)."/>
+                            </StackPanel>
                             <CheckBox x:Name="CbBackglassAudioOnly" Content="Stream audio only (no video on backglass)"
                                       Foreground="{StaticResource TextBrush}" Margin="0,0,0,0"/>
                         </StackPanel>

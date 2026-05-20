@@ -56,7 +56,7 @@ public class AppSettings
     public bool BackglassLogoDimEnabled { get; set; }
     public int BackglassLogoDimOpacity { get; set; } = 80;
     public int BackglassLogoDimTimeoutSeconds { get; set; } = 60;
-    public bool BackglassLogoMorphColor { get; set; }
+    public LogoColorMode LogoColorMode { get; set; }
     public bool BackglassAudioOnly { get; set; }
     public bool LogoSpin { get; set; } = true;
     public LogoRingsMode LogoRings { get; set; } = LogoRingsMode.Standard;
@@ -348,6 +348,13 @@ public enum DmdSwapMode
     Off,
     Playfield,
     Backglass
+}
+
+public enum LogoColorMode
+{
+    Off,
+    SlowMorph,
+    Reactive
 }
 
 public enum CacheMode

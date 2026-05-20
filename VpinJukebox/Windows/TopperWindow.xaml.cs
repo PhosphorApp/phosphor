@@ -475,9 +475,9 @@ public partial class TopperWindow : JukeboxWindow
         }
     }
 
-    public void SetLogoMorphColor(bool enabled)
+    public void SetLogoMorphColor(LogoColorMode mode)
     {
-        _morphColors = enabled;
+        _morphColors = mode != LogoColorMode.Off;
 
         if (_animStarted)
         {
@@ -485,8 +485,33 @@ public partial class TopperWindow : JukeboxWindow
             DrawCircularTitle(TitleCanvas, _logoSpin);
         }
 
-        if (!enabled)
+        if (mode == LogoColorMode.Off)
             ApplyResetColors();
+    }
+
+    /// <summary>
+    /// Morphs the topper logo to a specific ROYGBIV color band (reactive mode).
+    /// </summary>
+    public void MorphLogoToColor(RoygbivColor color)
+    {
+        if (!_morphColors) return;
+
+        double hue = color switch
+        {
+            RoygbivColor.Red => 0,
+            RoygbivColor.Orange => 30,
+            RoygbivColor.Yellow => 60,
+            RoygbivColor.Green => 120,
+            RoygbivColor.Blue => 210,
+            RoygbivColor.Indigo => 240,
+            RoygbivColor.Violet => 280,
+            RoygbivColor.White => 200,
+            _ => 0
+        };
+
+        var titleColor = HslToColor(hue, 0.7, 0.55);
+        var recordColor = HslToColor((hue + 30) % 360, 0.6, 0.5);
+        ApplyMorphColors(titleColor, recordColor);
     }
 
     /// <summary>

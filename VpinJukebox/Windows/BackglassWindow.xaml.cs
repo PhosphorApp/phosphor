@@ -1043,10 +1043,10 @@ public partial class BackglassWindow : JukeboxWindow
         TitleCanvas.BeginAnimation(OpacityProperty, anim);
     }
 
-    public void SetLogoMorphColor(bool enabled)
+    public void SetLogoMorphColor(LogoColorMode mode)
     {
-        _logoMorphEnabled = enabled;
-        _morphColors = enabled;
+        _logoMorphEnabled = mode == LogoColorMode.SlowMorph;
+        _morphColors = mode != LogoColorMode.Off;
         _morphTimer.Stop();
 
         // Redraw with non-frozen (or frozen) brushes as appropriate
@@ -1056,15 +1056,101 @@ public partial class BackglassWindow : JukeboxWindow
             DrawCircularTitle(TitleCanvas, _logoSpin);
         }
 
-        if (enabled)
+        if (mode == LogoColorMode.SlowMorph)
         {
             ScheduleNextMorph();
         }
-        else
+        else if (mode == LogoColorMode.Off)
         {
             ResetLogoColors();
             LogoColorsReset?.Invoke();
         }
+        // Reactive mode: colors are driven externally via MorphLogoToColor
+    }
+
+    /// <summary>
+    /// Morphs the logo to the hue corresponding to the given ROYGBIV color band.
+    /// Used by reactive logo mode when the dominant playfield color changes.
+    /// </summary>
+    public void MorphLogoToColor(RoygbivColor color)
+    {
+        if (!_morphColors) return;
+
+        double hue = color switch
+        {
+            RoygbivColor.Red => 0,
+            RoygbivColor.Orange => 30,
+            RoygbivColor.Yellow => 60,
+            RoygbivColor.Green => 120,
+            RoygbivColor.Blue => 210,
+            RoygbivColor.Indigo => 240,
+            RoygbivColor.Violet => 280,
+            RoygbivColor.White => 200,
+            _ => 0
+        };
+
+        var titleColor = HslToColor(hue, 0.7, 0.55);
+        var recordColor = HslToColor((hue + 30) % 360, 0.6, 0.5);
+
+        var duration = TimeSpan.FromSeconds(2);
+        var ease = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
+
+        RecordOverlay.CacheMode = null;
+        TitleCanvas.CacheMode = null;
+
+        foreach (var child in TitleCanvas.Children)
+        {
+            if (child is System.Windows.Controls.TextBlock tb
+                && tb.Foreground is WpfMedia.SolidColorBrush brush
+                && !brush.IsFrozen)
+            {
+                var anim = new ColorAnimation
+                {
+                    To = WpfColor.FromArgb(180, titleColor.R, titleColor.G, titleColor.B),
+                    Duration = duration,
+                    EasingFunction = ease
+                };
+                brush.BeginAnimation(WpfMedia.SolidColorBrush.ColorProperty, anim);
+            }
+        }
+
+        foreach (var child in RecordOverlay.Children)
+        {
+            if (child is Ellipse ellipse)
+            {
+                if (ellipse.Fill is WpfMedia.SolidColorBrush fill && !fill.IsFrozen)
+                {
+                    byte alpha = fill.Color.A;
+                    if (alpha > 0)
+                    {
+                        var anim = new ColorAnimation
+                        {
+                            To = WpfColor.FromArgb(alpha, recordColor.R, recordColor.G, recordColor.B),
+                            Duration = duration,
+                            EasingFunction = ease
+                        };
+                        fill.BeginAnimation(WpfMedia.SolidColorBrush.ColorProperty, anim);
+                    }
+                }
+                if (ellipse.Stroke is WpfMedia.SolidColorBrush stroke && !stroke.IsFrozen)
+                {
+                    byte alpha = stroke.Color.A;
+                    var anim = new ColorAnimation
+                    {
+                        To = WpfColor.FromArgb(alpha, recordColor.R, recordColor.G, recordColor.B),
+                        Duration = duration,
+                        EasingFunction = ease
+                    };
+                    stroke.BeginAnimation(WpfMedia.SolidColorBrush.ColorProperty, anim);
+                }
+            }
+        }
+
+        _morphCacheRestoreTimer.Stop();
+        _morphCacheRestoreTimer.Interval = duration + TimeSpan.FromMilliseconds(100);
+        _morphCacheRestoreTimer.Start();
+
+        LogoColorsMorphed?.Invoke(titleColor, recordColor);
     }
 
     private void ScheduleNextMorph()

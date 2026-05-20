@@ -177,8 +177,11 @@ public sealed class BackglassProxy
     public void SetLogoDim(bool enabled, int opacityPercent, int timeoutSeconds) =>
         _dispatcher.BeginInvoke(() => _window.SetLogoDim(enabled, opacityPercent, timeoutSeconds));
 
-    public void SetLogoMorphColor(bool enabled) =>
-        _dispatcher.BeginInvoke(() => _window.SetLogoMorphColor(enabled));
+    public void SetLogoMorphColor(LogoColorMode mode) =>
+        _dispatcher.BeginInvoke(() => _window.SetLogoMorphColor(mode));
+
+    public void MorphLogoToColor(RoygbivColor color) =>
+        _dispatcher.BeginInvoke(() => _window.MorphLogoToColor(color));
 
     public void SetAudioOnly(bool audioOnly) =>
         _dispatcher.BeginInvoke(() => _window.SetAudioOnly(audioOnly));

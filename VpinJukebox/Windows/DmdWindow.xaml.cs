@@ -90,6 +90,7 @@ public partial class DmdWindow : JukeboxWindow
     private bool _settingsAppliedDuringDialog;
     private DateTime _lastDofColorChangeTime;
     private readonly SemaphoreSlim _dofStartLock = new(1, 1);
+    private bool _reactiveLogoEnabled;
 
     public DmdWindow()
     {
@@ -626,10 +627,10 @@ public partial class DmdWindow : JukeboxWindow
         _backglassProxy.SetBlobSizeOffset(settings.BackglassBlobSizeOffset);
         _backglassProxy.SetBlobPattern(settings.BackglassBlobPattern);
         _backglassProxy.SetLogoDim(settings.BackglassLogoDimEnabled, settings.BackglassLogoDimOpacity, settings.BackglassLogoDimTimeoutSeconds);
-        _backglassProxy.SetLogoMorphColor(settings.BackglassLogoMorphColor);
+        _backglassProxy.SetLogoMorphColor(settings.LogoColorMode);
         _backglassProxy.SetAudioOnly(settings.BackglassAudioOnly);
         if (settings.ShowTopper)
-            _topperWindow.SetLogoMorphColor(settings.BackglassLogoMorphColor);
+            _topperWindow.SetLogoMorphColor(settings.LogoColorMode);
         _backglassProxy.LogoColorsMorphed += (titleColor, recordColor) =>
         {
             if (_appSettings?.ShowTopper == true)
@@ -664,6 +665,9 @@ public partial class DmdWindow : JukeboxWindow
 
         // DOF color band — subscribe to playfield blob color changes
         _playfieldProxy.BlobColorBandChanged += OnPlayfieldColorBandChanged;
+        // Reactive logo — morph logo to dominant playfield color
+        _reactiveLogoEnabled = settings.LogoColorMode == LogoColorMode.Reactive;
+        _playfieldProxy.BlobColorBandChanged += OnPlayfieldColorBandChangedForLogo;
         ApplyDofStartup(settings.DofEnabled, settings.DofColorBand && settings.ShowPlayfield);
         
 
@@ -1849,11 +1853,12 @@ public partial class DmdWindow : JukeboxWindow
             _topperWindow?.SetLogoSpin(_appSettings.LogoSpin);
             _topperWindow?.SetLogoRings(_appSettings.LogoRings);
             _topperWindow?.SetLogoRingsBrightness(_appSettings.LogoRingsBrightness);
-            _backglassProxy?.SetLogoMorphColor(_appSettings.BackglassLogoMorphColor);
+            _backglassProxy?.SetLogoMorphColor(_appSettings.LogoColorMode);
+            _reactiveLogoEnabled = _appSettings.LogoColorMode == LogoColorMode.Reactive;
             if (_appSettings.ShowTopper)
-                _topperWindow?.SetLogoMorphColor(_appSettings.BackglassLogoMorphColor);
+                _topperWindow?.SetLogoMorphColor(_appSettings.LogoColorMode);
             else
-                _topperWindow?.SetLogoMorphColor(false);
+                _topperWindow?.SetLogoMorphColor(LogoColorMode.Off);
             LogStep("Logo (changed)");
         }
 
@@ -2173,9 +2178,18 @@ public partial class DmdWindow : JukeboxWindow
                 _dofClient.Trigger('E', _lastDofColorNumber, 0);
 
                             // Turn on new color
-                            _dofClient.Trigger('E', newNumber, 1);
+            _dofClient.Trigger('E', newNumber, 1);
             _lastDofColorNumber = newNumber;
         });
+    }
+
+    private void OnPlayfieldColorBandChangedForLogo(ColorAnalysis analysis)
+    {
+        if (!_reactiveLogoEnabled) return;
+
+        _backglassProxy?.MorphLogoToColor(analysis.Color);
+        if (_appSettings?.ShowTopper == true)
+            _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.MorphLogoToColor(analysis.Color));
     }
 
     public void SetPlayButtonSize(int modifier)
