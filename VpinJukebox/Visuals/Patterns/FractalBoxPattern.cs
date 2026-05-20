@@ -35,7 +35,7 @@ public sealed class FractalBoxPattern : BlobPatternBase
 
         for (int i = 0; i < _blobCount; i++)
         {
-            double size = baseBoxSize * (0.7 + _rng.NextDouble() * 0.7);
+            double size = baseBoxSize * (0.7 + _rng.NextDouble() * 0.7) * _sizeMultiplier;
             var brush = new SolidColorBrush(Colors.Black);
             _brushes.Add(brush);
 
@@ -107,25 +107,27 @@ public sealed class FractalBoxPattern : BlobPatternBase
         var dur = TimeSpan.FromMilliseconds(reactiveSpeedMs);
         var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
 
+        // Single canvas-level blur — one GPU shader pass regardless of blob count.
+        // Blur peaks when scale is highest (on beat), giving a nice glow-pulse effect.
+        if (blurRadius > 0.5)
+        {
+            if (_canvas.Effect is not BlurEffect canvasBlur)
+            {
+                canvasBlur = new BlurEffect { Radius = 0, RenderingBias = RenderingBias.Performance };
+                _canvas.Effect = canvasBlur;
+            }
+            canvasBlur.BeginAnimation(BlurEffect.RadiusProperty,
+                new DoubleAnimation(blurRadius, dur) { EasingFunction = ease });
+        }
+        else if (_canvas.Effect is BlurEffect)
+        {
+            _canvas.Effect = null;
+        }
+
         for (int i = 0; i < _blobs.Count; i++)
         {
             var blob = _blobs[i];
             blob.Opacity = baseIntensity + intensity * 0.25;
-
-            if (blurRadius > 0.5)
-            {
-                if (blob.Effect is not BlurEffect blur)
-                {
-                    blur = new BlurEffect { Radius = 0, RenderingBias = RenderingBias.Performance };
-                    blob.Effect = blur;
-                }
-                blur.BeginAnimation(BlurEffect.RadiusProperty,
-                    new DoubleAnimation(blurRadius, dur) { EasingFunction = ease });
-            }
-            else if (blob.Effect is BlurEffect)
-            {
-                blob.Effect = null;
-            }
 
             // Pulse scale via the ScaleTransform in the TransformGroup
             if (blob.RenderTransform is TransformGroup tg)

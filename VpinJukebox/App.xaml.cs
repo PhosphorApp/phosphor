@@ -32,6 +32,7 @@ public partial class App : Application
 
         _settings = AppSettings.Load();
         DebugLog.Enabled = _settings.DebugLogging;
+        RenderPerformanceMonitor.Start();
         var appVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
         DebugLog.Log("App", $"Application starting - v{appVersion}");
         DebugLog.Log("App", "Loading settings complete");

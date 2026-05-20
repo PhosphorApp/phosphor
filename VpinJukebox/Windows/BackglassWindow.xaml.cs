@@ -950,7 +950,7 @@ public partial class BackglassWindow : JukeboxWindow
 
     public void SetBlobCount(int count)
     {
-        _blobCount = Math.Clamp(count, 0, 25);
+        _blobCount = Math.Clamp(count, 0, 100);
         if (!_idleAnimStarted) return;
 
         _baseBlobSizes = null;
@@ -961,7 +961,7 @@ public partial class BackglassWindow : JukeboxWindow
 
     public void SetBlobSizeOffset(int offset)
     {
-        int clamped = Math.Clamp(offset, -12, 12);
+        int clamped = Math.Clamp(offset, 1, 20);
         bool changed = clamped != _blobSizeOffset;
         _blobSizeOffset = clamped;
         if (!_idleAnimStarted || !changed) return;

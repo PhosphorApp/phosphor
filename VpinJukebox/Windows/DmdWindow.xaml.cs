@@ -648,8 +648,8 @@ public partial class DmdWindow : JukeboxWindow
         // Configure blob state before creating anything to avoid triple-creation and brightness pop
         _ssBlobIntensity = Math.Clamp(settings.ScreensaverIntensity, 0.05, 0.8);
         _ssBlobSpeedMultiplier = Math.Clamp(settings.ScreensaverSpeed, 0.1, 5.0);
-        _ssBlobCount = Math.Clamp(settings.DmdBlobCount, 0, 25);
-        _ssBlobSizeOffset = Math.Clamp(settings.DmdBlobSizeOffset, -12, 12);
+        _ssBlobCount = Math.Clamp(settings.DmdBlobCount, 0, 100);
+        _ssBlobSizeOffset = Math.Clamp(settings.DmdBlobSizeOffset, 1, 20);
         _ssBlobPatternSetting = settings.DmdBlobPattern;
         _ssBlobPattern = settings.DmdBlobPattern == BlobPattern.RandomPerSong
             ? BlobTransition.CurrentRandomPattern
@@ -2422,7 +2422,7 @@ public partial class DmdWindow : JukeboxWindow
 
     public void SetBlobCount(int count)
     {
-        _ssBlobCount = Math.Clamp(count, 0, 25);
+        _ssBlobCount = Math.Clamp(count, 0, 100);
         if (ScreensaverCanvas.Visibility == Visibility.Visible)
         {
             CreateScreensaverBlobs();
@@ -2432,7 +2432,7 @@ public partial class DmdWindow : JukeboxWindow
 
     public void SetBlobSizeOffset(int offset)
     {
-        int clamped = Math.Clamp(offset, -12, 12);
+        int clamped = Math.Clamp(offset, 1, 20);
         bool changed = clamped != _ssBlobSizeOffset;
         _ssBlobSizeOffset = clamped;
         if (!changed) return;

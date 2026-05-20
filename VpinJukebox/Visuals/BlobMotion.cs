@@ -49,6 +49,8 @@ public class BlobState
     public double PulsePhase { get; set; }
     /// <summary>FractalBox pattern: per-element random self-spin rate multiplier.</summary>
     public double SelfSpinRate { get; set; }
+    /// <summary>Cached RotateTransform reference to avoid searching TransformGroup each tick.</summary>
+    public System.Windows.Media.RotateTransform? CachedRotateTransform { get; set; }
 }
 
 /// <summary>
@@ -239,8 +241,9 @@ public static class BlobMotion
                     blob.BeginAnimation(Canvas.TopProperty, null);
 
                     // Respawn above/left of the visible area with slight size and speed variation
+                    double baseSize = state.BaseSize > 0 ? state.BaseSize : blob.Width;
                     double sizeChange = 1.0 + (rng.NextDouble() - 0.5) * 0.1;
-                    double newSize = Math.Clamp(blob.Width * sizeChange, 100, 600);
+                    double newSize = Math.Clamp(baseSize * sizeChange, 20, 1200);
                     blob.Width = newSize;
                     blob.Height = newSize;
                     state.SpeedFactor = Math.Clamp(
@@ -387,12 +390,12 @@ public static class BlobMotion
                 double aspectX = w / Math.Min(w, h);
                 double aspectY = h / Math.Min(w, h);
 
-                // Tiny consistent sweep (2°) for ultra-smooth continuous rotation
-                double sweepRad = 2.0 * (Math.PI / 180) * state.RingSpinRate;
+                // Sweep per step — larger = fewer retargets/sec, better perf at high counts
+                double sweepRad = 6.0 * (Math.PI / 180) * state.RingSpinRate;
                 state.GlobalRotation += sweepRad;
 
                 // Pulsation: radius breathes ±12% on a slow sine wave
-                state.PulsePhase += 0.03;
+                state.PulsePhase += 0.09;
                 double pulseFactor = 1.0 + 0.12 * Math.Sin(state.PulsePhase);
 
                 // Position within the ring
@@ -407,21 +410,31 @@ public static class BlobMotion
                 double spinRate = state.SelfSpinRate != 0 ? state.SelfSpinRate : baseSpinMultiplier;
                 double selfSpinDeg = state.GlobalRotation * (180 / Math.PI) * spinRate;
 
-                // Find or create the RotateTransform — may be standalone or inside a TransformGroup
-                System.Windows.Media.RotateTransform rt;
-                if (blob.RenderTransform is System.Windows.Media.RotateTransform directRt)
+                // Find or create the RotateTransform — cached after first lookup
+                var rt = state.CachedRotateTransform;
+                if (rt == null)
                 {
-                    rt = directRt;
-                }
-                else if (blob.RenderTransform is System.Windows.Media.TransformGroup tg
-                         && tg.Children.OfType<System.Windows.Media.RotateTransform>().FirstOrDefault() is { } groupRt)
-                {
-                    rt = groupRt;
-                }
-                else
-                {
-                    rt = new System.Windows.Media.RotateTransform(0, blob.Width / 2, blob.Height / 2);
-                    blob.RenderTransform = rt;
+                    if (blob.RenderTransform is System.Windows.Media.RotateTransform directRt)
+                    {
+                        rt = directRt;
+                    }
+                    else if (blob.RenderTransform is System.Windows.Media.TransformGroup tg)
+                    {
+                        for (int c = 0; c < tg.Children.Count; c++)
+                        {
+                            if (tg.Children[c] is System.Windows.Media.RotateTransform groupRt)
+                            {
+                                rt = groupRt;
+                                break;
+                            }
+                        }
+                    }
+                    if (rt == null)
+                    {
+                        rt = new System.Windows.Media.RotateTransform(0, blob.Width / 2, blob.Height / 2);
+                        blob.RenderTransform = rt;
+                    }
+                    state.CachedRotateTransform = rt;
                 }
 
                 // Snapshot current animated values, clear old animations, then set
@@ -442,7 +455,7 @@ public static class BlobMotion
                 rt.Angle = curAngle;
 
                 // Consistent duration per step — no random variance — keeps all blobs in sync
-                double arcDur = 1.2 / Math.Max(0.1, speedMultiplier * Math.Abs(state.RingSpinRate));
+                double arcDur = 3.6 / Math.Max(0.1, speedMultiplier * Math.Abs(state.RingSpinRate));
 
                 var fAnimX = new DoubleAnimation
                 {

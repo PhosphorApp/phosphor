@@ -423,7 +423,7 @@ public partial class PlayfieldWindow : JukeboxWindow
 
     public void SetBlobCount(int count)
     {
-        int clamped = Math.Clamp(count, 0, 25);
+        int clamped = Math.Clamp(count, 0, 100);
         bool changed = clamped != _blobCount;
         _blobCount = clamped;
 
@@ -446,7 +446,7 @@ public partial class PlayfieldWindow : JukeboxWindow
 
     public void SetBlobSizeOffset(int offset)
     {
-        int clamped = Math.Clamp(offset, -12, 12);
+        int clamped = Math.Clamp(offset, 1, 20);
         bool changed = clamped != _blobSizeOffset;
         _blobSizeOffset = clamped;
 

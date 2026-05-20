@@ -43,7 +43,7 @@ public sealed class BlobPatternConfig
     public bool UseBitmapCache { get; init; } = true;
 
     /// <summary>
-    /// Size offset in 5% increments (-12 to 12). 0 = default, -12 = 40%, +12 = 160%.
+    /// Size scale in 10% increments (1 to 20). 10 = default (100%), 1 = 10%, 20 = 200%.
     /// </summary>
     public int BlobSizeOffset { get; init; }
 }
@@ -89,7 +89,7 @@ public abstract class BlobPatternBase : IBlobPattern
         _sizeFactory = config.BlobSizeFactory;
         _maxOrbitRadius = config.MaxOrbitRadius;
         _useBitmapCache = config.UseBitmapCache;
-        _sizeMultiplier = 1.0 + Math.Clamp(config.BlobSizeOffset, -12, 12) * 0.05;
+        _sizeMultiplier = Math.Clamp(config.BlobSizeOffset, 1, 20) / 10.0;
     }
 
     /// <summary>
@@ -409,6 +409,7 @@ public abstract class BlobPatternBase : IBlobPattern
         _brushes.Clear();
         _gradBrushes.Clear();
         _states.Clear();
+        _canvas.Effect = null;
     }
 
     public virtual void Dispose()

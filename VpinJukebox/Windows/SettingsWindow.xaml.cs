@@ -1438,7 +1438,7 @@ public partial class SettingsWindow : JukeboxWindow
         var slider = (System.Windows.Controls.Slider)sender;
         string name = slider.Name;
         int val = (int)e.NewValue;
-        string text = val == 0 ? "Default" : $"{val * 5:+#;-#}%";
+        string text = val == 10 ? "Default" : $"{val * 10}%";
         System.Windows.Controls.TextBlock? label = name switch
         {
             "SliderBlobSizePlayfield" => TxtBlobSizePlayfield,
