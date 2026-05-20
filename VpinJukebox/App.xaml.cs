@@ -235,7 +235,7 @@ public partial class App : Application
                 // Ensure pack:// URI scheme is available on this thread
                 _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
                 window = new BackglassWindow();
-                window.SetSharedVlc(EnsureSharedVlc());
+                window.SetSharedVlcTask(_sharedVlcTask);
                 window.DataContext = viewModel;
             }
             catch (Exception ex)
@@ -340,10 +340,33 @@ public partial class App : Application
         if (!System.IO.File.Exists(_settings.StartupDittiPath)) { DebugLog.Log("Ditti", $"Skipped: file not found: {_settings.StartupDittiPath}"); return; }
         if (_settings.AutoPlayQueueOnStart && viewModel.Queue.Count > 0) { DebugLog.Log("Ditti", "Skipped: auto-play queue active"); return; }
 
+        // Don't block the deferred-startup path waiting for shared LibVLC
+        // to finish initializing — schedule the actual play once it's ready.
+        if (_sharedVlc != null)
+        {
+            StartDittiPlayback(viewModel, _sharedVlc);
+            return;
+        }
+        if (_sharedVlcTask != null)
+        {
+            _sharedVlcTask.ContinueWith(t =>
+            {
+                var vlc = t.IsCompletedSuccessfully ? t.Result : null;
+                Dispatcher.BeginInvoke(() =>
+                {
+                    if (vlc == null) { DebugLog.Log("Ditti", "Skipped: shared LibVLC not available"); return; }
+                    // Re-check guard: user may have started playback while VLC was initializing
+                    if (viewModel.CurrentlyPlaying != null) { DebugLog.Log("Ditti", "Skipped: playback already started"); return; }
+                    StartDittiPlayback(viewModel, vlc);
+                });
+            }, TaskScheduler.Default);
+        }
+    }
+
+    private void StartDittiPlayback(JukeboxViewModel viewModel, LibVLC vlc)
+    {
         try
         {
-            var vlc = EnsureSharedVlc();
-            if (vlc == null) { DebugLog.Log("Ditti", "Skipped: shared LibVLC not available"); return; }
             _dittiPlayer = new MediaPlayer(vlc);
             _dittiPlayer.Volume = viewModel.Volume;
 

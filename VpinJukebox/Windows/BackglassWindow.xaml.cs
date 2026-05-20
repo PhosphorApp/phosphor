@@ -49,6 +49,7 @@ public partial class BackglassWindow : JukeboxWindow
     private readonly DispatcherTimer _morphTimer = new();
     private readonly DispatcherTimer _morphCacheRestoreTimer = new();
     private Task? _vlcInitTask;
+    private Task<LibVLC?>? _sharedVlcTask;
     private readonly DispatcherTimer _expandButtonHideTimer = new() { Interval = TimeSpan.FromSeconds(3) };
 
     public MediaPlayer MediaPlayer => EnsureVlcInitialized();
@@ -88,6 +89,16 @@ public partial class BackglassWindow : JukeboxWindow
     {
         if (vlc != null)
             _libVLC = vlc;
+    }
+
+    /// <summary>
+    /// Accepts a task that will produce the shared LibVLC instance. The window's
+    /// background init task (started in Loaded) awaits this without blocking the
+    /// caller, so app startup doesn't have to wait for plugin scanning to finish.
+    /// </summary>
+    public void SetSharedVlcTask(Task<LibVLC?>? task)
+    {
+        _sharedVlcTask = task;
     }
 
     /// <summary>
@@ -197,7 +208,22 @@ public partial class BackglassWindow : JukeboxWindow
             // appears immediately without the ~17% startup cost.
             // If the user hits play before this completes,
             // EnsureVlcInitialized will wait with dispatcher pumping.
-            _vlcInitTask = Task.Run(() => InitializeVlcCore());
+            _vlcInitTask = Task.Run(() =>
+            {
+                // If app provided a shared-VLC task, wait for it here (off-thread)
+                // and reuse the result instead of spinning up a second LibVLC.
+                if (_sharedVlcTask != null && _libVLC == null)
+                {
+                    try
+                    {
+                        var shared = _sharedVlcTask.GetAwaiter().GetResult();
+                        if (shared != null)
+                            _libVLC = shared;
+                    }
+                    catch { }
+                }
+                InitializeVlcCore();
+            });
         };
     }
 

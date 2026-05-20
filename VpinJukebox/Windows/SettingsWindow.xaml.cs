@@ -340,10 +340,10 @@ public partial class SettingsWindow : JukeboxWindow
             .Select(p => (Pattern: p, Name: p switch
             {
                 BlobPattern.Random => "Random",
-                BlobPattern.RoughClockwise => "Rough Clockwise",
-                BlobPattern.PerfectClockwise => "Perfect Clockwise",
-                BlobPattern.RoughMixed => "Rough Mixed",
-                BlobPattern.PerfectMixed => "Perfect Mixed",
+                BlobPattern.RoughClockwise => "Eccentric (Clockwise)",
+                BlobPattern.PerfectClockwise => "Orbital (Clockwise)",
+                BlobPattern.RoughMixed => "Eccentric (Mixed)",
+                BlobPattern.PerfectMixed => "Orbital (Mixed)",
                 BlobPattern.Rainfall => "Rainfall",
                 BlobPattern.LavaLamp => "Lava Lamp",
                 BlobPattern.Bounce => "Bounce",
@@ -1887,10 +1887,10 @@ public partial class SettingsWindow : JukeboxWindow
             .OrderBy(p => p switch
             {
                 BlobPattern.Random => "Random",
-                BlobPattern.RoughClockwise => "Rough Clockwise",
-                BlobPattern.PerfectClockwise => "Perfect Clockwise",
-                BlobPattern.RoughMixed => "Rough Mixed",
-                BlobPattern.PerfectMixed => "Perfect Mixed",
+                BlobPattern.RoughClockwise => "Eccentric (Clockwise)",
+                BlobPattern.PerfectClockwise => "Orbital (Clockwise)",
+                BlobPattern.RoughMixed => "Eccentric (Mixed)",
+                BlobPattern.PerfectMixed => "Orbital (Mixed)",
                 BlobPattern.Rainfall => "Rainfall",
                 BlobPattern.LavaLamp => "Lava Lamp",
                 BlobPattern.Bounce => "Bounce",
