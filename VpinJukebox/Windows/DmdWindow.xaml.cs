@@ -605,6 +605,15 @@ public partial class DmdWindow : JukeboxWindow
             _ => MandelbrotPattern.RotationModeKind.Off,
         };
         BlobTransition.ExcludeProjectMFromRandom = settings.ExcludeProjectMFromRandom;
+        FerrofluidSimulator.CoreGravity = settings.FerrofluidCoreGravity;
+        FerrofluidSimulator.MutualAttraction = settings.FerrofluidMutualAttraction;
+        FerrofluidSimulator.Damping = settings.FerrofluidDamping;
+        FerrofluidSimulator.ExplosionForceBase = settings.FerrofluidExplosionForce;
+        FerrofluidSimulator.ExplosionDuration = settings.FerrofluidExplosionDuration;
+        FerrofluidSimulator.BristleForceBase = settings.FerrofluidBristleForce;
+        FerrofluidSimulator.MaxSpeed = settings.FerrofluidMaxSpeed;
+        FerrofluidSimulator.ExplosionBassThreshold = settings.FerrofluidExplosionBassThreshold;
+        FerrofluidSimulator.BristleTrebleThreshold = settings.FerrofluidBristleTrebleThreshold;
         ProjectMRenderer.PresetDuration = settings.ProjectMPresetDuration;
         ProjectMRenderer.SoftCutDuration = settings.ProjectMSoftCutDuration;
         ProjectMRenderer.HardCutEnabled = settings.ProjectMHardCutEnabled;
@@ -1906,6 +1915,15 @@ public partial class DmdWindow : JukeboxWindow
             LogStep("Mandelbrot restart dispatched (changed)");
         }
         BlobTransition.ExcludeProjectMFromRandom = _appSettings.ExcludeProjectMFromRandom;
+        FerrofluidSimulator.CoreGravity = _appSettings.FerrofluidCoreGravity;
+        FerrofluidSimulator.MutualAttraction = _appSettings.FerrofluidMutualAttraction;
+        FerrofluidSimulator.Damping = _appSettings.FerrofluidDamping;
+        FerrofluidSimulator.ExplosionForceBase = _appSettings.FerrofluidExplosionForce;
+        FerrofluidSimulator.ExplosionDuration = _appSettings.FerrofluidExplosionDuration;
+        FerrofluidSimulator.BristleForceBase = _appSettings.FerrofluidBristleForce;
+        FerrofluidSimulator.MaxSpeed = _appSettings.FerrofluidMaxSpeed;
+        FerrofluidSimulator.ExplosionBassThreshold = _appSettings.FerrofluidExplosionBassThreshold;
+        FerrofluidSimulator.BristleTrebleThreshold = _appSettings.FerrofluidBristleTrebleThreshold;
         ProjectMRenderer.PresetDuration = _appSettings.ProjectMPresetDuration;
         ProjectMRenderer.SoftCutDuration = _appSettings.ProjectMSoftCutDuration;
         ProjectMRenderer.HardCutEnabled = _appSettings.ProjectMHardCutEnabled;

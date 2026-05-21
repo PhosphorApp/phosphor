@@ -99,6 +99,18 @@ public class AppSettings
     /// <summary>0 = Off, 1 = Random per target, 2 = Slow spin.</summary>
     public int MandelbrotRotation { get; set; }
     public bool ExcludeProjectMFromRandom { get; set; } = true;
+
+    // Ferrofluid tuning
+    public double FerrofluidCoreGravity { get; set; } = 280.0;
+    public double FerrofluidMutualAttraction { get; set; } = 40.0;
+    public double FerrofluidDamping { get; set; } = 0.97;
+    public double FerrofluidExplosionForce { get; set; } = 800.0;
+    public double FerrofluidExplosionDuration { get; set; } = 0.8;
+    public double FerrofluidBristleForce { get; set; } = 150.0;
+    public double FerrofluidMaxSpeed { get; set; } = 900.0;
+    public double FerrofluidExplosionBassThreshold { get; set; } = 0.2;
+    public double FerrofluidBristleTrebleThreshold { get; set; } = 0.3;
+
     public double ProjectMPresetDuration { get; set; } = 30.0;
     public double ProjectMSoftCutDuration { get; set; } = 3.0;
     public bool ProjectMHardCutEnabled { get; set; } = true;
@@ -322,6 +334,7 @@ public enum BlobPattern
     FractalBox,
     Mandelbrot,
     ProjectM,
+    FerrofluidCluster,
     RandomPerSong
 }
 

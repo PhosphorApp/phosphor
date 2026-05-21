@@ -362,6 +362,7 @@ public partial class SettingsWindow : JukeboxWindow
                 BlobPattern.LightCycle => "Light Cycle",
                 BlobPattern.FractalBox => "Fractal Box",
                 BlobPattern.Mandelbrot => "Mandelbrot",
+                BlobPattern.FerrofluidCluster => "Ferrofluid",
                 BlobPattern.RandomPerSong => "Random Per Song",
                 _ => p.ToString()
             }))
@@ -439,6 +440,27 @@ public partial class SettingsWindow : JukeboxWindow
         }
         CbMandelbrotRotation.SelectedIndex = Math.Clamp(settings.MandelbrotRotation, 0, 2);
         UpdateMandelbrotTuningVisibility();
+
+        // Ferrofluid tuning
+        SliderFerrofluidCoreGravity.Value = settings.FerrofluidCoreGravity;
+        TxtFerrofluidCoreGravity.Text = $"{(int)settings.FerrofluidCoreGravity}";
+        SliderFerrofluidMutualAttraction.Value = settings.FerrofluidMutualAttraction;
+        TxtFerrofluidMutualAttraction.Text = $"{(int)settings.FerrofluidMutualAttraction}";
+        SliderFerrofluidDamping.Value = settings.FerrofluidDamping * 100;
+        TxtFerrofluidDamping.Text = $"{(int)(settings.FerrofluidDamping * 100)}%";
+        SliderFerrofluidExplosionForce.Value = settings.FerrofluidExplosionForce;
+        TxtFerrofluidExplosionForce.Text = $"{(int)settings.FerrofluidExplosionForce}";
+        SliderFerrofluidExplosionDuration.Value = settings.FerrofluidExplosionDuration * 10;
+        TxtFerrofluidExplosionDuration.Text = $"{settings.FerrofluidExplosionDuration:F1}s";
+        SliderFerrofluidBristleForce.Value = settings.FerrofluidBristleForce;
+        TxtFerrofluidBristleForce.Text = $"{(int)settings.FerrofluidBristleForce}";
+        SliderFerrofluidMaxSpeed.Value = settings.FerrofluidMaxSpeed;
+        TxtFerrofluidMaxSpeed.Text = $"{(int)settings.FerrofluidMaxSpeed}";
+        SliderFerrofluidExplosionBassThreshold.Value = settings.FerrofluidExplosionBassThreshold * 100;
+        TxtFerrofluidExplosionBassThreshold.Text = $"{(int)(settings.FerrofluidExplosionBassThreshold * 100)}%";
+        SliderFerrofluidBristleTrebleThreshold.Value = settings.FerrofluidBristleTrebleThreshold * 100;
+        TxtFerrofluidBristleTrebleThreshold.Text = $"{(int)(settings.FerrofluidBristleTrebleThreshold * 100)}%";
+        UpdateFerrofluidTuningVisibility();
 
         CbReactiveBlobs.IsChecked = settings.ReactiveBlobs;
         CbReactiveProjectM.IsChecked = settings.ReactiveProjectM;
@@ -1513,6 +1535,7 @@ public partial class SettingsWindow : JukeboxWindow
     {
         UpdateMandelbrotTuningVisibility();
         UpdateProjectMTuningVisibility();
+        UpdateFerrofluidTuningVisibility();
         UpdateBlobCountSliderStates();
     }
 
@@ -1572,6 +1595,77 @@ public partial class SettingsWindow : JukeboxWindow
         }
 
         PanelProjectMTuning.Visibility = anyProjectM ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void UpdateFerrofluidTuningVisibility()
+    {
+        if (PanelFerrofluidTuning == null) return;
+
+        bool anyFerrofluid = false;
+        foreach (var cb in new[] { CbBlobPatternPlayfield, CbBlobPatternBackglass, CbBlobPatternTopper, CbBlobPatternDmd })
+        {
+            if (cb?.SelectedItem is string name && name == "Ferrofluid")
+            {
+                anyFerrofluid = true;
+                break;
+            }
+        }
+
+        PanelFerrofluidTuning.Visibility = anyFerrofluid ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void SliderFerrofluidCoreGravity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtFerrofluidCoreGravity != null)
+            TxtFerrofluidCoreGravity.Text = $"{(int)e.NewValue}";
+    }
+
+    private void SliderFerrofluidMutualAttraction_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtFerrofluidMutualAttraction != null)
+            TxtFerrofluidMutualAttraction.Text = $"{(int)e.NewValue}";
+    }
+
+    private void SliderFerrofluidDamping_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtFerrofluidDamping != null)
+            TxtFerrofluidDamping.Text = $"{(int)e.NewValue}%";
+    }
+
+    private void SliderFerrofluidExplosionForce_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtFerrofluidExplosionForce != null)
+            TxtFerrofluidExplosionForce.Text = $"{(int)e.NewValue}";
+    }
+
+    private void SliderFerrofluidExplosionDuration_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtFerrofluidExplosionDuration != null)
+            TxtFerrofluidExplosionDuration.Text = $"{e.NewValue / 10.0:F1}s";
+    }
+
+    private void SliderFerrofluidBristleForce_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtFerrofluidBristleForce != null)
+            TxtFerrofluidBristleForce.Text = $"{(int)e.NewValue}";
+    }
+
+    private void SliderFerrofluidMaxSpeed_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtFerrofluidMaxSpeed != null)
+            TxtFerrofluidMaxSpeed.Text = $"{(int)e.NewValue}";
+    }
+
+    private void SliderFerrofluidExplosionBassThreshold_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtFerrofluidExplosionBassThreshold != null)
+            TxtFerrofluidExplosionBassThreshold.Text = $"{(int)e.NewValue}%";
+    }
+
+    private void SliderFerrofluidBristleTrebleThreshold_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtFerrofluidBristleTrebleThreshold != null)
+            TxtFerrofluidBristleTrebleThreshold.Text = $"{(int)e.NewValue}%";
     }
 
     private void PopulateProjectMFolderTree(AppSettings settings)
@@ -1929,6 +2023,7 @@ public partial class SettingsWindow : JukeboxWindow
                 BlobPattern.LightCycle => "Light Cycle",
                 BlobPattern.FractalBox => "Fractal Box",
                 BlobPattern.Mandelbrot => "Mandelbrot",
+                BlobPattern.FerrofluidCluster => "Ferrofluid",
                 BlobPattern.RandomPerSong => "Random Per Song",
                 _ => p.ToString()
             })
@@ -1968,6 +2063,15 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.MandelbrotDimming = SliderMandelbrotDimming.Value / 100.0;
         _settings.MandelbrotHistogramColoring = CbMandelbrotHistogramColoring.IsChecked == true;
         _settings.MandelbrotRotation = Math.Max(0, CbMandelbrotRotation.SelectedIndex);
+        _settings.FerrofluidCoreGravity = SliderFerrofluidCoreGravity.Value;
+        _settings.FerrofluidMutualAttraction = SliderFerrofluidMutualAttraction.Value;
+        _settings.FerrofluidDamping = SliderFerrofluidDamping.Value / 100.0;
+        _settings.FerrofluidExplosionForce = SliderFerrofluidExplosionForce.Value;
+        _settings.FerrofluidExplosionDuration = SliderFerrofluidExplosionDuration.Value / 10.0;
+        _settings.FerrofluidBristleForce = SliderFerrofluidBristleForce.Value;
+        _settings.FerrofluidMaxSpeed = SliderFerrofluidMaxSpeed.Value;
+        _settings.FerrofluidExplosionBassThreshold = SliderFerrofluidExplosionBassThreshold.Value / 100.0;
+        _settings.FerrofluidBristleTrebleThreshold = SliderFerrofluidBristleTrebleThreshold.Value / 100.0;
         _settings.ReactiveBlobs = CbReactiveBlobs.IsChecked == true;
         _settings.ReactiveProjectM = CbReactiveProjectM.IsChecked == true;
         _settings.ReactivityThreshold = SliderReactivityThreshold.Value / 100.0;

@@ -142,7 +142,7 @@ public abstract class BlobPatternBase : IBlobPattern
             double blobBase = i < _states.Count && _states[i].BaseOpacity > 0
                 ? _states[i].BaseOpacity
                 : baseIntensity;
-            blob.Opacity = blobBase + intensity * 0.25;
+            blob.Opacity = blobBase + intensity * 0.21;
         }
     }
 

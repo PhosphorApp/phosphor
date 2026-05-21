@@ -21,6 +21,7 @@ public static class BlobTransition
         BlobPattern.FractalBox,
         BlobPattern.Mandelbrot,
         BlobPattern.ProjectM,
+        BlobPattern.FerrofluidCluster,
     ];
 
     /// <summary>
@@ -75,6 +76,7 @@ public static class BlobTransition
         BlobPattern.Mandelbrot => new MandelbrotPattern(config),
         BlobPattern.ProjectM => new ProjectMPattern(config),
         BlobPattern.Bounce => new BounceBlobPattern(config),
+        BlobPattern.FerrofluidCluster => new FerrofluidClusterPattern(config),
         BlobPattern.LightCycle => new LightCycleBlobPattern(config),
         _ => new RandomBlobPattern(config),
     };

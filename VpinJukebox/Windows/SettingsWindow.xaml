@@ -642,6 +642,111 @@
                                         ToolTip="Browse, preview, and activate/deactivate individual presets."/>
                             </StackPanel>
 
+                            <!-- ═══ SECTION: Ferrofluid Tuning (visible only when any pattern is Ferrofluid) ═══ -->
+                            <StackPanel x:Name="PanelFerrofluidTuning" Visibility="Collapsed">
+                                <TextBlock Text="FERROFLUID TUNING" FontSize="12" FontWeight="Bold"
+                                    Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Core Gravity:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="120"/>
+                                    <Slider x:Name="SliderFerrofluidCoreGravity" Minimum="50" Maximum="800"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="10"
+                                            ValueChanged="SliderFerrofluidCoreGravity_ValueChanged"
+                                            ToolTip="Base gravitational pull toward the center. Higher = blobs coalesce faster."/>
+                                    <TextBlock x:Name="TxtFerrofluidCoreGravity" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Mutual Attraction:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="120"/>
+                                    <Slider x:Name="SliderFerrofluidMutualAttraction" Minimum="0" Maximum="200"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="5"
+                                            ValueChanged="SliderFerrofluidMutualAttraction_ValueChanged"
+                                            ToolTip="Blob-to-blob attraction strength. Higher = tighter cluster."/>
+                                    <TextBlock x:Name="TxtFerrofluidMutualAttraction" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Damping:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="120"/>
+                                    <Slider x:Name="SliderFerrofluidDamping" Minimum="80" Maximum="100"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="1"
+                                            ValueChanged="SliderFerrofluidDamping_ValueChanged"
+                                            ToolTip="Velocity damping (friction). Lower = more drag, higher = blobs glide longer. Displayed as percentage."/>
+                                    <TextBlock x:Name="TxtFerrofluidDamping" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Explosion Force:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="120"/>
+                                    <Slider x:Name="SliderFerrofluidExplosionForce" Minimum="100" Maximum="2000"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="50"
+                                            ValueChanged="SliderFerrofluidExplosionForce_ValueChanged"
+                                            ToolTip="Base outward impulse on beat explosion. Higher = more violent scatter."/>
+                                    <TextBlock x:Name="TxtFerrofluidExplosionForce" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Explosion Duration:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="120"/>
+                                    <Slider x:Name="SliderFerrofluidExplosionDuration" Minimum="2" Maximum="20"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="1"
+                                            ValueChanged="SliderFerrofluidExplosionDuration_ValueChanged"
+                                            ToolTip="How long (tenths of a second) reduced gravity persists after an explosion. Higher = blobs orbit longer before re-coalescing."/>
+                                    <TextBlock x:Name="TxtFerrofluidExplosionDuration" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Bristle Force:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="120"/>
+                                    <Slider x:Name="SliderFerrofluidBristleForce" Minimum="0" Maximum="600"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="10"
+                                            ValueChanged="SliderFerrofluidBristleForce_ValueChanged"
+                                            ToolTip="Base outward force for treble-driven bristle spikes. Higher = sharper spikes."/>
+                                    <TextBlock x:Name="TxtFerrofluidBristleForce" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Max Speed:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="120"/>
+                                    <Slider x:Name="SliderFerrofluidMaxSpeed" Minimum="200" Maximum="2000"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="50"
+                                            ValueChanged="SliderFerrofluidMaxSpeed_ValueChanged"
+                                            ToolTip="Maximum blob velocity. Caps how fast blobs can move during explosions or bristles."/>
+                                    <TextBlock x:Name="TxtFerrofluidMaxSpeed" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Explosion Threshold:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="120"/>
+                                    <Slider x:Name="SliderFerrofluidExplosionBassThreshold" Minimum="5" Maximum="80"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="5"
+                                            ValueChanged="SliderFerrofluidExplosionBassThreshold_ValueChanged"
+                                            ToolTip="Bass level (%) required for a beat to trigger an explosion. Lower = more frequent explosions."/>
+                                    <TextBlock x:Name="TxtFerrofluidExplosionBassThreshold" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Bristle Threshold:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="120"/>
+                                    <Slider x:Name="SliderFerrofluidBristleTrebleThreshold" Minimum="5" Maximum="80"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="5"
+                                            ValueChanged="SliderFerrofluidBristleTrebleThreshold_ValueChanged"
+                                            ToolTip="Treble level (%) required to trigger bristle ejections. Lower = more frequent bristles."/>
+                                    <TextBlock x:Name="TxtFerrofluidBristleTrebleThreshold" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                            </StackPanel>
+
                             <TextBlock Text="REACTIVE ELEMENTS" FontSize="12" FontWeight="Bold"
                                 Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
                             <TextBlock Text="Send audio to visualizations for pulsing/visual feedback"

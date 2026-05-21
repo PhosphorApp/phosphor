@@ -548,6 +548,19 @@ public static class BlobMotion
                 continue;
             }
 
+            if (pattern == BlobPattern.FerrofluidCluster)
+            {
+                // Start with gentle outward velocity from center
+                double angle = rng.NextDouble() * Math.PI * 2;
+                double speed = 20 + rng.NextDouble() * 40;
+                states.Add(new BlobState
+                {
+                    VelocityX = Math.Cos(angle) * speed,
+                    VelocityY = Math.Sin(angle) * speed,
+                });
+                continue;
+            }
+
             if (pattern == BlobPattern.Bounce)
             {
                 double angle = rng.NextDouble() * Math.PI * 2;
@@ -656,6 +669,18 @@ public static class BlobMotion
         BlobState state, BlobPattern pattern,
         double canvasWidth, double canvasHeight, double blobSize, Random rng)
     {
+        if (pattern == BlobPattern.FerrofluidCluster)
+        {
+            // Start scattered around center within ~40% of canvas
+            double cx = canvasWidth / 2;
+            double cy = canvasHeight / 2;
+            double spread = Math.Min(canvasWidth, canvasHeight) * 0.4;
+            double angle = rng.NextDouble() * Math.PI * 2;
+            double radius = rng.NextDouble() * spread;
+            return (cx + Math.Cos(angle) * radius - blobSize * 0.5,
+                    cy + Math.Sin(angle) * radius - blobSize * 0.5);
+        }
+
         if (pattern == BlobPattern.Bounce)
         {
             return (rng.NextDouble() * (canvasWidth - blobSize),
