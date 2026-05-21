@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Emoji.Wpf" Version="0.3.4" />
     <PackageReference Include="LibVLCSharp.WPF" Version="3.9.7" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="SharpDX.DirectInput" Version="4.2.0" />

@@ -29,6 +29,11 @@ public partial class JukeboxViewModel : ObservableObject
     public IReadOnlyList<GenreCategoryEntry> GenreCategories => _genreCategories;
 
     /// <summary>
+    /// Returns the playlist manager instance (for use in settings UI).
+    /// </summary>
+    public PlaylistManager PlaylistManager => _playlists;
+
+    /// <summary>
     /// Returns the names of all built-in genre categories (for use in settings UI).
     /// </summary>
     public IReadOnlyList<string> AllGenreCategoryNames => _genreCategories.Select(c => c.Name).ToList();
@@ -543,48 +548,58 @@ public partial class JukeboxViewModel : ObservableObject
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
-        var items = new List<Category>();
+        // Build sortable entries from both playlists and genre categories
+        var sortable = new List<(int SortOrder, List<Category> Items)>();
 
-        // Add playlist categories first (Favorites is always first)
         foreach (var pl in _playlists.Playlists)
         {
             var defaultIcon = pl.Name == "Favorites" ? "⭐" : pl.Kind == PlaylistKind.Live ? "🔎" : "📋";
             var icon = string.IsNullOrEmpty(pl.Icon) ? defaultIcon : pl.Icon;
-            items.Add(new Category { Name = pl.Name, Icon = icon, SearchTerm = "", IsPlaylist = true });
+            sortable.Add((pl.SortOrder, new List<Category>
+            {
+                new() { Name = pl.Name, Icon = icon, SearchTerm = "", IsPlaylist = true }
+            }));
         }
 
-        // Then genre categories (excluding hidden ones) and Plex library tiles
         foreach (var entry in _genreCategories)
         {
             if (entry.IsSeparator)
             {
-                items.Add(new Category { IsSeparator = true });
+                sortable.Add((entry.SortOrder, new List<Category> { new() { IsSeparator = true } }));
                 continue;
             }
             if (entry.IsLineBreak)
             {
-                items.Add(new Category { IsLineBreak = true });
+                sortable.Add((entry.SortOrder, new List<Category> { new() { IsLineBreak = true } }));
                 continue;
             }
             if (!entry.IsVisible) continue;
 
             if (entry.IsPlex)
             {
-                // Plex library tile + optional hubs/playlists as a group
-                items.Add(new Category { Name = entry.Name, Icon = entry.Icon, PlexLibraryKey = entry.PlexLibraryKey, PlexLibraryType = entry.PlexLibraryType });
+                var group = new List<Category>();
+                group.Add(new Category { Name = entry.Name, Icon = entry.Icon, PlexLibraryKey = entry.PlexLibraryKey, PlexLibraryType = entry.PlexLibraryType });
 
                 var title = entry.Name.StartsWith("Plex ") ? entry.Name[5..] : entry.Name;
                 if (entry.PlexHubsEnabled)
-                    items.Add(new Category { Name = $"{title}: Hubs", Icon = "📡", PlexLibraryKey = entry.PlexLibraryKey, PlexLibraryType = entry.PlexLibraryType, IsPlexHubList = true });
+                    group.Add(new Category { Name = $"{title}: Hubs", Icon = "📡", PlexLibraryKey = entry.PlexLibraryKey, PlexLibraryType = entry.PlexLibraryType, IsPlexHubList = true });
 
                 if (entry.PlexPlaylistsEnabled)
-                    items.Add(new Category { Name = $"{title}: Playlists", Icon = "📋", PlexLibraryKey = entry.PlexLibraryKey, PlexLibraryType = entry.PlexLibraryType, IsPlexPlaylistList = true });
+                    group.Add(new Category { Name = $"{title}: Playlists", Icon = "📋", PlexLibraryKey = entry.PlexLibraryKey, PlexLibraryType = entry.PlexLibraryType, IsPlexPlaylistList = true });
+
+                sortable.Add((entry.SortOrder, group));
             }
             else
             {
-                items.Add(new Category { Name = entry.Name, Icon = entry.Icon, SearchTerm = entry.SearchTerm });
+                sortable.Add((entry.SortOrder, new List<Category>
+                {
+                    new() { Name = entry.Name, Icon = entry.Icon, SearchTerm = entry.SearchTerm }
+                }));
             }
         }
+
+        // Merge by SortOrder (stable sort preserves relative order for ties)
+        var items = sortable.OrderBy(s => s.SortOrder).SelectMany(s => s.Items).ToList();
 
         // "New Playlist" action tile at the end
         items.Add(new Category { Name = "New Playlist", Icon = "＋", IsNewPlaylist = true });

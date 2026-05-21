@@ -515,6 +515,7 @@ public partial class DmdWindow : JukeboxWindow
     {
         _appSettings = settings;
         SetDmdRotation(settings.DmdRotation);
+        ApplyIconStyle(settings.DmdIconStyle);
         SetQueuePosition(settings.DmdQueuePosition);
         ApplyTrackListSettings(settings.ResultColumns, settings.ResultFontSizeModifier);
         SetPlayButtonSize(settings.DmdPlayButtonSizeModifier);
@@ -1762,6 +1763,7 @@ public partial class DmdWindow : JukeboxWindow
         settingsWindow.SetDofClient(_dofClient);
         if (DataContext is JukeboxViewModel vm2)
         {
+            settingsWindow.SetPlaylistManager(vm2.PlaylistManager);
             settingsWindow.SetHistoryCount(vm2.HistoryCount);
             settingsWindow.SetCacheSize(vm2.Cache?.GetTotalSizeBytes() ?? 0);
             settingsWindow.SetThumbnailCacheSize(vm2.ThumbnailCache?.GetTotalSizeBytes() ?? 0);
@@ -1980,6 +1982,7 @@ public partial class DmdWindow : JukeboxWindow
         }
         if (settingsWindow.DmdRotationChanged)
             SetDmdRotation(_appSettings.DmdRotation);
+        ApplyIconStyle(_appSettings.DmdIconStyle);
         LogStep("Blobs/Rotation");
 
         SetQueuePosition(_appSettings.DmdQueuePosition);
@@ -2462,6 +2465,12 @@ public partial class DmdWindow : JukeboxWindow
     public void SetShowStatusText(bool visible)
     {
         StatusBarText.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ApplyIconStyle(IconStyle style)
+    {
+        var key = style == IconStyle.Colorful ? "CategoryIconColorful" : "CategoryIconDefault";
+        Resources["CategoryIconCurrent"] = Resources[key];
     }
 
     public void SetDmdRotation(int degrees)
@@ -3332,6 +3341,17 @@ public partial class DmdWindow : JukeboxWindow
         "🎬", "📡", "⏰", "📈", "🔒", "💡",
     ];
 
+    /// <summary>
+    /// Returns either a plain string or an Emoji.Wpf.TextBlock for use as button content,
+    /// depending on the current icon style setting.
+    /// </summary>
+    internal static object MakeIconContent(string emoji, double fontSize, IconStyle style)
+    {
+        if (style != IconStyle.Colorful)
+            return emoji;
+        return new Emoji.Wpf.TextBlock { Text = emoji, FontSize = fontSize };
+    }
+
     private static Dictionary<string, string[]>? _emojiKeywords;
 
     /// <summary>
@@ -3409,7 +3429,7 @@ public partial class DmdWindow : JukeboxWindow
     /// Suggested matches appear first with a highlight.
     /// </summary>
     internal static void UpdateIconGrid(WrapPanel iconGrid, System.Windows.Controls.ComboBox iconPicker, string text,
-        System.Windows.Media.Brush surfaceBrush, System.Windows.Media.Brush textBrush, System.Windows.Media.Brush accentBrush)
+        System.Windows.Media.Brush surfaceBrush, System.Windows.Media.Brush textBrush, System.Windows.Media.Brush accentBrush, IconStyle iconStyle = IconStyle.Default)
     {
         iconGrid.Children.Clear();
         var suggestions = SuggestIcons(text);
@@ -3420,7 +3440,7 @@ public partial class DmdWindow : JukeboxWindow
             if (!shown.Add(emoji)) return;
             var btn = new System.Windows.Controls.Button
             {
-                Content = emoji,
+                Content = MakeIconContent(emoji, 20, iconStyle),
                 FontSize = 20,
                 Width = 38,
                 Height = 38,
@@ -3528,7 +3548,7 @@ public partial class DmdWindow : JukeboxWindow
         iconDebounce.Tick += (_, _) =>
         {
             iconDebounce.Stop();
-            UpdateIconGrid(iconGrid, iconPicker, input.Text, surfaceBrush, textBrush, accentBrush);
+            UpdateIconGrid(iconGrid, iconPicker, input.Text, surfaceBrush, textBrush, accentBrush, _appSettings?.DmdIconStyle ?? IconStyle.Default);
         };
         input.TextChanged += (_, _) =>
         {
@@ -3565,7 +3585,7 @@ public partial class DmdWindow : JukeboxWindow
         {
             input.Focus();
             // Populate initial icon grid
-            UpdateIconGrid(iconGrid, iconPicker, input.Text, surfaceBrush, textBrush, accentBrush);
+            UpdateIconGrid(iconGrid, iconPicker, input.Text, surfaceBrush, textBrush, accentBrush, _appSettings?.DmdIconStyle ?? IconStyle.Default);
         };
 
         if (dialog.ShowDialog() == true && !string.IsNullOrWhiteSpace(input.Text))

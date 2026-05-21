@@ -17,6 +17,7 @@ public class Playlist
     public PlaylistKind Kind { get; set; } = PlaylistKind.Static;
     public string SearchTerm { get; set; } = "";
     public List<VideoItem> Videos { get; set; } = new();
+    public int SortOrder { get; set; }
     public override string ToString() => Name;
 }
 

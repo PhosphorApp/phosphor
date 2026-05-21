@@ -21,6 +21,7 @@ public class GenreCategoryEntry
     public bool PlexHubsEnabled { get; set; }
     public bool PlexPlaylistsEnabled { get; set; }
     public bool IsPlex => PlexLibraryKey != null;
+    public int SortOrder { get; set; }
 }
 
 /// <summary>

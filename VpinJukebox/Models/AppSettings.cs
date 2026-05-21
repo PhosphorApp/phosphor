@@ -145,6 +145,7 @@ public class AppSettings
     /// When true, saves a PNG snapshot of each color-sampled frame for diagnostics.
     /// </summary>
     public bool ProjectMSaveColorSampleFrame { get; set; }
+    public IconStyle DmdIconStyle { get; set; } = IconStyle.Default;
     public int DmdRotation { get; set; }
     public QueuePosition DmdQueuePosition { get; set; } = QueuePosition.Right;
     public int DmdPlayButtonSizeModifier { get; set; }
@@ -377,6 +378,12 @@ public enum CacheMode
 {
     Playlists,
     Everything
+}
+
+public enum IconStyle
+{
+    Default,
+    Colorful
 }
 
 /// <summary>

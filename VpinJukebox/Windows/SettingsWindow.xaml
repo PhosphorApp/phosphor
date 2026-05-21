@@ -962,6 +962,9 @@
                                                                     <DataTrigger Binding="{Binding IsPlex}" Value="True">
                                                                         <Setter Property="Visibility" Value="Collapsed"/>
                                                                     </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsPlaylist}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
                                                                 </Style.Triggers>
                                                             </Style>
                                                         </Button.Style>
@@ -1071,6 +1074,9 @@
                                                                         <Setter Property="Opacity" Value="0.4"/>
                                                                         <Setter Property="ToolTip" Value="Plex library"/>
                                                                     </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsPlaylist}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
                                                                     <DataTrigger Binding="{Binding IsSeparator}" Value="True">
                                                                         <Setter Property="Visibility" Value="Collapsed"/>
                                                                     </DataTrigger>
@@ -1103,6 +1109,14 @@
                                                 Click="CategoryAddLineBreak_Click"/>
                                     </StackPanel>
                                 </StackPanel>
+                            </DockPanel>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Icon Style:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <ComboBox x:Name="CbIconStyle" IsEditable="False" Width="140" HorizontalAlignment="Left"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"
+                                          FontSize="12" BorderBrush="#333"/>
                             </DockPanel>
                             <DockPanel Margin="0,0,0,8">
                                 <TextBlock Text="Rotation:" Foreground="{StaticResource TextBrush}"

@@ -4,6 +4,7 @@
         xmlns:local="clr-namespace:VpinJukebox"
         xmlns:sys="clr-namespace:System;assembly=System.Runtime"
         xmlns:vwp="clr-namespace:WpfToolkit.Controls;assembly=VirtualizingWrapPanel"
+        xmlns:emoji="clr-namespace:Emoji.Wpf;assembly=Emoji.Wpf"
         Title="Phosphor DMD - UI"
         Background="{StaticResource BgBrush}">
 
@@ -28,6 +29,16 @@
         <sys:Double x:Key="QueueHeaderFontSize">11</sys:Double>
         <sys:Double x:Key="TrackButtonFontSize">18</sys:Double>
         <Thickness x:Key="TrackButtonPadding">12,6,12,6</Thickness>
+
+        <DataTemplate x:Key="CategoryIconColorful">
+            <emoji:TextBlock Text="{Binding Icon}" FontSize="{DynamicResource GenreIconFontSize}" HorizontalAlignment="Center"/>
+        </DataTemplate>
+        <DataTemplate x:Key="CategoryIconDefault">
+            <TextBlock Text="{Binding Icon}" FontSize="{DynamicResource GenreIconFontSize}" HorizontalAlignment="Center"/>
+        </DataTemplate>
+        <DataTemplate x:Key="CategoryIconCurrent">
+            <TextBlock Text="{Binding Icon}" FontSize="{DynamicResource GenreIconFontSize}" HorizontalAlignment="Center"/>
+        </DataTemplate>
     </local:JukeboxWindow.Resources>
 
     <Grid>
@@ -135,7 +146,7 @@
                                             CommandParameter="{Binding}"
                                             Width="{DynamicResource GenreButtonWidth}" Height="{DynamicResource GenreButtonHeight}">
                                         <StackPanel VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Icon}" FontSize="{DynamicResource GenreIconFontSize}" HorizontalAlignment="Center"/>
+                                            <ContentPresenter x:Name="CategoryIconPresenter" Content="{Binding}" ContentTemplate="{DynamicResource CategoryIconCurrent}" HorizontalAlignment="Center"/>
                                             <TextBlock Text="{Binding Name}" FontSize="{DynamicResource GenreLabelFontSize}" HorizontalAlignment="Center"
                                                        Foreground="{StaticResource TextBrush}" FontWeight="SemiBold"/>
                                         </StackPanel>

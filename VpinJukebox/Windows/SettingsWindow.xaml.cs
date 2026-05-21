@@ -21,6 +21,9 @@ public class CategoryVisibilityItem
     public bool IsSeparator { get; set; }
     public bool IsLineBreak { get; set; }
     public bool IsPlex { get; set; }
+    public bool IsPlaylist { get; set; }
+    public string PlaylistId { get; set; } = "";
+    public int SortOrder { get; set; }
     public string? PlexLibraryKey { get; set; }
     public string? PlexLibraryType { get; set; }
     public bool PlexHubsEnabled { get; set; }
@@ -91,6 +94,7 @@ public partial class SettingsWindow : JukeboxWindow
     private bool _originalProjectMSoftwareRender;
     private readonly ObservableCollection<PlexLibraryMapping> _plexLibraries = new();
     private readonly List<CategoryVisibilityItem> _categoryVisibilityItems = new();
+    private PlaylistManager? _playlistManager;
     private bool _originalDofEnabled;
     private bool _originalDofColorBand;
     private bool _originalDofPresetChanged;
@@ -468,6 +472,10 @@ public partial class SettingsWindow : JukeboxWindow
         SliderReactiveSpeed.Value = settings.ReactiveSpeedMs;
         SliderReactiveOverdrive.Value = settings.ReactiveOverdrive * 10;
 
+        foreach (var style in new[] { "Default", "Colorful" })
+            CbIconStyle.Items.Add(style);
+        CbIconStyle.SelectedIndex = (int)settings.DmdIconStyle;
+
         foreach (var rot in new[] { "0°", "90°", "180°", "270°" })
             CbDmdRotation.Items.Add(rot);
         CbDmdRotation.SelectedIndex = settings.DmdRotation switch { 90 => 1, 180 => 2, 270 => 3, _ => 0 };
@@ -507,9 +515,16 @@ public partial class SettingsWindow : JukeboxWindow
                 PlexLibraryKey = entry.PlexLibraryKey,
                 PlexLibraryType = entry.PlexLibraryType,
                 PlexHubsEnabled = entry.PlexHubsEnabled,
-                PlexPlaylistsEnabled = entry.PlexPlaylistsEnabled
+                PlexPlaylistsEnabled = entry.PlexPlaylistsEnabled,
+                SortOrder = entry.SortOrder
             });
         }
+
+        // Sort categories by SortOrder (playlists will be merged later via SetPlaylistManager)
+        var sorted = _categoryVisibilityItems.OrderBy(i => i.SortOrder).ToList();
+        _categoryVisibilityItems.Clear();
+        _categoryVisibilityItems.AddRange(sorted);
+
         CategoryListView.ItemsSource = _categoryVisibilityItems;
         UpdateCategoryVisibilityText();
 
@@ -829,6 +844,40 @@ public partial class SettingsWindow : JukeboxWindow
     public void SetPlayfieldProxy(PlayfieldProxy? proxy)
     {
         _playfieldProxy = proxy;
+    }
+
+    public void SetPlaylistManager(PlaylistManager? manager)
+    {
+        _playlistManager = manager;
+        if (manager == null) return;
+
+        // Merge playlists into the category list for unified sorting
+        foreach (var pl in manager.Playlists)
+        {
+            var defaultIcon = pl.Name == "Favorites" ? "⭐" : pl.Kind == PlaylistKind.Live ? "🔎" : "📋";
+            var icon = string.IsNullOrEmpty(pl.Icon) ? defaultIcon : pl.Icon;
+            _categoryVisibilityItems.Add(new CategoryVisibilityItem
+            {
+                Id = pl.Id,
+                Name = pl.Name,
+                Icon = icon,
+                SearchTerm = "",
+                OriginalSearchTerm = "",
+                IsVisible = true,
+                IsPlaylist = true,
+                PlaylistId = pl.Id,
+                SortOrder = pl.SortOrder,
+                IsSpecial = pl.Name == "Favorites",
+            });
+        }
+
+        // Re-sort all items by SortOrder so playlists interleave with categories
+        var sorted = _categoryVisibilityItems.OrderBy(i => i.SortOrder).ToList();
+        _categoryVisibilityItems.Clear();
+        _categoryVisibilityItems.AddRange(sorted);
+        CategoryListView.ItemsSource = null;
+        CategoryListView.ItemsSource = _categoryVisibilityItems;
+        UpdateCategoryVisibilityText();
     }
 
     private void BrowseStaticImage_Click(object sender, RoutedEventArgs e)
@@ -1927,6 +1976,7 @@ public partial class SettingsWindow : JukeboxWindow
         var timeoutValues = new[] { 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 300, 360, 420, 480, 540, 600 };
         _settings.DmdScreensaverDimTimeoutSeconds = CbDmdDimTimeout.SelectedIndex >= 0 && CbDmdDimTimeout.SelectedIndex < timeoutValues.Length
             ? timeoutValues[CbDmdDimTimeout.SelectedIndex] : 60;
+        _settings.DmdIconStyle = (IconStyle)CbIconStyle.SelectedIndex;
         _settings.DmdRotation = CbDmdRotation.SelectedIndex switch { 1 => 90, 2 => 180, 3 => 270, _ => 0 };
         var newQueuePos = (QueuePosition)CbQueuePosition.SelectedIndex;
         if (newQueuePos != _settings.DmdQueuePosition)
@@ -1956,8 +2006,14 @@ public partial class SettingsWindow : JukeboxWindow
             }
         }
         _LogStep("InvalidateCache");
-        // Persist category changes (icon, search term, visibility) to categories.json
-        GenreCategoryStore.SaveInBackground(_categoryVisibilityItems.Select(i => new GenreCategoryEntry
+        // Assign sequential SortOrder based on current list position
+        for (int i = 0; i < _categoryVisibilityItems.Count; i++)
+            _categoryVisibilityItems[i].SortOrder = i;
+
+        // Persist category changes (icon, search term, visibility, sort order) to categories.json
+        GenreCategoryStore.SaveInBackground(_categoryVisibilityItems
+            .Where(i => !i.IsPlaylist)
+            .Select(i => new GenreCategoryEntry
         {
             Id = i.Id,
             Name = i.Name,
@@ -1969,8 +2025,25 @@ public partial class SettingsWindow : JukeboxWindow
             PlexLibraryKey = i.PlexLibraryKey,
             PlexLibraryType = i.PlexLibraryType,
             PlexHubsEnabled = i.PlexHubsEnabled,
-            PlexPlaylistsEnabled = i.PlexPlaylistsEnabled
+            PlexPlaylistsEnabled = i.PlexPlaylistsEnabled,
+            SortOrder = i.SortOrder
         }).ToList());
+
+        // Persist playlist sort orders (and icon/name edits)
+        if (_playlistManager != null)
+        {
+            foreach (var item in _categoryVisibilityItems.Where(i => i.IsPlaylist))
+            {
+                var pl = _playlistManager.Playlists.FirstOrDefault(p => p.Id == item.PlaylistId);
+                if (pl != null)
+                {
+                    pl.SortOrder = item.SortOrder;
+                    pl.Icon = item.Icon;
+                    pl.Name = item.Name;
+                }
+            }
+            _playlistManager.Save();
+        }
         _LogStep("GenreCategoryStore.Save");
         _settings.ShowStatusText = CbShowStatusText.IsChecked == true;
         var cursorTimeoutValues = new[] { -1, 0, 5, 10, 15, 30, 45, 60, 120, 180, 240, 300, 360, 420, 480, 540, 600 };
@@ -2358,7 +2431,7 @@ public partial class SettingsWindow : JukeboxWindow
                 if (!shown.Add(emoji)) return;
                 var iconBtn = new System.Windows.Controls.Button
                 {
-                    Content = emoji,
+                    Content = DmdWindow.MakeIconContent(emoji, 20, _settings.DmdIconStyle),
                     FontSize = 20,
                     Width = 36,
                     Height = 36,
@@ -2479,7 +2552,7 @@ public partial class SettingsWindow : JukeboxWindow
     {
         if (sender is not System.Windows.Controls.Button btn || btn.DataContext is not CategoryVisibilityItem item)
             return;
-        if (item.IsSpecial || item.IsPlex) return;
+        if (item.IsSpecial || item.IsPlex || item.IsPlaylist) return;
 
         _categoryVisibilityItems.Remove(item);
         CategoryListView.ItemsSource = null;
