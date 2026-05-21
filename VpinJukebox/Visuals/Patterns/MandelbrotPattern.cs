@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
@@ -131,6 +132,8 @@ public sealed class MandelbrotPattern : BlobPatternBase
     // or is mostly interior, for too long.
     private int _boringFrameCount;
     private const int MaxBoringFrames = 180; // ~3 seconds at 60fps before abandoning target
+    private double _targetAgeSeconds;        // elapsed seconds since this target started
+    private const double MinTargetAgeSeconds = 8.0; // don't abandon a target before this
 
     // Audio reactive modifiers (palette + brightness only — zoom speed is not
     // audio-reactive on purpose so the continuous zoom feels smooth).
@@ -422,6 +425,9 @@ public sealed class MandelbrotPattern : BlobPatternBase
         // Render the first frame immediately so the fade-in isn't blank
         RenderFrame(0);
 
+        // Soft intro blur
+        AnimateIntroBlur();
+
         // Fade in
         var fadeIn = new DoubleAnimation
         {
@@ -439,6 +445,32 @@ public sealed class MandelbrotPattern : BlobPatternBase
             onComplete();
         };
         _image.BeginAnimation(UIElement.OpacityProperty, fadeIn);
+    }
+
+    /// <summary>
+    /// Applies a quick blur-to-sharp transition on the image to soften hard cuts.
+    /// Animates the existing <see cref="BlurEffect"/> on the image from a high
+    /// radius down to the baseline <see cref="BlurRadius"/>.
+    /// </summary>
+    private void AnimateIntroBlur()
+    {
+        if (_image?.Effect is not BlurEffect blur) return;
+        // Stop any in-progress blur animation so the new one starts cleanly.
+        blur.BeginAnimation(BlurEffect.RadiusProperty, null);
+        var anim = new DoubleAnimation
+        {
+            From = 50.0,
+            To = BlurRadius,
+            Duration = TimeSpan.FromSeconds(2.5),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+        };
+        anim.Completed += (_, _) =>
+        {
+            // Remove the animation so the property returns to its base value.
+            blur.BeginAnimation(BlurEffect.RadiusProperty, null);
+            blur.Radius = BlurRadius;
+        };
+        blur.BeginAnimation(BlurEffect.RadiusProperty, anim);
     }
 
     public override void Exit(Action onComplete)
@@ -529,7 +561,8 @@ public sealed class MandelbrotPattern : BlobPatternBase
 
         // Track sustained boring/interior frames — if we've been stuck in a
         // "color desert" too long, abandon the target.
-        if (_interiorHeavy || _boringBoost > 2.0)
+        _targetAgeSeconds += dt;
+        if (_targetAgeSeconds >= MinTargetAgeSeconds && (_interiorHeavy || _boringBoost > 4.0))
             _boringFrameCount++;
         else
             _boringFrameCount = 0;
@@ -539,18 +572,24 @@ public sealed class MandelbrotPattern : BlobPatternBase
 
         if (shouldReset)
         {
+            string reason = _zoom > maxZoom
+                ? $"max zoom reached ({_zoom:E2} > {maxZoom:E2})"
+                : $"boring frames ({_boringFrameCount} consecutive, boost={_boringBoost:F1}, interior={_interiorHeavy})";
             _zoom = 1.0;
             _boringFrameCount = 0;
             _boringBoost = 1.0;
             _interiorHeavy = false;
+            _targetAgeSeconds = 0;
             _referenceOrbit = null; // force recomputation for new target
             var (re, im) = PickTarget(_rng);
             _targetRe = re;
             _targetIm = im;
+            DebugLog.Log($"Mandelbrot: switching to ({re:G10}, {im:G10}) because {reason}");
             _centerRe = _targetRe;
             _centerIm = _targetIm;
             _spiralAngle = _rng.NextDouble() * Math.PI * 2;
             _viewAngle = PickInitialViewAngle(_rng);
+            AnimateIntroBlur();
         }
 
         // Advance the view rotation. SlowSpin rotates continuously; the other
