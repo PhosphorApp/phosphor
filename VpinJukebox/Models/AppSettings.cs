@@ -95,6 +95,9 @@ public class AppSettings
     public double MandelbrotPerturbation { get; set; }
     public bool MandelbrotDiscovery { get; set; }
     public double MandelbrotDimming { get; set; }
+    public bool MandelbrotHistogramColoring { get; set; }
+    /// <summary>0 = Off, 1 = Random per target, 2 = Slow spin.</summary>
+    public int MandelbrotRotation { get; set; }
     public bool ExcludeProjectMFromRandom { get; set; } = true;
     public double ProjectMPresetDuration { get; set; } = 30.0;
     public double ProjectMSoftCutDuration { get; set; } = 3.0;

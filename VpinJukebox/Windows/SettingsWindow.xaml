@@ -472,9 +472,9 @@
                             <StackPanel x:Name="PanelMandelbrotTuning" Visibility="Collapsed">
                                 <TextBlock Text="MANDELBROT TUNING" FontSize="12" FontWeight="Bold"
                                     Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
-                                <CheckBox x:Name="CbMandelbrotUseGpu" Content="Use GPU acceleration"
+                                <CheckBox x:Name="CbMandelbrotUseGpu" Content="Use GPU rendering (recommended)"
                                           Foreground="{StaticResource TextBrush}" Margin="0,4,0,0"
-                                          ToolTip="When enabled, uses the GPU (Direct3D 11) for Mandelbrot rendering. Falls back to CPU if GPU initialization fails."/>
+                                          ToolTip="Renders Mandelbrot on the GPU (Direct3D 11) for dramatically better performance and frame rate. Recommended for almost all users. Disable only if you want CPU-only features (histogram coloring) or if GPU rendering shows artifacts at extreme zoom depths. Falls back to CPU automatically if GPU initialization fails."/>
                                 <CheckBox x:Name="CbMandelbrotAdaptiveIterations" Content="Adaptive iterations"
                                           Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
                                           ToolTip="Automatically scales iteration count with zoom depth — fewer iterations at low zoom for better performance."/>
@@ -525,6 +525,19 @@
                                 <CheckBox x:Name="CbMandelbrotDiscovery" Content="Algorithmic discovery"
                                           Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
                                           ToolTip="When enabled, algorithmically searches for novel interesting boundary points instead of only using the curated library. Uses extra CPU at pattern startup."/>
+                                <CheckBox x:Name="CbMandelbrotHistogramColoring" Content="Histogram coloring (CPU)"
+                                          Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
+                                          ToolTip="Per-frame histogram equalization on the CPU path. Guarantees the full palette is used every frame so colors never wash out, at a small extra CPU cost. GPU path always uses cyclic banding."/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Rotation:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <ComboBox x:Name="CbMandelbrotRotation" IsEditable="False" Width="200"
+                                              VerticalAlignment="Center"
+                                              Background="{StaticResource Surface2Brush}"
+                                              Foreground="{StaticResource TextBrush}"
+                                              FontSize="12" BorderBrush="#333"
+                                              ToolTip="Optional view rotation. Off = always axis-aligned. Random per target = a fresh random angle for each new zoom target. Slow spin = continuously rotates the view. Rotation is baked into the iteration sampling, so there are no black corners regardless of angle."/>
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Dimming:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Width="100"/>

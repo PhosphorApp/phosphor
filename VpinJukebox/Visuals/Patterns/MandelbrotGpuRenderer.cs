@@ -31,7 +31,9 @@ cbuffer Params : register(b0)
     float  brightness;   // 1.0 + audio brightness boost
     float2 resolution;   // pixel dimensions
     int    orbitLength;  // number of valid entries in reference orbit
-    float  _pad;         // padding to 16-byte alignment
+    float  cosA;         // view rotation cos(angle)
+    float  sinA;         // view rotation sin(angle)
+    float3 _pad;         // padding to 16-byte alignment
 };
 
 Texture1D<float4> paletteTex : register(t0);
@@ -54,9 +56,13 @@ float4 PS(VS_OUT input) : SV_Target
     float aspect = resolution.x / resolution.y;
     float scale = 3.0 / zoom;
 
-    // Delta c: offset from center in complex plane (tiny value, fits in float)
-    float dcr = (uv.x - 0.5) * scale * aspect;
-    float dci = (uv.y - 0.5) * scale;
+    // Delta c: offset from center in complex plane (tiny value, fits in float).
+    // Compute axis-aligned offset, then rotate so the visible bitmap stays
+    // axis-aligned (no black corners) while the fractal appears rotated.
+    float dx = (uv.x - 0.5) * scale * aspect;
+    float dy = (uv.y - 0.5) * scale;
+    float dcr = cosA * dx - sinA * dy;
+    float dci = sinA * dx + cosA * dy;
 
     // Delta iteration: dr,di = delta from reference orbit
     float dr = 0, di = 0;
@@ -83,7 +89,13 @@ float4 PS(VS_OUT input) : SV_Target
             float log_zn = log(mag2) * 0.5;
             float nu = log(log_zn / log(2.0)) / log(2.0);
             float smoothVal = (float)i + 1.0 - nu;
-            float t = log(max(smoothVal, 1.0)) / log(maxIter) + palOffset;
+            // Cyclic palette mapping: every 'iterationsPerCycle' iterations equals
+            // one full palette cycle. This avoids washout regardless of zoom depth
+            // because palette coverage no longer depends on maxIter.
+            // 12 iterations/cycle (was 24) so small iteration deltas — the halos
+            // around mini-brot satellites — produce a visible color shift.
+            const float iterationsPerCycle = 12.0;
+            float t = smoothVal / iterationsPerCycle + palOffset;
             float4 color = paletteTex.SampleLevel(palSampler, frac(t), 0);
             return float4(color.rgb * brightness, 1.0);
         }
@@ -129,7 +141,11 @@ float4 PS(VS_OUT input) : SV_Target
         public float ResX;
         public float ResY;
         public int OrbitLength;
-        public float Pad;
+        public float CosA;
+        public float SinA;
+        public float Pad0;
+        public float Pad1;
+        public float Pad2;
     }
 
     public bool Initialize(int pixelWidth, int pixelHeight)
@@ -371,7 +387,8 @@ float4 PS(VS_OUT input) : SV_Target
     }
 
     public void RenderFrame(double centerRe, double centerIm, double zoom,
-                            int maxIter, double paletteOffset, double brightness)
+                            int maxIter, double paletteOffset, double brightness,
+                            double viewAngle)
     {
         if (!_initialized || _device == null || _context == null || _bitmap == null) return;
 
@@ -380,12 +397,16 @@ float4 PS(VS_OUT input) : SV_Target
         {
             Zoom = (float)zoom,
             MaxIter = maxIter,
-            PalOffset = (float)(paletteOffset / 360.0),
+            PalOffset = (float)paletteOffset,  // already normalized [0,1) by caller
             Brightness = (float)brightness,
             ResX = _width,
             ResY = _height,
             OrbitLength = _orbitLength,
-            Pad = 0,
+            CosA = (float)Math.Cos(viewAngle),
+            SinA = (float)Math.Sin(viewAngle),
+            Pad0 = 0,
+            Pad1 = 0,
+            Pad2 = 0,
         };
 
         var mapped = _context.Map(_constantBuffer!, MapMode.WriteDiscard);

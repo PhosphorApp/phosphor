@@ -597,6 +597,13 @@ public partial class DmdWindow : JukeboxWindow
         MandelbrotPattern.Perturbation = settings.MandelbrotPerturbation;
         MandelbrotPattern.Discovery = settings.MandelbrotDiscovery;
         MandelbrotPattern.Dimming = settings.MandelbrotDimming;
+        MandelbrotPattern.HistogramColoring = settings.MandelbrotHistogramColoring;
+        MandelbrotPattern.RotationMode = settings.MandelbrotRotation switch
+        {
+            1 => MandelbrotPattern.RotationModeKind.RandomPerTarget,
+            2 => MandelbrotPattern.RotationModeKind.SlowSpin,
+            _ => MandelbrotPattern.RotationModeKind.Off,
+        };
         BlobTransition.ExcludeProjectMFromRandom = settings.ExcludeProjectMFromRandom;
         ProjectMRenderer.PresetDuration = settings.ProjectMPresetDuration;
         ProjectMRenderer.SoftCutDuration = settings.ProjectMSoftCutDuration;
@@ -1882,6 +1889,15 @@ public partial class DmdWindow : JukeboxWindow
         MandelbrotPattern.MaxIterations = Math.Clamp(_appSettings.MandelbrotMaxIterations, 64, 8192);
         MandelbrotPattern.UseGpu = _appSettings.MandelbrotUseGpu == 1;
         MandelbrotPattern.Dimming = _appSettings.MandelbrotDimming;
+        MandelbrotPattern.Perturbation = _appSettings.MandelbrotPerturbation;
+        MandelbrotPattern.Discovery = _appSettings.MandelbrotDiscovery;
+        MandelbrotPattern.HistogramColoring = _appSettings.MandelbrotHistogramColoring;
+        MandelbrotPattern.RotationMode = _appSettings.MandelbrotRotation switch
+        {
+            1 => MandelbrotPattern.RotationModeKind.RandomPerTarget,
+            2 => MandelbrotPattern.RotationModeKind.SlowSpin,
+            _ => MandelbrotPattern.RotationModeKind.Off,
+        };
         if (settingsWindow.MandelbrotSettingsChanged)
         {
             _playfieldProxy?.RestartMandelbrot();

@@ -77,6 +77,8 @@ public partial class SettingsWindow : JukeboxWindow
     private double _originalMandelbrotPerturbation;
     private bool _originalMandelbrotDiscovery;
     private double _originalMandelbrotDimming;
+    private bool _originalMandelbrotHistogramColoring;
+    private int _originalMandelbrotRotation;
     private double _originalProjectMPresetDuration;
     private double _originalProjectMSoftCut;
     private bool _originalProjectMHardCut;
@@ -188,7 +190,9 @@ public partial class SettingsWindow : JukeboxWindow
         Math.Abs(_settings.MandelbrotRenderScale - _originalMandelbrotRenderScale) > 0.001 ||
         Math.Abs(_settings.MandelbrotPerturbation - _originalMandelbrotPerturbation) > 0.001 ||
         _settings.MandelbrotDiscovery != _originalMandelbrotDiscovery ||
-        Math.Abs(_settings.MandelbrotDimming - _originalMandelbrotDimming) > 0.001;
+        Math.Abs(_settings.MandelbrotDimming - _originalMandelbrotDimming) > 0.001 ||
+        _settings.MandelbrotHistogramColoring != _originalMandelbrotHistogramColoring ||
+        _settings.MandelbrotRotation != _originalMandelbrotRotation;
 
     public event Action? SettingsApplied;
 
@@ -426,6 +430,14 @@ public partial class SettingsWindow : JukeboxWindow
         CbMandelbrotDiscovery.IsChecked = settings.MandelbrotDiscovery;
         SliderMandelbrotDimming.Value = settings.MandelbrotDimming * 100;
         TxtMandelbrotDimming.Text = settings.MandelbrotDimming == 0 ? "Off" : $"{(int)(settings.MandelbrotDimming * 100)}%";
+        CbMandelbrotHistogramColoring.IsChecked = settings.MandelbrotHistogramColoring;
+        if (CbMandelbrotRotation.Items.Count == 0)
+        {
+            CbMandelbrotRotation.Items.Add("Off");
+            CbMandelbrotRotation.Items.Add("Random per target");
+            CbMandelbrotRotation.Items.Add("Slow spin");
+        }
+        CbMandelbrotRotation.SelectedIndex = Math.Clamp(settings.MandelbrotRotation, 0, 2);
         UpdateMandelbrotTuningVisibility();
 
         CbReactiveBlobs.IsChecked = settings.ReactiveBlobs;
@@ -625,6 +637,8 @@ public partial class SettingsWindow : JukeboxWindow
         _originalMandelbrotPerturbation = settings.MandelbrotPerturbation;
         _originalMandelbrotDiscovery = settings.MandelbrotDiscovery;
         _originalMandelbrotDimming = settings.MandelbrotDimming;
+        _originalMandelbrotHistogramColoring = settings.MandelbrotHistogramColoring;
+        _originalMandelbrotRotation = settings.MandelbrotRotation;
         _originalProjectMPresetDuration = settings.ProjectMPresetDuration;
         _originalProjectMSoftCut = settings.ProjectMSoftCutDuration;
         _originalProjectMHardCut = settings.ProjectMHardCutEnabled;
@@ -1952,6 +1966,8 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.MandelbrotPerturbation = SliderMandelbrotPerturbation.Value / 100.0;
         _settings.MandelbrotDiscovery = CbMandelbrotDiscovery.IsChecked == true;
         _settings.MandelbrotDimming = SliderMandelbrotDimming.Value / 100.0;
+        _settings.MandelbrotHistogramColoring = CbMandelbrotHistogramColoring.IsChecked == true;
+        _settings.MandelbrotRotation = Math.Max(0, CbMandelbrotRotation.SelectedIndex);
         _settings.ReactiveBlobs = CbReactiveBlobs.IsChecked == true;
         _settings.ReactiveProjectM = CbReactiveProjectM.IsChecked == true;
         _settings.ReactivityThreshold = SliderReactivityThreshold.Value / 100.0;
@@ -2022,6 +2038,8 @@ public partial class SettingsWindow : JukeboxWindow
         _originalMandelbrotPerturbation = _settings.MandelbrotPerturbation;
         _originalMandelbrotDiscovery = _settings.MandelbrotDiscovery;
         _originalMandelbrotDimming = _settings.MandelbrotDimming;
+        _originalMandelbrotHistogramColoring = _settings.MandelbrotHistogramColoring;
+        _originalMandelbrotRotation = _settings.MandelbrotRotation;
         _originalProjectMPresetDuration = _settings.ProjectMPresetDuration;
         _originalProjectMSoftCut = _settings.ProjectMSoftCutDuration;
         _originalProjectMHardCut = _settings.ProjectMHardCutEnabled;
