@@ -69,7 +69,7 @@ public partial class PlayfieldWindow : JukeboxWindow
     {
         InitializeComponent();
 
-        _colorTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+        _colorTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         _colorTimer.Tick += AnimateBlobs;
 
         Loaded += OnLoaded;
@@ -193,7 +193,7 @@ public partial class PlayfieldWindow : JukeboxWindow
         var gradBrushes = _currentPattern?.GradientBrushes;
         if (brushes == null || brushes.Count == 0) return;
 
-        _hueOffset += 0.6;
+        _hueOffset += 1.0;
 
         // Ensure per-blob random hue offsets exist
         if (_blobHueOffsets.Length != brushes.Count)

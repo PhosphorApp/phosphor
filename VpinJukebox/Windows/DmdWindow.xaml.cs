@@ -96,7 +96,7 @@ public partial class DmdWindow : JukeboxWindow
     {
         this.Icon = BitmapFrame.Create(new Uri("pack://application:,,,/app.ico"), BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
 
-        _ssColorTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+        _ssColorTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         _ssColorTimer.Tick += ScreensaverColorCycle;
 
         _dimIdleTimer = new DispatcherTimer();
@@ -3128,7 +3128,7 @@ public partial class DmdWindow : JukeboxWindow
         var gradBrushes = _ssCurrentPattern?.GradientBrushes;
         if (brushes == null || brushes.Count == 0) return;
 
-        _ssHueOffset += 0.6;
+        _ssHueOffset += 1.0;
 
         for (int i = 0; i < brushes.Count; i++)
         {

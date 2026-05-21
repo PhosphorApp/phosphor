@@ -34,7 +34,7 @@ public partial class TopperWindow : JukeboxWindow
 
     public TopperWindow()
     {
-        _colorTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+        _colorTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         _colorTimer.Tick += ColorCycleBlobs;
 
         _morphCacheRestoreTimer.Tick += (_, _) =>
@@ -267,7 +267,7 @@ public partial class TopperWindow : JukeboxWindow
         var gradBrushes = _currentPattern?.GradientBrushes;
         if (brushes == null || brushes.Count == 0) return;
 
-        _hueOffset += 0.6;
+        _hueOffset += 1.0;
         double lightness = 0.15 + _blobIntensity * 0.7;
         for (int i = 0; i < brushes.Count; i++)
         {
