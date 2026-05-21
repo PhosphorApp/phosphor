@@ -18,7 +18,7 @@ public partial class App : Application
     private DmdWindow _dmdWindow = null!;
     private LibVLC? _sharedVlc;
     private Task<LibVLC?>? _sharedVlcTask;
-    private MediaPlayer? _dittiPlayer;
+    private System.Windows.Media.MediaPlayer? _dittiPlayer;
 
     private void Application_Startup(object sender, StartupEventArgs e)
     {
@@ -341,35 +341,15 @@ public partial class App : Application
         if (!System.IO.File.Exists(_settings.StartupDittiPath)) { DebugLog.Log("Ditti", $"Skipped: file not found: {_settings.StartupDittiPath}"); return; }
         if (_settings.AutoPlayQueueOnStart && viewModel.Queue.Count > 0) { DebugLog.Log("Ditti", "Skipped: auto-play queue active"); return; }
 
-        // Don't block the deferred-startup path waiting for shared LibVLC
-        // to finish initializing — schedule the actual play once it's ready.
-        if (_sharedVlc != null)
-        {
-            StartDittiPlayback(viewModel, _sharedVlc);
-            return;
-        }
-        if (_sharedVlcTask != null)
-        {
-            _sharedVlcTask.ContinueWith(t =>
-            {
-                var vlc = t.IsCompletedSuccessfully ? t.Result : null;
-                Dispatcher.BeginInvoke(() =>
-                {
-                    if (vlc == null) { DebugLog.Log("Ditti", "Skipped: shared LibVLC not available"); return; }
-                    // Re-check guard: user may have started playback while VLC was initializing
-                    if (viewModel.CurrentlyPlaying != null) { DebugLog.Log("Ditti", "Skipped: playback already started"); return; }
-                    StartDittiPlayback(viewModel, vlc);
-                });
-            }, TaskScheduler.Default);
-        }
+        StartDittiPlayback(viewModel);
     }
 
-    private void StartDittiPlayback(JukeboxViewModel viewModel, LibVLC vlc)
+    private void StartDittiPlayback(JukeboxViewModel viewModel)
     {
         try
         {
-            _dittiPlayer = new MediaPlayer(vlc);
-            _dittiPlayer.Volume = viewModel.Volume;
+            _dittiPlayer = new System.Windows.Media.MediaPlayer();
+            _dittiPlayer.Volume = viewModel.Volume / 100.0; // WPF volume is 0.0–1.0
 
             // Show in Now Playing
             viewModel.CurrentlyPlaying = new VideoItem { Title = "Startup Ditti", VideoId = "ditti:startup" };
@@ -388,8 +368,8 @@ public partial class App : Application
             viewModel.PlayRequested += onPlay;
             viewModel.StopRequested += onStop;
 
-            // Clear Now Playing when ditti finishes
-            _dittiPlayer.EndReached += (_, _) =>
+            // Clear Now Playing when ditti finishes naturally
+            _dittiPlayer.MediaEnded += (_, _) =>
             {
                 cleanupDittiEvents();
                 Dispatcher.BeginInvoke(() =>
@@ -400,13 +380,26 @@ public partial class App : Application
                 });
             };
 
-            var media = new Media(vlc, _settings.StartupDittiPath, FromType.FromPath);
-            _dittiPlayer.Play(media);
-            DebugLog.Log("App", $"Startup ditti playing: {_settings.StartupDittiPath}");
+            // Log failures gracefully (e.g. unsupported format)
+            _dittiPlayer.MediaFailed += (_, args) =>
+            {
+                DebugLog.Log("Ditti", $"WPF MediaPlayer failed: {args.ErrorException?.Message}");
+                cleanupDittiEvents();
+                Dispatcher.BeginInvoke(() =>
+                {
+                    if (viewModel.CurrentlyPlaying?.VideoId == "ditti:startup")
+                        viewModel.CurrentlyPlaying = null;
+                    DisposeStartupDitti();
+                });
+            };
+
+            _dittiPlayer.Open(new Uri(_settings.StartupDittiPath, UriKind.Absolute));
+            _dittiPlayer.Play();
+            DebugLog.Log("Ditti", $"Startup ditti playing (WPF MediaPlayer): {_settings.StartupDittiPath}");
         }
         catch (Exception ex)
         {
-            DebugLog.Log("App", $"Startup ditti failed: {ex.Message}");
+            DebugLog.Log("Ditti", $"Startup ditti failed: {ex.Message}");
             DisposeStartupDitti();
         }
     }
@@ -416,7 +409,7 @@ public partial class App : Application
         try
         {
             _dittiPlayer?.Stop();
-            _dittiPlayer?.Dispose();
+            _dittiPlayer?.Close();
         }
         catch { }
         _dittiPlayer = null;
