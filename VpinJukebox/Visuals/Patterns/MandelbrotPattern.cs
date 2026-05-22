@@ -116,7 +116,8 @@ public sealed class MandelbrotPattern : BlobPatternBase
     private double _baseZoomSpeed = 0.135; // fraction per second
     private double _zoomSpeed;
     private bool _interiorHeavy;        // true when the visible frame is almost entirely inside the set
-    private double _boringBoost = 1.0;  // zoom-speed multiplier when frame spans <1 palette cycle
+    private double _boringBoost = 1.0;  // zoom-speed multiplier (smoothed each frame)
+    private double _boringBoostTarget = 1.0; // raw target from MeasureBoringSparse
     private double _paletteOffset;
     private double _paletteSpeed = 0.5;
 
@@ -552,6 +553,13 @@ public sealed class MandelbrotPattern : BlobPatternBase
         // (Audio reactivity is intentionally NOT applied here so motion stays smooth.)
         // _baseZoomSpeed is per-second; multiply by dt and exponentiate so the
         // motion is frame-rate independent and immune to vsync jitter.
+        // Smoothly interpolate _boringBoost toward its target so zoom
+        // speed changes are gradual and never cause visible hiccups.
+        // During the initial blackout period, force boost to 1.0 so a new
+        // target always starts at uniform speed before boring-detection kicks in.
+        double boostTarget = _targetAgeSeconds < MinTargetAgeSeconds ? 1.0 : _boringBoostTarget;
+        double lerpRate = 1.0 - Math.Exp(-2.0 * dt); // ~0.5 s time constant
+        _boringBoost += (boostTarget - _boringBoost) * lerpRate;
         _zoomSpeed = _baseZoomSpeed * Math.Max(0.1, _speedMultiplier) * _boringBoost;
         _zoom *= Math.Exp(_zoomSpeed * dt);
 
@@ -578,6 +586,7 @@ public sealed class MandelbrotPattern : BlobPatternBase
             _zoom = 1.0;
             _boringFrameCount = 0;
             _boringBoost = 1.0;
+            _boringBoostTarget = 1.0;
             _interiorHeavy = false;
             _targetAgeSeconds = 0;
             _referenceOrbit = null; // force recomputation for new target
@@ -655,7 +664,7 @@ public sealed class MandelbrotPattern : BlobPatternBase
 
         // Detect boring frames on the GPU path by sampling a few points on CPU.
         var (boost, interior) = MeasureBoringSparse(_centerRe, _centerIm, _zoom, _pixelWidth, _pixelHeight, maxIter);
-        _boringBoost = boost;
+        _boringBoostTarget = boost;
         _interiorHeavy = interior;
     }
 
@@ -716,20 +725,16 @@ public sealed class MandelbrotPattern : BlobPatternBase
     /// </summary>
     private static double BoostFromSpread(double spread)
     {
-        // Less than 1/4 cycle: nearly identical iterations — very boring.
-        if (spread < IterationsPerCycle * 0.25) return 8.0;
-        // Less than 1/2 cycle: still effectively one color band.
-        if (spread < IterationsPerCycle * 0.5) return 6.0;
-        // Less than 1 cycle: barely any banding visible (the green/yellow
-        // gradient case — most of the screen is one band).
-        if (spread < IterationsPerCycle) return 4.0;
-        // 1–2 cycles: only a couple of color bands on screen — still pretty
-        // dull, push through faster.
-        if (spread < IterationsPerCycle * 2.0) return 2.5;
-        // 2–3 cycles: starting to look interesting; mild boost.
-        if (spread < IterationsPerCycle * 3.0) return 1.4;
-        // Plenty of detail — full speed.
-        return 1.0;
+        // Continuous curve: boost tapers smoothly from 8× (no detail) to 1×
+        // (≥3 palette cycles of detail). This avoids discrete jumps that
+        // caused visible zoom speed hiccups at threshold boundaries.
+        double cycles = spread / IterationsPerCycle;
+        if (cycles >= 3.0) return 1.0;
+        if (cycles <= 0.0) return 8.0;
+        // Smooth hermite interpolation from 8.0 at 0 cycles to 1.0 at 3 cycles.
+        double t = cycles / 3.0; // 0..1
+        double smooth = t * t * (3.0 - 2.0 * t); // smoothstep
+        return 8.0 + (1.0 - 8.0) * smooth; // 8 → 1
     }
 
     /// <summary>
@@ -899,7 +904,7 @@ public sealed class MandelbrotPattern : BlobPatternBase
             // Detect frames that are essentially solid-black interior or one
             // flat color band so we can rush through and/or abandon the target.
             var (boost, interior) = MeasureBoring(_iterCache, w, h);
-            _boringBoost = boost;
+            _boringBoostTarget = boost;
             _interiorHeavy = interior;
         }
 
