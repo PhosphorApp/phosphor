@@ -8,7 +8,7 @@ This file is authoritative context for AI agents working on this codebase. Read 
 
 ```
 phosphor/
-├── VpinJukebox/          # Main WPF app (.NET 8)
+├── Phosphor/          # Main WPF app (.NET 8)
 │   ├── App.xaml.cs       # Startup, shared LibVLC init, window orchestration
 │   ├── JukeboxViewModel.cs  # Central ViewModel (~3000 lines); owns all app state
 │   ├── Models/           # AppSettings, VideoItem, Category, KeyBindings, enums

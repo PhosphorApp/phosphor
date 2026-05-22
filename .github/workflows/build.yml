@@ -28,13 +28,13 @@ jobs:
 
       - name: Extract ProjectM presets (Release)
         run: |
-          $outputDir = "VpinJukebox\bin\Release\net8.0-windows\presets"
+          $outputDir = "Phosphor\bin\Release\net8.0-windows\presets"
           Expand-Archive -Path "dependencies\projectM\ProjectM_Presets_Base.zip" -DestinationPath $outputDir -Force
         shell: pwsh
 
       - name: Extract ProjectM presets (Debug)
         run: |
-          $outputDir = "VpinJukebox\bin\Debug\net8.0-windows\presets"
+          $outputDir = "Phosphor\bin\Debug\net8.0-windows\presets"
           Expand-Archive -Path "dependencies\projectM\ProjectM_Presets_Base.zip" -DestinationPath $outputDir -Force
         shell: pwsh
 
@@ -42,10 +42,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Phosphor-Release
-          path: VpinJukebox/bin/Release/net8.0-windows/
+          path: Phosphor/bin/Release/net8.0-windows/
 
       - name: Upload Debug artifact
         uses: actions/upload-artifact@v4
         with:
           name: Phosphor-Debug
-          path: VpinJukebox/bin/Debug/net8.0-windows/
+          path: Phosphor/bin/Debug/net8.0-windows/

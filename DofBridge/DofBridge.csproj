@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -29,7 +29,7 @@
       <BridgeFiles Include="$(OutputPath)DirectOutput.dll" Condition="Exists('$(OutputPath)DirectOutput.dll')" />
       <BridgeFiles Include="$(OutputPath)DofBridgeSettings.json" Condition="Exists('$(OutputPath)DofBridgeSettings.json')" />
     </ItemGroup>
-    <Copy SourceFiles="@(BridgeFiles)" DestinationFolder="..\VpinJukebox\bin\$(Configuration)\net8.0-windows\x64\" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(BridgeFiles)" DestinationFolder="..\Phosphor\bin\$(Configuration)\net8.0-windows\x64\" SkipUnchangedFiles="true" />
   </Target>
 
   <!-- Build x86 variant after main build and copy to main app's x86 subfolder -->
@@ -40,9 +40,9 @@
       <X86BridgeFiles Include="$(MSBuildThisFileDirectory)..\DofBridge.x86\bin\$(Configuration)\DofBridge.exe" Condition="Exists('$(MSBuildThisFileDirectory)..\DofBridge.x86\bin\$(Configuration)\DofBridge.exe')" />
       <X86BridgeFiles Include="$(MSBuildThisFileDirectory)..\DofBridge.x86\bin\$(Configuration)\DofBridge.exe.config" Condition="Exists('$(MSBuildThisFileDirectory)..\DofBridge.x86\bin\$(Configuration)\DofBridge.exe.config')" />
     </ItemGroup>
-    <Copy SourceFiles="@(X86BridgeFiles)" DestinationFolder="..\VpinJukebox\bin\$(Configuration)\net8.0-windows\x86\" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="..\dependencies\DirectOutput\x86\DirectOutput.dll" DestinationFolder="..\VpinJukebox\bin\$(Configuration)\net8.0-windows\x86\" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="$(OutputPath)DofBridgeSettings.json" DestinationFolder="..\VpinJukebox\bin\$(Configuration)\net8.0-windows\x86\" SkipUnchangedFiles="true" Condition="Exists('$(OutputPath)DofBridgeSettings.json')" />
+    <Copy SourceFiles="@(X86BridgeFiles)" DestinationFolder="..\Phosphor\bin\$(Configuration)\net8.0-windows\x86\" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="..\dependencies\DirectOutput\x86\DirectOutput.dll" DestinationFolder="..\Phosphor\bin\$(Configuration)\net8.0-windows\x86\" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(OutputPath)DofBridgeSettings.json" DestinationFolder="..\Phosphor\bin\$(Configuration)\net8.0-windows\x86\" SkipUnchangedFiles="true" Condition="Exists('$(OutputPath)DofBridgeSettings.json')" />
   </Target>
 
 </Project>

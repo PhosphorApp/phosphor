@@ -1,0 +1,364 @@
+<Window x:Class="Phosphor.PresetBrowserWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Phosphor"
+        Title="ProjectM Preset Browser"
+        Background="{StaticResource BgBrush}"
+        Width="950" Height="875"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        ResizeMode="CanResizeWithGrip"
+        WindowStartupLocation="CenterOwner"
+        Closing="Window_Closing"
+        MouseLeftButtonDown="Window_MouseLeftButtonDown">
+
+    <Border BorderBrush="{StaticResource AccentBrush}" BorderThickness="1" CornerRadius="0">
+        <Grid Margin="12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="3*"/>
+                <RowDefinition Height="8"/>
+                <RowDefinition Height="2*"/>
+                <RowDefinition Height="8"/>
+                <RowDefinition Height="2*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header with close button -->
+            <DockPanel Grid.Row="0" Margin="0,0,0,8">
+                <Button DockPanel.Dock="Right" Content="✕" Click="BtnClose_Click"
+                        Padding="8,2" FontSize="14" VerticalAlignment="Top"
+                        Background="Transparent" Foreground="{StaticResource TextDimBrush}"
+                        BorderThickness="0" Cursor="Hand"/>
+                <TextBlock Text="🔍 PRESET BROWSER" FontSize="18" FontWeight="Bold"
+                           Foreground="{StaticResource AccentBrush}"/>
+            </DockPanel>
+
+            <!-- History ComboBox -->
+            <DockPanel Grid.Row="1" Margin="0,4,0,8">
+                <TextBlock Text="History:" Foreground="{StaticResource TextBrush}"
+                           VerticalAlignment="Center" Margin="0,0,8,0" FontSize="12"/>
+                <ComboBox x:Name="CbHistory" SelectionChanged="CbHistory_SelectionChanged"
+                          FontSize="11" MaxDropDownHeight="350">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Display}" FontWeight="{Binding ItemFontWeight}"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </DockPanel>
+
+            <!-- Filter flagged presets -->
+            <CheckBox x:Name="CbFilterFlagged" Grid.Row="2" Margin="0,0,0,4"
+                      VerticalAlignment="Top" FontSize="11"
+                      Foreground="{StaticResource TextBrush}"
+                      Visibility="Collapsed"
+                      Checked="CbFilterFlagged_Changed" Unchecked="CbFilterFlagged_Changed">
+                <TextBlock Text="Show only flagged presets" FontSize="11"
+                           Foreground="{StaticResource TextBrush}"/>
+            </CheckBox>
+
+            <!-- ═══ ACTIVE PRESETS (top) ═══ -->
+            <Border Grid.Row="3" Background="{StaticResource SurfaceBrush}"
+                    CornerRadius="6" Padding="10">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="230"/>
+                        <ColumnDefinition Width="10"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.ColumnSpan="3"
+                               Text="✅ ACTIVE PRESETS"
+                               Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
+
+                    <!-- Folder tree (left) -->
+                    <Border Grid.Row="1" Grid.Column="0"
+                            BorderBrush="{StaticResource TextDimBrush}" BorderThickness="1"
+                            CornerRadius="3" Padding="4">
+                        <TreeView x:Name="TvActiveFolders" Background="Transparent"
+                                      BorderThickness="0"
+                                      SelectedItemChanged="TvActiveFolders_SelectedItemChanged">
+                                <TreeView.Resources>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}"
+                                                     Color="{Binding Source={StaticResource AccentBrush}, Path=Color}"/>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}"
+                                                     Color="Black"/>
+                                    <Style TargetType="TreeViewItem">
+                                        <Style.Triggers>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+                                                <Setter Property="Foreground" Value="Black"/>
+                                            </Trigger>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="#33FFFFFF"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TreeView.Resources>
+                            </TreeView>
+                    </Border>
+
+                    <!-- Preset list (right) -->
+                    <Border Grid.Row="1" Grid.Column="2"
+                            BorderBrush="{StaticResource TextDimBrush}" BorderThickness="1"
+                            CornerRadius="3" Padding="4">
+                        <ListBox x:Name="IcActivePresets"
+                                 SelectionChanged="ActivePreset_SelectionChanged"
+                                 HorizontalContentAlignment="Stretch"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.Resources>
+                                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}"
+                                                 Color="{Binding Source={StaticResource AccentBrush}, Path=Color}"/>
+                                <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}"
+                                                 Color="{Binding Source={StaticResource AccentBrush}, Path=Color}"/>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                                    <Setter Property="Padding" Value="2"/>
+                                    <Setter Property="Cursor" Value="Hand"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+                                            <Setter Property="Foreground" Value="White"/>
+                                        </Trigger>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#33FFFFFF"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListBox.Resources>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="0,1">
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="6,0,0,0">
+                                            <Button Content="▶" ToolTip="Preview this preset"
+                                                    Padding="6,2" Margin="0,0,4,0"
+                                                    Tag="{Binding FullPath}"
+                                                    Click="BtnPreview_Click"/>
+                                            <Button ToolTip="{Binding StarToolTip}"
+                                                     Padding="6,2" Margin="0,0,4,0"
+                                                     Tag="{Binding FullPath}"
+                                                     Click="BtnFavorite_Click">
+                                                <TextBlock Text="{Binding StarIcon}" Foreground="{Binding StarColor}"/>
+                                            </Button>
+                                            <Button Content="👎" ToolTip="Deactivate this preset"
+                                                     Padding="6,2"
+                                                     Tag="{Binding FullPath}"
+                                                     Click="BtnDeactivate_Click"/>
+                                         </StackPanel>
+                                         <TextBlock Text="{Binding Name}"
+                                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                     </DockPanel>
+                                 </DataTemplate>
+                             </ListBox.ItemTemplate>
+                         </ListBox>
+                     </Border>
+                 </Grid>
+             </Border>
+
+            <!-- ═══ DEACTIVATED PRESETS (bottom) ═══ -->
+            <Border Grid.Row="5" Background="{StaticResource SurfaceBrush}"
+                    CornerRadius="6" Padding="10">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="230"/>
+                        <ColumnDefinition Width="10"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.ColumnSpan="3"
+                               Text="🚫 DEACTIVATED PRESETS"
+                               Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
+
+                    <!-- Folder tree (left) -->
+                    <Border Grid.Row="1" Grid.Column="0"
+                            BorderBrush="{StaticResource TextDimBrush}" BorderThickness="1"
+                            CornerRadius="3" Padding="4">
+                        <TreeView x:Name="TvDeactivatedFolders" Background="Transparent"
+                                      BorderThickness="0"
+                                      SelectedItemChanged="TvDeactivatedFolders_SelectedItemChanged">
+                                <TreeView.Resources>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}"
+                                                     Color="{Binding Source={StaticResource AccentBrush}, Path=Color}"/>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}"
+                                                     Color="Black"/>
+                                    <Style TargetType="TreeViewItem">
+                                        <Style.Triggers>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+                                                <Setter Property="Foreground" Value="Black"/>
+                                            </Trigger>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="#33FFFFFF"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TreeView.Resources>
+                            </TreeView>
+                    </Border>
+
+                    <!-- Preset list (right) -->
+                    <Border Grid.Row="1" Grid.Column="2"
+                            BorderBrush="{StaticResource TextDimBrush}" BorderThickness="1"
+                            CornerRadius="3" Padding="4">
+                        <ListBox x:Name="IcDeactivatedPresets"
+                                 SelectionChanged="DeactivatedPreset_SelectionChanged"
+                                 HorizontalContentAlignment="Stretch"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.Resources>
+                                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}"
+                                                 Color="{Binding Source={StaticResource AccentBrush}, Path=Color}"/>
+                                <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}"
+                                                 Color="{Binding Source={StaticResource AccentBrush}, Path=Color}"/>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                                    <Setter Property="Padding" Value="2"/>
+                                    <Setter Property="Cursor" Value="Hand"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+                                            <Setter Property="Foreground" Value="White"/>
+                                        </Trigger>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#33FFFFFF"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListBox.Resources>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="0,1">
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="6,0,0,0">
+                                            <Button Content="▶" ToolTip="Preview this preset"
+                                                    Padding="6,2" Margin="0,0,4,0"
+                                                    Tag="{Binding FullPath}"
+                                                    Click="BtnPreview_Click"/>
+                                            <Button Content="👍" ToolTip="Reactivate this preset"
+                                                    Padding="6,2" Margin="0,0,4,0"
+                                                    Tag="{Binding FullPath}"
+                                                    Click="BtnActivate_Click"/>
+                                            <Button Content="✕" ToolTip="Delete this preset"
+                                                    Padding="6,2"
+                                                    Tag="{Binding FullPath}"
+                                                    Click="BtnDeletePreset_Click"/>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Name}"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- ═══ FAVORITES (bottom) ═══ -->
+            <Border Grid.Row="7" Background="{StaticResource SurfaceBrush}"
+                    CornerRadius="6" Padding="10">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="230"/>
+                        <ColumnDefinition Width="10"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.ColumnSpan="3"
+                               Text="⭐ FAVORITES"
+                               Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
+
+                    <!-- Folder tree (left) -->
+                    <Border Grid.Row="1" Grid.Column="0"
+                            BorderBrush="{StaticResource TextDimBrush}" BorderThickness="1"
+                            CornerRadius="3" Padding="4">
+                        <TreeView x:Name="TvFavoritesFolders" Background="Transparent"
+                                      BorderThickness="0"
+                                      SelectedItemChanged="TvFavoritesFolders_SelectedItemChanged">
+                                <TreeView.Resources>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}"
+                                                     Color="{Binding Source={StaticResource AccentBrush}, Path=Color}"/>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}"
+                                                     Color="Black"/>
+                                    <Style TargetType="TreeViewItem">
+                                        <Style.Triggers>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+                                                <Setter Property="Foreground" Value="Black"/>
+                                            </Trigger>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="#33FFFFFF"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TreeView.Resources>
+                            </TreeView>
+                    </Border>
+
+                    <!-- Preset list (right) -->
+                    <Border Grid.Row="1" Grid.Column="2"
+                            BorderBrush="{StaticResource TextDimBrush}" BorderThickness="1"
+                            CornerRadius="3" Padding="4">
+                        <ListBox x:Name="IcFavoritesPresets"
+                                 SelectionChanged="FavoritesPreset_SelectionChanged"
+                                 HorizontalContentAlignment="Stretch"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.Resources>
+                                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}"
+                                                 Color="{Binding Source={StaticResource AccentBrush}, Path=Color}"/>
+                                <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}"
+                                                 Color="{Binding Source={StaticResource AccentBrush}, Path=Color}"/>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                                    <Setter Property="Padding" Value="2"/>
+                                    <Setter Property="Cursor" Value="Hand"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+                                            <Setter Property="Foreground" Value="White"/>
+                                        </Trigger>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#33FFFFFF"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListBox.Resources>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="0,1">
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="6,0,0,0">
+                                            <Button Content="▶" ToolTip="Preview this preset"
+                                                    Padding="6,2" Margin="0,0,4,0"
+                                                    Tag="{Binding FullPath}"
+                                                    Click="BtnPreview_Click"/>
+                                            <Button Content="★" ToolTip="Remove from favorites"
+                                                    Padding="6,2"
+                                                    Tag="{Binding FullPath}"
+                                                    Click="BtnUnfavorite_Click"/>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Name}"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

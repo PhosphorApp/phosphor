@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="DofBridge/DofBridge.csproj" />
+  <Project Path="Phosphor/Phosphor.csproj" />
+</Solution>

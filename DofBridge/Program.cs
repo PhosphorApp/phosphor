@@ -7,7 +7,7 @@ namespace DofBridge
 {
     /// <summary>
     /// A lightweight .NET Framework 4.8 bridge process that hosts DirectOutput Framework
-    /// and receives trigger commands from the main VpinJukebox app via named pipes.
+    /// and receives trigger commands from the main Phosphor app via named pipes.
     /// 
     /// Protocol (binary, little-endian):
     ///   [char tableElementType] [int32 number] [int32 value]

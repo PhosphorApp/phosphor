@@ -1,0 +1,31 @@
+<local:JukeboxWindow x:Class="Phosphor.BackglassWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vlc="clr-namespace:LibVLCSharp.WPF;assembly=LibVLCSharp.WPF"
+        xmlns:local="clr-namespace:Phosphor"
+        Title="Phosphor Backglass - Video">
+
+    <Grid x:Name="RootGrid" Background="Black">
+        <!-- Expand button overlay -->
+        <Button x:Name="ExpandButton" Content="⛶" ToolTip="Toggle Fullscreen (F11)"
+                Click="ToggleExpand_Click"
+                HorizontalAlignment="Right" VerticalAlignment="Top"
+                Width="28" Height="28" FontSize="13" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Margin="4"
+                Opacity="0.5" Panel.ZIndex="10"/>
+
+        <!-- VideoView is added/removed from the tree dynamically in code-behind
+             to avoid the WinForms HWND forcing software rendering during idle -->
+
+        <!-- Overlay when nothing is playing -->
+        <Grid x:Name="IdleOverlay" Background="Black" ClipToBounds="True" Panel.ZIndex="1">
+            <!-- Animated glow blobs -->
+            <Canvas x:Name="IdleCanvas"/>
+
+            <!-- Vinyl record overlay -->
+            <Canvas x:Name="RecordOverlay" IsHitTestVisible="False" ClipToBounds="True"/>
+
+            <!-- Circular title (drawn in code-behind on the record label) -->
+            <Canvas x:Name="TitleCanvas" IsHitTestVisible="False" ClipToBounds="True"/>
+        </Grid>
+    </Grid>
+</local:JukeboxWindow>

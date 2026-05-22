@@ -15,7 +15,7 @@ A WPF-based music jukebox designed for virtual pinball cabinets. Phosphor displa
 
 | Project | Target | Description |
 |---------|--------|-------------|
-| `VpinJukebox` | .NET 8, WPF | Main application |
+| `Phosphor` | .NET 8, WPF | Main application |
 | `DofBridge` | .NET Framework 4.8 | Out-of-process DOF host |
 | `DofBridge.x86` | .NET Framework 4.8 | x86 variant for 32-bit DOF drivers |
 
@@ -30,14 +30,14 @@ A WPF-based music jukebox designed for virtual pinball cabinets. Phosphor displa
 
 ## Getting Started
 
-1. Clone the repo and open `VpinJukebox.slnx` in Visual Studio 2022+.
+1. Clone the repo and open `Phosphor.slnx` in Visual Studio 2022+.
 2. Build the solution (`Ctrl+Shift+B`). Both `DofBridge` projects must build to `x64\` and `x86\` subfolders alongside the main executable.
-3. Run `VpinJukebox`. On first launch a `settings.json` is written next to the executable.
+3. Run `Phosphor`. On first launch a `settings.json` is written next to the executable.
 4. Open **Settings** to configure window positions, YouTube API key (if needed), and optional Plex server details.
 
 ## Settings
 
-Settings are persisted as `settings.json` next to the executable. Defaults are defined in `VpinJukebox\default_settings.json`. Settings are saved on application exit (not on every change) to minimize disk writes.
+Settings are persisted as `settings.json` next to the executable. Defaults are defined in `Phosphor\default_settings.json`. Settings are saved on application exit (not on every change) to minimize disk writes.
 
 ## Architecture Overview
 
