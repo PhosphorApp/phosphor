@@ -156,11 +156,13 @@
         </Style>
 
         <!-- ═══ Category Button ═══ -->
+        <Thickness x:Key="GenreButtonMargin">3</Thickness>
+        <Thickness x:Key="GenreButtonPadding">16,10,16,10</Thickness>
         <Style x:Key="CategoryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="FontSize" Value="14"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Padding" Value="16,10"/>
-            <Setter Property="Margin" Value="3"/>
+            <Setter Property="Padding" Value="{DynamicResource GenreButtonPadding}"/>
+            <Setter Property="Margin" Value="{DynamicResource GenreButtonMargin}"/>
         </Style>
 
         <!-- ═══ TextBox ═══ -->

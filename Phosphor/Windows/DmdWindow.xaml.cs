@@ -71,6 +71,8 @@ public partial class DmdWindow : JukeboxWindow
     private int _preSwapPlayButtonSizeModifier;
     private int _preSwapQueueButtonSizeModifier;
     private int _preSwapGenreIconSizeModifier;
+    private int _preSwapGenreIconSpacingModifier;
+    private int _preSwapGenreIconPaddingModifier;
     private int _preSwapTrackButtonSizeModifier;
     private int _preSwapPlayfieldRotation;
     private int _preSwapQueueFontSizeModifier;
@@ -524,6 +526,8 @@ public partial class DmdWindow : JukeboxWindow
         SetSearchResultsNavSize(settings.DmdSearchResultsNavSizeModifier);
         SetQueueButtonSize(settings.DmdQueueButtonSizeModifier);
         SetGenreIconSize(settings.DmdGenreIconSizeModifier);
+        SetGenreIconSpacing(settings.DmdGenreIconSpacingModifier);
+        SetGenreIconPadding(settings.DmdGenreIconPaddingModifier);
         SetTrackButtonSize(settings.DmdTrackButtonSizeModifier);
         SetMinorButtonLocation(settings.DmdMinorButtonLocation);
         SetShowStatusText(settings.ShowStatusText);
@@ -2067,6 +2071,8 @@ public partial class DmdWindow : JukeboxWindow
         SetPlayButtonSize(_appSettings.DmdPlayButtonSizeModifier);
         SetQueueButtonSize(_appSettings.DmdQueueButtonSizeModifier);
         SetGenreIconSize(_appSettings.DmdGenreIconSizeModifier);
+        SetGenreIconSpacing(_appSettings.DmdGenreIconSpacingModifier);
+        SetGenreIconPadding(_appSettings.DmdGenreIconPaddingModifier);
         SetTrackButtonSize(_appSettings.DmdTrackButtonSizeModifier);
         SetMinorButtonLocation(_appSettings.DmdMinorButtonLocation);
         SetShowStatusText(_appSettings.ShowStatusText);
@@ -2336,10 +2342,36 @@ public partial class DmdWindow : JukeboxWindow
     public void SetGenreIconSize(int modifier)
     {
         double scale = 1.0 + modifier / 20.0;
-        Resources["GenreButtonWidth"] = 175.0 * scale;
-        Resources["GenreButtonHeight"] = 90.0 * scale;
         Resources["GenreIconFontSize"] = 32.0 * scale;
         Resources["GenreLabelFontSize"] = 13.0 * scale;
+        _genreIconSizeScale = scale;
+        ApplyGenreButtonDimensions();
+    }
+
+    public void SetGenreIconSpacing(int modifier)
+    {
+        double m = Math.Max(0, 3.0 + modifier);
+        Resources["GenreButtonMargin"] = new Thickness(m);
+    }
+
+    public void SetGenreIconPadding(int modifier)
+    {
+        double ph = Math.Max(2, 16.0 + modifier * 2);
+        double pv = Math.Max(2, 10.0 + modifier);
+        Resources["GenreButtonPadding"] = new Thickness(ph, pv, ph, pv);
+        _genreIconPaddingModifier = modifier;
+        ApplyGenreButtonDimensions();
+    }
+
+    private double _genreIconSizeScale = 1.0;
+    private int _genreIconPaddingModifier;
+
+    private void ApplyGenreButtonDimensions()
+    {
+        double widthDelta = _genreIconPaddingModifier * 5;   // ±5px per step
+        double heightDelta = _genreIconPaddingModifier * 3;  // ±3px per step
+        Resources["GenreButtonWidth"] = Math.Max(60, 175.0 * _genreIconSizeScale + widthDelta);
+        Resources["GenreButtonHeight"] = Math.Max(40, 90.0 * _genreIconSizeScale + heightDelta);
     }
 
     public void SetTrackButtonSize(int modifier)
@@ -2613,6 +2645,8 @@ public partial class DmdWindow : JukeboxWindow
                             _preSwapPlayButtonSizeModifier = _appSettings.DmdPlayButtonSizeModifier;
                             _preSwapQueueButtonSizeModifier = _appSettings.DmdQueueButtonSizeModifier;
                             _preSwapGenreIconSizeModifier = _appSettings.DmdGenreIconSizeModifier;
+                            _preSwapGenreIconSpacingModifier = _appSettings.DmdGenreIconSpacingModifier;
+                            _preSwapGenreIconPaddingModifier = _appSettings.DmdGenreIconPaddingModifier;
                             _preSwapTrackButtonSizeModifier = _appSettings.DmdTrackButtonSizeModifier;
                             _preSwapQueueFontSizeModifier = _appSettings.QueueFontSizeModifier;
                             _preSwapQueueSplitterSize = _appSettings.DmdQueueSplitterSize;
@@ -2624,6 +2658,8 @@ public partial class DmdWindow : JukeboxWindow
                             SetPlayButtonSize(d.DmdPlayButtonSizeModifier);
                             SetQueueButtonSize(d.DmdQueueButtonSizeModifier);
                             SetGenreIconSize(d.DmdGenreIconSizeModifier);
+                            SetGenreIconSpacing(d.DmdGenreIconSpacingModifier);
+                            SetGenreIconPadding(d.DmdGenreIconPaddingModifier);
                             SetTrackButtonSize(d.DmdTrackButtonSizeModifier);
                             _appSettings.QueueFontSizeModifier = d.QueueFontSizeModifier;
                             _appSettings.DmdQueueSplitterSize = d.DmdQueueSplitterSize;
@@ -2677,6 +2713,8 @@ public partial class DmdWindow : JukeboxWindow
                             _preSwapPlayButtonSizeModifier = _appSettings.DmdPlayButtonSizeModifier;
                             _preSwapQueueButtonSizeModifier = _appSettings.DmdQueueButtonSizeModifier;
                             _preSwapGenreIconSizeModifier = _appSettings.DmdGenreIconSizeModifier;
+                            _preSwapGenreIconSpacingModifier = _appSettings.DmdGenreIconSpacingModifier;
+                            _preSwapGenreIconPaddingModifier = _appSettings.DmdGenreIconPaddingModifier;
                             _preSwapTrackButtonSizeModifier = _appSettings.DmdTrackButtonSizeModifier;
                             _preSwapQueueFontSizeModifier = _appSettings.QueueFontSizeModifier;
                             _preSwapQueueSplitterSize = _appSettings.DmdQueueSplitterSize;
@@ -2687,6 +2725,8 @@ public partial class DmdWindow : JukeboxWindow
                             SetPlayButtonSize(d.DmdPlayButtonSizeModifier);
                             SetQueueButtonSize(d.DmdQueueButtonSizeModifier);
                             SetGenreIconSize(d.DmdGenreIconSizeModifier);
+                            SetGenreIconSpacing(d.DmdGenreIconSpacingModifier);
+                            SetGenreIconPadding(d.DmdGenreIconPaddingModifier);
                             SetTrackButtonSize(d.DmdTrackButtonSizeModifier);
                             _appSettings.QueueFontSizeModifier = d.QueueFontSizeModifier;
                             _appSettings.DmdQueueSplitterSize = d.DmdQueueSplitterSize;
@@ -2817,6 +2857,8 @@ public partial class DmdWindow : JukeboxWindow
                         SetPlayButtonSize(_preSwapPlayButtonSizeModifier);
                         SetQueueButtonSize(_preSwapQueueButtonSizeModifier);
                         SetGenreIconSize(_preSwapGenreIconSizeModifier);
+                        SetGenreIconSpacing(_preSwapGenreIconSpacingModifier);
+                        SetGenreIconPadding(_preSwapGenreIconPaddingModifier);
                         SetTrackButtonSize(_preSwapTrackButtonSizeModifier);
                         SetQueuePosition(_preSwapQueuePosition);
                         _playfieldProxy!.SetRotation(_preSwapPlayfieldRotation);
@@ -2866,6 +2908,8 @@ public partial class DmdWindow : JukeboxWindow
                         SetPlayButtonSize(_preSwapPlayButtonSizeModifier);
                         SetQueueButtonSize(_preSwapQueueButtonSizeModifier);
                         SetGenreIconSize(_preSwapGenreIconSizeModifier);
+                        SetGenreIconSpacing(_preSwapGenreIconSpacingModifier);
+                        SetGenreIconPadding(_preSwapGenreIconPaddingModifier);
                         SetTrackButtonSize(_preSwapTrackButtonSizeModifier);
                         SetQueuePosition(_preSwapQueuePosition);
                     }

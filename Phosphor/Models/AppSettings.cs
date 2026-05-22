@@ -150,6 +150,8 @@ public class AppSettings
     public QueuePosition DmdQueuePosition { get; set; } = QueuePosition.Right;
     public int DmdPlayButtonSizeModifier { get; set; }
     public int DmdGenreIconSizeModifier { get; set; }
+    public int DmdGenreIconSpacingModifier { get; set; }
+    public int DmdGenreIconPaddingModifier { get; set; }
     public int DmdTrackButtonSizeModifier { get; set; }
     public MinorButtonLocation DmdMinorButtonLocation { get; set; } = MinorButtonLocation.Queue;
     public int DmdHeaderSizeModifier { get; set; }
