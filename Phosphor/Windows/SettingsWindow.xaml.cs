@@ -82,6 +82,7 @@ public partial class SettingsWindow : JukeboxWindow
     private double _originalMandelbrotDimming;
     private bool _originalMandelbrotHistogramColoring;
     private int _originalMandelbrotRotation;
+    private int _originalMandelbrotColorScheme;
     private double _originalProjectMPresetDuration;
     private double _originalProjectMSoftCut;
     private bool _originalProjectMHardCut;
@@ -196,7 +197,8 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.MandelbrotDiscovery != _originalMandelbrotDiscovery ||
         Math.Abs(_settings.MandelbrotDimming - _originalMandelbrotDimming) > 0.001 ||
         _settings.MandelbrotHistogramColoring != _originalMandelbrotHistogramColoring ||
-        _settings.MandelbrotRotation != _originalMandelbrotRotation;
+        _settings.MandelbrotRotation != _originalMandelbrotRotation ||
+        _settings.MandelbrotColorScheme != _originalMandelbrotColorScheme;
 
     public event Action? SettingsApplied;
 
@@ -443,6 +445,15 @@ public partial class SettingsWindow : JukeboxWindow
             CbMandelbrotRotation.Items.Add("Slow spin");
         }
         CbMandelbrotRotation.SelectedIndex = Math.Clamp(settings.MandelbrotRotation, 0, 2);
+        if (CbMandelbrotColorScheme.Items.Count == 0)
+        {
+            CbMandelbrotColorScheme.Items.Add("Psychedelic");
+            CbMandelbrotColorScheme.Items.Add("Ocean");
+            CbMandelbrotColorScheme.Items.Add("Ember");
+            CbMandelbrotColorScheme.Items.Add("Midnight");
+            CbMandelbrotColorScheme.Items.Add("Forest");
+        }
+        CbMandelbrotColorScheme.SelectedIndex = Math.Clamp(settings.MandelbrotColorScheme, 0, 4);
         UpdateMandelbrotTuningVisibility();
 
         // Ferrofluid tuning
@@ -678,6 +689,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalMandelbrotDimming = settings.MandelbrotDimming;
         _originalMandelbrotHistogramColoring = settings.MandelbrotHistogramColoring;
         _originalMandelbrotRotation = settings.MandelbrotRotation;
+        _originalMandelbrotColorScheme = settings.MandelbrotColorScheme;
         _originalProjectMPresetDuration = settings.ProjectMPresetDuration;
         _originalProjectMSoftCut = settings.ProjectMSoftCutDuration;
         _originalProjectMHardCut = settings.ProjectMHardCutEnabled;
@@ -2140,6 +2152,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.MandelbrotDimming = SliderMandelbrotDimming.Value / 100.0;
         _settings.MandelbrotHistogramColoring = CbMandelbrotHistogramColoring.IsChecked == true;
         _settings.MandelbrotRotation = Math.Max(0, CbMandelbrotRotation.SelectedIndex);
+        _settings.MandelbrotColorScheme = Math.Max(0, CbMandelbrotColorScheme.SelectedIndex);
         _settings.FerrofluidCoreGravity = SliderFerrofluidCoreGravity.Value;
         _settings.FerrofluidMutualAttraction = SliderFerrofluidMutualAttraction.Value;
         _settings.FerrofluidDamping = SliderFerrofluidDamping.Value / 100.0;
@@ -2221,6 +2234,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalMandelbrotDimming = _settings.MandelbrotDimming;
         _originalMandelbrotHistogramColoring = _settings.MandelbrotHistogramColoring;
         _originalMandelbrotRotation = _settings.MandelbrotRotation;
+        _originalMandelbrotColorScheme = _settings.MandelbrotColorScheme;
         _originalProjectMPresetDuration = _settings.ProjectMPresetDuration;
         _originalProjectMSoftCut = _settings.ProjectMSoftCutDuration;
         _originalProjectMHardCut = _settings.ProjectMHardCutEnabled;

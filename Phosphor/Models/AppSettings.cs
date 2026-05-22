@@ -98,6 +98,8 @@ public class AppSettings
     public bool MandelbrotHistogramColoring { get; set; }
     /// <summary>0 = Off, 1 = Random per target, 2 = Slow spin.</summary>
     public int MandelbrotRotation { get; set; }
+    /// <summary>Color scheme: 0 = Psychedelic, 1 = Ocean, 2 = Ember, 3 = Midnight, 4 = Forest.</summary>
+    public int MandelbrotColorScheme { get; set; }
     public bool ExcludeProjectMFromRandom { get; set; } = true;
 
     // Ferrofluid tuning

@@ -66,6 +66,26 @@ public sealed class MandelbrotPattern : BlobPatternBase
     /// </summary>
     private const double IterationsPerCycle = 12.0;
 
+    /// <summary>Palette color scheme for Mandelbrot rendering.</summary>
+    public enum ColorSchemeKind
+    {
+        /// <summary>Full-spectrum rainbow (original).</summary>
+        Psychedelic = 0,
+        /// <summary>Cyan / blue / deep navy palette.</summary>
+        Ocean = 1,
+        /// <summary>Red / orange / gold warm palette.</summary>
+        Ember = 2,
+        /// <summary>Deep purple / blue / silver cool palette.</summary>
+        Midnight = 3,
+        /// <summary>Green / teal / lime natural palette.</summary>
+        Forest = 4,
+    }
+
+    /// <summary>
+    /// Active color scheme. Set from <see cref="AppSettings.MandelbrotColorScheme"/>.
+    /// </summary>
+    public static ColorSchemeKind ColorScheme { get; set; }
+
     /// <summary>How the rendered view is rotated relative to the screen axes.</summary>
     public enum RotationModeKind
     {
@@ -1079,17 +1099,47 @@ public sealed class MandelbrotPattern : BlobPatternBase
     /// </summary>
     private void BuildPalette()
     {
+        // Scheme parameters: base hue, hue range, saturation center/amplitude, lightness center/amplitude
+        double hueBase, hueRange, satCenter, satAmp, litCenter, litAmp;
+        int hueCycles;
+
+        switch (ColorScheme)
+        {
+            case ColorSchemeKind.Ocean:
+                hueBase = 180; hueRange = 80; hueCycles = 2;    // cyan 180 → blue 260
+                satCenter = 0.7; satAmp = 0.15;
+                litCenter = 0.45; litAmp = 0.25;
+                break;
+            case ColorSchemeKind.Ember:
+                hueBase = 0; hueRange = 60; hueCycles = 2;      // red 0 → gold 60
+                satCenter = 0.85; satAmp = 0.10;
+                litCenter = 0.45; litAmp = 0.25;
+                break;
+            case ColorSchemeKind.Midnight:
+                hueBase = 240; hueRange = 80; hueCycles = 2;    // blue 240 → purple 320
+                satCenter = 0.55; satAmp = 0.20;
+                litCenter = 0.35; litAmp = 0.25;
+                break;
+            case ColorSchemeKind.Forest:
+                hueBase = 80; hueRange = 100; hueCycles = 2;    // yellow-green 80 → teal 180
+                satCenter = 0.7; satAmp = 0.15;
+                litCenter = 0.40; litAmp = 0.25;
+                break;
+            default: // Psychedelic — original full-spectrum
+                hueBase = 0; hueRange = 360; hueCycles = 2;
+                satCenter = 0.9; satAmp = 0.0;
+                litCenter = 0.55; litAmp = 0.20;
+                break;
+        }
+
         for (int i = 0; i < PaletteCeiling; i++)
         {
             double t = (double)i / PaletteCeiling;
-            // Two hue cycles → richer banding without overly long color runs.
-            double hue = (t * 720.0) % 360.0;
-            // Full sine cycle keeps the palette tileable; min lightness 0.45 so
-            // no part of the palette is so dark that frames look black.
-            double lightness = 0.55 + 0.20 * Math.Sin(t * Math.PI * 2.0);
-            double saturation = 0.9;
+            double hue = (hueBase + t * hueRange * hueCycles) % 360.0;
+            double lightness = litCenter + litAmp * Math.Sin(t * Math.PI * 2.0);
+            double saturation = satCenter + satAmp * Math.Sin(t * Math.PI * 2.0 + 1.0);
 
-            var (r, g, b) = HslToRgb(hue, saturation, lightness);
+            var (r, g, b) = HslToRgb(hue, Math.Clamp(saturation, 0, 1), Math.Clamp(lightness, 0, 1));
             int idx = i * 4;
             _palette[idx] = b;     // B
             _palette[idx + 1] = g; // G

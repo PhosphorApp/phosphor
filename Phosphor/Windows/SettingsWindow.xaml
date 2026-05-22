@@ -539,6 +539,16 @@
                                               ToolTip="Optional view rotation. Off = always axis-aligned. Random per target = a fresh random angle for each new zoom target. Slow spin = continuously rotates the view. Rotation is baked into the iteration sampling, so there are no black corners regardless of angle."/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Color Scheme:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <ComboBox x:Name="CbMandelbrotColorScheme" IsEditable="False" Width="200"
+                                              VerticalAlignment="Center"
+                                              Background="{StaticResource Surface2Brush}"
+                                              Foreground="{StaticResource TextBrush}"
+                                              FontSize="12" BorderBrush="#333"
+                                              ToolTip="Palette color scheme. Psychedelic = full rainbow. Ocean/Ember/Midnight/Forest = subdued artistic palettes confined to a specific hue range."/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Dimming:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Width="100"/>
                                     <Slider x:Name="SliderMandelbrotDimming" Minimum="0" Maximum="90"

@@ -609,6 +609,7 @@ public partial class DmdWindow : JukeboxWindow
             2 => MandelbrotPattern.RotationModeKind.SlowSpin,
             _ => MandelbrotPattern.RotationModeKind.Off,
         };
+        MandelbrotPattern.ColorScheme = (MandelbrotPattern.ColorSchemeKind)Math.Clamp(settings.MandelbrotColorScheme, 0, 4);
         BlobTransition.ExcludeProjectMFromRandom = settings.ExcludeProjectMFromRandom;
         FerrofluidSimulator.CoreGravity = settings.FerrofluidCoreGravity;
         FerrofluidSimulator.MutualAttraction = settings.FerrofluidMutualAttraction;
@@ -1914,6 +1915,7 @@ public partial class DmdWindow : JukeboxWindow
             2 => MandelbrotPattern.RotationModeKind.SlowSpin,
             _ => MandelbrotPattern.RotationModeKind.Off,
         };
+        MandelbrotPattern.ColorScheme = (MandelbrotPattern.ColorSchemeKind)Math.Clamp(_appSettings.MandelbrotColorScheme, 0, 4);
         if (settingsWindow.MandelbrotSettingsChanged)
         {
             _playfieldProxy?.RestartMandelbrot();
