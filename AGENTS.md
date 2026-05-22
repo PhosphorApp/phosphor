@@ -38,7 +38,31 @@ phosphor/
 - Single large `ObservableObject` (CommunityToolkit.Mvvm). The authoritative source of truth for all UI state.
 - Owns: search results, now-playing state, category list, playlist management, Plex integration, screensaver state, settings propagation.
 - **Do not split into multiple files** without good reason — the entire file is intentionally cohesive.
-- Genre categories come from `categories.json` (bundled) and are persisted via `GenreCategoryStore`.
+- Genre categories come from `categories.json` via `GenreCategoryStore` (see below).
+
+**Section Map** (~2900 lines — use these landmarks to jump to the right area):
+
+| Line | Section |
+|------|---------|
+| ~23 | Genre categories (loaded from `categories.json`) |
+| ~60 | Plex state & service |
+| ~77 | Categories (playlists + genres, rebuilt dynamically) |
+| ~80 | Observable state properties |
+| ~311 | Search history |
+| ~384 | Video / thumbnail / category caches |
+| ~429 | Quality, audio channel, network buffering settings |
+| ~490 | Duration filter & pagination |
+| ~532 | Category management (add / remove / reorder) |
+| ~616 | Category browsing (YouTube) |
+| ~795 | Search (YouTube) |
+| ~1148 | Plex browsing & hub/playlist navigation |
+| ~1208 | Plex music drill-down (artist → album → track) |
+| ~2005 | "Find More Like This" |
+| ~2020 | Queue persistence (saved to disk) |
+| ~2049 | Queue & Playback (play, stop, skip, previous) |
+| ~2439 | Playlist management (create, delete, add/remove items) |
+| ~2625 | AutoDJ (automatic queue fill from genres/videos) |
+| ~2843 | Play history |
 
 ### Windows
 - All windows inherit `JukeboxWindow` which provides borderless style, Win32 hit-test dragging, and "Expand to Monitor" toggle.
@@ -72,6 +96,17 @@ phosphor/
 - Must target .NET Framework 4.8 because `DirectOutput.dll` is a COM-based .NET 2.0 assembly.
 - Reads binary commands from the named pipe and calls `DirectOutput.Pinball` accordingly.
 - Two builds: `x64` and `x86` — the main app picks the right one at runtime via `DofClient.ResolveBridgePath()`.
+
+**Named-pipe protocol** (pipe name `PhosphorDof`):
+
+Each command is written as: `BinaryWriter.Write(char type)` + `Write(int number)` + `Write(int value)`.
+
+| Type char | Meaning | Number | Value |
+|-----------|---------|--------|-------|
+| `'E'` | Table element trigger | Element number (e.g., 110, 111) | `1` = on, `0` = off |
+| `'\0'` | Shutdown signal | — | — |
+
+`DofClient.Trigger(type, number, value)` enqueues a command; `TriggerPulse(type, number)` sends value=1 then auto-sends value=0 after a brief delay. All active triggers are auto-cleared on shutdown.
 
 ### PlexService
 - Vanilla `HttpClient` REST client against the Plex Media Server API — no Plex SDK.
@@ -134,3 +169,28 @@ phosphor/
 | Plex | `Plex/PlexService.cs` |
 | Caching | `Caching/*.cs` |
 | Data models | `Models/VideoItem.cs`, `Models/Category.cs`, `Models/KeyBindings.cs` |
+| Genre categories | `Models/GenreCategoryStore.cs`, `categories.json` |
+| Stream selection | `Services/StreamSelector.cs` |
+
+---
+
+## GenreCategoryStore & categories.json
+
+`categories.json` is the single stateful backing file for genre categories. `GenreCategoryStore` is a static helper that reads/writes it:
+
+- **Load**: reads `categories.json` from the app directory into memory (cached after first read).
+- **Save / SaveInBackground**: writes the in-memory list back to `categories.json`.
+- On first run, the app ships a default `categories.json`; there is no separate seed file.
+- `SyncPlexLibraries()` reconciles the category list with currently configured Plex libraries (adds new, removes stale).
+- Unlike `AppSettings`, categories **are saved immediately** when the user edits them (not deferred to exit).
+
+---
+
+## Common Task Recipes
+
+- **Add a setting**: Add a property to `Models/AppSettings.cs` and a matching default in `default_settings.json`. Do not add save logic — settings save on exit.
+- **Add a genre category**: Add an entry to `categories.json`. The `GenreCategoryStore` handles serialization; no code change needed for static categories.
+- **Add a blob pattern**: Implement `IBlobPattern`, add a value to the `BlobPattern` enum, register in the pattern factory. Decide whether to exclude from random rotation.
+- **Add a new window**: Inherit `JukeboxWindow`, create a proxy class if cross-thread access is needed, register and create the window in `App.xaml.cs`.
+- **Add a DOF trigger**: Call `DofClient.Trigger('E', number, value)` or `TriggerPulse('E', number)`. Pick an unused element number.
+- **Add a Plex feature**: Work in `Plex/PlexService.cs` for the REST call, wire UI state in `JukeboxViewModel.cs` (Plex section ~L1148).
