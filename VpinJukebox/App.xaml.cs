@@ -338,13 +338,16 @@ public partial class App : Application
         DebugLog.Log("Ditti", $"PlayStartupDitti called: Enabled={_settings.EnableStartupDitti}, Path='{_settings.StartupDittiPath}', AutoPlay={_settings.AutoPlayQueueOnStart}, QueueCount={viewModel.Queue.Count}");
         if (!_settings.EnableStartupDitti) { DebugLog.Log("Ditti", "Skipped: not enabled"); return; }
         if (string.IsNullOrWhiteSpace(_settings.StartupDittiPath)) { DebugLog.Log("Ditti", "Skipped: no path"); return; }
-        if (!System.IO.File.Exists(_settings.StartupDittiPath)) { DebugLog.Log("Ditti", $"Skipped: file not found: {_settings.StartupDittiPath}"); return; }
+        var dittiPath = _settings.StartupDittiPath;
+        if (!System.IO.Path.IsPathRooted(dittiPath))
+            dittiPath = System.IO.Path.Combine(AppContext.BaseDirectory, dittiPath);
+        if (!System.IO.File.Exists(dittiPath)) { DebugLog.Log("Ditti", $"Skipped: file not found: {dittiPath}"); return; }
         if (_settings.AutoPlayQueueOnStart && viewModel.Queue.Count > 0) { DebugLog.Log("Ditti", "Skipped: auto-play queue active"); return; }
 
-        StartDittiPlayback(viewModel);
+        StartDittiPlayback(viewModel, dittiPath);
     }
 
-    private void StartDittiPlayback(JukeboxViewModel viewModel)
+    private void StartDittiPlayback(JukeboxViewModel viewModel, string dittiPath)
     {
         try
         {
@@ -393,13 +396,15 @@ public partial class App : Application
                 });
             };
 
-            _dittiPlayer.Open(new Uri(_settings.StartupDittiPath, UriKind.Absolute));
+            _dittiPlayer.Open(new Uri(dittiPath, UriKind.Absolute));
             _dittiPlayer.Play();
-            DebugLog.Log("Ditti", $"Startup ditti playing (WPF MediaPlayer): {_settings.StartupDittiPath}");
+            DebugLog.Log("Ditti", $"Startup ditti playing (WPF MediaPlayer): {dittiPath}");
         }
         catch (Exception ex)
         {
             DebugLog.Log("Ditti", $"Startup ditti failed: {ex.Message}");
+            if (viewModel.CurrentlyPlaying?.VideoId == "ditti:startup")
+                viewModel.CurrentlyPlaying = null;
             DisposeStartupDitti();
         }
     }
