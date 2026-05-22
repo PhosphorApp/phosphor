@@ -1,6 +1,6 @@
-# Phosphor — VPinJukebox
+# Phosphor
 
-A WPF-based music jukebox designed for virtual pinball cabinets. Phosphor displays music videos across a cabinet's multiple screens (playfield, backglass, topper, DMD) while providing audio-reactive animated visuals, Plex integration, and optional DOF (Direct Output Framework) lighting effects.
+A WPF-based music jukebox designed for virtual pinball cabinets, though supports and works well on desktop as a stand-alone media player. Phosphor displays music videos across a cabinet's multiple screens (playfield, backglass, topper, DMD) while providing audio-reactive animated visuals, Plex integration, and optional DOF (Direct Output Framework) lighting effects.
 
 ## Features
 
