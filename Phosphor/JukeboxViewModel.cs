@@ -2274,7 +2274,12 @@ public partial class JukeboxViewModel : ObservableObject
     [RelayCommand]
     private void PausePlayback()
     {
-        if (!IsPlaying || IsPaused) return;
+        if (!IsPlaying) return;
+        if (IsPaused)
+        {
+            ResumePlayback();
+            return;
+        }
         PauseRequested?.Invoke();
         IsPaused = true;
         StatusText = "Paused";
