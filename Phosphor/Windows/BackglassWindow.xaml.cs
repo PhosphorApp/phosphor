@@ -559,6 +559,14 @@ public partial class BackglassWindow : JukeboxWindow
                 StartVideoInfoPollingCached(cachedResolution);
             _positionTimer?.Start();
 
+            // Log seekability diagnostics for streaming (non-cached) playback
+            if (infoForOverlay != null)
+            {
+                var seekable = _mediaPlayer.IsSeekable;
+                var length = _mediaPlayer.Length;
+                DebugLog.Log("Play", $"Streaming playback started | Seekable={seekable} Length={length}ms | Note: seeking may be unreliable for progressive YouTube streams (no seek index until fully downloaded)");
+            }
+
             // Notify so the DMD window can reclaim focus
             PlaybackStarted?.Invoke();
 
@@ -587,15 +595,53 @@ public partial class BackglassWindow : JukeboxWindow
         {
             if (_mediaPlayer == null) return;
             var length = _mediaPlayer.Length;
-            DebugLog.Log("Seek", $"Requested: {timeMs}ms | State={_mediaPlayer.State} Length={length} Time={_mediaPlayer.Time}");
+            var seekable = _mediaPlayer.IsSeekable;
+            DebugLog.Log("Seek", $"Requested: {timeMs}ms | State={_mediaPlayer.State} Length={length} Time={_mediaPlayer.Time} Seekable={seekable}");
+
+            if (!seekable)
+                DebugLog.Log("Seek", "Warning: media reports IsSeekable=false — stream may restart or ignore seek (common with progressive YouTube streams)");
 
             if (length > 0)
             {
-                _mediaPlayer.Time = Math.Clamp(timeMs, 0, length);
+                var timeBefore = _mediaPlayer.Time;
+                var targetMs = Math.Clamp(timeMs, 0, length);
+                var userRequestedStart = targetMs < 3000; // explicit seek to beginning
+                _mediaPlayer.Time = targetMs;
 
-                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
+                // VLC echoes back whatever we set to Time — it does NOT reflect
+                // where the stream actually landed.  To detect a failed seek we
+                // sample twice with a gap: if playback is progressing near zero
+                // instead of near the target, the stream restarted.
+                _ = Task.Run(async () =>
                 {
-                    DebugLog.Log("Seek", $"After: State={_mediaPlayer.State} Time={_mediaPlayer.Time}");
+                    // First sample: VLC resets Time to 0 almost immediately on
+                    // failed seeks, so we don't need a long wait.
+                    await Task.Delay(750);
+                    long sample1 = 0;
+                    await Dispatcher.InvokeAsync(() => { if (_mediaPlayer != null) sample1 = _mediaPlayer.Time; });
+
+                    // Second sample: confirm direction of playback
+                    await Task.Delay(250);
+                    long sample2 = 0;
+                    await Dispatcher.InvokeAsync(() => { if (_mediaPlayer != null) sample2 = _mediaPlayer.Time; });
+
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        if (_mediaPlayer == null) return;
+
+                        // The stream is progressing somewhere — check if near the target or near zero
+                        var progressingNearTarget = sample1 > targetMs - 10000 && sample2 >= sample1;
+                        var progressingNearStart = sample2 < 10000 && sample2 >= sample1;
+                        var progressingFromReset = sample2 > 0 && sample2 < targetMs / 2 && Math.Abs(sample2 - targetMs) > 15000;
+
+                        DebugLog.Log("Seek", $"Verify: sample1={sample1} sample2={sample2} (was {timeBefore}, target {targetMs}) nearTarget={progressingNearTarget} nearStart={progressingNearStart}");
+
+                        if (!userRequestedStart && targetMs > 5000 && (progressingNearStart || progressingFromReset) && !progressingNearTarget)
+                        {
+                            DebugLog.Log("Seek", $"Seek failed — stream is playing near {sample2}ms instead of {targetMs}ms. Restoring previous position {timeBefore}ms");
+                            _mediaPlayer.Time = timeBefore;
+                        }
+                    });
                 });
             }
             else

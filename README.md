@@ -42,3 +42,7 @@ Settings are persisted as `settings.json` next to the executable. Defaults are d
 ## Architecture Overview
 
 See [`AGENTS.md`](AGENTS.md) for a detailed component map intended for AI-assisted development.
+
+## Known Issues
+
+- **Seeking may not work reliably for streaming (non-cached) YouTube videos.** YouTube delivers progressive DASH streams that lack a complete seek index until the full stream has been downloaded. Attempting to scrub forward in a non-cached video may cause the stream to restart from the beginning. Phosphor detects this and attempts to restore the previous playback position, but there may be a brief interruption. Cached videos (downloaded and remuxed with ffmpeg) do not have this limitation.
