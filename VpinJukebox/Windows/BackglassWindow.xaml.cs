@@ -34,7 +34,6 @@ public partial class BackglassWindow : JukeboxWindow
     private bool _transitioning;
     private IBlobPattern? _currentPattern;
     private AudioReactiveService? _audioReactive;
-    private double[]? _baseBlobSizes;
     private double _reactiveHueBoost;
     private int _blobCount = 6;
     private int _blobSizeOffset;
@@ -298,6 +297,7 @@ public partial class BackglassWindow : JukeboxWindow
         _positionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _positionTimer.Tick += (_, _) =>
         {
+            if (_mediaPlayer == null) return;
             if (DataContext is JukeboxViewModel v && !v.IsSeeking)
             {
                 v.PlaybackDuration = Math.Max(1, _mediaPlayer.Length);
@@ -332,7 +332,7 @@ public partial class BackglassWindow : JukeboxWindow
         // VM events fire on the main UI thread — marshal to our thread
         if (!Dispatcher.CheckAccess())
         {
-            Dispatcher.BeginInvoke(() => OnPlayRequested(videoId));
+            _ = Dispatcher.BeginInvoke(() => OnPlayRequested(videoId));
             return;
         }
 
@@ -340,6 +340,8 @@ public partial class BackglassWindow : JukeboxWindow
         _playCts?.Cancel();
         var cts = _playCts = new CancellationTokenSource();
         var ct = cts.Token;
+
+        if (_libVLC == null || _mediaPlayer == null) return;
 
         try
         {
@@ -583,6 +585,7 @@ public partial class BackglassWindow : JukeboxWindow
     {
         Dispatcher.BeginInvoke(() =>
         {
+            if (_mediaPlayer == null) return;
             var length = _mediaPlayer.Length;
             DebugLog.Log("Seek", $"Requested: {timeMs}ms | State={_mediaPlayer.State} Length={length} Time={_mediaPlayer.Time}");
 
@@ -632,6 +635,7 @@ public partial class BackglassWindow : JukeboxWindow
 
     private void OnMediaEnded(object? sender, EventArgs e)
     {
+        if (_mediaPlayer == null) return;
         DebugLog.Log("MediaEnded", $"EndReached fired | State={_mediaPlayer.State} Time={_mediaPlayer.Time} Length={_mediaPlayer.Length} Pos={_mediaPlayer.Position:F4}");
         Dispatcher.BeginInvoke(() =>
         {
@@ -697,7 +701,6 @@ public partial class BackglassWindow : JukeboxWindow
             _audioReactive.Updated -= OnAudioUpdated;
 
         _audioReactive = service;
-        _baseBlobSizes = null;
 
         if (_audioReactive != null)
             _audioReactive.Updated += OnAudioUpdated;
@@ -733,6 +736,7 @@ public partial class BackglassWindow : JukeboxWindow
         _infoTimer.Tick += (_, _) =>
         {
             attempts++;
+            if (_mediaPlayer == null) return;
             float fps = _mediaPlayer.Fps;
             if (fps > 0 || attempts >= 10)
             {
@@ -759,6 +763,7 @@ public partial class BackglassWindow : JukeboxWindow
         _infoTimer.Tick += (_, _) =>
         {
             attempts++;
+            if (_mediaPlayer == null) return;
             float fps = _mediaPlayer.Fps;
             if (fps > 0 || attempts >= 10)
             {
@@ -774,7 +779,7 @@ public partial class BackglassWindow : JukeboxWindow
 
     private string GetVideoCodec()
     {
-        if (_mediaPlayer.Media == null) return "";
+        if (_mediaPlayer?.Media == null) return "";
         foreach (var track in _mediaPlayer.Media.Tracks)
         {
             if (track.TrackType == TrackType.Video && track.Codec > 0)
@@ -894,9 +899,8 @@ public partial class BackglassWindow : JukeboxWindow
             pattern = BlobTransition.CurrentRandomPattern;
 
         _blobPattern = pattern;
-        _baseBlobSizes = null;
 
-        // If the canvas isn't laid out yet, just store the pattern —
+        // If the canvas isn't laid out yet
         // StartIdleAnimation will create the blobs once Loaded fires.
         if (IdleCanvas.ActualWidth < 1 || IdleCanvas.ActualHeight < 1)
             return;
@@ -940,7 +944,6 @@ public partial class BackglassWindow : JukeboxWindow
             return;
 
         _transitioning = true;
-        _baseBlobSizes = null;
 
         _currentPattern.Exit(() =>
         {
@@ -962,7 +965,6 @@ public partial class BackglassWindow : JukeboxWindow
         _blobCount = Math.Clamp(count, 0, 100);
         if (!_idleAnimStarted) return;
 
-        _baseBlobSizes = null;
         _currentPattern?.Dispose();
         _currentPattern = BlobTransition.Create(_blobPattern, MakeConfig());
         _currentPattern.Enter(() => { });
@@ -975,7 +977,6 @@ public partial class BackglassWindow : JukeboxWindow
         _blobSizeOffset = clamped;
         if (!_idleAnimStarted || !changed) return;
 
-        _baseBlobSizes = null;
         _currentPattern?.Dispose();
         _currentPattern = BlobTransition.Create(_blobPattern, MakeConfig());
         _currentPattern.Enter(() => { });

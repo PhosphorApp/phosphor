@@ -25,7 +25,6 @@ public partial class PlayfieldWindow : JukeboxWindow
     private bool _transitioning;
     private IBlobPattern? _currentPattern;
     private AudioReactiveService? _audioReactive;
-    private double[]? _baseBlobSizes;
     private double _reactiveHueBoost;
     private int _blobCount = 10;
     private int _blobSizeOffset;
@@ -157,7 +156,6 @@ public partial class PlayfieldWindow : JukeboxWindow
 
     private void CreateBlobs()
     {
-        _baseBlobSizes = null;
         _blobHueOffsets = [];
         _patternStartTime = DateTime.UtcNow;
 
@@ -399,7 +397,6 @@ public partial class PlayfieldWindow : JukeboxWindow
             _audioReactive.Updated -= OnAudioUpdated;
 
         _audioReactive = service;
-        _baseBlobSizes = null;
 
         if (_audioReactive != null)
             _audioReactive.Updated += OnAudioUpdated;
@@ -436,7 +433,6 @@ public partial class PlayfieldWindow : JukeboxWindow
         if (ScreensaverCanvas.ActualWidth <= 0 || ScreensaverCanvas.ActualHeight <= 0)
             return;
 
-        _baseBlobSizes = null;
         _patternStartTime = DateTime.UtcNow;
         _currentPattern?.Dispose();
         _currentPattern = BlobTransition.Create(_blobPattern, MakeConfig());
@@ -456,7 +452,6 @@ public partial class PlayfieldWindow : JukeboxWindow
         if (ScreensaverCanvas.ActualWidth <= 0 || ScreensaverCanvas.ActualHeight <= 0)
             return;
 
-        _baseBlobSizes = null;
         _patternStartTime = DateTime.UtcNow;
         _currentPattern?.Dispose();
         _currentPattern = BlobTransition.Create(_blobPattern, MakeConfig());
@@ -473,9 +468,8 @@ public partial class PlayfieldWindow : JukeboxWindow
             pattern = BlobTransition.CurrentRandomPattern;
 
         _blobPattern = pattern;
-        _baseBlobSizes = null;
 
-        // If the canvas isn't laid out yet, just store the pattern —
+        // If the canvas isn't laid out yet
         // OnLoaded/CreateBlobs will create the blobs once Loaded fires.
         if (ScreensaverCanvas.ActualWidth < 1 || ScreensaverCanvas.ActualHeight < 1)
             return;
@@ -547,7 +541,6 @@ public partial class PlayfieldWindow : JukeboxWindow
             return;
 
         _transitioning = true;
-        _baseBlobSizes = null;
 
         _currentPattern.Exit(() =>
         {

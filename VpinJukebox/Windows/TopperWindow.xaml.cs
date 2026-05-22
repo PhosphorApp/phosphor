@@ -25,7 +25,6 @@ public partial class TopperWindow : JukeboxWindow
     private bool _transitioning;
     private IBlobPattern? _currentPattern;
     private AudioReactiveService? _audioReactive;
-    private double[]? _baseBlobSizes;
     private double _reactiveHueBoost;
     private int _blobCount = 4;
     private int _blobSizeOffset;
@@ -54,7 +53,6 @@ public partial class TopperWindow : JukeboxWindow
         _blobCount = Math.Clamp(count, 0, 100);
         if (!_animStarted) return;
 
-        _baseBlobSizes = null;
         _currentPattern?.Dispose();
         _currentPattern = null;
 
@@ -70,7 +68,6 @@ public partial class TopperWindow : JukeboxWindow
         _blobSizeOffset = clamped;
         if (!_animStarted || !changed) return;
 
-        _baseBlobSizes = null;
         _currentPattern?.Dispose();
         _currentPattern = null;
 
@@ -100,7 +97,6 @@ public partial class TopperWindow : JukeboxWindow
             _audioReactive.Updated -= OnAudioUpdated;
 
         _audioReactive = service;
-        _baseBlobSizes = null;
 
         if (_audioReactive != null)
             _audioReactive.Updated += OnAudioUpdated;
@@ -123,9 +119,8 @@ public partial class TopperWindow : JukeboxWindow
             pattern = BlobTransition.CurrentRandomPattern;
 
         _blobPattern = pattern;
-        _baseBlobSizes = null;
 
-        // If the canvas isn't laid out yet, just store the pattern —
+        // If the canvas isn't laid out yet
         // StartAnimation will create the blobs once Loaded fires.
         if (BlobCanvas.ActualWidth < 1 || BlobCanvas.ActualHeight < 1)
             return;
@@ -169,7 +164,6 @@ public partial class TopperWindow : JukeboxWindow
             return;
 
         _transitioning = true;
-        _baseBlobSizes = null;
 
         _currentPattern.Exit(() =>
         {

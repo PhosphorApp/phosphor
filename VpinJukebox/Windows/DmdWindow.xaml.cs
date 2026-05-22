@@ -259,7 +259,7 @@ public partial class DmdWindow : JukeboxWindow
             await (_dofClient?.DisposeAsync() ?? ValueTask.CompletedTask);
             _dofClient = null;
 
-            Dispatcher.BeginInvoke(Close);
+            _ = Dispatcher.BeginInvoke(Close);
         }
     }
 
@@ -1577,6 +1577,7 @@ public partial class DmdWindow : JukeboxWindow
 
     private void ApplyReactiveBlobs(bool enabled)
     {
+        if (_appSettings == null) return;
         bool needAudio = enabled || _appSettings.ReactiveProjectM;
         AudioReactiveService.ProjectMEnabled = _appSettings.ReactiveProjectM;
         if (needAudio)
@@ -3267,9 +3268,9 @@ public partial class DmdWindow : JukeboxWindow
         _topperWindow?.Dispatcher.BeginInvoke(() =>
             System.Windows.Input.Mouse.OverrideCursor = null);
         _cursorIdleTimer.Stop();
-        if (MouseHideState.EnableMouseHide && _appSettings.HideCursorTimeoutSeconds == 0)
+        if (_appSettings != null && MouseHideState.EnableMouseHide && _appSettings.HideCursorTimeoutSeconds == 0)
             HideMouseCursor();
-        else if (MouseHideState.EnableMouseHide && _appSettings.HideCursorTimeoutSeconds > 0)
+        else if (_appSettings != null && MouseHideState.EnableMouseHide && _appSettings.HideCursorTimeoutSeconds > 0)
             _cursorIdleTimer.Start();
         SetTitleBarButtonsVisibility(Visibility.Visible);
     }
@@ -3284,6 +3285,7 @@ public partial class DmdWindow : JukeboxWindow
     private void ApplyCursorHideTimeout()
     {
         _cursorIdleTimer.Stop();
+        if (_appSettings == null) return;
         if (_appSettings.HideCursorTimeoutSeconds == 0)
         {
             HideMouseCursor();

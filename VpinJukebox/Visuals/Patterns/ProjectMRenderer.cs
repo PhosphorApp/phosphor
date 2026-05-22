@@ -1,4 +1,3 @@
-using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Security;
 using System.Windows;
@@ -35,8 +34,11 @@ public sealed class ProjectMRenderer : IDisposable
     private bool _useSharedSurface;
 
     // D3D11 device + shared texture (render target for OpenGL via WGL interop)
+    // TODO: D3D11+WGL_NV_DX_interop shared-surface path — fields reserved for future zero-copy implementation
+#pragma warning disable CS0169 // Fields reserved for planned WGL_NV_DX_interop implementation
     private ID3D11Device? _d3d11Device;
     private ID3D11Texture2D? _d3d11Texture;
+#pragma warning restore CS0169
 
     // D3D9Ex device + surfaces for WPF D3DImage display
     private IDirect3D9Ex? _d3d9;
@@ -47,8 +49,10 @@ public sealed class ProjectMRenderer : IDisposable
     private IDirect3DSurface9? _d3dRtSurface;     // Surface of _d3dRtTexture
 
     private D3DImage? _d3dImage;
+#pragma warning disable CS0169
     private IntPtr _wglDxDevice;
     private IntPtr _wglDxObject;
+#pragma warning restore CS0169
     private uint _glTexture;      // Interop texture (shared with D3D11)
     private uint _glFbo;          // Interop FBO (blit target)
     private uint _glDepthRb;
@@ -61,12 +65,14 @@ public sealed class ProjectMRenderer : IDisposable
     private uint _glRenderDepthRb;
 
     // WGL_NV_DX_interop function pointers
+#pragma warning disable CS0169
     private WglDXOpenDeviceNVDelegate? _wglDXOpenDeviceNV;
     private WglDXCloseDeviceNVDelegate? _wglDXCloseDeviceNV;
     private WglDXRegisterObjectNVDelegate? _wglDXRegisterObjectNV;
     private WglDXUnregisterObjectNVDelegate? _wglDXUnregisterObjectNV;
     private WglDXLockObjectsNVDelegate? _wglDXLockObjectsNV;
     private WglDXUnlockObjectsNVDelegate? _wglDXUnlockObjectsNV;
+#pragma warning restore CS0169
 
     // GL extension function pointers
     private GlGenFramebuffersDelegate? _glGenFramebuffers;
@@ -990,7 +996,6 @@ public sealed class ProjectMRenderer : IDisposable
     /// is pending (infrequent, timer-driven).
     /// Must be called on the UI thread.
     /// </summary>
-    [HandleProcessCorruptedStateExceptions]
     [SecurityCritical]
     public void RenderFrame()
     {
@@ -1040,7 +1045,6 @@ public sealed class ProjectMRenderer : IDisposable
         }
     }
 
-    private int _lockFailCount;
     private int _frameCount;
 
     /// <summary>

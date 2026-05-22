@@ -119,7 +119,6 @@ public sealed class MandelbrotPattern : BlobPatternBase
     private double _boringBoost = 1.0;  // zoom-speed multiplier (smoothed each frame)
     private double _boringBoostTarget = 1.0; // raw target from MeasureBoringSparse
     private double _paletteOffset;
-    private double _paletteSpeed = 0.5;
 
     // Spiral drift — subtle orbit around the zoom target
     private double _spiralAngle;

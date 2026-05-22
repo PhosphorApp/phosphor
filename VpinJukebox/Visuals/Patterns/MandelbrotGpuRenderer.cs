@@ -268,10 +268,10 @@ float4 PS(VS_OUT input) : SV_Target
         {
             Compiler.Compile(
                 source,
-                null,   // defines
-                null,   // include
+                null!,  // defines
+                null!,  // include
                 entryPoint,
-                null,   // sourceName
+                null!,  // sourceName
                 target,
                 ShaderFlags.None,
                 EffectFlags.None,
@@ -414,6 +414,7 @@ float4 PS(VS_OUT input) : SV_Target
         _context.Unmap(_constantBuffer!, 0);
 
         // Set pipeline
+        if (_rtv == null || _paletteSrv == null) return;
         _context.RSSetViewport(0, 0, _width, _height);
         _context.OMSetRenderTargets(_rtv);
         _context.VSSetShader(_vertexShader);
