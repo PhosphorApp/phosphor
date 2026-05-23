@@ -221,6 +221,10 @@ public sealed class ProjectMRenderer : IDisposable
     private int _blackCheckHitCount;
     private string? _currentPresetFullPath;
 
+    // Async analysis state — avoids blocking the render thread with pixel iteration
+    private volatile int _analysisRunning;
+    private byte[]? _analysisBuffer;
+
     public bool Initialize(int pixelWidth, int pixelHeight)
     {
         try
@@ -1156,16 +1160,24 @@ public sealed class ProjectMRenderer : IDisposable
             bool needReadback = (_colorSampleTargetTick >= 0 && _colorSampleWatch.ElapsedTicks >= _colorSampleTargetTick)
                 || (_blackCheckTargetTick >= 0 && _colorSampleWatch.ElapsedTicks >= _blackCheckTargetTick);
 
-            if (needReadback && _flippedBuffer != null)
+            if (needReadback && _flippedBuffer != null && Interlocked.CompareExchange(ref _analysisRunning, 1, 0) == 0)
             {
-                // The D3D9 surface was just written with flipped data — re-lock to read for analysis
+                // Snapshot pixels into a dedicated buffer for async analysis
+                int bufLen = _flippedBuffer.Length;
+                if (_analysisBuffer == null || _analysisBuffer.Length < bufLen)
+                    _analysisBuffer = new byte[bufLen];
+
                 var lr2 = _d3dSurface.LockRect(LockFlags.ReadOnly);
-                Marshal.Copy(lr2.DataPointer, _flippedBuffer, 0, _flippedBuffer.Length);
+                Marshal.Copy(lr2.DataPointer, _analysisBuffer, 0, bufLen);
                 _d3dSurface.UnlockRect();
-                // Analyzer uses _pixelBuffer; orientation doesn't matter for color/black detection
-                if (_pixelBuffer != null)
-                    Buffer.BlockCopy(_flippedBuffer, 0, _pixelBuffer, 0, _flippedBuffer.Length);
-                PerformColorAndBlackAnalysis();
+
+                var snapshot = _analysisBuffer;
+                int w = _width, h = _height;
+                Task.Run(() =>
+                {
+                    try { PerformColorAndBlackAnalysis(snapshot, w, h); }
+                    finally { Interlocked.Exchange(ref _analysisRunning, 0); }
+                });
             }
         }
         finally
@@ -1226,7 +1238,21 @@ public sealed class ProjectMRenderer : IDisposable
             handle.Free();
         }
 
-        PerformColorAndBlackAnalysis();
+        if (Interlocked.CompareExchange(ref _analysisRunning, 1, 0) == 0)
+        {
+            int bufLen = _pixelBuffer!.Length;
+            if (_analysisBuffer == null || _analysisBuffer.Length < bufLen)
+                _analysisBuffer = new byte[bufLen];
+            Buffer.BlockCopy(_pixelBuffer, 0, _analysisBuffer, 0, bufLen);
+
+            var snapshot = _analysisBuffer;
+            int w = _width, h = _height;
+            Task.Run(() =>
+            {
+                try { PerformColorAndBlackAnalysis(snapshot, w, h); }
+                finally { Interlocked.Exchange(ref _analysisRunning, 0); }
+            });
+        }
 
         // OpenGL origin is bottom-left; WPF is top-left — flip vertically
         int stride = _width * 4;
@@ -1254,7 +1280,7 @@ public sealed class ProjectMRenderer : IDisposable
     /// Runs the color sampling and black-frame detection analysis on the current
     /// pixel buffer contents. Called from both render paths when readback is available.
     /// </summary>
-    private void PerformColorAndBlackAnalysis()
+    private void PerformColorAndBlackAnalysis(byte[] pixels, int width, int height)
     {
         // Sample dominant color after preset switch delay
         ColorAnalysis? colorAnalysis = null;
@@ -1263,14 +1289,14 @@ public sealed class ProjectMRenderer : IDisposable
             _colorSampleTargetTick = -1;
             try
             {
-                colorAnalysis = FrameColorAnalyzer.GetDominantColorBand(_pixelBuffer!, _width, _height, isBgra: true);
+                colorAnalysis = FrameColorAnalyzer.GetDominantColorBand(pixels, width, height, isBgra: true);
                 Log($"Dominant color band: {colorAnalysis.Value.Color} (brightness: {colorAnalysis.Value.Brightness:F3}, luminance: {colorAnalysis.Value.TopAvgLuminance:F2})");
                 ColorBandChanged?.Invoke(colorAnalysis.Value);
 
                 if (SaveColorSampleFrame)
                 {
-                    byte[] snapshot = _flippedBuffer!.ToArray();
-                    int w = _width, h = _height;
+                    byte[] snapshot = pixels.ToArray();
+                    int w = width, h = height;
                     string colorName = colorAnalysis.Value.Color.ToString();
                     string presetRelative = _currentPresetFullPath ?? "unknown";
                     if (!string.IsNullOrEmpty(PresetPath) && presetRelative.StartsWith(PresetPath, StringComparison.OrdinalIgnoreCase))
@@ -1301,7 +1327,7 @@ public sealed class ProjectMRenderer : IDisposable
                 }
                 else
                 {
-                    isBlack = IsFrameBlack(_pixelBuffer!, out luminance);
+                    isBlack = IsFrameBlack(pixels, width, height, out luminance);
                 }
 
                 if (isBlack)
@@ -1320,8 +1346,8 @@ public sealed class ProjectMRenderer : IDisposable
 
                         if (SaveBlackFrame)
                         {
-                            byte[] snapshot = _flippedBuffer!.ToArray();
-                            int w = _width, h = _height;
+                            byte[] snapshot = pixels.ToArray();
+                            int w = width, h = height;
                             string name = relativeName;
                             Task.Run(() => SaveFrameSnapshot(snapshot, w, h, name, "BlackFrames"));
                         }
@@ -1390,18 +1416,18 @@ public sealed class ProjectMRenderer : IDisposable
     /// falsely flagged.
     /// The buffer must contain BGRA pixel data for the current frame dimensions.
     /// </summary>
-    private bool IsFrameBlack(byte[] pixels, out double topAvgLuminance, int sampleStep = 4)
+    private bool IsFrameBlack(byte[] pixels, int width, int height, out double topAvgLuminance, int sampleStep = 4)
     {
-        int sampleCount = ((_height - 1) / sampleStep + 1) * ((_width - 1) / sampleStep + 1);
+        int sampleCount = ((height - 1) / sampleStep + 1) * ((width - 1) / sampleStep + 1);
         if (sampleCount == 0) { topAvgLuminance = 0; return true; }
 
         // Counting sort via 256 buckets — O(n) and avoids allocating a luminance array
         Span<int> counts = stackalloc int[256];
 
-        for (int y = 0; y < _height; y += sampleStep)
+        for (int y = 0; y < height; y += sampleStep)
         {
-            int rowOffset = y * _width * 4;
-            for (int x = 0; x < _width; x += sampleStep)
+            int rowOffset = y * width * 4;
+            for (int x = 0; x < width; x += sampleStep)
             {
                 int i = rowOffset + x * 4;
                 // BGRA order: B=[i], G=[i+1], R=[i+2]
