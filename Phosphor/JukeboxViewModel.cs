@@ -438,6 +438,29 @@ public partial class JukeboxViewModel : ObservableObject
     public int FileCachingMs { get; set; } = 300;
     public bool HttpReconnect { get; set; } = true;
 
+    // ── Gapless playback ──
+    public bool GaplessPlayback { get; set; }
+
+    /// <summary>
+    /// Returns the next track in the queue if it is an audio-only Plex track with a StreamUrl,
+    /// suitable for gapless pre-loading. Returns null otherwise.
+    /// </summary>
+    public VideoItem? GetNextGaplessTrack()
+    {
+        if (!GaplessPlayback || Queue.Count == 0) return null;
+
+        int nextIdx = _queueIndex + 1;
+        if (nextIdx >= Queue.Count && _repeatEnabled && Queue.Count > 0)
+            nextIdx = 0;
+        if (nextIdx < 0 || nextIdx >= Queue.Count) return null;
+
+        var next = Queue[nextIdx];
+        if (next.IsPlex && next.IsAudioOnly && !string.IsNullOrEmpty(next.StreamUrl))
+            return next;
+
+        return null;
+    }
+
     // ── Cache mode ──
     public CacheMode CacheMode { get; set; } = CacheMode.Playlists;
 
@@ -835,6 +858,13 @@ public partial class JukeboxViewModel : ObservableObject
         // If currently browsing a Plex library, search within that library instead of YouTube
         if (_isPlexBrowsing && _plex.IsConfigured && !string.IsNullOrEmpty(_activePlexLibraryKey))
         {
+            // Clear drill-down breadcrumb — search results may span multiple artists/albums
+            _plexDrillArtistKey = null;
+            _plexDrillArtistName = null;
+            _plexDrillAlbumKey = null;
+            _plexDrillAlbumName = null;
+            UpdatePlexBreadcrumb();
+
             try
             {
                 var searchType = _activePlexLibraryType == "artist" ? _plexSearchMode : (PlexSearchMode?)null;
@@ -2436,6 +2466,34 @@ public partial class JukeboxViewModel : ObservableObject
         IsQueueTransition = true;
         QueueIndex = nextIndex;
         PlayNow(Queue[nextIndex]);
+
+        if (_autoDjEnabled)
+            _ = SafeFireAndForget(AutoDjFillQueue());
+    }
+
+    /// <summary>
+    /// Advances the queue index and updates state for a gapless transition
+    /// (the BackglassWindow has already started playback on a pre-loaded MediaPlayer).
+    /// </summary>
+    public void AdvanceQueueGapless()
+    {
+        _prefetchingVideoId = null;
+
+        int nextIndex = _queueIndex + 1;
+        if (nextIndex >= Queue.Count && _repeatEnabled && Queue.Count > 0)
+            nextIndex = 0;
+        if (nextIndex < 0 || nextIndex >= Queue.Count) return;
+
+        IsQueueTransition = true;
+        QueueIndex = nextIndex;
+        var item = Queue[nextIndex];
+        CurrentlyPlaying = item;
+        var audioTag = GetPlexAudioTag(item);
+        StatusText = $"Playing: {item.Title}{audioTag}";
+        _history.Add(item);
+        PlayTransitioning = false;
+        _statusPrefixCts?.Cancel();
+        StatusPrefix = "";
 
         if (_autoDjEnabled)
             _ = SafeFireAndForget(AutoDjFillQueue());

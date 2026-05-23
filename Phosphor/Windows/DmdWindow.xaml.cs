@@ -2042,6 +2042,7 @@ public partial class DmdWindow : JukeboxWindow
             vm.FileCachingMs = _appSettings.FileCachingMs;
             vm.HttpReconnect = _appSettings.HttpReconnect;
             vm.CacheMode = _appSettings.CacheMode;
+            vm.GaplessPlayback = _appSettings.PlexGaplessPlayback;
             LogStep("VmProperties");
             if (!string.IsNullOrWhiteSpace(_appSettings.PlexServerUrl) && !string.IsNullOrWhiteSpace(_appSettings.PlexToken))
                 vm.ConfigurePlex(_appSettings.PlexServerUrl, _appSettings.PlexToken, _appSettings.PlexLibraries, _appSettings.PlexStereoAudio, skipRebuild: true);

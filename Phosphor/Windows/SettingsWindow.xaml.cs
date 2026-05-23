@@ -725,6 +725,7 @@ public partial class SettingsWindow : JukeboxWindow
         TbPlexUrl.Text = settings.PlexServerUrl;
         TbPlexToken.Text = settings.PlexToken;
         CbPlexStereo.IsChecked = settings.PlexStereoAudio;
+        CbPlexGapless.IsChecked = settings.PlexGaplessPlayback;
         foreach (var lib in settings.PlexLibraries)
             _plexLibraries.Add(new PlexLibraryMapping { Key = lib.Key, Title = lib.Title, Type = lib.Type, HubsEnabled = lib.HubsEnabled, PlaylistsEnabled = lib.PlaylistsEnabled });
         PlexLibraryList.ItemsSource = _plexLibraries;
@@ -2177,6 +2178,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.PlexServerUrl = TbPlexUrl.Text.Trim();
         _settings.PlexToken = TbPlexToken.Text.Trim();
         _settings.PlexStereoAudio = CbPlexStereo.IsChecked == true;
+        _settings.PlexGaplessPlayback = CbPlexGapless.IsChecked == true;
         _settings.PlexLibraries = _plexLibraries.ToList();
         _LogStep("AllSettings");
         Saved = true;

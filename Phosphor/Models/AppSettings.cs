@@ -180,6 +180,7 @@ public class AppSettings
     public string PlexToken { get; set; } = "";
     public List<PlexLibraryMapping> PlexLibraries { get; set; } = [];
     public bool PlexStereoAudio { get; set; }
+    public bool PlexGaplessPlayback { get; set; }
     public bool RepeatEnabled { get; set; }
     public bool AutoDjEnabled { get; set; }
     public bool AutoPlayQueueOnStart { get; set; }

@@ -1468,6 +1468,9 @@
                             <CheckBox x:Name="CbPlexStereo" Content="Force stereo audio (downmix surround)"
                                       Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
                                       ToolTip="Request stereo audio from Plex instead of surround sound"/>
+                            <CheckBox x:Name="CbPlexGapless" Content="Gapless playback"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
+                                      ToolTip="Eliminate silence between audio-only Plex tracks by pre-loading the next track"/>
                         </StackPanel>
                     </Border>
                 </ScrollViewer>

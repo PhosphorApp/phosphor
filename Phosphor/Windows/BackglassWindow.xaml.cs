@@ -51,6 +51,11 @@ public partial class BackglassWindow : JukeboxWindow
     private Task<LibVLC?>? _sharedVlcTask;
     private readonly DispatcherTimer _expandButtonHideTimer = new() { Interval = TimeSpan.FromSeconds(3) };
 
+    // ── Gapless playback ──
+    private MediaPlayer? _nextMediaPlayer;
+    private string? _nextGaplessVideoId;
+    private bool _gaplessPrimed;
+
     public MediaPlayer MediaPlayer => EnsureVlcInitialized();
 
     /// <summary>
@@ -307,11 +312,61 @@ public partial class BackglassWindow : JukeboxWindow
                 var remaining = _mediaPlayer.Length - _mediaPlayer.Time;
                 if (_mediaPlayer.Length > 0 && remaining > 0 && remaining <= 30_000)
                     v.PrefetchNextTrack();
+
+                // Gapless: prime the next audio-only Plex track ~5 seconds before end
+                if (_mediaPlayer.Length > 0 && remaining > 0 && remaining <= 5_000 && !_gaplessPrimed)
+                    PrepareGaplessNext(v);
             }
         };
     }
 
     public void SetAudioOnly(bool audioOnly) => _audioOnly = audioOnly;
+
+    /// <summary>
+    /// Pre-loads the next Plex audio-only track on a secondary MediaPlayer for gapless transition.
+    /// </summary>
+    private void PrepareGaplessNext(JukeboxViewModel vm)
+    {
+        var nextTrack = vm.GetNextGaplessTrack();
+        if (nextTrack == null || _libVLC == null) return;
+        if (_nextGaplessVideoId == nextTrack.VideoId) return; // already preparing this one
+
+        _gaplessPrimed = true;
+        _nextGaplessVideoId = nextTrack.VideoId;
+
+        // Dispose any previously prepared next player
+        var oldNext = _nextMediaPlayer;
+        if (oldNext != null)
+        {
+            _nextMediaPlayer = null;
+            Task.Run(() => { try { oldNext.Stop(); oldNext.Dispose(); } catch { } });
+        }
+
+        var mp = new MediaPlayer(_libVLC);
+        mp.Volume = _mediaPlayer?.Volume ?? 100;
+        var media = new Media(_libVLC, new Uri(nextTrack.StreamUrl!));
+
+        // Start playback then immediately pause — this forces VLC to connect,
+        // buffer, and decode the first frame so Play() later is instant.
+        mp.Play(media);
+        mp.SetPause(true);
+
+        _nextMediaPlayer = mp;
+        DebugLog.Log("Gapless", $"Primed next track: {nextTrack.Title} ({nextTrack.VideoId})");
+    }
+
+    /// <summary>
+    /// Resets gapless state (e.g. when playback is stopped or a non-gapless transition occurs).
+    /// </summary>
+    private void DisposeGaplessNext()
+    {
+        _gaplessPrimed = false;
+        _nextGaplessVideoId = null;
+        var mp = _nextMediaPlayer;
+        _nextMediaPlayer = null;
+        if (mp != null)
+            Task.Run(() => { try { mp.Stop(); mp.Dispose(); } catch { } });
+    }
 
     private static void ApplyNetworkOptions(Media media, JukeboxViewModel? vm)
     {
@@ -338,6 +393,7 @@ public partial class BackglassWindow : JukeboxWindow
 
         // Cancel any in-flight play operation
         _playCts?.Cancel();
+        DisposeGaplessNext();
         var cts = _playCts = new CancellationTokenSource();
         var ct = cts.Token;
 
@@ -663,10 +719,11 @@ public partial class BackglassWindow : JukeboxWindow
             VideoInfoChanged?.Invoke("");
 
             // Detach the VideoView BEFORE stopping so the WinForms HWND is
-            // removed from the visual tree first � this prevents VLC's video
+            // removed from the visual tree first — this prevents VLC's video
             // output thread from waiting on UI-thread window messages while
             // Stop() blocks, which would cause a deadlock.
             DetachVideoView();
+            DisposeGaplessNext();
 
             // Stop on a background thread to avoid blocking the dispatcher
             // (same pattern used in OnPlayRequested and other call sites).
@@ -692,13 +749,44 @@ public partial class BackglassWindow : JukeboxWindow
 
             if (DataContext is JukeboxViewModel vm && vm.HasNextTrack)
             {
-                // Next track available � keep video view attached to avoid idle screen flash.
+                // Gapless: if a next player is primed, swap it in immediately
+                if (_nextMediaPlayer != null && _gaplessPrimed)
+                {
+                    DebugLog.Log("Gapless", "Swapping to primed next player");
+                    var oldPlayer = _mediaPlayer;
+
+                    // Swap the player reference and resume the pre-loaded track
+                    _mediaPlayer = _nextMediaPlayer;
+                    _mediaPlayer.EndReached += OnMediaEnded;
+                    _mediaPlayer.SetPause(false);
+
+                    _nextMediaPlayer = null;
+                    _gaplessPrimed = false;
+                    _nextGaplessVideoId = null;
+
+                    // Stop and dispose the old player in the background
+                    if (oldPlayer != null)
+                    {
+                        oldPlayer.EndReached -= OnMediaEnded;
+                        Task.Run(() => { try { oldPlayer.Stop(); oldPlayer.Dispose(); } catch { } });
+                    }
+
+                    // Advance the queue without triggering a new play request
+                    vm.AdvanceQueueGapless();
+
+                    _positionTimer?.Start();
+
+                    return;
+                }
+
+                // Next track available — keep video view attached to avoid idle screen flash.
                 // OnPlayRequested will reuse or recreate it as needed.
                 vm.PlayNext();
             }
             else
             {
-                // Queue finished � show idle screen
+                // Queue finished — show idle screen
+                DisposeGaplessNext();
                 DetachVideoView();
                 IdleOverlay.Visibility = Visibility.Visible;
                 _colorTimer.Start();
@@ -852,6 +940,7 @@ public partial class BackglassWindow : JukeboxWindow
         // Detach VLC events first to prevent callbacks during teardown
         if (_mediaPlayer != null)
             _mediaPlayer.EndReached -= OnMediaEnded;
+        DisposeGaplessNext();
         _colorTimer.Stop();
         _positionTimer?.Stop();
         _infoTimer?.Stop();

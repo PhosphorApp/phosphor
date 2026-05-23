@@ -65,6 +65,7 @@ public partial class App : Application
         viewModel.VideoQuality = _settings.VideoQuality;
         viewModel.StereoAudio = _settings.StereoAudio;
         viewModel.CacheMode = _settings.CacheMode;
+        viewModel.GaplessPlayback = _settings.PlexGaplessPlayback;
         viewModel.Volume = _settings.Volume;
         viewModel.RepeatEnabled = _settings.RepeatEnabled;
         viewModel.AutoDjEnabled = _settings.AutoDjEnabled;
