@@ -46,7 +46,6 @@ public partial class BackglassWindow : JukeboxWindow
     private bool _audioOnly;
     private CancellationTokenSource? _playCts;
     private readonly DispatcherTimer _morphTimer = new();
-    private readonly DispatcherTimer _morphCacheRestoreTimer = new();
     private Task? _vlcInitTask;
     private Task<LibVLC?>? _sharedVlcTask;
     private readonly DispatcherTimer _expandButtonHideTimer = new() { Interval = TimeSpan.FromSeconds(3) };
@@ -179,7 +178,6 @@ public partial class BackglassWindow : JukeboxWindow
 
         _logoDimTimer.Tick += LogoDimTimer_Tick;
         _morphTimer.Tick += MorphTimer_Tick;
-        _morphCacheRestoreTimer.Tick += MorphCacheRestore_Tick;
         _expandButtonHideTimer.Tick += (_, _) =>
         {
             _expandButtonHideTimer.Stop();
@@ -1231,8 +1229,11 @@ public partial class BackglassWindow : JukeboxWindow
         var duration = TimeSpan.FromSeconds(2);
         var ease = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
 
-        RecordOverlay.CacheMode = null;
-        TitleCanvas.CacheMode = null;
+        // CacheMode is intentionally left in place during the morph. Toggling it
+        // off and back on caused visible hitches at the animation boundaries
+        // (cache release + later re-rasterization). Leaving BitmapCache active
+        // means WPF re-rasterizes the subtree per frame during the ~2s animation,
+        // which is negligible for the small logo subtree.
 
         foreach (var child in TitleCanvas.Children)
         {
@@ -1282,10 +1283,6 @@ public partial class BackglassWindow : JukeboxWindow
             }
         }
 
-        _morphCacheRestoreTimer.Stop();
-        _morphCacheRestoreTimer.Interval = duration + TimeSpan.FromMilliseconds(100);
-        _morphCacheRestoreTimer.Start();
-
         LogoColorsMorphed?.Invoke(titleColor, recordColor);
     }
 
@@ -1313,10 +1310,6 @@ public partial class BackglassWindow : JukeboxWindow
 
         var duration = TimeSpan.FromSeconds(1);
         var ease = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
-
-        // Suspend bitmap caching so animated brush changes render properly
-        RecordOverlay.CacheMode = null;
-        TitleCanvas.CacheMode = null;
 
         // Animate title text brushes
         foreach (var child in TitleCanvas.Children)
@@ -1368,19 +1361,7 @@ public partial class BackglassWindow : JukeboxWindow
             }
         }
 
-        // Restore bitmap caching after the animation duration
-        _morphCacheRestoreTimer.Stop();
-        _morphCacheRestoreTimer.Interval = duration + TimeSpan.FromMilliseconds(100);
-        _morphCacheRestoreTimer.Start();
-
         LogoColorsMorphed?.Invoke(titleColor, recordColor);
-    }
-
-    private void MorphCacheRestore_Tick(object? sender, EventArgs e)
-    {
-        _morphCacheRestoreTimer.Stop();
-        RecordOverlay.CacheMode = new WpfMedia.BitmapCache(1.0);
-        TitleCanvas.CacheMode = new WpfMedia.BitmapCache(1.0);
     }
 
     private void ResetLogoColors()
@@ -1388,9 +1369,6 @@ public partial class BackglassWindow : JukeboxWindow
         var duration = TimeSpan.FromSeconds(2);
         var ease = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
         var defaultTitle = WpfColor.FromArgb(180, 0x88, 0xCC, 0xFF);
-
-        RecordOverlay.CacheMode = null;
-        TitleCanvas.CacheMode = null;
 
         foreach (var child in TitleCanvas.Children)
         {
@@ -1424,10 +1402,6 @@ public partial class BackglassWindow : JukeboxWindow
                 }
             }
         }
-
-        _morphCacheRestoreTimer.Stop();
-        _morphCacheRestoreTimer.Interval = duration + TimeSpan.FromMilliseconds(100);
-        _morphCacheRestoreTimer.Start();
     }
 
     private void ColorCycleBlobs(object? sender, EventArgs e)

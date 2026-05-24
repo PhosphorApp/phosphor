@@ -56,6 +56,12 @@ public partial class PresetBrowserWindow : Window
 
     private void PopulateHistory()
     {
+        // Preset history is kept in-memory and only flushed to disk on app exit
+        // for performance. Flush now so the on-disk file is current in case the
+        // user inspects it externally while the browser is open.
+        ProjectMPresetLog.Flush();
+        ProjectMPresetMonitorLog.Flush();
+
         var entries = ProjectMPresetLog.GetEntries();
         _allHistoryItems = new List<HistoryItem>();
 

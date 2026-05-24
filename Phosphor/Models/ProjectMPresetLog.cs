@@ -19,7 +19,7 @@ public class ProjectMPresetLogEntry
 /// </summary>
 public static class ProjectMPresetLog
 {
-    private const int MaxEntries = 1024;
+    private const int MaxEntries = 512;
 
     private static readonly string LogPath = Path.Combine(
         AppDomain.CurrentDomain.BaseDirectory, "projectm_preset_history.json");
@@ -28,6 +28,7 @@ public static class ProjectMPresetLog
 
     private static readonly object _lock = new();
     private static List<ProjectMPresetLogEntry>? _entries;
+    private static bool _dirty;
 
     private static List<ProjectMPresetLogEntry> Entries
     {
@@ -57,7 +58,10 @@ public static class ProjectMPresetLog
             while (Entries.Count > MaxEntries)
                 Entries.RemoveAt(0);
 
-            Save();
+            // Defer disk writes — Save is called from Flush() on app exit
+            // and when the preset browser is opened so the on-disk file is
+            // current if the user inspects it externally.
+            _dirty = true;
         }
     }
 
@@ -66,6 +70,20 @@ public static class ProjectMPresetLog
         lock (_lock)
         {
             return new List<ProjectMPresetLogEntry>(Entries);
+        }
+    }
+
+    /// <summary>
+    /// Writes any pending in-memory entries to disk. Safe to call at any time;
+    /// no-op if nothing has changed since the last flush.
+    /// </summary>
+    public static void Flush()
+    {
+        lock (_lock)
+        {
+            if (!_dirty) return;
+            Save();
+            _dirty = false;
         }
     }
 

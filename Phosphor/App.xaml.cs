@@ -303,6 +303,10 @@ public partial class App : Application
         }
         _settings.Save();
 
+        // Flush deferred preset history logs to disk
+        try { ProjectMPresetLog.Flush(); } catch { }
+        try { ProjectMPresetMonitorLog.Flush(); } catch { }
+
         // Stop startup ditti if still playing
         DisposeStartupDitti();
 

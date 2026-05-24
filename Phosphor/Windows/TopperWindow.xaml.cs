@@ -29,19 +29,11 @@ public partial class TopperWindow : JukeboxWindow
     private int _blobCount = 4;
     private int _blobSizeOffset;
     private bool _morphColors;
-    private readonly DispatcherTimer _morphCacheRestoreTimer = new();
 
     public TopperWindow()
     {
         _colorTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         _colorTimer.Tick += ColorCycleBlobs;
-
-        _morphCacheRestoreTimer.Tick += (_, _) =>
-        {
-            _morphCacheRestoreTimer.Stop();
-            RecordOverlay.CacheMode = new WpfMedia.BitmapCache(1.0);
-            TitleCanvas.CacheMode = new WpfMedia.BitmapCache(1.0);
-        };
 
         InitializeComponent();
 
@@ -518,8 +510,8 @@ public partial class TopperWindow : JukeboxWindow
         var duration = TimeSpan.FromSeconds(1);
         var ease = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
 
-        RecordOverlay.CacheMode = null;
-        TitleCanvas.CacheMode = null;
+        // CacheMode is intentionally left in place during the morph; toggling
+        // it caused visible hitches at the animation boundaries.
 
         foreach (var child in TitleCanvas.Children)
         {
@@ -568,10 +560,6 @@ public partial class TopperWindow : JukeboxWindow
                 }
             }
         }
-
-        _morphCacheRestoreTimer.Stop();
-        _morphCacheRestoreTimer.Interval = duration + TimeSpan.FromMilliseconds(100);
-        _morphCacheRestoreTimer.Start();
     }
 
     /// <summary>
@@ -584,9 +572,6 @@ public partial class TopperWindow : JukeboxWindow
         var duration = TimeSpan.FromSeconds(2);
         var ease = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
         var defaultTitle = WpfColor.FromArgb(180, 0x88, 0xCC, 0xFF);
-
-        RecordOverlay.CacheMode = null;
-        TitleCanvas.CacheMode = null;
 
         foreach (var child in TitleCanvas.Children)
         {
@@ -620,10 +605,6 @@ public partial class TopperWindow : JukeboxWindow
                 }
             }
         }
-
-        _morphCacheRestoreTimer.Stop();
-        _morphCacheRestoreTimer.Interval = duration + TimeSpan.FromMilliseconds(100);
-        _morphCacheRestoreTimer.Start();
     }
 
     private void ToggleExpand_Click(object sender, RoutedEventArgs e) => ToggleExpand();

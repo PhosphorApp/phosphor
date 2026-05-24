@@ -29,6 +29,7 @@ public static class ProjectMPresetMonitorLog
 
     private static readonly object _lock = new();
     private static List<ProjectMPresetMonitorEntry>? _entries;
+    private static bool _dirty;
 
     private static List<ProjectMPresetMonitorEntry> Entries
     {
@@ -54,7 +55,9 @@ public static class ProjectMPresetMonitorLog
             while (Entries.Count > MaxEntries)
                 Entries.RemoveAt(0);
 
-            Save();
+            // Defer disk writes — Save is called from Flush() on app exit
+            // and when the preset browser is opened.
+            _dirty = true;
         }
     }
 
@@ -63,6 +66,20 @@ public static class ProjectMPresetMonitorLog
         lock (_lock)
         {
             return new List<ProjectMPresetMonitorEntry>(Entries);
+        }
+    }
+
+    /// <summary>
+    /// Writes any pending in-memory entries to disk. Safe to call at any time;
+    /// no-op if nothing has changed since the last flush.
+    /// </summary>
+    public static void Flush()
+    {
+        lock (_lock)
+        {
+            if (!_dirty) return;
+            Save();
+            _dirty = false;
         }
     }
 
