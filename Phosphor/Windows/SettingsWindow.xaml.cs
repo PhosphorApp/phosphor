@@ -501,6 +501,7 @@ public partial class SettingsWindow : JukeboxWindow
         SliderQueueFontSize.Value = settings.QueueFontSizeModifier;
         SliderQueueButtonSize.Value = settings.DmdQueueButtonSizeModifier;
         SliderPlayButtonSize.Value = settings.DmdPlayButtonSizeModifier;
+        SliderNowPlayingAreaSize.Value = settings.DmdNowPlayingAreaSizeModifier;
         SliderGenreIconSize.Value = settings.DmdGenreIconSizeModifier;
         SliderGenreIconSpacing.Value = settings.DmdGenreIconSpacingModifier;
         SliderGenreIconPadding.Value = settings.DmdGenreIconPaddingModifier;
@@ -2003,6 +2004,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.QueueFontSizeModifier = Math.Clamp((int)SliderQueueFontSize.Value, -12, 24);
         _settings.DmdQueueButtonSizeModifier = Math.Clamp((int)SliderQueueButtonSize.Value, -12, 24);
         _settings.DmdPlayButtonSizeModifier = Math.Clamp((int)SliderPlayButtonSize.Value, -12, 36);
+        _settings.DmdNowPlayingAreaSizeModifier = Math.Clamp((int)SliderNowPlayingAreaSize.Value, -4, 12);
         _settings.DmdGenreIconSizeModifier = Math.Clamp((int)SliderGenreIconSize.Value, -12, 24);
         _settings.DmdGenreIconSpacingModifier = Math.Clamp((int)SliderGenreIconSpacing.Value, -8, 8);
         _settings.DmdGenreIconPaddingModifier = Math.Clamp((int)SliderGenreIconPadding.Value, -8, 8);

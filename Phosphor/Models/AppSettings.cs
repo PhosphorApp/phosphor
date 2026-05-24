@@ -150,6 +150,7 @@ public class AppSettings
     public IconStyle DmdIconStyle { get; set; } = IconStyle.Default;
     public int DmdRotation { get; set; }
     public QueuePosition DmdQueuePosition { get; set; } = QueuePosition.Right;
+    public int DmdNowPlayingAreaSizeModifier { get; set; }
     public int DmdPlayButtonSizeModifier { get; set; }
     public int DmdGenreIconSizeModifier { get; set; }
     public int DmdGenreIconSpacingModifier { get; set; }

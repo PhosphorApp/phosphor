@@ -23,18 +23,9 @@ jobs:
       - name: Build Release
         run: dotnet build --no-restore --configuration Release -p:Version=1.0.0.${{ github.run_number }} -p:AssemblyVersion=1.0.0.${{ github.run_number }} -p:FileVersion=1.0.0.${{ github.run_number }}
 
-      - name: Build Debug
-        run: dotnet build --no-restore --configuration Debug -p:Version=1.0.0.${{ github.run_number }} -p:AssemblyVersion=1.0.0.${{ github.run_number }} -p:FileVersion=1.0.0.${{ github.run_number }}
-
       - name: Extract ProjectM presets (Release)
         run: |
           $outputDir = "Phosphor\bin\Release\net8.0-windows\presets"
-          Expand-Archive -Path "dependencies\projectM\ProjectM_Presets_Base.zip" -DestinationPath $outputDir -Force
-        shell: pwsh
-
-      - name: Extract ProjectM presets (Debug)
-        run: |
-          $outputDir = "Phosphor\bin\Debug\net8.0-windows\presets"
           Expand-Archive -Path "dependencies\projectM\ProjectM_Presets_Base.zip" -DestinationPath $outputDir -Force
         shell: pwsh
 
@@ -43,9 +34,4 @@ jobs:
         with:
           name: Phosphor-Release
           path: Phosphor/bin/Release/net8.0-windows/
-
-      - name: Upload Debug artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Phosphor-Debug
-          path: Phosphor/bin/Debug/net8.0-windows/
+          retention-days: 5

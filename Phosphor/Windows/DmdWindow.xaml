@@ -20,6 +20,14 @@
         <sys:Double x:Key="QueueThumbnailWidth">38</sys:Double>
         <sys:Double x:Key="QueueThumbnailHeight">38</sys:Double>
         <sys:Double x:Key="ResultThumbnailHeight">45</sys:Double>
+        <sys:Double x:Key="NowPlayingLabelFontSize">12</sys:Double>
+        <sys:Double x:Key="NowPlayingTimeFontSize">15</sys:Double>
+        <sys:Double x:Key="NowPlayingSpeakerFontSize">11</sys:Double>
+        <sys:Double x:Key="NowPlayingVolumeWidth">90</sys:Double>
+        <sys:Double x:Key="NowPlayingSliderThumbSize">14</sys:Double>
+        <sys:Double x:Key="NowPlayingSliderThumbHoverSize">16</sys:Double>
+        <sys:Double x:Key="NowPlayingSliderTrackHeight">4</sys:Double>
+        <sys:Double x:Key="NowPlayingSliderHeight">18</sys:Double>
         <sys:Double x:Key="PlayButtonFontSize">28</sys:Double>
         <sys:Double x:Key="PlayButtonSize">52</sys:Double>
         <sys:Double x:Key="SmallButtonFontSize">16</sys:Double>
@@ -29,6 +37,57 @@
         <sys:Double x:Key="QueueHeaderFontSize">11</sys:Double>
         <sys:Double x:Key="TrackButtonFontSize">18</sys:Double>
         <Thickness x:Key="TrackButtonPadding">12,6,12,6</Thickness>
+
+        <!-- Slider style for Now Playing area with dynamic thumb/track sizing -->
+        <Style x:Key="NowPlayingSliderThumbStyle" TargetType="Thumb">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="Width" Value="{DynamicResource NowPlayingSliderThumbHoverSize}"/>
+            <Setter Property="Height" Value="{DynamicResource NowPlayingSliderThumbHoverSize}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Ellipse x:Name="ThumbEllipse" Fill="{StaticResource TextBrush}"
+                                 Width="{DynamicResource NowPlayingSliderThumbSize}"
+                                 Height="{DynamicResource NowPlayingSliderThumbSize}"/>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ThumbEllipse" Property="Fill" Value="{StaticResource AccentBrush}"/>
+                                <Setter TargetName="ThumbEllipse" Property="Width" Value="{DynamicResource NowPlayingSliderThumbHoverSize}"/>
+                                <Setter TargetName="ThumbEllipse" Property="Height" Value="{DynamicResource NowPlayingSliderThumbHoverSize}"/>
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="ThumbEllipse" Property="Fill" Value="{StaticResource Accent2Brush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="NowPlayingSliderStyle" TargetType="Slider">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="Height" Value="{DynamicResource NowPlayingSliderHeight}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid VerticalAlignment="Center" ClipToBounds="False" Margin="8,0">
+                            <Border x:Name="TrackBackground" Height="{DynamicResource NowPlayingSliderTrackHeight}" CornerRadius="2" Background="{StaticResource Surface3Brush}" Margin="0"/>
+                            <Track x:Name="PART_Track">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource SliderRepeatButtonFilled}" Command="Slider.DecreaseLarge" Height="{DynamicResource NowPlayingSliderTrackHeight}"/>
+                                </Track.DecreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Style="{StaticResource NowPlayingSliderThumbStyle}"/>
+                                </Track.Thumb>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource SliderRepeatButton}" Command="Slider.IncreaseLarge"/>
+                                </Track.IncreaseRepeatButton>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
         <DataTemplate x:Key="CategoryIconColorful">
             <emoji:TextBlock Text="{Binding Icon}" FontSize="{DynamicResource GenreIconFontSize}" HorizontalAlignment="Center"/>
@@ -705,7 +764,7 @@
                     </Grid>
                     <StackPanel x:Name="NowPlayingInfoPanel" VerticalAlignment="Center">
                         <TextBlock Text="NOW PLAYING" Foreground="{StaticResource TextDimBrush}"
-                                   FontSize="12" FontWeight="Bold" Margin="0,0,0,2"/>
+                                   FontSize="{DynamicResource NowPlayingLabelFontSize}" FontWeight="Bold" Margin="0,0,0,2"/>
                         <TextBlock Text="{Binding CurrentlyPlaying.Title, FallbackValue='Nothing playing'}"
                                    Foreground="{StaticResource Accent2Brush}" FontWeight="SemiBold"
                                    FontSize="{DynamicResource NowPlayingTitleFontSize}" TextTrimming="CharacterEllipsis"/>
@@ -722,15 +781,17 @@
                                 </Style>
                             </DockPanel.Style>
                             <TextBlock DockPanel.Dock="Right" Text="{Binding PlaybackTimeText}"
-                                       Foreground="{StaticResource TextDimBrush}" FontSize="15"
+                                       Foreground="{StaticResource TextDimBrush}" FontSize="{DynamicResource NowPlayingTimeFontSize}"
                                        VerticalAlignment="Center" Margin="8,0,0,0"/>
                             <Slider x:Name="VolumeSlider" DockPanel.Dock="Right" Minimum="0" Maximum="100"
-                                    Value="{Binding Volume}" Width="90"
+                                    Value="{Binding Volume}" Width="{DynamicResource NowPlayingVolumeWidth}"
+                                    Style="{StaticResource NowPlayingSliderStyle}"
                                     VerticalAlignment="Center" IsMoveToPointEnabled="True"/>
-                            <TextBlock Text="&#x1F50A;" DockPanel.Dock="Right" Foreground="{StaticResource TextDimBrush}" FontSize="11"
+                            <TextBlock Text="&#x1F50A;" DockPanel.Dock="Right" Foreground="{StaticResource TextDimBrush}" FontSize="{DynamicResource NowPlayingSpeakerFontSize}"
                                        VerticalAlignment="Center" Margin="8,0,2,0"/>
                             <Slider x:Name="ScrubBar" Minimum="0" Maximum="{Binding PlaybackDuration}"
                                      Value="{Binding PlaybackPosition}"
+                                     Style="{StaticResource NowPlayingSliderStyle}"
                                      VerticalAlignment="Center" IsMoveToPointEnabled="True"
                                      IsEnabled="{Binding IsPlaying}"/>
                         </DockPanel>
