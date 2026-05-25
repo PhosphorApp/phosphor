@@ -202,6 +202,13 @@ public sealed class GaplessAudioPlayer : IDisposable
         private readonly ManualResetEventSlim _queueGate = new(true);
         private volatile int _queuedChunks;
 
+        // Pin callback delegates so the GC doesn't collect them while VLC holds native pointers
+        private LibVLCSharp.Shared.MediaPlayer.LibVLCAudioPlayCb? _playCb;
+        private LibVLCSharp.Shared.MediaPlayer.LibVLCAudioPauseCb? _pauseCb;
+        private LibVLCSharp.Shared.MediaPlayer.LibVLCAudioResumeCb? _resumeCb;
+        private LibVLCSharp.Shared.MediaPlayer.LibVLCAudioFlushCb? _flushCb;
+        private LibVLCSharp.Shared.MediaPlayer.LibVLCAudioDrainCb? _drainCb;
+
         public long DrainedMs
         {
             get
@@ -224,13 +231,23 @@ public sealed class GaplessAudioPlayer : IDisposable
             Stop();
             IsFinished = false;
             IsStarted = true;
+            _loggedFirstCallback = false;
             Interlocked.Exchange(ref _drainedSamples, 0);
             Interlocked.Exchange(ref _durationMs, 0);
 
             var player = new MediaPlayer(_libVLC);
 
+            // Pin delegates to prevent GC collection (VLC holds native pointers to these)
+            _playCb = OnAudioPlay;
+            _pauseCb = OnAudioPause;
+            _resumeCb = OnAudioResume;
+            _flushCb = OnAudioFlush;
+            _drainCb = OnAudioDrain;
+
             player.SetAudioFormat("FL32", SampleRate, Channels);
-            player.SetAudioCallbacks(OnAudioPlay, OnAudioPause, OnAudioResume, OnAudioFlush, OnAudioDrain);
+            player.SetAudioCallbacks(_playCb, _pauseCb, _resumeCb, _flushCb, _drainCb);
+
+            DebugLog.Log("GaplessPCM", $"Decoder {Name} starting: {streamUri}");
 
             player.EndReached += OnEndReached;
             player.LengthChanged += OnLengthChanged;
@@ -294,11 +311,22 @@ public sealed class GaplessAudioPlayer : IDisposable
                 _queueGate.Set();
         }
 
+        private volatile bool _loggedFirstCallback;
+
         private void OnAudioPlay(IntPtr data, IntPtr samples, uint count, long pts)
         {
             int totalFloats = (int)count * Channels;
             var buffer = new float[totalFloats];
             Marshal.Copy(samples, buffer, 0, totalFloats);
+
+            if (!_loggedFirstCallback && totalFloats > 0)
+            {
+                _loggedFirstCallback = true;
+                float peak = 0;
+                for (int i = 0; i < Math.Min(totalFloats, 100); i++)
+                    peak = Math.Max(peak, Math.Abs(buffer[i]));
+                DebugLog.Log("GaplessPCM", $"Decoder {Name} first callback: count={count} totalFloats={totalFloats} peakSample={peak:F6} pts={pts}");
+            }
 
             if (Interlocked.Increment(ref _queuedChunks) >= MaxQueuedChunks)
             {
