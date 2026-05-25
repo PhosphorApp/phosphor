@@ -197,6 +197,7 @@ public sealed class GaplessAudioPlayer : IDisposable
         public ConcurrentQueue<float[]> Queue { get; } = new();
         public volatile bool IsFinished;
         public volatile bool IsStarted;
+        public bool DrainSignaled => _drainSignaled;
         private long _drainedSamples;
         private long _durationMs;
         private MediaPlayer? _player;
@@ -234,6 +235,7 @@ public sealed class GaplessAudioPlayer : IDisposable
             Stop();
             IsFinished = false;
             IsStarted = true;
+            _drainSignaled = false;
             _callbackLogCount = 0;
             Interlocked.Exchange(ref _drainedSamples, 0);
             Interlocked.Exchange(ref _durationMs, 0);
@@ -353,8 +355,20 @@ public sealed class GaplessAudioPlayer : IDisposable
         private void OnAudioPause(IntPtr data, long pts) { }
         private void OnAudioResume(IntPtr data, long pts) { }
 
+        private volatile bool _drainSignaled;
+
         private void OnAudioFlush(IntPtr data, long pts)
         {
+            // VLC calls Flush at end-of-stream right after Drain — this would
+            // throw away the final ~2 seconds of buffered PCM. Ignore flushes
+            // that occur after drain; they're the EOS teardown, not a real
+            // seek/reset where we'd want to discard buffered audio.
+            if (_drainSignaled)
+            {
+                DebugLog.Log("GaplessPCM", $"Decoder {Name} ignoring post-drain flush (preserving {_queuedChunks} buffered chunks)");
+                return;
+            }
+
             DebugLog.Log("GaplessPCM", $"Decoder {Name} OnAudioFlush (queue had {_queuedChunks} chunks)");
             while (Queue.TryDequeue(out _)) { }
             _queuedChunks = 0;
@@ -364,24 +378,16 @@ public sealed class GaplessAudioPlayer : IDisposable
         private void OnAudioDrain(IntPtr data)
         {
             DebugLog.Log("GaplessPCM", $"Decoder {Name} OnAudioDrain (queue has {_queuedChunks} chunks)");
-            IsFinished = true;
+            _drainSignaled = true;
+            // Don't set IsFinished here — wait until the mixer has drained our
+            // queue. The mixer detects empty-queue + drain to switch tracks.
         }
 
         private void OnEndReached(object? sender, EventArgs e)
         {
-            DebugLog.Log("GaplessPCM", $"Decoder {Name} EndReached (queue has {_queuedChunks} chunks)");
-            // Do NOT set IsFinished here — wait for OnAudioDrain so buffered samples
-            // get played out instead of being treated as end-of-stream by the mixer.
-            // If drain doesn't fire within a reasonable time, mark finished as a fallback.
-            Task.Run(async () =>
-            {
-                await Task.Delay(500);
-                if (!IsFinished)
-                {
-                    DebugLog.Log("GaplessPCM", $"Decoder {Name} drain timeout — marking finished");
-                    IsFinished = true;
-                }
-            });
+            DebugLog.Log("GaplessPCM", $"Decoder {Name} EndReached (queue has {_queuedChunks} chunks, drained={_drainSignaled})");
+            // Don't set IsFinished here either — wait for the mixer to fully
+            // drain the queue before declaring this decoder finished.
         }
 
         private void OnLengthChanged(object? sender, MediaPlayerLengthChangedEventArgs e)
@@ -445,8 +451,11 @@ public sealed class GaplessAudioPlayer : IDisposable
                 }
 
                 // Active queue is empty
-                if (_owner._activeDecoder.IsFinished)
+                if (_owner._activeDecoder.IsFinished || _owner._activeDecoder.DrainSignaled)
                 {
+                    // Mark finished so subsequent reads short-circuit
+                    _owner._activeDecoder.IsFinished = true;
+
                     if (_owner.TryAdvanceToNext())
                     {
                         _currentChunk = null;
