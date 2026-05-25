@@ -6,6 +6,7 @@ using System.Windows.Threading;
 using LibVLCSharp.Shared;
 using YoutubeExplode;
 using YoutubeExplode.Videos.Streams;
+using Phosphor.Audio;
 using WpfMedia = System.Windows.Media;
 using WpfColor = System.Windows.Media.Color;
 using WpfPoint = System.Windows.Point;
@@ -54,6 +55,10 @@ public partial class BackglassWindow : JukeboxWindow
     private MediaPlayer? _nextMediaPlayer;
     private string? _nextGaplessVideoId;
     private bool _gaplessPrimed;
+
+    // ── PCM gapless playback ──
+    private GaplessAudioPlayer? _gaplessPlayer;
+    private bool _usingGaplessPlayer;
 
     public MediaPlayer MediaPlayer => EnsureVlcInitialized();
 
@@ -289,39 +294,67 @@ public partial class BackglassWindow : JukeboxWindow
         vm.PlayRequested += OnPlayRequested;
         vm.StopRequested += OnStopRequested;
         vm.SeekRequested += OnSeekRequested;
-        vm.PauseRequested += () => Dispatcher.BeginInvoke(() => EnsureVlcInitialized().SetPause(true));
-        vm.ResumeRequested += () => Dispatcher.BeginInvoke(() => EnsureVlcInitialized().SetPause(false));
+        vm.PauseRequested += () => Dispatcher.BeginInvoke(() =>
+        {
+            if (_usingGaplessPlayer && _gaplessPlayer != null)
+                _gaplessPlayer.Pause();
+            else
+                EnsureVlcInitialized().SetPause(true);
+        });
+        vm.ResumeRequested += () => Dispatcher.BeginInvoke(() =>
+        {
+            if (_usingGaplessPlayer && _gaplessPlayer != null)
+                _gaplessPlayer.Resume();
+            else
+                EnsureVlcInitialized().SetPause(false);
+        });
         vm.VolumeChanged += v => Dispatcher.BeginInvoke(() =>
         {
+            if (_usingGaplessPlayer && _gaplessPlayer != null)
+                _gaplessPlayer.SetVolume(v);
             EnsureVlcInitialized().Volume = v;
-            DebugLog.Log("Volume", $"VLC volume set to {v}");
+            DebugLog.Log("Volume", $"Volume set to {v}");
         });
 
         _positionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _positionTimer.Tick += (_, _) =>
         {
-            if (_mediaPlayer == null) return;
-            if (DataContext is JukeboxViewModel v && !v.IsSeeking)
+            if (DataContext is not JukeboxViewModel v || v.IsSeeking) return;
+
+            // PCM gapless mode
+            if (_usingGaplessPlayer && _gaplessPlayer != null)
             {
-                v.PlaybackDuration = Math.Max(1, _mediaPlayer.Length);
-                v.PlaybackPosition = Math.Max(0, _mediaPlayer.Time);
+                v.PlaybackDuration = Math.Max(1, _gaplessPlayer.DurationMs);
+                v.PlaybackPosition = Math.Max(0, _gaplessPlayer.PositionMs);
 
-                // Prefetch next track when within 30 seconds of the end
-                var remaining = _mediaPlayer.Length - _mediaPlayer.Time;
-                if (_mediaPlayer.Length > 0 && remaining > 0 && remaining <= 30_000)
-                    v.PrefetchNextTrack();
-
-                // Gapless: prime the next audio-only Plex track ~5 seconds before end
-                if (_mediaPlayer.Length > 0 && remaining > 0 && remaining <= 5_000 && !_gaplessPrimed)
+                // Prime next track ~10 seconds before end
+                var remaining = _gaplessPlayer.DurationMs - _gaplessPlayer.PositionMs;
+                if (_gaplessPlayer.DurationMs > 0 && remaining > 0 && remaining <= 10_000 && !_gaplessPrimed)
                     PrepareGaplessNext(v);
+                return;
             }
+
+            if (_mediaPlayer == null) return;
+            v.PlaybackDuration = Math.Max(1, _mediaPlayer.Length);
+            v.PlaybackPosition = Math.Max(0, _mediaPlayer.Time);
+
+            // Prefetch next track when within 30 seconds of the end
+            var remaining2 = _mediaPlayer.Length - _mediaPlayer.Time;
+            if (_mediaPlayer.Length > 0 && remaining2 > 0 && remaining2 <= 30_000)
+                v.PrefetchNextTrack();
+
+            // Gapless: prime the next audio-only Plex track ~5 seconds before end
+            if (_mediaPlayer.Length > 0 && remaining2 > 0 && remaining2 <= 5_000 && !_gaplessPrimed)
+                PrepareGaplessNext(v);
         };
     }
 
     public void SetAudioOnly(bool audioOnly) => _audioOnly = audioOnly;
 
     /// <summary>
-    /// Pre-loads the next Plex audio-only track on a secondary MediaPlayer for gapless transition.
+    /// Pre-loads the next Plex audio-only track for gapless transition.
+    /// Uses the PCM queue player when in gapless PCM mode, otherwise falls back
+    /// to the legacy dual-MediaPlayer approach.
     /// </summary>
     private void PrepareGaplessNext(JukeboxViewModel vm)
     {
@@ -332,7 +365,14 @@ public partial class BackglassWindow : JukeboxWindow
         _gaplessPrimed = true;
         _nextGaplessVideoId = nextTrack.VideoId;
 
-        // Dispose any previously prepared next player
+        // PCM gapless mode: prime on the idle decoder
+        if (_usingGaplessPlayer && _gaplessPlayer != null)
+        {
+            _gaplessPlayer.PrimeNext(new Uri(nextTrack.StreamUrl!));
+            return;
+        }
+
+        // Legacy dual-MediaPlayer approach
         var oldNext = _nextMediaPlayer;
         if (oldNext != null)
         {
@@ -366,6 +406,55 @@ public partial class BackglassWindow : JukeboxWindow
             Task.Run(() => { try { mp.Stop(); mp.Dispose(); } catch { } });
     }
 
+    /// <summary>
+    /// Creates and wires a GaplessAudioPlayer for PCM-queue gapless playback.
+    /// </summary>
+    private GaplessAudioPlayer CreateGaplessPlayer()
+    {
+        var player = new GaplessAudioPlayer(_libVLC!);
+        player.TrackAdvanced += hasNext =>
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (DataContext is JukeboxViewModel vm && hasNext)
+                {
+                    vm.AdvanceQueueGapless();
+                    DebugLog.Log("GaplessPCM", "Track advanced via PCM queue");
+                }
+            });
+        };
+        player.PlaybackFinished += () =>
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                DebugLog.Log("GaplessPCM", "Playback finished (all tracks drained)");
+                _usingGaplessPlayer = false;
+                _positionTimer?.Stop();
+
+                if (DataContext is JukeboxViewModel vm && vm.HasNextTrack)
+                    vm.PlayNext();
+                else
+                {
+                    IdleOverlay.Visibility = Visibility.Visible;
+                    _colorTimer.Start();
+                    ResetLogoDimIdle();
+                    if (DataContext is JukeboxViewModel vm2)
+                        vm2.PlayNext(); // will set "Queue finished"
+                }
+            });
+        };
+        return player;
+    }
+
+    /// <summary>
+    /// Stops the PCM gapless player if active.
+    /// </summary>
+    private void StopGaplessPlayer()
+    {
+        _usingGaplessPlayer = false;
+        _gaplessPlayer?.Stop();
+    }
+
     private static void ApplyNetworkOptions(Media media, JukeboxViewModel? vm)
     {
         int networkCache = vm?.NetworkCachingMs ?? 2000;
@@ -391,9 +480,21 @@ public partial class BackglassWindow : JukeboxWindow
 
         // Cancel any in-flight play operation
         _playCts?.Cancel();
+        StopGaplessPlayer();
         DisposeGaplessNext();
         var cts = _playCts = new CancellationTokenSource();
         var ct = cts.Token;
+
+        // Wait for background LibVLC initialization to complete if it's still
+        // in flight (e.g. user hit play within the first few seconds of launch).
+        // Without this, the request would silently drop and leave the UI stuck
+        // showing "Playing: <title>" with nothing actually happening.
+        if (_mediaPlayer == null && _vlcInitTask != null)
+        {
+            try { await _vlcInitTask.WaitAsync(ct); }
+            catch (OperationCanceledException) { return; }
+            catch { /* fall through to null check below */ }
+        }
 
         if (_libVLC == null || _mediaPlayer == null) return;
 
@@ -458,6 +559,38 @@ public partial class BackglassWindow : JukeboxWindow
 
             // Check if this item is audio-only (e.g. Plex music track)
             bool isAudioOnly = _audioOnly || (vm?.CurrentlyPlaying?.IsAudioOnly == true);
+
+            // ── PCM gapless path for Plex audio-only tracks ──
+            if (isAudioOnly && vm?.GaplessPlayback == true
+                && vm.CurrentlyPlaying?.IsPlex == true
+                && vm.CurrentlyPlaying.StreamUrl is { } gaplessUrl)
+            {
+                _mediaPlayer.Vout -= OnVout;
+                if (_videoView != null)
+                    _videoView.Visibility = Visibility.Hidden;
+
+                // Lazily create the gapless player
+                _gaplessPlayer ??= CreateGaplessPlayer();
+                _usingGaplessPlayer = true;
+                _gaplessPrimed = false;
+                _nextGaplessVideoId = null;
+
+                // Play via PCM queue engine (blocking wait handled internally).
+                // Use the VM's volume — _mediaPlayer.Volume may be 0 or -1 if no
+                // VolumeChanged event has fired yet.
+                int vol = vm.Volume;
+                await Task.Run(() => _gaplessPlayer.Play(new Uri(gaplessUrl), vol));
+
+                if (ct.IsCancellationRequested) { _gaplessPlayer.Stop(); _usingGaplessPlayer = false; return; }
+
+                IdleOverlay.Visibility = Visibility.Visible;
+                _colorTimer.Start();
+                _positionTimer?.Start();
+                PlaybackStarted?.Invoke();
+                vm.NotifyPlaybackStarted();
+                DebugLog.Log("GaplessPCM", $"Playing via PCM queue: {vm.CurrentlyPlaying.Title}");
+                return;
+            }
 
             // Plex or other direct-stream source
             if (vm?.CurrentlyPlaying?.StreamUrl is { } streamUrl)
@@ -647,6 +780,14 @@ public partial class BackglassWindow : JukeboxWindow
     {
         Dispatcher.BeginInvoke(() =>
         {
+            // PCM gapless mode: seek via the gapless player
+            if (_usingGaplessPlayer && _gaplessPlayer != null)
+            {
+                _gaplessPlayer.Seek(timeMs);
+                DebugLog.Log("Seek", $"PCM gapless seek to {timeMs}ms");
+                return;
+            }
+
             if (_mediaPlayer == null) return;
             var length = _mediaPlayer.Length;
             var seekable = _mediaPlayer.IsSeekable;
@@ -715,6 +856,9 @@ public partial class BackglassWindow : JukeboxWindow
             _positionTimer?.Stop();
             _infoTimer?.Stop();
             VideoInfoChanged?.Invoke("");
+
+            // Stop PCM gapless player if active
+            StopGaplessPlayer();
 
             // Detach the VideoView BEFORE stopping so the WinForms HWND is
             // removed from the visual tree first — this prevents VLC's video
@@ -939,6 +1083,8 @@ public partial class BackglassWindow : JukeboxWindow
         if (_mediaPlayer != null)
             _mediaPlayer.EndReached -= OnMediaEnded;
         DisposeGaplessNext();
+        _gaplessPlayer?.Dispose();
+        _gaplessPlayer = null;
         _colorTimer.Stop();
         _positionTimer?.Stop();
         _infoTimer?.Stop();
