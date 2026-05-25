@@ -485,6 +485,17 @@ public partial class BackglassWindow : JukeboxWindow
         var cts = _playCts = new CancellationTokenSource();
         var ct = cts.Token;
 
+        // Wait for background LibVLC initialization to complete if it's still
+        // in flight (e.g. user hit play within the first few seconds of launch).
+        // Without this, the request would silently drop and leave the UI stuck
+        // showing "Playing: <title>" with nothing actually happening.
+        if (_mediaPlayer == null && _vlcInitTask != null)
+        {
+            try { await _vlcInitTask.WaitAsync(ct); }
+            catch (OperationCanceledException) { return; }
+            catch { /* fall through to null check below */ }
+        }
+
         if (_libVLC == null || _mediaPlayer == null) return;
 
         try
