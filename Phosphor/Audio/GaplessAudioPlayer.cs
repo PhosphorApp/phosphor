@@ -244,7 +244,7 @@ public sealed class GaplessAudioPlayer : IDisposable
             _flushCb = OnAudioFlush;
             _drainCb = OnAudioDrain;
 
-            player.SetAudioFormat("FL32", SampleRate, Channels);
+            player.SetAudioFormat("fl32", SampleRate, Channels);
             player.SetAudioCallbacks(_playCb, _pauseCb, _resumeCb, _flushCb, _drainCb);
 
             DebugLog.Log("GaplessPCM", $"Decoder {Name} starting: {streamUri}");
