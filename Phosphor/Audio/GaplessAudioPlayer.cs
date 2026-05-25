@@ -193,6 +193,11 @@ public sealed class GaplessAudioPlayer : IDisposable
 
     private sealed class Decoder : IDisposable
     {
+        // Max leading/trailing silence to trim per track: 4096 samples per channel
+        // (~93ms at 44.1kHz). Covers AAC priming (~48ms) and MP3 LAME priming (~25ms)
+        // without eating into legitimate fade-ins/outs.
+        private const int MaxSilenceTrimSamplesPerChannel = 4096;
+
         public string Name { get; }
         public ConcurrentQueue<float[]> Queue { get; } = new();
         public volatile bool IsFinished;
@@ -205,6 +210,14 @@ public sealed class GaplessAudioPlayer : IDisposable
         private readonly LibVLC _libVLC;
         private readonly ManualResetEventSlim _queueGate = new(true);
         private volatile int _queuedChunks;
+
+        // Silence trim state
+        private bool _seenAudio;
+        private int _leadingTrimBudgetShorts; // remaining S16 samples (interleaved) we may still trim from the head
+        private int _leadingTrimmedShorts;    // total trimmed from head, for logging
+        private long _producedFloats;         // total float samples (interleaved) ever enqueued
+        private long _playableFloatLimit = long.MaxValue; // mixer stops dequeuing once consumed >= this
+        private long _consumedFloats;         // total float samples handed to NAudio
 
         // Pin callback delegates so the GC doesn't collect them while VLC holds native pointers
         private LibVLCSharp.Shared.MediaPlayer.LibVLCAudioPlayCb? _playCb;
@@ -236,6 +249,12 @@ public sealed class GaplessAudioPlayer : IDisposable
             IsFinished = false;
             IsStarted = true;
             _drainSignaled = false;
+            _seenAudio = false;
+            _leadingTrimBudgetShorts = MaxSilenceTrimSamplesPerChannel * Channels;
+            _leadingTrimmedShorts = 0;
+            Interlocked.Exchange(ref _producedFloats, 0);
+            Interlocked.Exchange(ref _consumedFloats, 0);
+            _playableFloatLimit = long.MaxValue;
             _callbackLogCount = 0;
             Interlocked.Exchange(ref _drainedSamples, 0);
             Interlocked.Exchange(ref _durationMs, 0);
@@ -316,6 +335,23 @@ public sealed class GaplessAudioPlayer : IDisposable
                 _queueGate.Set();
         }
 
+        /// <summary>Called by the mixer with the number of float samples actually written to NAudio.</summary>
+        public void NotifyConsumed(int floatSampleCount)
+        {
+            Interlocked.Add(ref _consumedFloats, floatSampleCount);
+        }
+
+        /// <summary>
+        /// True once drain has been signaled and the mixer has consumed all
+        /// non-silent (trimmed) samples. Indicates the track is musically done.
+        /// </summary>
+        public bool ReachedPlayableEnd =>
+            _drainSignaled && Interlocked.Read(ref _consumedFloats) >= _playableFloatLimit;
+
+        /// <summary>Remaining playable float samples (interleaved) the mixer should still drain.</summary>
+        public long RemainingPlayableFloats =>
+            Math.Max(0, _playableFloatLimit - Interlocked.Read(ref _consumedFloats));
+
         private volatile int _callbackLogCount;
 
         private void OnAudioPlay(IntPtr data, IntPtr samples, uint count, long pts)
@@ -325,22 +361,56 @@ public sealed class GaplessAudioPlayer : IDisposable
             var shortBuffer = new short[totalShorts];
             Marshal.Copy(samples, shortBuffer, 0, totalShorts);
 
+            // Leading silence trim: drop bit-exact zero samples from the head of the
+            // first chunks (AAC/MP3 encoder priming). Cap by _leadingTrimBudgetShorts
+            // so legitimate quiet intros aren't eaten.
+            int startOffset = 0;
+            if (!_seenAudio && _leadingTrimBudgetShorts > 0)
+            {
+                int maxScan = Math.Min(totalShorts, _leadingTrimBudgetShorts);
+                while (startOffset < maxScan && shortBuffer[startOffset] == 0)
+                    startOffset++;
+
+                _leadingTrimBudgetShorts -= startOffset;
+                _leadingTrimmedShorts += startOffset;
+
+                if (startOffset < totalShorts)
+                {
+                    _seenAudio = true;
+                    if (_leadingTrimmedShorts > 0)
+                        DebugLog.Log("GaplessPCM", $"Decoder {Name} trimmed {_leadingTrimmedShorts / Channels} leading silent samples ({_leadingTrimmedShorts * 1000L / (SampleRate * Channels)}ms)");
+                }
+                else if (_leadingTrimBudgetShorts <= 0)
+                {
+                    // Budget exhausted without finding audio — stop trimming
+                    _seenAudio = true;
+                    DebugLog.Log("GaplessPCM", $"Decoder {Name} leading trim budget exhausted at {_leadingTrimmedShorts / Channels} samples");
+                }
+            }
+
+            // Align startOffset to a channel boundary so we don't swap L/R
+            startOffset -= startOffset % Channels;
+
+            int usableShorts = totalShorts - startOffset;
+            if (usableShorts <= 0)
+                return; // entire chunk was trimmed
+
             // Convert to float32 [-1.0, 1.0] for NAudio
-            var buffer = new float[totalShorts];
+            var buffer = new float[usableShorts];
             const float scale = 1.0f / 32768.0f;
-            for (int i = 0; i < totalShorts; i++)
-                buffer[i] = shortBuffer[i] * scale;
+            for (int i = 0; i < usableShorts; i++)
+                buffer[i] = shortBuffer[startOffset + i] * scale;
 
             if (_callbackLogCount < 3)
             {
                 int n = Interlocked.Increment(ref _callbackLogCount);
                 float peak = 0;
-                for (int i = 0; i < totalShorts; i++)
+                for (int i = 0; i < usableShorts; i++)
                 {
                     float v = Math.Abs(buffer[i]);
                     if (v > peak) peak = v;
                 }
-                DebugLog.Log("GaplessPCM", $"Decoder {Name} cb#{n}: count={count} peak={peak:F4} s16[0]={shortBuffer[0]} s16[1]={shortBuffer[1]}");
+                DebugLog.Log("GaplessPCM", $"Decoder {Name} cb#{n}: count={count} peak={peak:F4} s16[0]={shortBuffer[startOffset]} s16[1]={(usableShorts > 1 ? shortBuffer[startOffset + 1] : (short)0)}");
             }
 
             if (Interlocked.Increment(ref _queuedChunks) >= MaxQueuedChunks)
@@ -349,6 +419,7 @@ public sealed class GaplessAudioPlayer : IDisposable
                 _queueGate.Wait(1000);
             }
 
+            Interlocked.Add(ref _producedFloats, usableShorts);
             Queue.Enqueue(buffer);
         }
 
@@ -378,6 +449,35 @@ public sealed class GaplessAudioPlayer : IDisposable
         private void OnAudioDrain(IntPtr data)
         {
             DebugLog.Log("GaplessPCM", $"Decoder {Name} OnAudioDrain (queue has {_queuedChunks} chunks)");
+
+            // Compute trailing silence trim: snapshot the queue (no more chunks will be
+            // enqueued after drain), walk from the tail counting bit-exact zero floats,
+            // and set the playable limit so the mixer stops consuming before that point.
+            // Capped by MaxSilenceTrimSamplesPerChannel to protect legitimate fade-outs.
+            var snapshot = Queue.ToArray();
+            long maxTrimFloats = (long)MaxSilenceTrimSamplesPerChannel * Channels;
+            long trailingZeroFloats = 0;
+            for (int i = snapshot.Length - 1; i >= 0 && trailingZeroFloats < maxTrimFloats; i--)
+            {
+                var chunk = snapshot[i];
+                int j = chunk.Length - 1;
+                while (j >= 0 && chunk[j] == 0f && trailingZeroFloats < maxTrimFloats)
+                {
+                    trailingZeroFloats++;
+                    j--;
+                }
+                if (j >= 0) break; // hit a non-zero sample in this chunk
+            }
+
+            // Align to channel boundary so we don't truncate one channel of a stereo pair
+            trailingZeroFloats -= trailingZeroFloats % Channels;
+
+            long produced = Interlocked.Read(ref _producedFloats);
+            _playableFloatLimit = produced - trailingZeroFloats;
+
+            if (trailingZeroFloats > 0)
+                DebugLog.Log("GaplessPCM", $"Decoder {Name} trimming {trailingZeroFloats / Channels} trailing silent samples ({trailingZeroFloats * 1000L / (SampleRate * Channels)}ms)");
+
             _drainSignaled = true;
             // Don't set IsFinished here — wait until the mixer has drained our
             // queue. The mixer detects empty-queue + drain to switch tracks.
@@ -426,15 +526,43 @@ public sealed class GaplessAudioPlayer : IDisposable
 
             while (floatsWritten < floatsNeeded)
             {
+                // If we've consumed all the playable (non-trailing-silence) samples,
+                // treat the track as done even if the queue still has zero-samples.
+                if (_owner._activeDecoder.ReachedPlayableEnd && _currentChunk == null)
+                {
+                    _owner._activeDecoder.IsFinished = true;
+
+                    if (_owner.TryAdvanceToNext())
+                    {
+                        _currentChunk = null;
+                        _currentOffset = 0;
+                        continue;
+                    }
+
+                    floatSpan.Slice(floatsWritten).Clear();
+                    ApplyVolume(floatSpan.Slice(writeStart, floatsWritten - writeStart));
+                    return 0;
+                }
+
                 if (_currentChunk != null && _currentOffset < _currentChunk.Length)
                 {
                     int available = _currentChunk.Length - _currentOffset;
                     int toCopy = Math.Min(available, floatsNeeded - floatsWritten);
-                    _currentChunk.AsSpan(_currentOffset, toCopy).CopyTo(floatSpan.Slice(floatsWritten));
-                    floatsWritten += toCopy;
-                    _currentOffset += toCopy;
 
-                    if (_currentOffset >= _currentChunk.Length)
+                    // Clamp to remaining playable samples (trailing-silence trim)
+                    long remainingPlayable = _owner._activeDecoder.RemainingPlayableFloats;
+                    if (remainingPlayable < toCopy)
+                        toCopy = (int)remainingPlayable;
+
+                    if (toCopy > 0)
+                    {
+                        _currentChunk.AsSpan(_currentOffset, toCopy).CopyTo(floatSpan.Slice(floatsWritten));
+                        floatsWritten += toCopy;
+                        _currentOffset += toCopy;
+                        _owner._activeDecoder.NotifyConsumed(toCopy);
+                    }
+
+                    if (_currentOffset >= _currentChunk.Length || toCopy == 0)
                     {
                         _owner._activeDecoder.NotifyDrained(_currentChunk.Length);
                         _currentChunk = null;
