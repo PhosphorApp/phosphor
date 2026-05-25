@@ -83,7 +83,8 @@ public sealed class GaplessAudioPlayer : IDisposable
 
         _output = new WasapiOut(NAudio.CoreAudioApi.AudioClientShareMode.Shared, 50);
         _output.Init(_mixer);
-        _output.Volume = _volume;
+        // NOTE: do NOT set _output.Volume — that writes to Windows' per-app mixer slider.
+        // Volume is applied in GaplessMixer.Read() via _volume instead.
         _output.PlaybackStopped += OnOutputStopped;
         _output.Play();
         _isPaused = false;
@@ -107,8 +108,7 @@ public sealed class GaplessAudioPlayer : IDisposable
     public void SetVolume(int volumePercent)
     {
         _volume = Math.Clamp(volumePercent / 100f, 0f, 1f);
-        if (_output != null)
-            _output.Volume = _volume;
+        // Volume is applied per-sample in GaplessMixer.Read()
     }
 
     public void Pause()
@@ -352,17 +352,33 @@ public sealed class GaplessAudioPlayer : IDisposable
 
         private void OnAudioFlush(IntPtr data, long pts)
         {
+            DebugLog.Log("GaplessPCM", $"Decoder {Name} OnAudioFlush (queue had {_queuedChunks} chunks)");
             while (Queue.TryDequeue(out _)) { }
             _queuedChunks = 0;
             _queueGate.Set();
         }
 
-        private void OnAudioDrain(IntPtr data) { }
+        private void OnAudioDrain(IntPtr data)
+        {
+            DebugLog.Log("GaplessPCM", $"Decoder {Name} OnAudioDrain (queue has {_queuedChunks} chunks)");
+            IsFinished = true;
+        }
 
         private void OnEndReached(object? sender, EventArgs e)
         {
-            DebugLog.Log("GaplessPCM", $"Decoder {Name} EndReached");
-            IsFinished = true;
+            DebugLog.Log("GaplessPCM", $"Decoder {Name} EndReached (queue has {_queuedChunks} chunks)");
+            // Do NOT set IsFinished here — wait for OnAudioDrain so buffered samples
+            // get played out instead of being treated as end-of-stream by the mixer.
+            // If drain doesn't fire within a reasonable time, mark finished as a fallback.
+            Task.Run(async () =>
+            {
+                await Task.Delay(500);
+                if (!IsFinished)
+                {
+                    DebugLog.Log("GaplessPCM", $"Decoder {Name} drain timeout — marking finished");
+                    IsFinished = true;
+                }
+            });
         }
 
         private void OnLengthChanged(object? sender, MediaPlayerLengthChangedEventArgs e)
@@ -397,6 +413,7 @@ public sealed class GaplessAudioPlayer : IDisposable
             var floatSpan = MemoryMarshal.Cast<byte, float>(buffer.AsSpan(offset, count));
             int floatsNeeded = floatSpan.Length;
             int floatsWritten = 0;
+            int writeStart = floatsWritten;
 
             while (floatsWritten < floatsNeeded)
             {
@@ -436,6 +453,7 @@ public sealed class GaplessAudioPlayer : IDisposable
 
                     // Nothing more to play
                     floatSpan.Slice(floatsWritten).Clear();
+                    ApplyVolume(floatSpan.Slice(writeStart, floatsWritten - writeStart));
                     return 0;
                 }
 
@@ -445,7 +463,16 @@ public sealed class GaplessAudioPlayer : IDisposable
                 floatsWritten += remaining;
             }
 
+            ApplyVolume(floatSpan);
             return floatsWritten * sizeof(float);
+        }
+
+        private void ApplyVolume(Span<float> samples)
+        {
+            float vol = _owner._volume;
+            if (vol >= 0.999f) return;
+            for (int i = 0; i < samples.Length; i++)
+                samples[i] *= vol;
         }
     }
 }
