@@ -70,7 +70,10 @@ public sealed class GaplessAudioPlayer : IDisposable
     {
         Stop();
 
+        // Guard against zero/negative volume passed in before the user has changed it
+        if (volumePercent <= 0) volumePercent = 100;
         _volume = Math.Clamp(volumePercent / 100f, 0f, 1f);
+        DebugLog.Log("GaplessPCM", $"Play: volume={volumePercent} ({_volume:F2})");
         _activeDecoder = _decoderA;
         _pendingDecoder = _decoderB;
         _activeDecoder.Reset();

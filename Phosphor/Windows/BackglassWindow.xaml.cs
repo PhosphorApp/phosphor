@@ -564,8 +564,11 @@ public partial class BackglassWindow : JukeboxWindow
                 _gaplessPrimed = false;
                 _nextGaplessVideoId = null;
 
-                // Play via PCM queue engine (blocking wait handled internally)
-                await Task.Run(() => _gaplessPlayer.Play(new Uri(gaplessUrl), _mediaPlayer.Volume));
+                // Play via PCM queue engine (blocking wait handled internally).
+                // Use the VM's volume — _mediaPlayer.Volume may be 0 or -1 if no
+                // VolumeChanged event has fired yet.
+                int vol = vm.Volume;
+                await Task.Run(() => _gaplessPlayer.Play(new Uri(gaplessUrl), vol));
 
                 if (ct.IsCancellationRequested) { _gaplessPlayer.Stop(); _usingGaplessPlayer = false; return; }
 
