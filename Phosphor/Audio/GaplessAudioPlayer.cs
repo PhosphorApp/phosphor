@@ -244,7 +244,7 @@ public sealed class GaplessAudioPlayer : IDisposable
             _flushCb = OnAudioFlush;
             _drainCb = OnAudioDrain;
 
-            player.SetAudioFormat("F32N", SampleRate, Channels);
+            player.SetAudioFormat("S16N", SampleRate, Channels);
             player.SetAudioCallbacks(_playCb, _pauseCb, _resumeCb, _flushCb, _drainCb);
 
             DebugLog.Log("GaplessPCM", $"Decoder {Name} starting: {streamUri}");
@@ -315,22 +315,27 @@ public sealed class GaplessAudioPlayer : IDisposable
 
         private void OnAudioPlay(IntPtr data, IntPtr samples, uint count, long pts)
         {
-            int totalFloats = (int)count * Channels;
-            var buffer = new float[totalFloats];
-            Marshal.Copy(samples, buffer, 0, totalFloats);
+            // VLC delivers S16N: signed 16-bit native-endian samples, interleaved
+            int totalShorts = (int)count * Channels;
+            var shortBuffer = new short[totalShorts];
+            Marshal.Copy(samples, shortBuffer, 0, totalShorts);
 
-            if (_callbackLogCount < 5)
+            // Convert to float32 [-1.0, 1.0] for NAudio
+            var buffer = new float[totalShorts];
+            const float scale = 1.0f / 32768.0f;
+            for (int i = 0; i < totalShorts; i++)
+                buffer[i] = shortBuffer[i] * scale;
+
+            if (_callbackLogCount < 3)
             {
                 int n = Interlocked.Increment(ref _callbackLogCount);
                 float peak = 0;
-                int nonZero = 0;
-                for (int i = 0; i < totalFloats; i++)
+                for (int i = 0; i < totalShorts; i++)
                 {
                     float v = Math.Abs(buffer[i]);
                     if (v > peak) peak = v;
-                    if (v > 0.0001f) nonZero++;
                 }
-                DebugLog.Log("GaplessPCM", $"Decoder {Name} cb#{n}: count={count} peak={peak:F6} nonZero={nonZero}/{totalFloats} s[0]={buffer[0]:F6} s[1]={buffer[1]:F6} s[2]={buffer[2]:F6} s[3]={buffer[3]:F6}");
+                DebugLog.Log("GaplessPCM", $"Decoder {Name} cb#{n}: count={count} peak={peak:F4} s16[0]={shortBuffer[0]} s16[1]={shortBuffer[1]}");
             }
 
             if (Interlocked.Increment(ref _queuedChunks) >= MaxQueuedChunks)
