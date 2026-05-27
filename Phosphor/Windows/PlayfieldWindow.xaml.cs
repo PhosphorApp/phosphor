@@ -262,9 +262,10 @@ public partial class PlayfieldWindow : JukeboxWindow
 
                 BlobColorBandChanged?.Invoke(modeAnalysis);
 
-                // Pattern-specific pulse (e.g. Matrix trail flash) fires on every
-                // dominant color change, independent of the blob pulse setting.
-                _currentPattern?.PulseDominantColor(modeBand);
+                // Pattern-specific pulse (e.g. Matrix trail flash) — only when
+                // the "Pulse dominant blobs" setting is enabled.
+                if (_pulseDominantBlobs)
+                    _currentPattern?.PulseDominantColor(modeBand);
 
                 if (_pulseDominantBlobs && (now - _lastPulseTime).TotalMilliseconds > 6000)
                 {
