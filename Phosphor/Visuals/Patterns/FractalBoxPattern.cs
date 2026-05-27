@@ -105,10 +105,10 @@ public sealed class FractalBoxPattern : BlobPatternBase
         scale = Math.Min(scale, 1.4);
 
         var dur = TimeSpan.FromMilliseconds(reactiveSpeedMs);
-        var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
 
         // Single canvas-level blur — one GPU shader pass regardless of blob count.
         // Blur peaks when scale is highest (on beat), giving a nice glow-pulse effect.
+        // We keep BeginAnimation here because it's one animation per canvas (not per blob).
         if (blurRadius > 0.5)
         {
             if (_canvas.Effect is not BlurEffect canvasBlur)
@@ -117,7 +117,7 @@ public sealed class FractalBoxPattern : BlobPatternBase
                 _canvas.Effect = canvasBlur;
             }
             canvasBlur.BeginAnimation(BlurEffect.RadiusProperty,
-                new DoubleAnimation(blurRadius, dur) { EasingFunction = ease });
+                new DoubleAnimation(blurRadius, dur) { EasingFunction = _reactiveEase });
         }
         else if (_canvas.Effect is BlurEffect)
         {
@@ -129,18 +129,35 @@ public sealed class FractalBoxPattern : BlobPatternBase
             var blob = _blobs[i];
             blob.Opacity = baseIntensity + intensity * 0.25;
 
-            // Pulse scale via the ScaleTransform in the TransformGroup
-            if (blob.RenderTransform is TransformGroup tg)
+            // Direct scale assignment — avoids 2 DoubleAnimation allocs per blob per tick.
+            // Use the cached ScaleTransform if available; otherwise scan the TransformGroup once.
+            ScaleTransform? st = null;
+            if (i < _states.Count && _states[i].CachedScaleTransform != null)
+            {
+                st = _states[i].CachedScaleTransform;
+            }
+            else if (blob.RenderTransform is TransformGroup tg)
             {
                 for (int c = 0; c < tg.Children.Count; c++)
                 {
-                    if (tg.Children[c] is ScaleTransform st)
+                    if (tg.Children[c] is ScaleTransform found)
                     {
-                        st.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(scale, dur) { EasingFunction = ease });
-                        st.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(scale, dur) { EasingFunction = ease });
+                        st = found;
+                        if (i < _states.Count) _states[i].CachedScaleTransform = found;
                         break;
                     }
                 }
+            }
+
+            if (st != null)
+            {
+                if (st.HasAnimatedProperties)
+                {
+                    st.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                    st.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                }
+                st.ScaleX = scale;
+                st.ScaleY = scale;
             }
         }
     }

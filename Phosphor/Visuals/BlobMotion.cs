@@ -51,6 +51,8 @@ public class BlobState
     public double SelfSpinRate { get; set; }
     /// <summary>Cached RotateTransform reference to avoid searching TransformGroup each tick.</summary>
     public System.Windows.Media.RotateTransform? CachedRotateTransform { get; set; }
+    /// <summary>Cached ScaleTransform reference to avoid searching TransformGroup each tick.</summary>
+    public System.Windows.Media.ScaleTransform? CachedScaleTransform { get; set; }
 }
 
 /// <summary>

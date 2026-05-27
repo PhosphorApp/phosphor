@@ -115,7 +115,7 @@ public abstract class BlobPatternBase : IBlobPattern
 
     // Cached easing function for audio reactive animations (avoids allocation per tick).
     // Frozen so it can be shared across threads (multiple windows on different dispatchers).
-    private static readonly QuadraticEase _reactiveEase = CreateFrozenEase();
+    protected static readonly QuadraticEase _reactiveEase = CreateFrozenEase();
     private static QuadraticEase CreateFrozenEase()
     {
         var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
@@ -129,12 +129,17 @@ public abstract class BlobPatternBase : IBlobPattern
         if (_disposed || _blobs.Count == 0) return;
 
         float intensity = Math.Clamp(data.Bass * 1.5f + (data.IsBeat ? 0.25f : 0f), 0f, 1f);
-        var dur = TimeSpan.FromMilliseconds(reactiveSpeedMs);
 
         double scale = 1.0 + data.Bass * 0.85;
         if (data.IsBeat) scale += 0.15;
         scale = Math.Min(scale, 1.8);
 
+        // Direct assignment instead of BeginAnimation: the audio tick fires at
+        // ~60 Hz while reactiveSpeedMs is typically 120 ms, so ~7/8 of every
+        // DoubleAnimation's frames were discarded by the next tick's replacement.
+        // Direct assignment avoids allocating 2 DoubleAnimation DependencyObjects
+        // per blob per tick (~120 allocs/tick at 60 blobs) and the associated
+        // WPF timeline/clock overhead.
         for (int i = 0; i < _blobs.Count; i++)
         {
             var blob = _blobs[i];
@@ -145,8 +150,15 @@ public abstract class BlobPatternBase : IBlobPattern
                 blob.RenderTransform = st;
             }
 
-            st.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(scale, dur) { EasingFunction = _reactiveEase });
-            st.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(scale, dur) { EasingFunction = _reactiveEase });
+            // Cancel any in-flight animation from previous code path, then assign directly.
+            // After the first tick these are no-ops (no animation running).
+            if (st.HasAnimatedProperties)
+            {
+                st.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                st.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            }
+            st.ScaleX = scale;
+            st.ScaleY = scale;
 
             // Use the blob's original base opacity to preserve per-blob variance
             // and avoid a visible dim after fly-in completes.

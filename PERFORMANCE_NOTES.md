@@ -37,36 +37,35 @@ own dispatcher thread).
   same dominant hue family by design, so flashing every visible trail is
   correct.
 
+### `BlobPatternBase.ApplyAudioReactive` — direct scale assignment
+- Audio tick fires at ~60 Hz; `ReactiveSpeedMs` defaults to 120 ms. Each tick
+  was creating 2 `DoubleAnimation` objects per blob that were replaced 16 ms
+  later — ~7/8 of frames were wasted.
+- Replaced with direct `ScaleTransform.ScaleX/Y = scale` assignment. Clears
+  any in-flight animation once via `HasAnimatedProperties` guard.
+- `FerrofluidClusterPattern` calls `base.ApplyAudioReactive` → inherits fix.
+
+### `FractalBoxPattern.ApplyAudioReactive` — ease + transform lookup
+- Replaced per-call `new QuadraticEase` with the base class's static frozen
+  `_reactiveEase` (changed from `private` to `protected`).
+- Direct `ScaleX/Y` assignment instead of per-blob `BeginAnimation`.
+- `ScaleTransform` ref cached on `BlobState.CachedScaleTransform` (new field)
+  to avoid scanning `TransformGroup.Children` every tick.
+- Canvas-level blur animation kept as `BeginAnimation` (one per canvas, not
+  per blob — acceptable).
+
 ---
 
 ## 🔴 High-impact, still open
 
-### 1. `BlobPatternBase.ApplyAudioReactive` — animation churn
-Allocates 2 fresh `DoubleAnimation` objects per blob per audio tick, plus a
-direct opacity write. With ~30–60 blobs × 2 axes × multiple windows × audio
-rate, this thrashes DPs, clocks, and timelines.
-
-**Fix idea:** assign `ScaleTransform.ScaleX/Y` directly and lerp in the
-existing render tick. Or throttle audio-reactive calls (min ~50 ms between
-calls, skip when delta < epsilon).
-
-### 2. `FractalBoxPattern.ApplyAudioReactive` — ease + transform lookup
-- Allocates a fresh `QuadraticEase` per call.
-- Linearly scans `tg.Children` for the `ScaleTransform` for every blob every
-  tick.
-
-**Fix idea:** cache a static frozen ease (like `BlobPatternBase._reactiveEase`)
-and cache the `ScaleTransform` ref on `BlobState` (next to
-`CachedRotateTransform`).
-
-### 3. `BounceSimulator.FlashBlob` — DispatcherTimer per collision
+### 1. `BounceSimulator.FlashBlob` — DispatcherTimer per collision
 Every blob-blob collision allocates a `DispatcherTimer`. Busy frames can fire
 several at once; each is a `DependencyObject` and a dispatcher queue insertion.
 
 **Fix idea:** add a `FlashUntilTicks` field to `BlobState`; let the existing
 `OnRendering` tick restore opacity when expired.
 
-### 4. `LightCycleSimulator.CheckTrailCollision` — O(cycles × segments)
+### 2. `LightCycleSimulator.CheckTrailCollision` — O(cycles × segments)
 Each alive cycle checks every segment of every cycle per frame. Segments grow
 unbounded between deaths. Dominant CPU cost in this pattern at long lifetimes.
 
