@@ -613,6 +613,8 @@ public partial class DmdWindow : JukeboxWindow
         };
         MandelbrotPattern.ColorScheme = (MandelbrotPattern.ColorSchemeKind)Math.Clamp(settings.MandelbrotColorScheme, 0, 4);
         BlobTransition.ExcludeProjectMFromRandom = settings.ExcludeProjectMFromRandom;
+        MatrixBlobPattern.ColorCycling = settings.MatrixColorCycling;
+        MatrixBlobPattern.InfiniteZoom = settings.MatrixInfiniteZoom;
         FerrofluidSimulator.CoreGravity = settings.FerrofluidCoreGravity;
         FerrofluidSimulator.MutualAttraction = settings.FerrofluidMutualAttraction;
         FerrofluidSimulator.Damping = settings.FerrofluidDamping;
@@ -1926,6 +1928,8 @@ public partial class DmdWindow : JukeboxWindow
             LogStep("Mandelbrot restart dispatched (changed)");
         }
         BlobTransition.ExcludeProjectMFromRandom = _appSettings.ExcludeProjectMFromRandom;
+        MatrixBlobPattern.ColorCycling = _appSettings.MatrixColorCycling;
+        MatrixBlobPattern.InfiniteZoom = _appSettings.MatrixInfiniteZoom;
         FerrofluidSimulator.CoreGravity = _appSettings.FerrofluidCoreGravity;
         FerrofluidSimulator.MutualAttraction = _appSettings.FerrofluidMutualAttraction;
         FerrofluidSimulator.Damping = _appSettings.FerrofluidDamping;

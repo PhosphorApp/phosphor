@@ -191,32 +191,49 @@ public partial class PlayfieldWindow : JukeboxWindow
         var gradBrushes = _currentPattern?.GradientBrushes;
         if (brushes == null || brushes.Count == 0) return;
 
-        _hueOffset += 1.0;
+        bool patternOwnsColors = _currentPattern.ManagesOwnColors;
+
+        if (!patternOwnsColors)
+            _hueOffset += 1.0;
 
         // Ensure per-blob random hue offsets exist
-        if (_blobHueOffsets.Length != brushes.Count)
+        if (!patternOwnsColors && _blobHueOffsets.Length != brushes.Count)
             _blobHueOffsets = Enumerable.Range(0, brushes.Count).Select(_ => _rng.NextDouble() * 360.0).ToArray();
 
         Span<int> bandCounts = stackalloc int[8];
         float totalBrightness = 0f;
         for (int i = 0; i < brushes.Count; i++)
         {
-            double hue = (_hueOffset + _reactiveHueBoost + _blobHueOffsets[i]) % 360.0;
-            double lightness = Math.Clamp((0.15 + _blobIntensity * 0.7) * _brightnessBoost, 0.0, 1.0);
-            var color = HslToColor(hue, 0.7, lightness);
-            brushes[i].Color = color;
-            if (gradBrushes != null && i < gradBrushes.Count)
+            if (patternOwnsColors)
             {
-                var stops = gradBrushes[i].GradientStops;
-                if (stops.Count >= 2)
-                {
-                    stops[0].Color = Color.FromArgb(255, color.R, color.G, color.B);
-                    stops[1].Color = Color.FromArgb(120, color.R, color.G, color.B);
-                }
+                // Pattern sets its own brush colors — just read them for band detection
+                var bc = brushes[i].Color;
+                double bHue = ColorToHue(bc.R, bc.G, bc.B);
+                double bSat = ColorToSaturation(bc.R, bc.G, bc.B);
+                double bLit = bc.R / 255.0 * 0.299 + bc.G / 255.0 * 0.587 + bc.B / 255.0 * 0.114;
+                var analysis = RoygbivHelper.Analyze(bHue, bSat, bLit);
+                bandCounts[(int)analysis.Color]++;
+                totalBrightness += analysis.Brightness;
             }
-            var analysis = RoygbivHelper.Analyze(hue, 0.7, lightness);
-            bandCounts[(int)analysis.Color]++;
-            totalBrightness += analysis.Brightness;
+            else
+            {
+                double hue = (_hueOffset + _reactiveHueBoost + _blobHueOffsets[i]) % 360.0;
+                double lightness = Math.Clamp((0.15 + _blobIntensity * 0.7) * _brightnessBoost, 0.0, 1.0);
+                var color = HslToColor(hue, 0.7, lightness);
+                brushes[i].Color = color;
+                if (gradBrushes != null && i < gradBrushes.Count)
+                {
+                    var stops = gradBrushes[i].GradientStops;
+                    if (stops.Count >= 2)
+                    {
+                        stops[0].Color = Color.FromArgb(255, color.R, color.G, color.B);
+                        stops[1].Color = Color.FromArgb(120, color.R, color.G, color.B);
+                    }
+                }
+                var analysis = RoygbivHelper.Analyze(hue, 0.7, lightness);
+                bandCounts[(int)analysis.Color]++;
+                totalBrightness += analysis.Brightness;
+            }
         }
 
         // Detect dominant color band (mode) across all blobs and notify on change
@@ -235,15 +252,20 @@ public partial class PlayfieldWindow : JukeboxWindow
             var modeAnalysis = new ColorAnalysis(modeBand, totalBrightness / brushes.Count);
             if (_lastColorAnalysis?.Color != modeAnalysis.Color)
             {
-                _lastColorAnalysis = modeAnalysis;
-
                 // Suppress DOF and pulse effects during the first few seconds
                 // after a pattern enters to avoid jank during fly-in animation.
                 var now = DateTime.UtcNow;
                 if ((now - _patternStartTime).TotalSeconds < 3)
                     return;
 
+                _lastColorAnalysis = modeAnalysis;
+
                 BlobColorBandChanged?.Invoke(modeAnalysis);
+
+                // Pattern-specific pulse (e.g. Matrix trail flash) fires on every
+                // dominant color change, independent of the blob pulse setting.
+                _currentPattern?.PulseDominantColor(modeBand);
+
                 if (_pulseDominantBlobs && (now - _lastPulseTime).TotalMilliseconds > 6000)
                 {
                     _lastPulseTime = now;
@@ -361,6 +383,29 @@ public partial class PlayfieldWindow : JukeboxWindow
             (byte)((r + m) * 255),
             (byte)((g + m) * 255),
             (byte)((b + m) * 255));
+    }
+
+    private static double ColorToHue(byte r, byte g, byte b)
+    {
+        double rd = r / 255.0, gd = g / 255.0, bd = b / 255.0;
+        double max = Math.Max(rd, Math.Max(gd, bd));
+        double min = Math.Min(rd, Math.Min(gd, bd));
+        double delta = max - min;
+        if (delta < 0.001) return 0;
+        double hue;
+        if (max == rd) hue = 60.0 * (((gd - bd) / delta) % 6.0);
+        else if (max == gd) hue = 60.0 * (((bd - rd) / delta) + 2.0);
+        else hue = 60.0 * (((rd - gd) / delta) + 4.0);
+        return ((hue % 360.0) + 360.0) % 360.0;
+    }
+
+    private static double ColorToSaturation(byte r, byte g, byte b)
+    {
+        double rd = r / 255.0, gd = g / 255.0, bd = b / 255.0;
+        double max = Math.Max(rd, Math.Max(gd, bd));
+        double min = Math.Min(rd, Math.Min(gd, bd));
+        if (max < 0.001) return 0;
+        return (max - min) / max;
     }
 
     public void SetScreensaverSettings(double intensity, double speed)

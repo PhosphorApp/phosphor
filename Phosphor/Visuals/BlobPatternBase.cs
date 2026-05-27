@@ -72,6 +72,17 @@ public abstract class BlobPatternBase : IBlobPattern
     protected bool _disposed;
 
     public abstract BlobPattern PatternType { get; }
+
+    /// <inheritdoc />
+    public virtual bool ManagesOwnColors => false;
+
+    /// <summary>
+    /// Pulse visual elements matching the given dominant ROYGBIV color band.
+    /// Default implementation does nothing. Patterns with color-coded elements
+    /// (e.g. Matrix trails) can override for visual emphasis synchronised with DOF.
+    /// </summary>
+    public virtual void PulseDominantColor(RoygbivColor band) { }
+
     public IReadOnlyList<FrameworkElement> Blobs => _blobs;
     public IReadOnlyList<SolidColorBrush> Brushes => _brushes;
     public IReadOnlyList<RadialGradientBrush> GradientBrushes => _gradBrushes;

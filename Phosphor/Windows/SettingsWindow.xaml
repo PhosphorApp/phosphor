@@ -757,6 +757,18 @@
                                 </StackPanel>
                             </StackPanel>
 
+                            <!-- ═══ SECTION: Matrix Tuning (visible only when any pattern is Matrix) ═══ -->
+                            <StackPanel x:Name="PanelMatrixTuning" Visibility="Collapsed">
+                                <TextBlock Text="MATRIX TUNING" FontSize="12" FontWeight="Bold"
+                                    Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
+                                <CheckBox x:Name="CbMatrixColorCycling" Content="Color cycling (each trail gets a unique cycling color)"
+                                          Foreground="{StaticResource TextBrush}" Margin="0,4,0,0"
+                                          ToolTip="When enabled, each falling column's trail uses a different cycling color instead of the classic green. Leaders remain white."/>
+                                <CheckBox x:Name="CbMatrixInfiniteZoom" Content="Infinite zoom (window slowly zooms)"
+                                          Foreground="{StaticResource TextBrush}" Margin="0,4,0,0"
+                                          ToolTip="Creates an infinite zoom-in illusion by slowly shrinking newly spawned characters while existing trails retain their original size."/>
+                            </StackPanel>
+
                             <TextBlock Text="REACTIVE ELEMENTS" FontSize="12" FontWeight="Bold"
                                 Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
                             <TextBlock Text="Send audio to visualizations for pulsing/visual feedback"

@@ -102,6 +102,10 @@ public class AppSettings
     public int MandelbrotColorScheme { get; set; }
     public bool ExcludeProjectMFromRandom { get; set; } = true;
 
+    // Matrix tuning
+    public bool MatrixColorCycling { get; set; } = true;
+    public bool MatrixInfiniteZoom { get; set; }
+
     // Ferrofluid tuning
     public double FerrofluidCoreGravity { get; set; } = 280.0;
     public double FerrofluidMutualAttraction { get; set; } = 40.0;
@@ -342,6 +346,7 @@ public enum BlobPattern
     Mandelbrot,
     ProjectM,
     FerrofluidCluster,
+    Matrix,
     RandomPerSong
 }
 

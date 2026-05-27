@@ -10,6 +10,13 @@ public interface IBlobPattern : IDisposable
     /// <summary>The concrete pattern type.</summary>
     BlobPattern PatternType { get; }
 
+    /// <summary>
+    /// When true, the pattern manages its own brush colors (e.g. Matrix rain).
+    /// The playfield should skip external colour cycling but still detect the
+    /// dominant band from the brush values the pattern sets.
+    /// </summary>
+    bool ManagesOwnColors => false;
+
     /// <summary>The visual elements owned by this pattern (available after Enter begins).</summary>
     IReadOnlyList<System.Windows.FrameworkElement> Blobs { get; }
 
@@ -39,4 +46,9 @@ public interface IBlobPattern : IDisposable
     /// <param name="baseIntensity">The window's base blob intensity / opacity.</param>
     /// <param name="reactiveSpeedMs">Animation duration in milliseconds for reactive effects.</param>
     void ApplyAudioReactive(AudioReactiveData data, double baseIntensity, double reactiveSpeedMs);
+
+    /// <summary>
+    /// Pulse visual elements whose current color matches the given dominant ROYGBIV band.
+    /// </summary>
+    void PulseDominantColor(RoygbivColor band);
 }

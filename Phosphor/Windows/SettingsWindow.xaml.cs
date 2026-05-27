@@ -477,6 +477,11 @@ public partial class SettingsWindow : JukeboxWindow
         TxtFerrofluidBristleTrebleThreshold.Text = $"{(int)(settings.FerrofluidBristleTrebleThreshold * 100)}%";
         UpdateFerrofluidTuningVisibility();
 
+        // Matrix tuning
+        CbMatrixColorCycling.IsChecked = settings.MatrixColorCycling;
+        CbMatrixInfiniteZoom.IsChecked = settings.MatrixInfiniteZoom;
+        UpdateMatrixTuningVisibility();
+
         CbReactiveBlobs.IsChecked = settings.ReactiveBlobs;
         CbReactiveProjectM.IsChecked = settings.ReactiveProjectM;
         SliderReactivityThreshold.Value = settings.ReactivityThreshold * 100;
@@ -1601,6 +1606,7 @@ public partial class SettingsWindow : JukeboxWindow
         UpdateMandelbrotTuningVisibility();
         UpdateProjectMTuningVisibility();
         UpdateFerrofluidTuningVisibility();
+        UpdateMatrixTuningVisibility();
         UpdateBlobCountSliderStates();
     }
 
@@ -1677,6 +1683,23 @@ public partial class SettingsWindow : JukeboxWindow
         }
 
         PanelFerrofluidTuning.Visibility = anyFerrofluid ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void UpdateMatrixTuningVisibility()
+    {
+        if (PanelMatrixTuning == null) return;
+
+        bool anyMatrix = false;
+        foreach (var cb in new[] { CbBlobPatternPlayfield, CbBlobPatternBackglass, CbBlobPatternTopper, CbBlobPatternDmd })
+        {
+            if (cb?.SelectedItem is string name && name == "Matrix")
+            {
+                anyMatrix = true;
+                break;
+            }
+        }
+
+        PanelMatrixTuning.Visibility = anyMatrix ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void SliderFerrofluidCoreGravity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -2165,6 +2188,8 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.FerrofluidMaxSpeed = SliderFerrofluidMaxSpeed.Value;
         _settings.FerrofluidExplosionBassThreshold = SliderFerrofluidExplosionBassThreshold.Value / 100.0;
         _settings.FerrofluidBristleTrebleThreshold = SliderFerrofluidBristleTrebleThreshold.Value / 100.0;
+        _settings.MatrixColorCycling = CbMatrixColorCycling.IsChecked == true;
+        _settings.MatrixInfiniteZoom = CbMatrixInfiniteZoom.IsChecked == true;
         _settings.ReactiveBlobs = CbReactiveBlobs.IsChecked == true;
         _settings.ReactiveProjectM = CbReactiveProjectM.IsChecked == true;
         _settings.ReactivityThreshold = SliderReactivityThreshold.Value / 100.0;

@@ -22,6 +22,7 @@ public static class BlobTransition
         BlobPattern.Mandelbrot,
         BlobPattern.ProjectM,
         BlobPattern.FerrofluidCluster,
+        BlobPattern.Matrix,
     ];
 
     /// <summary>
@@ -78,6 +79,7 @@ public static class BlobTransition
         BlobPattern.Bounce => new BounceBlobPattern(config),
         BlobPattern.FerrofluidCluster => new FerrofluidClusterPattern(config),
         BlobPattern.LightCycle => new LightCycleBlobPattern(config),
+        BlobPattern.Matrix => new MatrixBlobPattern(config),
         _ => new RandomBlobPattern(config),
     };
 }
