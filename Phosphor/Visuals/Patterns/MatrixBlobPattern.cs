@@ -120,6 +120,7 @@ public sealed class MatrixBlobPattern : BlobPatternBase
         public double DistanceSinceTrail; // pixels moved since last trail char
         public int Index;                   // index into _brushes for trail color
         public ZoomLayer? Layer;            // layer this leader currently lives on
+        public Color TrailColor;            // color locked at column spawn for all trails in this life
     }
 
     private sealed class TrailChar
@@ -257,6 +258,11 @@ public sealed class MatrixBlobPattern : BlobPatternBase
 
         col.Leader.Opacity = 1.0;
         col.Leader.Text = RandomChar().ToString();
+        // Lock the trail color for this column's entire life
+        if (ColorCycling && col.Index < _brushes.Count)
+            col.TrailColor = _brushes[col.Index].Color;
+        else
+            col.TrailColor = Color.FromRgb(0, 255, 70);
         if (InfiniteZoom && col.Leader.Effect is BlurEffect leaderBlur)
             leaderBlur.Radius = 2.5 / s;
         Canvas.SetLeft(col.Leader, col.X);
@@ -488,11 +494,11 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             lifetime *= Math.Max(0.25, scale);
         }
 
-        // Use per-column cycling color when enabled, otherwise classic green
+        // Use the column's locked trail color (set at spawn) for uniform columns
         SolidColorBrush brush;
-        if (ColorCycling && columnIndex < _brushes.Count)
+        if (ColorCycling)
         {
-            brush = new SolidColorBrush(_brushes[columnIndex].Color);
+            brush = new SolidColorBrush(col.TrailColor);
             // Not frozen — allows PulseDominantColor to animate the color
         }
         else
