@@ -537,11 +537,18 @@ public sealed class MandelbrotPattern : BlobPatternBase
         _stopwatch.Stop();
     }
 
+    public override void ResetAudioReactive(double baseIntensity)
+    {
+        if (_disposed) return;
+        _audioPaletteBoost = 0;
+        _audioBrightnessBoost = 0;
+    }
+
     public override void ApplyAudioReactive(AudioReactiveData data, double baseIntensity, double reactiveSpeedMs)
     {
         if (_disposed) return;
 
-        // Zoom speed is intentionally NOT audio-reactive — bass/beat surges made
+        // Zoom speed is intentionally NOT audio-reactive
         // the motion feel jerky and broke the smooth continuous-zoom illusion.
         // Palette rotation and brightness pulses still react to audio below.
 

@@ -92,6 +92,8 @@ public partial class TopperWindow : JukeboxWindow
 
         if (_audioReactive != null)
             _audioReactive.Updated += OnAudioUpdated;
+        else
+            _currentPattern?.ResetAudioReactive(_blobIntensity);
     }
 
     private void OnAudioUpdated(AudioReactiveData data)

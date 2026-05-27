@@ -170,6 +170,27 @@ public abstract class BlobPatternBase : IBlobPattern
         }
     }
 
+    /// <inheritdoc />
+    public virtual void ResetAudioReactive(double baseIntensity)
+    {
+        if (_disposed || _blobs.Count == 0) return;
+
+        for (int i = 0; i < _blobs.Count; i++)
+        {
+            var blob = _blobs[i];
+            if (blob.RenderTransform is ScaleTransform st)
+            {
+                st.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                st.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                st.ScaleX = 1.0;
+                st.ScaleY = 1.0;
+            }
+            blob.Opacity = i < _states.Count && _states[i].BaseOpacity > 0
+                ? _states[i].BaseOpacity
+                : baseIntensity;
+        }
+    }
+
     /// <summary>
     /// Creates blobs and their states. Subclasses can override to customize sizing,
     /// opacity, gradients, or to add extra canvas elements (trails, grids, etc.).

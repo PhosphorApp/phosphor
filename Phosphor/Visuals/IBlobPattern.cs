@@ -48,6 +48,12 @@ public interface IBlobPattern : IDisposable
     void ApplyAudioReactive(AudioReactiveData data, double baseIntensity, double reactiveSpeedMs);
 
     /// <summary>
+    /// Reset all audio-reactive visual state (scale, blur, opacity) back to defaults.
+    /// Called when reactive audio is disabled for this window.
+    /// </summary>
+    void ResetAudioReactive(double baseIntensity);
+
+    /// <summary>
     /// Pulse visual elements whose current color matches the given dominant ROYGBIV band.
     /// </summary>
     void PulseDominantColor(RoygbivColor band);

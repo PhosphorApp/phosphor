@@ -92,6 +92,17 @@ public sealed class FractalBoxPattern : BlobPatternBase
     }
 
     /// <inheritdoc />
+    public override void ResetAudioReactive(double baseIntensity)
+    {
+        base.ResetAudioReactive(baseIntensity);
+        if (_canvas.Effect is BlurEffect blur)
+        {
+            blur.BeginAnimation(BlurEffect.RadiusProperty, null);
+            blur.Radius = BaseBlurRadius;
+        }
+    }
+
+    /// <inheritdoc />
     public override void ApplyAudioReactive(AudioReactiveData data, double baseIntensity, double reactiveSpeedMs)
     {
         if (_disposed || _blobs.Count == 0) return;

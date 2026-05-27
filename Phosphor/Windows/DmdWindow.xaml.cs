@@ -688,7 +688,7 @@ public partial class DmdWindow : JukeboxWindow
         // Single creation point — SetDmdScreensaver will create blobs if enabled
         SetDmdScreensaver(settings.DmdScreensaver);
         SetDmdScreensaverDim(settings.DmdScreensaverDimEnabled, settings.DmdScreensaverDimOpacity, settings.DmdScreensaverDimTimeoutSeconds, settings.DmdScreensaverDimDarkBlobs, settings.DmdSwapTarget, settings.ApplyDefaultDmdOnSwap);
-        ApplyReactiveBlobs(settings.ReactiveBlobs);
+        ApplyReactiveBlobs(settings.ReactiveBlobsPlayfield, settings.ReactiveBlobsBackglass, settings.ReactiveBlobsTopper, settings.ReactiveBlobsDmd);
 
         // DOF color band — subscribe to playfield blob color changes
         _playfieldProxy.BlobColorBandChanged += OnPlayfieldColorBandChanged;
@@ -1585,10 +1585,11 @@ public partial class DmdWindow : JukeboxWindow
         vm.PlayNowCommand.Execute(item);
     }
 
-    private void ApplyReactiveBlobs(bool enabled)
+    private void ApplyReactiveBlobs(bool playfield, bool backglass, bool topper, bool dmd)
     {
         if (_appSettings == null) return;
-        bool needAudio = enabled || _appSettings.ReactiveProjectM;
+        bool anyEnabled = playfield || backglass || topper || dmd;
+        bool needAudio = anyEnabled || _appSettings.ReactiveProjectM;
         AudioReactiveService.ProjectMEnabled = _appSettings.ReactiveProjectM;
         if (needAudio)
         {
@@ -1600,9 +1601,9 @@ public partial class DmdWindow : JukeboxWindow
             _audioReactive.ReactivityThreshold = (float)_appSettings.ReactivityThreshold;
             _audioReactive.ReactiveSpeedMs = _appSettings.ReactiveSpeedMs;
             _audioReactive.Overdrive = (float)_appSettings.ReactiveOverdrive;
-            _playfieldProxy?.SetReactiveAudio(enabled ? _audioReactive : null);
-            _backglassProxy?.SetReactiveAudio(enabled ? _audioReactive : null);
-            _topperWindow?.SetReactiveAudio(enabled ? _audioReactive : null);
+            _playfieldProxy?.SetReactiveAudio(playfield ? _audioReactive : null);
+            _backglassProxy?.SetReactiveAudio(backglass ? _audioReactive : null);
+            _topperWindow?.SetReactiveAudio(topper ? _audioReactive : null);
         }
         else
         {
@@ -2007,7 +2008,7 @@ public partial class DmdWindow : JukeboxWindow
         if (!settingsWindow.SpeedChanged)
             SetScreensaverSettings(_appSettings.ScreensaverIntensity, _appSettings.ScreensaverSpeed);
         if (settingsWindow.ReactiveBlobsChanged)
-            ApplyReactiveBlobs(_appSettings.ReactiveBlobs);
+            ApplyReactiveBlobs(_appSettings.ReactiveBlobsPlayfield, _appSettings.ReactiveBlobsBackglass, _appSettings.ReactiveBlobsTopper, _appSettings.ReactiveBlobsDmd);
         ApplyResizable(_appSettings.ResizableWindows);
         LogStep("DMD/Queue/Resizable");
 

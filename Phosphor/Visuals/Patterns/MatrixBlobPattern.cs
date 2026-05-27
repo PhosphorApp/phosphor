@@ -634,6 +634,19 @@ public sealed class MatrixBlobPattern : BlobPatternBase
         onComplete();
     }
 
+    public override void ResetAudioReactive(double baseIntensity)
+    {
+        if (_disposed || _columns.Count == 0) return;
+        foreach (var col in _columns)
+        {
+            if (col.Leader.RenderTransform is ScaleTransform st)
+            {
+                st.ScaleX = 1.0;
+                st.ScaleY = 1.0;
+            }
+        }
+    }
+
     public override void ApplyAudioReactive(AudioReactiveData data, double baseIntensity, double reactiveSpeedMs)
     {
         if (_disposed || _columns.Count == 0) return;

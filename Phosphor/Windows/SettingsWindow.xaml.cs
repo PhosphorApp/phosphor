@@ -61,7 +61,10 @@ public partial class SettingsWindow : JukeboxWindow
     private int _originalDmdBlobCount;
     private int _originalDmdBlobSizeOffset;
     private int _originalDmdRotation;
-    private bool _originalReactiveBlobs;
+    private bool _originalReactiveBlobsPlayfield;
+    private bool _originalReactiveBlobsBackglass;
+    private bool _originalReactiveBlobsTopper;
+    private bool _originalReactiveBlobsDmd;
     private bool _originalReactiveProjectM;
     private double _originalReactivityThreshold;
     private int _originalReactiveSpeedMs;
@@ -143,7 +146,10 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.DmdRotation != _originalDmdRotation;
 
     public bool ReactiveBlobsChanged =>
-        _settings.ReactiveBlobs != _originalReactiveBlobs ||
+        _settings.ReactiveBlobsPlayfield != _originalReactiveBlobsPlayfield ||
+        _settings.ReactiveBlobsBackglass != _originalReactiveBlobsBackglass ||
+        _settings.ReactiveBlobsTopper != _originalReactiveBlobsTopper ||
+        _settings.ReactiveBlobsDmd != _originalReactiveBlobsDmd ||
         _settings.ReactiveProjectM != _originalReactiveProjectM ||
         Math.Abs(_settings.ReactivityThreshold - _originalReactivityThreshold) > 0.001 ||
         _settings.ReactiveSpeedMs != _originalReactiveSpeedMs ||
@@ -484,7 +490,10 @@ public partial class SettingsWindow : JukeboxWindow
         MatrixZoomRateValueText.Text = settings.MatrixZoomRate.ToString("F2");
         UpdateMatrixTuningVisibility();
 
-        CbReactiveBlobs.IsChecked = settings.ReactiveBlobs;
+        CbReactiveBlobsPlayfield.IsChecked = settings.ReactiveBlobsPlayfield;
+        CbReactiveBlobsBackglass.IsChecked = settings.ReactiveBlobsBackglass;
+        CbReactiveBlobsTopper.IsChecked = settings.ReactiveBlobsTopper;
+        CbReactiveBlobsDmd.IsChecked = settings.ReactiveBlobsDmd;
         CbReactiveProjectM.IsChecked = settings.ReactiveProjectM;
         SliderReactivityThreshold.Value = settings.ReactivityThreshold * 100;
         SliderReactiveSpeed.Value = settings.ReactiveSpeedMs;
@@ -676,7 +685,10 @@ public partial class SettingsWindow : JukeboxWindow
         _originalDmdBlobCount = settings.DmdBlobCount;
         _originalDmdBlobSizeOffset = settings.DmdBlobSizeOffset;
         _originalDmdRotation = settings.DmdRotation;
-        _originalReactiveBlobs = settings.ReactiveBlobs;
+        _originalReactiveBlobsPlayfield = settings.ReactiveBlobsPlayfield;
+        _originalReactiveBlobsBackglass = settings.ReactiveBlobsBackglass;
+        _originalReactiveBlobsTopper = settings.ReactiveBlobsTopper;
+        _originalReactiveBlobsDmd = settings.ReactiveBlobsDmd;
         _originalReactiveProjectM = settings.ReactiveProjectM;
         _originalReactivityThreshold = settings.ReactivityThreshold;
         _originalReactiveSpeedMs = settings.ReactiveSpeedMs;
@@ -2199,7 +2211,10 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.MatrixColorCycling = CbMatrixColorCycling.IsChecked == true;
         _settings.MatrixInfiniteZoom = CbMatrixInfiniteZoom.IsChecked == true;
         _settings.MatrixZoomRate = SliderMatrixZoomRate.Value;
-        _settings.ReactiveBlobs = CbReactiveBlobs.IsChecked == true;
+        _settings.ReactiveBlobsPlayfield = CbReactiveBlobsPlayfield.IsChecked == true;
+        _settings.ReactiveBlobsBackglass = CbReactiveBlobsBackglass.IsChecked == true;
+        _settings.ReactiveBlobsTopper = CbReactiveBlobsTopper.IsChecked == true;
+        _settings.ReactiveBlobsDmd = CbReactiveBlobsDmd.IsChecked == true;
         _settings.ReactiveProjectM = CbReactiveProjectM.IsChecked == true;
         _settings.ReactivityThreshold = SliderReactivityThreshold.Value / 100.0;
         _settings.ReactiveSpeedMs = (int)SliderReactiveSpeed.Value;
@@ -2251,7 +2266,10 @@ public partial class SettingsWindow : JukeboxWindow
         _originalDmdBlobCount = _settings.DmdBlobCount;
         _originalDmdBlobSizeOffset = _settings.DmdBlobSizeOffset;
         _originalDmdRotation = _settings.DmdRotation;
-        _originalReactiveBlobs = _settings.ReactiveBlobs;
+        _originalReactiveBlobsPlayfield = _settings.ReactiveBlobsPlayfield;
+        _originalReactiveBlobsBackglass = _settings.ReactiveBlobsBackglass;
+        _originalReactiveBlobsTopper = _settings.ReactiveBlobsTopper;
+        _originalReactiveBlobsDmd = _settings.ReactiveBlobsDmd;
         _originalReactiveProjectM = _settings.ReactiveProjectM;
         _originalReactivityThreshold = _settings.ReactivityThreshold;
         _originalReactiveSpeedMs = _settings.ReactiveSpeedMs;

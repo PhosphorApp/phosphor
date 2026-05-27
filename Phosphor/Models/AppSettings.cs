@@ -78,7 +78,10 @@ public class AppSettings
     public BlobPattern TopperBlobPattern { get; set; } = BlobPattern.Random;
     public int TopperBlobCount { get; set; } = 4;
     public int TopperBlobSizeOffset { get; set; } = 10;
-    public bool ReactiveBlobs { get; set; }
+    public bool ReactiveBlobsPlayfield { get; set; }
+    public bool ReactiveBlobsBackglass { get; set; }
+    public bool ReactiveBlobsTopper { get; set; }
+    public bool ReactiveBlobsDmd { get; set; }
     public bool ReactiveProjectM { get; set; } = true;
     public double ReactivityThreshold { get; set; } = 0.10;
     public int ReactiveSpeedMs { get; set; } = 120;
