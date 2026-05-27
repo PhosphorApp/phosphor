@@ -100,11 +100,12 @@ public sealed class FractalBoxPattern : BlobPatternBase
         double blurRadius = BaseBlurRadius + intensity * (MaxReactiveBlurRadius - BaseBlurRadius);
         if (data.IsBeat) blurRadius = Math.Min(blurRadius + 5.0, MaxReactiveBlurRadius);
 
-        double scale = 1.0 + data.Bass * 0.35;
-        if (data.IsBeat) scale += 0.08;
-        scale = Math.Min(scale, 1.4);
+        double targetScale = 1.0 + data.Bass * 0.35;
+        if (data.IsBeat) targetScale += 0.08;
+        targetScale = Math.Min(targetScale, 1.4);
 
         var dur = TimeSpan.FromMilliseconds(reactiveSpeedMs);
+        double lerpFactor = Math.Clamp(16.0 / Math.Max(1.0, reactiveSpeedMs), 0.05, 1.0);
 
         // Single canvas-level blur — one GPU shader pass regardless of blob count.
         // Blur peaks when scale is highest (on beat), giving a nice glow-pulse effect.
@@ -156,8 +157,8 @@ public sealed class FractalBoxPattern : BlobPatternBase
                     st.BeginAnimation(ScaleTransform.ScaleXProperty, null);
                     st.BeginAnimation(ScaleTransform.ScaleYProperty, null);
                 }
-                st.ScaleX = scale;
-                st.ScaleY = scale;
+                st.ScaleX += (targetScale - st.ScaleX) * lerpFactor;
+                st.ScaleY += (targetScale - st.ScaleY) * lerpFactor;
             }
         }
     }

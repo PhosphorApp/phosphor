@@ -130,16 +130,16 @@ public abstract class BlobPatternBase : IBlobPattern
 
         float intensity = Math.Clamp(data.Bass * 1.5f + (data.IsBeat ? 0.25f : 0f), 0f, 1f);
 
-        double scale = 1.0 + data.Bass * 0.85;
-        if (data.IsBeat) scale += 0.15;
-        scale = Math.Min(scale, 1.8);
+        double targetScale = 1.0 + data.Bass * 0.85;
+        if (data.IsBeat) targetScale += 0.15;
+        targetScale = Math.Min(targetScale, 1.8);
 
-        // Direct assignment instead of BeginAnimation: the audio tick fires at
-        // ~60 Hz while reactiveSpeedMs is typically 120 ms, so ~7/8 of every
-        // DoubleAnimation's frames were discarded by the next tick's replacement.
-        // Direct assignment avoids allocating 2 DoubleAnimation DependencyObjects
-        // per blob per tick (~120 allocs/tick at 60 blobs) and the associated
-        // WPF timeline/clock overhead.
+        // Lerp factor derived from reactiveSpeedMs so the smoothing adapts to
+        // the user's setting. Higher reactiveSpeedMs → slower/smoother easing.
+        // At 120 ms and ~16 ms tick interval this gives ~0.13 per tick — smooth
+        // on 240 Hz monitors while still tracking beats tightly.
+        double lerpFactor = Math.Clamp(16.0 / Math.Max(1.0, reactiveSpeedMs), 0.05, 1.0);
+
         for (int i = 0; i < _blobs.Count; i++)
         {
             var blob = _blobs[i];
@@ -150,18 +150,19 @@ public abstract class BlobPatternBase : IBlobPattern
                 blob.RenderTransform = st;
             }
 
-            // Cancel any in-flight animation from previous code path, then assign directly.
-            // After the first tick these are no-ops (no animation running).
+            // Cancel any in-flight WPF animation once (from a previous code path).
             if (st.HasAnimatedProperties)
             {
                 st.BeginAnimation(ScaleTransform.ScaleXProperty, null);
                 st.BeginAnimation(ScaleTransform.ScaleYProperty, null);
             }
-            st.ScaleX = scale;
-            st.ScaleY = scale;
 
-            // Use the blob's original base opacity to preserve per-blob variance
-            // and avoid a visible dim after fly-in completes.
+            // Exponential lerp toward target — the compositor interpolates the
+            // DP value at the monitor's native refresh rate, so this reads smooth
+            // even on 120/144/240 Hz displays without allocating DoubleAnimations.
+            st.ScaleX += (targetScale - st.ScaleX) * lerpFactor;
+            st.ScaleY += (targetScale - st.ScaleY) * lerpFactor;
+
             double blobBase = i < _states.Count && _states[i].BaseOpacity > 0
                 ? _states[i].BaseOpacity
                 : baseIntensity;
