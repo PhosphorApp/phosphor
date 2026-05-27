@@ -767,6 +767,18 @@
                                 <CheckBox x:Name="CbMatrixInfiniteZoom" Content="Infinite zoom (window slowly zooms)"
                                           Foreground="{StaticResource TextBrush}" Margin="0,4,0,0"
                                           ToolTip="Creates an infinite zoom-in illusion by slowly shrinking newly spawned characters while existing trails retain their original size."/>
+                                <DockPanel Margin="0,8,0,0">
+                                    <TextBlock Text="Zoom Rate:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="120"/>
+                                    <TextBlock x:Name="MatrixZoomRateValueText" Text="0.05" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" DockPanel.Dock="Right" Width="40"
+                                               TextAlignment="Right"/>
+                                    <Slider x:Name="SliderMatrixZoomRate" Minimum="0.02" Maximum="0.12" Value="0.05"
+                                            Width="100" VerticalAlignment="Center" IsMoveToPointEnabled="True"
+                                            IsSnapToTickEnabled="True" TickFrequency="0.01"
+                                            ValueChanged="SliderMatrixZoomRate_ValueChanged"
+                                            ToolTip="Controls how fast the infinite zoom effect moves. Lower = subtle, Higher = aggressive."/>
+                                </DockPanel>
                             </StackPanel>
 
                             <TextBlock Text="REACTIVE ELEMENTS" FontSize="12" FontWeight="Bold"

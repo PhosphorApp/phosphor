@@ -105,6 +105,7 @@ public class AppSettings
     // Matrix tuning
     public bool MatrixColorCycling { get; set; } = true;
     public bool MatrixInfiniteZoom { get; set; }
+    public double MatrixZoomRate { get; set; } = 0.05;
 
     // Ferrofluid tuning
     public double FerrofluidCoreGravity { get; set; } = 280.0;

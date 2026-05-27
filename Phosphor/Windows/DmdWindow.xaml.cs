@@ -615,6 +615,7 @@ public partial class DmdWindow : JukeboxWindow
         BlobTransition.ExcludeProjectMFromRandom = settings.ExcludeProjectMFromRandom;
         MatrixBlobPattern.ColorCycling = settings.MatrixColorCycling;
         MatrixBlobPattern.InfiniteZoom = settings.MatrixInfiniteZoom;
+        MatrixBlobPattern.ZoomRate = settings.MatrixZoomRate;
         FerrofluidSimulator.CoreGravity = settings.FerrofluidCoreGravity;
         FerrofluidSimulator.MutualAttraction = settings.FerrofluidMutualAttraction;
         FerrofluidSimulator.Damping = settings.FerrofluidDamping;
@@ -1930,6 +1931,7 @@ public partial class DmdWindow : JukeboxWindow
         BlobTransition.ExcludeProjectMFromRandom = _appSettings.ExcludeProjectMFromRandom;
         MatrixBlobPattern.ColorCycling = _appSettings.MatrixColorCycling;
         MatrixBlobPattern.InfiniteZoom = _appSettings.MatrixInfiniteZoom;
+        MatrixBlobPattern.ZoomRate = _appSettings.MatrixZoomRate;
         FerrofluidSimulator.CoreGravity = _appSettings.FerrofluidCoreGravity;
         FerrofluidSimulator.MutualAttraction = _appSettings.FerrofluidMutualAttraction;
         FerrofluidSimulator.Damping = _appSettings.FerrofluidDamping;

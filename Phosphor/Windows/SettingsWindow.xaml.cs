@@ -480,6 +480,8 @@ public partial class SettingsWindow : JukeboxWindow
         // Matrix tuning
         CbMatrixColorCycling.IsChecked = settings.MatrixColorCycling;
         CbMatrixInfiniteZoom.IsChecked = settings.MatrixInfiniteZoom;
+        SliderMatrixZoomRate.Value = settings.MatrixZoomRate;
+        MatrixZoomRateValueText.Text = settings.MatrixZoomRate.ToString("F2");
         UpdateMatrixTuningVisibility();
 
         CbReactiveBlobs.IsChecked = settings.ReactiveBlobs;
@@ -1495,6 +1497,12 @@ public partial class SettingsWindow : JukeboxWindow
         _topperWindow?.SetDistortion(e.NewValue / 100.0);
     }
 
+    private void SliderMatrixZoomRate_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (MatrixZoomRateValueText != null)
+            MatrixZoomRateValueText.Text = $"{e.NewValue:F2}";
+    }
+
     private void SliderReactivityThreshold_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (TxtReactivityThreshold != null)
@@ -2190,6 +2198,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.FerrofluidBristleTrebleThreshold = SliderFerrofluidBristleTrebleThreshold.Value / 100.0;
         _settings.MatrixColorCycling = CbMatrixColorCycling.IsChecked == true;
         _settings.MatrixInfiniteZoom = CbMatrixInfiniteZoom.IsChecked == true;
+        _settings.MatrixZoomRate = SliderMatrixZoomRate.Value;
         _settings.ReactiveBlobs = CbReactiveBlobs.IsChecked == true;
         _settings.ReactiveProjectM = CbReactiveProjectM.IsChecked == true;
         _settings.ReactivityThreshold = SliderReactivityThreshold.Value / 100.0;

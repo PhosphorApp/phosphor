@@ -32,8 +32,8 @@ public sealed class MatrixBlobPattern : BlobPatternBase
     /// </summary>
     public static bool InfiniteZoom { get; set; }
 
-    /// <summary>Zoom growth rate per second (5% = gentle continuous zoom).</summary>
-    private const double ZoomRate = 0.05;
+    /// <summary>Zoom growth rate per second (default 5%). Set from <see cref="AppSettings.MatrixZoomRate"/>.</summary>
+    public static double ZoomRate { get; set; } = 0.05;
 
     /// <summary>When the active layer's scale exceeds this, a new layer is promoted.</summary>
     private const double LayerRotateThreshold = 2.0;
@@ -56,6 +56,7 @@ public sealed class MatrixBlobPattern : BlobPatternBase
 
     private readonly List<ZoomLayer> _layers = new();
     private ZoomLayer? _activeLayer;
+    private bool _wasZooming; // tracks previous InfiniteZoom state for runtime toggle
 
     /// <summary>Seconds between dominant hue shifts (adjustable).</summary>
     private const double ColorCycleIntervalSeconds = 10.0;
@@ -161,6 +162,7 @@ public sealed class MatrixBlobPattern : BlobPatternBase
         _canvasH = Math.Max(200, _canvas.ActualHeight);
         _dominantHue = 120.0; // start at classic Matrix green
         _hueTimer = 0;
+        _wasZooming = InfiniteZoom;
 
         // When not zooming, we still use a single layer but without scaling.
         // When zooming, layers rotate as each one zooms past the threshold.
@@ -271,23 +273,51 @@ public sealed class MatrixBlobPattern : BlobPatternBase
 
     private double PickNonOverlappingX(MatrixColumn self, double left, double width)
     {
-        // Try a few times to find an X that doesn't directly overlap another column
-        for (int attempt = 0; attempt < 20; attempt++)
+        double selfSize = self.Leader.FontSize;
+        double selfScale = (InfiniteZoom && self.Layer != null) ? self.Layer.Scale : 1.0;
+        double selfCenter = _canvasW / 2;
+        double yThreshold = _canvasH * 0.25;
+        double candidateScreenSize = selfSize * selfScale;
+
+        // Collect screen-space X positions of active columns near the top
+        var occupied = new List<double>();
+        foreach (var other in _columns)
         {
-            double candidate = left + _rng.NextDouble() * width;
-            bool overlaps = false;
-            foreach (var other in _columns)
-            {
-                if (other == self) continue;
-                if (Math.Abs(other.X - candidate) < other.Leader.FontSize * 0.8)
-                {
-                    overlaps = true;
-                    break;
-                }
-            }
-            if (!overlaps) return candidate;
+            if (other == self) continue;
+            double otherScale = (InfiniteZoom && other.Layer != null) ? other.Layer.Scale : 1.0;
+            double otherScreenY = (other.Y - _canvasH / 2) * otherScale + _canvasH / 2;
+            if (otherScreenY > yThreshold) continue;
+            double otherScreenX = (other.X - selfCenter) * otherScale + selfCenter;
+            occupied.Add(otherScreenX);
         }
-        return left + _rng.NextDouble() * width;
+
+        // Divide canvas into bands sized roughly by font width so band count
+        // adapts to the canvas dimensions and character size.
+        int bandCount = Math.Max(4, (int)(width / Math.Max(8, candidateScreenSize)));
+        double bandW = width / bandCount;
+        double bestCandidate = left + _rng.NextDouble() * width;
+        double bestScore = double.MinValue;
+        // Shuffle band order so ties don't always favor the left
+        var bandOrder = Enumerable.Range(0, bandCount).OrderBy(_ => _rng.Next()).ToList();
+        foreach (int b in bandOrder)
+        {
+            double candidate = left + (b + _rng.NextDouble()) * bandW;
+            double candidateScreen = (candidate - selfCenter) * selfScale + selfCenter;
+            double minDist = double.MaxValue;
+            foreach (double ox in occupied)
+            {
+                double d = Math.Abs(ox - candidateScreen);
+                if (d < minDist) minDist = d;
+            }
+            if (occupied.Count == 0) return candidate;
+            if (minDist >= candidateScreenSize) return candidate; // clear hit
+            if (minDist > bestScore)
+            {
+                bestScore = minDist;
+                bestCandidate = candidate;
+            }
+        }
+        return bestCandidate;
     }
 
     private char RandomChar() => MatrixChars[_rng.Next(MatrixChars.Length)];
@@ -340,6 +370,19 @@ public sealed class MatrixBlobPattern : BlobPatternBase
         // Advance infinite zoom on all layers
         if (InfiniteZoom)
         {
+            // If zoom was just enabled at runtime, restore transforms
+            if (!_wasZooming)
+            {
+                foreach (var layer in _layers)
+                {
+                    layer.Scale = 1.0;
+                    layer.Canvas.RenderTransform = layer.Transform;
+                    layer.Transform.ScaleX = 1.0;
+                    layer.Transform.ScaleY = 1.0;
+                }
+                _wasZooming = true;
+            }
+
             foreach (var layer in _layers)
             {
                 layer.Scale += layer.Scale * ZoomRate * dt;
@@ -366,6 +409,16 @@ public sealed class MatrixBlobPattern : BlobPatternBase
                     _layers.RemoveAt(i);
                 }
             }
+        }
+        else if (_wasZooming)
+        {
+            // Zoom was just disabled — reset transforms
+            foreach (var layer in _layers)
+            {
+                layer.Scale = 1.0;
+                layer.Canvas.RenderTransform = null;
+            }
+            _wasZooming = false;
         }
 
         // Dominant colour cycle: shift hue periodically and update _brushes
@@ -408,7 +461,7 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             double moved = col.Y - prevY;
             col.DistanceSinceTrail += moved;
             double curFontSize = col.Leader.FontSize;
-            double spacing = curFontSize * 0.75;
+            double spacing = curFontSize * 0.95;
             while (col.DistanceSinceTrail >= spacing && !col.FadingOut)
             {
                 double trailY = col.Y - curFontSize * 0.3;
