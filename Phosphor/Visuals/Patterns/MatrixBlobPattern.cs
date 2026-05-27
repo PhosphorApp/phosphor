@@ -50,7 +50,8 @@ public sealed class MatrixBlobPattern : BlobPatternBase
         public ScaleTransform Transform = null!;
         public double Scale = 1.0;
         public BlurEffect Blur = null!;
-        public readonly List<TrailChar> Trails = new();
+        /// <summary>Count of trail elements parented to this layer's canvas.</summary>
+        public int TrailCount;
         public int LeaderCount; // number of leaders currently on this layer
     }
 
@@ -83,13 +84,14 @@ public sealed class MatrixBlobPattern : BlobPatternBase
 
     private DispatcherTimer? _timer;
     private readonly List<MatrixColumn> _columns = new();
+    // Live trails. Index 0 is oldest (for capacity eviction); expired trails are
+    // removed via swap-and-pop (O(1)) instead of List.RemoveAt(i) (O(n)).
     private readonly List<TrailChar> _trails = new();
     private double _canvasW, _canvasH;
 
     // Pre-frozen brushes for trail characters (avoids per-frame allocations).
     private static readonly SolidColorBrush WhiteBrush = CreateFrozen(Colors.White);
-    private static readonly SolidColorBrush TrailBrush = CreateFrozen(Color.FromRgb(0, 255, 70));
-    private static readonly BitmapCache SharedTrailCache = CreateFrozenCache();
+    private static readonly SolidColorBrush ClassicGreenBrush = CreateFrozen(Color.FromRgb(0, 255, 70));
 
     /// <summary>Maximum trail TextBlocks on the canvas to prevent GPU resource exhaustion.</summary>
     private const int MaxTrails = 1500;
@@ -99,13 +101,6 @@ public sealed class MatrixBlobPattern : BlobPatternBase
         var b = new SolidColorBrush(c);
         b.Freeze();
         return b;
-    }
-
-    private static BitmapCache CreateFrozenCache()
-    {
-        var c = new BitmapCache(1.0);
-        c.Freeze();
-        return c;
     }
 
     private sealed class MatrixColumn
@@ -214,7 +209,8 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             FontWeight = FontWeights.Bold,
             Foreground = WhiteBrush,
             Opacity = 1.0,
-            Effect = new BlurEffect { Radius = 2.5 },
+            // No per-leader BlurEffect — the parent ZoomLayer Canvas already has one,
+            // and stacking shader passes per element is expensive on GPU.
         };
         System.Windows.Controls.Panel.SetZIndex(tb, 1000);
         return tb;
@@ -265,8 +261,6 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             col.TrailColor = _brushes[col.Index].Color;
         else
             col.TrailColor = Color.FromRgb(0, 255, 70);
-        if (InfiniteZoom && col.Leader.Effect is BlurEffect leaderBlur)
-            leaderBlur.Radius = 2.5 / s;
         Canvas.SetLeft(col.Leader, col.X);
         Canvas.SetTop(col.Leader, col.Y);
     }
@@ -403,7 +397,7 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             for (int i = _layers.Count - 1; i >= 0; i--)
             {
                 var layer = _layers[i];
-                if (layer != _activeLayer && layer.LeaderCount == 0 && layer.Trails.Count == 0)
+                if (layer != _activeLayer && layer.LeaderCount == 0 && layer.TrailCount == 0)
                 {
                     _canvas.Children.Remove(layer.Canvas);
                     _layers.RemoveAt(i);
@@ -504,8 +498,11 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             if (trail.Lifetime <= 0)
             {
                 trail.Layer?.Canvas.Children.Remove(trail.Element);
-                trail.Layer?.Trails.Remove(trail);
-                _trails.RemoveAt(i);
+                if (trail.Layer != null) trail.Layer.TrailCount--;
+                // Swap-and-pop: O(1) removal at arbitrary index.
+                int last = _trails.Count - 1;
+                if (i != last) _trails[i] = _trails[last];
+                _trails.RemoveAt(last);
                 continue;
             }
 
@@ -525,13 +522,18 @@ public sealed class MatrixBlobPattern : BlobPatternBase
 
     private void SpawnTrail(MatrixColumn col, double x, double y, double fontSize, int columnIndex)
     {
-        // Evict oldest trails if at capacity to prevent GPU resource exhaustion
+        // Evict approximately-oldest trail when at capacity. Swap-and-pop is used
+        // in the per-tick expiration loop so strict FIFO order isn't preserved,
+        // but eviction at capacity is rare (steady state), so this is acceptable.
         while (_trails.Count >= MaxTrails)
         {
             var oldest = _trails[0];
             oldest.Layer?.Canvas.Children.Remove(oldest.Element);
-            oldest.Layer?.Trails.Remove(oldest);
-            _trails.RemoveAt(0);
+            if (oldest.Layer != null) oldest.Layer.TrailCount--;
+            // Swap-and-pop: O(1) removal of head.
+            int last = _trails.Count - 1;
+            if (last > 0) _trails[0] = _trails[last];
+            _trails.RemoveAt(last);
         }
 
         // Trail lifetime: 1/3 to 1/2 of time to traverse screen
@@ -547,16 +549,19 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             lifetime *= Math.Max(0.25, scale);
         }
 
-        // Use the column's locked trail color (set at spawn) for uniform columns
+        // Use the column's locked trail color (set at spawn) for uniform columns.
+        // A fresh per-trail SolidColorBrush is needed so PulseDominantColor can
+        // animate trails independently (staggered/lingering flash). Frozen brushes
+        // would prevent animation; pooled shared brushes flash in unison and lose
+        // the natural look.
         SolidColorBrush brush;
         if (ColorCycling)
         {
             brush = new SolidColorBrush(col.TrailColor);
-            // Not frozen — allows PulseDominantColor to animate the color
         }
         else
         {
-            brush = new SolidColorBrush(Color.FromRgb(0, 255, 70));
+            brush = ClassicGreenBrush; // frozen; non-cycling trails never pulse
         }
 
         var tb = new TextBlock
@@ -567,7 +572,8 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             FontWeight = FontWeights.Bold,
             Foreground = brush,
             Opacity = 1.0,
-            CacheMode = SharedTrailCache,
+            // No CacheMode: trail Text + Opacity change every tick, which invalidates
+            // the bitmap cache each frame and is more expensive than not caching.
         };
 
         Canvas.SetLeft(tb, x);
@@ -585,7 +591,7 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             CharChangeAccum = _rng.NextDouble() * 0.3,
             Layer = layer,
         };
-        layer.Trails.Add(trail);
+        layer.TrailCount++;
         _trails.Add(trail);
     }
 
@@ -595,7 +601,10 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             trail.Layer?.Canvas.Children.Remove(trail.Element);
         _trails.Clear();
         foreach (var layer in _layers)
+        {
+            layer.TrailCount = 0;
             _canvas.Children.Remove(layer.Canvas);
+        }
         _layers.Clear();
         _activeLayer = null;
         base.CleanupCanvas();
@@ -684,13 +693,20 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             if (pulsed >= maxPulse) break;
             if (trail.Element.Foreground is not SolidColorBrush brush) continue;
             if (brush.IsFrozen) continue;
-
-            var c = brush.Color;
-            double hue = ColorToHue(c.R, c.G, c.B);
-            if (RoygbivHelper.FromHue(hue) != band) continue;
             if (trail.Element.Opacity <= 0.1) continue;
 
-            // Brighten the trail color (increase lightness toward white)
+            var c = brush.Color;
+            // NOTE: no per-trail hue/band match check. The pulse fires only on
+            // dominant-band changes, but at that moment all currently-live trails
+            // are still painted in the *previous* band's color (they captured
+            // their color at spawn). Filtering by current trail hue here would
+            // reject every visible trail and the flash would be invisible. In
+            // Matrix all trails share the same dominant hue family by design,
+            // so flashing every visible trail is the intended behavior.
+
+            // Brighten toward white using the trail's actual current hue so the
+            // peak color reads as a brightened version of what's on screen.
+            double hue = ColorToHue(c.R, c.G, c.B);
             var bright = HslToRgb(hue, 1.0, 0.85);
 
             var flash = new ColorAnimationUsingKeyFrames();
