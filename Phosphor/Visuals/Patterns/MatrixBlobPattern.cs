@@ -371,12 +371,14 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             {
                 _hueTimer -= ColorCycleIntervalSeconds;
                 _dominantHue = (_dominantHue + 60.0) % 360.0; // jump by 60° each cycle
+                DebugLog.Log("Matrix", $"Color cycle: dominantHue={_dominantHue:F0}° band={RoygbivHelper.FromHue(_dominantHue)}");
             }
 
-            // Spread each blob's brush across a range around the dominant hue
+            // Spread each blob's brush in a tight range around the dominant hue
+            // so they all fall in the same ROYGBIV band for clear DOF detection.
             for (int i = 0; i < _brushes.Count; i++)
             {
-                double hue = (_dominantHue + i * 17.0) % 360.0;
+                double hue = (_dominantHue + i * 3.0) % 360.0;
                 _brushes[i].Color = HslToRgb(hue, 0.8, 0.45);
             }
         }
@@ -610,6 +612,8 @@ public sealed class MatrixBlobPattern : BlobPatternBase
     {
         if (_disposed) return;
 
+        DebugLog.Log("Matrix", $"PulseDominantColor: band={band}, trails={_trails.Count}");
+
         const int flashMs = 100;
         const int settleMs = 1500;
 
@@ -648,6 +652,8 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             brush.BeginAnimation(SolidColorBrush.ColorProperty, flash);
             pulsed++;
         }
+
+        DebugLog.Log("Matrix", $"PulseDominantColor: pulsed {pulsed} trails");
     }
 
     /// <summary>
