@@ -37,53 +37,53 @@ own dispatcher thread).
   same dominant hue family by design, so flashing every visible trail is
   correct.
 
-### `BlobPatternBase.ApplyAudioReactive` — direct scale assignment
+### `BlobPatternBase.ApplyAudioReactive` — direct scale with lerp
 - Audio tick fires at ~60 Hz; `ReactiveSpeedMs` defaults to 120 ms. Each tick
   was creating 2 `DoubleAnimation` objects per blob that were replaced 16 ms
   later — ~7/8 of frames were wasted.
-- Replaced with direct `ScaleTransform.ScaleX/Y = scale` assignment. Clears
-  any in-flight animation once via `HasAnimatedProperties` guard.
+- Replaced with exponential lerp (`ScaleX += (target - ScaleX) * lerpFactor`).
+  `lerpFactor` derived from `reactiveSpeedMs` so the user's Reactive Speed
+  setting still controls smoothing. Smooth on 120/144/240 Hz monitors.
+- Clears any in-flight animation once via `HasAnimatedProperties` guard.
 - `FerrofluidClusterPattern` calls `base.ApplyAudioReactive` → inherits fix.
 
 ### `FractalBoxPattern.ApplyAudioReactive` — ease + transform lookup
 - Replaced per-call `new QuadraticEase` with the base class's static frozen
   `_reactiveEase` (changed from `private` to `protected`).
-- Direct `ScaleX/Y` assignment instead of per-blob `BeginAnimation`.
+- Same exponential lerp for per-blob scale.
 - `ScaleTransform` ref cached on `BlobState.CachedScaleTransform` (new field)
   to avoid scanning `TransformGroup.Children` every tick.
 - Canvas-level blur animation kept as `BeginAnimation` (one per canvas, not
   per blob — acceptable).
 
----
+### `BounceSimulator.FlashBlob` — tick-based flash decay
+- Replaced per-collision `DispatcherTimer` allocation with a
+  `BlobState.FlashRemaining` double field (seconds). Set to 0.08 on collision;
+  the existing `OnRendering` loop decays it and restores `BaseOpacity` on
+  expiry. Zero allocations per collision.
 
-## 🔴 High-impact, still open
-
-### 1. `BounceSimulator.FlashBlob` — DispatcherTimer per collision
-Every blob-blob collision allocates a `DispatcherTimer`. Busy frames can fire
-several at once; each is a `DependencyObject` and a dispatcher queue insertion.
-
-**Fix idea:** add a `FlashUntilTicks` field to `BlobState`; let the existing
-`OnRendering` tick restore opacity when expired.
-
-### 2. `LightCycleSimulator.CheckTrailCollision` — O(cycles × segments)
-Each alive cycle checks every segment of every cycle per frame. Segments grow
-unbounded between deaths. Dominant CPU cost in this pattern at long lifetimes.
-
-**Fix idea:** spatial hash, or — since segments are strictly H or V — split
-into two lists keyed by row/column bucket and short-circuit.
+### `LightCycleSimulator.CheckTrailCollision` — spatial grid index
+- Added `SegmentGrid`: axis-aligned segments bucketed by cross-axis coordinate
+  (horizontal segments by Y-bucket, vertical by X-bucket). Bucket size =
+  `CollisionMargin`.
+- Point queries check only 2–3 nearby buckets instead of all segments across
+  all cycles. Live segments (one per cycle) still checked via brute force.
+- `CommitTrailSegment` adds to both `c.Segments` and `_segmentGrid`.
+- `FadeTrails` removes owner's segments from the grid on cycle death.
+- `PointNearAxisAligned` exploits H/V alignment for early rejection.
 
 ---
 
-## 🟠 Medium-impact
+## 🟠 Medium-impact, still open
 
-### 5. `MatrixBlobPattern.PulseDominantColor` — animation count
+### 1. `MatrixBlobPattern.PulseDominantColor` — animation count
 Up to 400 simultaneous `ColorAnimationUsingKeyFrames` per pulse, each with a
 `Completed` lambda. Pulses can stack if bands change rapidly.
 
 **Fix idea:** decay manually in the per-tick loop using a `PulseAmount` field
 on `TrailChar`, eliminating WPF storyboards entirely.
 
-### 6. `MatrixBlobPattern.PickNonOverlappingX` — LINQ + lambdas
+### 2. `MatrixBlobPattern.PickNonOverlappingX` — LINQ + lambdas
 ```csharp
 Enumerable.Range(0, bandCount).OrderBy(_ => _rng.Next()).ToList();
 ```
@@ -92,7 +92,7 @@ respawn.
 
 **Fix idea:** in-place Fisher–Yates on a reused `int[]`.
 
-### 7. `OrbitalBlobPattern` / `Fractal` / `LavaLamp` / `Random` / `FractalBox`
+### 3. `OrbitalBlobPattern` / `Fractal` / `LavaLamp` / `Random` / `FractalBox`
    — `_blobs.IndexOf(blob)` on every animation completion
 O(n) lookup. Fires every 10–25 s per blob, so low frequency, but trivially
 fixable.
@@ -100,20 +100,20 @@ fixable.
 **Fix idea:** stash the index on `FrameworkElement.Tag` or use a
 `Dictionary<FrameworkElement, int>`.
 
-### 8. Easing allocations across patterns
+### 4. Easing allocations across patterns
 `RandomBlobPattern`, `OrbitalBlobPattern`, etc. allocate fresh
 `SineEase`/`CubicEase` per retarget.
 
 **Fix idea:** one static frozen instance per ease, shared.
 
-### 9. `MatrixBlobPattern` uses `DispatcherTimer` @ 33 ms
+### 5. `MatrixBlobPattern` uses `DispatcherTimer` @ 33 ms
 Not vsync-aligned; can drift/judder under load. Every other simulator uses
 `CompositionTarget.Rendering`.
 
 **Fix idea:** switch to `CompositionTarget.Rendering` + `Stopwatch` for `dt`
 (matches `BounceSimulator`/`LightCycleSimulator`).
 
-### 10. `BlobPatternBase.CreateBlobs` — per-blob `BitmapCache(0.5)`
+### 6. `BlobPatternBase.CreateBlobs` — per-blob `BitmapCache(0.5)`
 Caching helps when the brush color is stable; thrashes when color cycles.
 `BlobPatternConfig.UseBitmapCache` exists for callers — confirm
 externally-color-cycled patterns are passing `false`.

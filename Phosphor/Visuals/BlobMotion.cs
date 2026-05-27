@@ -53,6 +53,8 @@ public class BlobState
     public System.Windows.Media.RotateTransform? CachedRotateTransform { get; set; }
     /// <summary>Cached ScaleTransform reference to avoid searching TransformGroup each tick.</summary>
     public System.Windows.Media.ScaleTransform? CachedScaleTransform { get; set; }
+    /// <summary>Bounce pattern: seconds remaining on collision flash (0 = no flash).</summary>
+    public double FlashRemaining { get; set; }
 }
 
 /// <summary>

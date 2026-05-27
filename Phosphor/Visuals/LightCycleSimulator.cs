@@ -16,6 +16,135 @@ public sealed class LightCycleSimulator : IDisposable
 {
     private readonly record struct TrailSegment(double X1, double Y1, double X2, double Y2, int Owner);
 
+    /// <summary>
+    /// Spatial index for axis-aligned trail segments. Horizontal segments (Y1≈Y2)
+    /// are bucketed by Y; vertical segments (X1≈X2) by X. Point queries only check
+    /// buckets within <c>margin</c>, reducing collision checks from O(totalSegments)
+    /// to O(segmentsInNearbyBuckets).
+    /// </summary>
+    private sealed class SegmentGrid
+    {
+        private readonly double _bucketSize;
+        // Horizontal segments keyed by Y-bucket; vertical by X-bucket.
+        private readonly Dictionary<int, List<TrailSegment>> _hBuckets = new();
+        private readonly Dictionary<int, List<TrailSegment>> _vBuckets = new();
+
+        public SegmentGrid(double bucketSize) => _bucketSize = Math.Max(1.0, bucketSize);
+
+        private int Bucket(double v) => (int)Math.Floor(v / _bucketSize);
+
+        public void Add(TrailSegment seg)
+        {
+            bool isHorizontal = Math.Abs(seg.Y1 - seg.Y2) < 1;
+            if (isHorizontal)
+            {
+                int b = Bucket(seg.Y1);
+                if (!_hBuckets.TryGetValue(b, out var list))
+                    _hBuckets[b] = list = new List<TrailSegment>();
+                list.Add(seg);
+            }
+            else
+            {
+                int b = Bucket(seg.X1);
+                if (!_vBuckets.TryGetValue(b, out var list))
+                    _vBuckets[b] = list = new List<TrailSegment>();
+                list.Add(seg);
+            }
+        }
+
+        public void RemoveAll(int owner)
+        {
+            RemoveOwner(_hBuckets, owner);
+            RemoveOwner(_vBuckets, owner);
+        }
+
+        private static void RemoveOwner(Dictionary<int, List<TrailSegment>> buckets, int owner)
+        {
+            // Iterate all buckets and remove segments matching owner.
+            // Only called on cycle death — infrequent.
+            foreach (var kvp in buckets)
+                kvp.Value.RemoveAll(s => s.Owner == owner);
+        }
+
+        /// <summary>
+        /// Check if point (px,py) is within <paramref name="margin"/> of any
+        /// committed segment, excluding segments owned by <paramref name="selfIdx"/>
+        /// that are the last segment of the given <paramref name="selfLastSeg"/>.
+        /// </summary>
+        public bool Query(double px, double py, double margin, int selfIdx,
+            TrailSegment? selfLastSeg, out int hitOwner)
+        {
+            hitOwner = -1;
+            int bLow = Bucket(py - margin);
+            int bHigh = Bucket(py + margin);
+            // Check horizontal segments whose Y is near py
+            for (int b = bLow; b <= bHigh; b++)
+            {
+                if (!_hBuckets.TryGetValue(b, out var list)) continue;
+                foreach (var seg in list)
+                {
+                    if (seg.Owner == selfIdx && selfLastSeg.HasValue &&
+                        seg == selfLastSeg.Value)
+                        continue;
+                    if (PointNearAxisAligned(px, py, seg, margin))
+                    {
+                        hitOwner = seg.Owner;
+                        return true;
+                    }
+                }
+            }
+
+            bLow = Bucket(px - margin);
+            bHigh = Bucket(px + margin);
+            // Check vertical segments whose X is near px
+            for (int b = bLow; b <= bHigh; b++)
+            {
+                if (!_vBuckets.TryGetValue(b, out var list)) continue;
+                foreach (var seg in list)
+                {
+                    if (seg.Owner == selfIdx && selfLastSeg.HasValue &&
+                        seg == selfLastSeg.Value)
+                        continue;
+                    if (PointNearAxisAligned(px, py, seg, margin))
+                    {
+                        hitOwner = seg.Owner;
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Fast point-near-segment for axis-aligned segments. Avoids the general
+        /// projection math by exploiting H/V alignment.
+        /// </summary>
+        private static bool PointNearAxisAligned(double px, double py, TrailSegment seg, double margin)
+        {
+            double marginSq = margin * margin;
+            if (Math.Abs(seg.Y1 - seg.Y2) < 1) // horizontal
+            {
+                double dy = py - seg.Y1;
+                if (dy * dy > marginSq) return false;
+                double minX = Math.Min(seg.X1, seg.X2);
+                double maxX = Math.Max(seg.X1, seg.X2);
+                double cx = Math.Clamp(px, minX, maxX);
+                double dx = px - cx;
+                return dx * dx + dy * dy < marginSq;
+            }
+            else // vertical
+            {
+                double dx = px - seg.X1;
+                if (dx * dx > marginSq) return false;
+                double minY = Math.Min(seg.Y1, seg.Y2);
+                double maxY = Math.Max(seg.Y1, seg.Y2);
+                double cy = Math.Clamp(py, minY, maxY);
+                double dy = py - cy;
+                return dx * dx + dy * dy < marginSq;
+            }
+        }
+    }
+
     private sealed class CycleState
     {
         public bool Alive = true;
@@ -53,6 +182,7 @@ public sealed class LightCycleSimulator : IDisposable
     private double _gridLastWidth;
     private double _gridLastHeight;
     private readonly TranslateTransform _gridTransform = new();
+    private SegmentGrid? _segmentGrid;
 
     private const double TrailThicknessBase = 12.0;
     private readonly double _sizeMultiplier;
@@ -163,6 +293,7 @@ public sealed class LightCycleSimulator : IDisposable
 
     public void Start()
     {
+        _segmentGrid = new SegmentGrid(CollisionMargin);
         _stopwatch.Restart();
         _lastTickTicks = _stopwatch.ElapsedTicks;
         _running = true;
@@ -386,6 +517,7 @@ public sealed class LightCycleSimulator : IDisposable
         if (Math.Abs(sx - ex) < 1 && Math.Abs(sy - ey) < 1) return;
 
         c.Segments.Add(new TrailSegment(sx, sy, ex, ey, idx));
+        _segmentGrid?.Add(new TrailSegment(sx, sy, ex, ey, idx));
 
         var brush = GetTrailBrush(idx);
 
@@ -440,30 +572,23 @@ public sealed class LightCycleSimulator : IDisposable
     private bool CheckTrailCollision(int selfIdx, double x, double y, out int hitOwner)
     {
         hitOwner = -1;
+
+        // Check committed segments via spatial grid — O(nearby) instead of O(all).
+        var c = _cycles[selfIdx];
+        TrailSegment? lastSeg = c.Segments.Count > 0 ? c.Segments[^1] : null;
+        if (_segmentGrid != null && _segmentGrid.Query(x, y, CollisionMargin, selfIdx, lastSeg, out hitOwner))
+            return true;
+
+        // Check live segments of other cycles (one per cycle — always small)
         for (int i = 0; i < _cycles.Count; i++)
         {
-            var c = _cycles[i];
-            foreach (var seg in c.Segments)
+            if (i == selfIdx) continue;
+            var other = _cycles[i];
+            if (!other.Alive) continue;
+            if (PointNearSegment(x, y, other.TrailStartX, other.TrailStartY, other.X, other.Y, CollisionMargin))
             {
-                // Skip the last segment of our own trail (we're on it)
-                if (i == selfIdx && c.Segments.Count > 0 && seg == c.Segments[^1])
-                    continue;
-
-                if (PointNearSegment(x, y, seg.X1, seg.Y1, seg.X2, seg.Y2, CollisionMargin))
-                {
-                    hitOwner = i;
-                    return true;
-                }
-            }
-
-            // Also check the live segment of other cycles
-            if (i != selfIdx && c.Alive)
-            {
-                if (PointNearSegment(x, y, c.TrailStartX, c.TrailStartY, c.X, c.Y, CollisionMargin))
-                {
-                    hitOwner = i;
-                    return true;
-                }
+                hitOwner = i;
+                return true;
             }
         }
         return false;
@@ -537,7 +662,7 @@ public sealed class LightCycleSimulator : IDisposable
         ExplodeBlob(idx);
 
         // Fade out and remove all trail lines after a delay
-        FadeTrails(c);
+        FadeTrails(idx, c);
     }
 
     private void ExplodeBlob(int idx)
@@ -572,7 +697,7 @@ public sealed class LightCycleSimulator : IDisposable
         blob.BeginAnimation(UIElement.OpacityProperty, fadeAnim);
     }
 
-    private void FadeTrails(CycleState c)
+    private void FadeTrails(int ownerIdx, CycleState c)
     {
         var dur = TimeSpan.FromSeconds(TrailFadeDuration);
         var lines = c.TrailLines.ToList();
@@ -622,6 +747,7 @@ public sealed class LightCycleSimulator : IDisposable
 
         c.TrailLines.Clear();
         c.CornerPatches.Clear();
+        _segmentGrid?.RemoveAll(ownerIdx);
         c.Segments.Clear();
     }
 

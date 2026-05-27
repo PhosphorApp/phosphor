@@ -205,6 +205,17 @@ public sealed class BounceSimulator : IDisposable
                 s.VelocityX *= damp;
                 s.VelocityY *= damp;
             }
+
+            // Decay collision flash
+            if (s.FlashRemaining > 0 && i < _blobs.Count)
+            {
+                s.FlashRemaining -= dt;
+                if (s.FlashRemaining <= 0)
+                {
+                    s.FlashRemaining = 0;
+                    _blobs[i].Opacity = s.BaseOpacity;
+                }
+            }
         }
     }
 
@@ -219,19 +230,11 @@ public sealed class BounceSimulator : IDisposable
 
     /// <summary>
     /// Brief opacity flash on collision for visual feedback.
+    /// Sets a timer on the blob state that the render loop decays — no DispatcherTimer needed.
     /// </summary>
     private static void FlashBlob(FrameworkElement blob, BlobState state)
     {
-        double baseOpacity = state.BaseOpacity;
-        double flash = Math.Min(1.0, baseOpacity + 0.3);
-        blob.Opacity = flash;
-
-        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
-        timer.Tick += (_, _) =>
-        {
-            blob.Opacity = baseOpacity;
-            timer.Stop();
-        };
-        timer.Start();
+        blob.Opacity = Math.Min(1.0, state.BaseOpacity + 0.3);
+        state.FlashRemaining = 0.08; // seconds
     }
 }
