@@ -143,6 +143,15 @@ public partial class TopperWindow : JukeboxWindow
             SetBlobPattern(_blobPatternSetting);
     }
 
+    /// <summary>
+    /// Restarts the current pattern if it is Game of Life, so that changed static settings take effect.
+    /// </summary>
+    public void RestartGameOfLife()
+    {
+        if (_blobPattern == BlobPattern.GameOfLife)
+            SetBlobPattern(_blobPatternSetting);
+    }
+
     public void ApplyProjectMTuning()
     {
         if (_blobPattern == BlobPattern.ProjectM && _currentPattern is ProjectMPattern pm)

@@ -97,6 +97,9 @@ public sealed class PlayfieldProxy
     public void RestartProjectM() =>
         _dispatcher.BeginInvoke(() => _window.RestartProjectM());
 
+    public void RestartGameOfLife() =>
+        _dispatcher.BeginInvoke(() => _window.RestartGameOfLife());
+
     public void ApplyProjectMTuning() =>
         _dispatcher.BeginInvoke(() => _window.ApplyProjectMTuning());
 

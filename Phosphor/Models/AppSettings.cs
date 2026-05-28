@@ -110,6 +110,15 @@ public class AppSettings
     public bool MatrixInfiniteZoom { get; set; }
     public double MatrixZoomRate { get; set; } = 0.05;
 
+    // Game of Life tuning
+    public int GameOfLifeCellSize { get; set; } = 5;
+    public int GameOfLifeTickIntervalMs { get; set; } = 100;
+    public int GameOfLifeFadeGenerations { get; set; } = 6;
+    public int GameOfLifeHeatBoost { get; set; } = 60;
+    public int GameOfLifeDensity { get; set; } = 5;
+    /// <summary>Old age pruning: 0 = Off, 1 = Low (60s), 2 = Medium (30s), 3 = High (15s).</summary>
+    public int GameOfLifeOldAgePruning { get; set; }
+
     // Ferrofluid tuning
     public double FerrofluidCoreGravity { get; set; } = 280.0;
     public double FerrofluidMutualAttraction { get; set; } = 40.0;
@@ -351,6 +360,7 @@ public enum BlobPattern
     ProjectM,
     FerrofluidCluster,
     Matrix,
+    GameOfLife,
     RandomPerSong
 }
 

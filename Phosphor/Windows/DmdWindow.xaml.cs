@@ -616,6 +616,12 @@ public partial class DmdWindow : JukeboxWindow
         MatrixBlobPattern.ColorCycling = settings.MatrixColorCycling;
         MatrixBlobPattern.InfiniteZoom = settings.MatrixInfiniteZoom;
         MatrixBlobPattern.ZoomRate = settings.MatrixZoomRate;
+        GameOfLifePattern.CellSize = Math.Clamp(settings.GameOfLifeCellSize, 1, 10);
+        GameOfLifePattern.TickIntervalMs = Math.Clamp(settings.GameOfLifeTickIntervalMs, 1, 100);
+        GameOfLifePattern.FadeGenerations = Math.Clamp(settings.GameOfLifeFadeGenerations, 0, 20);
+        GameOfLifePattern.HeatBoost = Math.Clamp(settings.GameOfLifeHeatBoost, 0, 100);
+        GameOfLifePattern.Density = Math.Clamp(settings.GameOfLifeDensity, 1, 10);
+        GameOfLifePattern.OldAgePruning = Math.Clamp(settings.GameOfLifeOldAgePruning, 0, 3);
         FerrofluidSimulator.CoreGravity = settings.FerrofluidCoreGravity;
         FerrofluidSimulator.MutualAttraction = settings.FerrofluidMutualAttraction;
         FerrofluidSimulator.Damping = settings.FerrofluidDamping;
@@ -1933,6 +1939,19 @@ public partial class DmdWindow : JukeboxWindow
         MatrixBlobPattern.ColorCycling = _appSettings.MatrixColorCycling;
         MatrixBlobPattern.InfiniteZoom = _appSettings.MatrixInfiniteZoom;
         MatrixBlobPattern.ZoomRate = _appSettings.MatrixZoomRate;
+        GameOfLifePattern.CellSize = Math.Clamp(_appSettings.GameOfLifeCellSize, 1, 10);
+        GameOfLifePattern.TickIntervalMs = Math.Clamp(_appSettings.GameOfLifeTickIntervalMs, 1, 100);
+        GameOfLifePattern.FadeGenerations = Math.Clamp(_appSettings.GameOfLifeFadeGenerations, 0, 20);
+        GameOfLifePattern.HeatBoost = Math.Clamp(_appSettings.GameOfLifeHeatBoost, 0, 100);
+        GameOfLifePattern.Density = Math.Clamp(_appSettings.GameOfLifeDensity, 1, 10);
+        GameOfLifePattern.OldAgePruning = Math.Clamp(_appSettings.GameOfLifeOldAgePruning, 0, 3);
+        if (settingsWindow.GameOfLifeSettingsChanged)
+        {
+            _playfieldProxy?.RestartGameOfLife();
+            _backglassProxy?.RestartGameOfLife();
+            _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.RestartGameOfLife());
+            Dispatcher.BeginInvoke(RestartGameOfLife);
+        }
         FerrofluidSimulator.CoreGravity = _appSettings.FerrofluidCoreGravity;
         FerrofluidSimulator.MutualAttraction = _appSettings.FerrofluidMutualAttraction;
         FerrofluidSimulator.Damping = _appSettings.FerrofluidDamping;
@@ -2109,6 +2128,11 @@ public partial class DmdWindow : JukeboxWindow
         {
             await Dispatcher.InvokeAsync(ApplyProjectMTuning);
             LogStep("ProjectM local tuning applied");
+        }
+        if (settingsWindow.GameOfLifeSettingsChanged)
+        {
+            await Dispatcher.InvokeAsync(RestartGameOfLife);
+            LogStep("GameOfLife local restart");
         }
     }
 
@@ -3273,6 +3297,15 @@ public partial class DmdWindow : JukeboxWindow
     private void RestartProjectM()
     {
         if (_ssBlobPattern == BlobPattern.ProjectM)
+            SetBlobPattern(_ssBlobPatternSetting);
+    }
+
+    /// <summary>
+    /// Restarts the current pattern if it is Game of Life, so that changed static settings take effect.
+    /// </summary>
+    private void RestartGameOfLife()
+    {
+        if (_ssBlobPattern == BlobPattern.GameOfLife)
             SetBlobPattern(_ssBlobPatternSetting);
     }
 

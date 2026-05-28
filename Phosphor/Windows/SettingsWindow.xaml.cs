@@ -86,6 +86,12 @@ public partial class SettingsWindow : JukeboxWindow
     private bool _originalMandelbrotHistogramColoring;
     private int _originalMandelbrotRotation;
     private int _originalMandelbrotColorScheme;
+    private int _originalGameOfLifeCellSize;
+    private int _originalGameOfLifeTickIntervalMs;
+    private int _originalGameOfLifeFadeGenerations;
+    private int _originalGameOfLifeHeatBoost;
+    private int _originalGameOfLifeDensity;
+    private int _originalGameOfLifeOldAgePruning;
     private double _originalProjectMPresetDuration;
     private double _originalProjectMSoftCut;
     private bool _originalProjectMHardCut;
@@ -205,6 +211,14 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.MandelbrotHistogramColoring != _originalMandelbrotHistogramColoring ||
         _settings.MandelbrotRotation != _originalMandelbrotRotation ||
         _settings.MandelbrotColorScheme != _originalMandelbrotColorScheme;
+
+    public bool GameOfLifeSettingsChanged =>
+        _settings.GameOfLifeCellSize != _originalGameOfLifeCellSize ||
+        _settings.GameOfLifeTickIntervalMs != _originalGameOfLifeTickIntervalMs ||
+        _settings.GameOfLifeFadeGenerations != _originalGameOfLifeFadeGenerations ||
+        _settings.GameOfLifeHeatBoost != _originalGameOfLifeHeatBoost ||
+        _settings.GameOfLifeDensity != _originalGameOfLifeDensity ||
+        _settings.GameOfLifeOldAgePruning != _originalGameOfLifeOldAgePruning;
 
     public event Action? SettingsApplied;
 
@@ -375,6 +389,7 @@ public partial class SettingsWindow : JukeboxWindow
                 BlobPattern.FractalBox => "Fractal Box",
                 BlobPattern.Mandelbrot => "Mandelbrot",
                 BlobPattern.FerrofluidCluster => "Ferrofluid",
+                BlobPattern.GameOfLife => "Game of Life",
                 BlobPattern.RandomPerSong => "Random Per Song",
                 _ => p.ToString()
             }))
@@ -489,6 +504,20 @@ public partial class SettingsWindow : JukeboxWindow
         SliderMatrixZoomRate.Value = settings.MatrixZoomRate;
         MatrixZoomRateValueText.Text = settings.MatrixZoomRate.ToString("F2");
         UpdateMatrixTuningVisibility();
+
+        // Game of Life tuning
+        SliderGameOfLifeCellSize.Value = settings.GameOfLifeCellSize;
+        TxtGameOfLifeCellSize.Text = $"{settings.GameOfLifeCellSize} px";
+        SliderGameOfLifeTickInterval.Value = settings.GameOfLifeTickIntervalMs;
+        TxtGameOfLifeTickInterval.Text = $"{settings.GameOfLifeTickIntervalMs} ms";
+        SliderGameOfLifeFadeGenerations.Value = settings.GameOfLifeFadeGenerations;
+        TxtGameOfLifeFadeGenerations.Text = settings.GameOfLifeFadeGenerations == 0 ? "Off" : $"{settings.GameOfLifeFadeGenerations}";
+        SliderGameOfLifeHeatBoost.Value = settings.GameOfLifeHeatBoost;
+        TxtGameOfLifeHeatBoost.Text = settings.GameOfLifeHeatBoost == 0 ? "Off" : $"{settings.GameOfLifeHeatBoost}";
+        SliderGameOfLifeDensity.Value = settings.GameOfLifeDensity;
+        TxtGameOfLifeDensity.Text = $"{settings.GameOfLifeDensity}";
+        CbGameOfLifeOldAgePruning.SelectedIndex = Math.Clamp(settings.GameOfLifeOldAgePruning, 0, 3);
+        UpdateGameOfLifeTuningVisibility();
 
         CbReactiveBlobsPlayfield.IsChecked = settings.ReactiveBlobsPlayfield;
         CbReactiveBlobsBackglass.IsChecked = settings.ReactiveBlobsBackglass;
@@ -710,6 +739,12 @@ public partial class SettingsWindow : JukeboxWindow
         _originalMandelbrotHistogramColoring = settings.MandelbrotHistogramColoring;
         _originalMandelbrotRotation = settings.MandelbrotRotation;
         _originalMandelbrotColorScheme = settings.MandelbrotColorScheme;
+        _originalGameOfLifeCellSize = settings.GameOfLifeCellSize;
+        _originalGameOfLifeTickIntervalMs = settings.GameOfLifeTickIntervalMs;
+        _originalGameOfLifeFadeGenerations = settings.GameOfLifeFadeGenerations;
+        _originalGameOfLifeHeatBoost = settings.GameOfLifeHeatBoost;
+        _originalGameOfLifeDensity = settings.GameOfLifeDensity;
+        _originalGameOfLifeOldAgePruning = settings.GameOfLifeOldAgePruning;
         _originalProjectMPresetDuration = settings.ProjectMPresetDuration;
         _originalProjectMSoftCut = settings.ProjectMSoftCutDuration;
         _originalProjectMHardCut = settings.ProjectMHardCutEnabled;
@@ -1627,6 +1662,7 @@ public partial class SettingsWindow : JukeboxWindow
         UpdateProjectMTuningVisibility();
         UpdateFerrofluidTuningVisibility();
         UpdateMatrixTuningVisibility();
+        UpdateGameOfLifeTuningVisibility();
         UpdateBlobCountSliderStates();
     }
 
@@ -1645,12 +1681,12 @@ public partial class SettingsWindow : JukeboxWindow
         {
             if (cb == null || countSlider == null) return;
             var name = cb.SelectedItem as string ?? "";
-            var visible = name != "ProjectM" && name != "Mandelbrot";
-            var vis = visible ? Visibility.Visible : Visibility.Collapsed;
-            countSlider.Visibility = vis;
-            if (countLabel != null) countLabel.Visibility = vis;
-            if (sizeSlider != null) sizeSlider.Visibility = vis;
-            if (sizeLabel != null) sizeLabel.Visibility = vis;
+            bool hideAll = name == "ProjectM" || name == "Mandelbrot";
+            bool hideSize = hideAll || name == "Game of Life";
+            countSlider.Visibility = hideAll ? Visibility.Collapsed : Visibility.Visible;
+            if (countLabel != null) countLabel.Visibility = hideAll ? Visibility.Collapsed : Visibility.Visible;
+            if (sizeSlider != null) sizeSlider.Visibility = hideSize ? Visibility.Collapsed : Visibility.Visible;
+            if (sizeLabel != null) sizeLabel.Visibility = hideSize ? Visibility.Collapsed : Visibility.Visible;
         }
     }
 
@@ -1720,6 +1756,58 @@ public partial class SettingsWindow : JukeboxWindow
         }
 
         PanelMatrixTuning.Visibility = anyMatrix ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void UpdateGameOfLifeTuningVisibility()
+    {
+        if (PanelGameOfLifeTuning == null) return;
+
+        bool anyGameOfLife = false;
+        foreach (var cb in new[] { CbBlobPatternPlayfield, CbBlobPatternBackglass, CbBlobPatternTopper, CbBlobPatternDmd })
+        {
+            if (cb?.SelectedItem is string name && name == "Game of Life")
+            {
+                anyGameOfLife = true;
+                break;
+            }
+        }
+
+        PanelGameOfLifeTuning.Visibility = anyGameOfLife ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void SliderGameOfLifeCellSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtGameOfLifeCellSize != null)
+            TxtGameOfLifeCellSize.Text = $"{(int)e.NewValue} px";
+    }
+
+    private void SliderGameOfLifeTickInterval_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtGameOfLifeTickInterval != null)
+            TxtGameOfLifeTickInterval.Text = $"{(int)e.NewValue} ms";
+    }
+
+    private void SliderGameOfLifeFadeGenerations_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtGameOfLifeFadeGenerations != null)
+            TxtGameOfLifeFadeGenerations.Text = (int)e.NewValue == 0 ? "Off" : $"{(int)e.NewValue}";
+    }
+
+    private void SliderGameOfLifeHeatBoost_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtGameOfLifeHeatBoost != null)
+            TxtGameOfLifeHeatBoost.Text = (int)e.NewValue == 0 ? "Off" : $"{(int)e.NewValue}";
+    }
+
+    private void SliderGameOfLifeDensity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtGameOfLifeDensity != null)
+            TxtGameOfLifeDensity.Text = $"{(int)e.NewValue}";
+    }
+
+    private void CbGameOfLifeOldAgePruning_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        // No display text to update — ComboBox shows its own selection
     }
 
     private void SliderFerrofluidCoreGravity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -2159,6 +2247,7 @@ public partial class SettingsWindow : JukeboxWindow
                 BlobPattern.FractalBox => "Fractal Box",
                 BlobPattern.Mandelbrot => "Mandelbrot",
                 BlobPattern.FerrofluidCluster => "Ferrofluid",
+                BlobPattern.GameOfLife => "Game of Life",
                 BlobPattern.RandomPerSong => "Random Per Song",
                 _ => p.ToString()
             })
@@ -2211,6 +2300,12 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.MatrixColorCycling = CbMatrixColorCycling.IsChecked == true;
         _settings.MatrixInfiniteZoom = CbMatrixInfiniteZoom.IsChecked == true;
         _settings.MatrixZoomRate = SliderMatrixZoomRate.Value;
+        _settings.GameOfLifeCellSize = (int)SliderGameOfLifeCellSize.Value;
+        _settings.GameOfLifeTickIntervalMs = (int)SliderGameOfLifeTickInterval.Value;
+        _settings.GameOfLifeFadeGenerations = (int)SliderGameOfLifeFadeGenerations.Value;
+        _settings.GameOfLifeHeatBoost = (int)SliderGameOfLifeHeatBoost.Value;
+        _settings.GameOfLifeDensity = (int)SliderGameOfLifeDensity.Value;
+        _settings.GameOfLifeOldAgePruning = CbGameOfLifeOldAgePruning.SelectedIndex;
         _settings.ReactiveBlobsPlayfield = CbReactiveBlobsPlayfield.IsChecked == true;
         _settings.ReactiveBlobsBackglass = CbReactiveBlobsBackglass.IsChecked == true;
         _settings.ReactiveBlobsTopper = CbReactiveBlobsTopper.IsChecked == true;
@@ -2291,6 +2386,12 @@ public partial class SettingsWindow : JukeboxWindow
         _originalMandelbrotHistogramColoring = _settings.MandelbrotHistogramColoring;
         _originalMandelbrotRotation = _settings.MandelbrotRotation;
         _originalMandelbrotColorScheme = _settings.MandelbrotColorScheme;
+        _originalGameOfLifeCellSize = _settings.GameOfLifeCellSize;
+        _originalGameOfLifeTickIntervalMs = _settings.GameOfLifeTickIntervalMs;
+        _originalGameOfLifeFadeGenerations = _settings.GameOfLifeFadeGenerations;
+        _originalGameOfLifeHeatBoost = _settings.GameOfLifeHeatBoost;
+        _originalGameOfLifeDensity = _settings.GameOfLifeDensity;
+        _originalGameOfLifeOldAgePruning = _settings.GameOfLifeOldAgePruning;
         _originalProjectMPresetDuration = _settings.ProjectMPresetDuration;
         _originalProjectMSoftCut = _settings.ProjectMSoftCutDuration;
         _originalProjectMHardCut = _settings.ProjectMHardCutEnabled;

@@ -561,6 +561,79 @@
                                 </StackPanel>
                             </StackPanel>
 
+                            <!-- ═══ SECTION: Game of Life Tuning (visible only when any pattern is Game of Life) ═══ -->
+                            <StackPanel x:Name="PanelGameOfLifeTuning" Visibility="Collapsed">
+                                <TextBlock Text="GAME OF LIFE TUNING" FontSize="12" FontWeight="Bold"
+                                    Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Cell Size:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <Slider x:Name="SliderGameOfLifeCellSize" Minimum="1" Maximum="10"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="1"
+                                            ValueChanged="SliderGameOfLifeCellSize_ValueChanged"
+                                            ToolTip="Size of each cell in pixels. Smaller = higher resolution grid, more cells. Default 5."/>
+                                    <TextBlock x:Name="TxtGameOfLifeCellSize" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Tick Interval:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <Slider x:Name="SliderGameOfLifeTickInterval" Minimum="1" Maximum="100"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="1"
+                                            ValueChanged="SliderGameOfLifeTickInterval_ValueChanged"
+                                            ToolTip="Simulation speed in milliseconds per generation. Lower = faster. Default 100."/>
+                                    <TextBlock x:Name="TxtGameOfLifeTickInterval" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Fade Length:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <Slider x:Name="SliderGameOfLifeFadeGenerations" Minimum="0" Maximum="20"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="1"
+                                            ValueChanged="SliderGameOfLifeFadeGenerations_ValueChanged"
+                                            ToolTip="Number of generations dying cells take to fade out. 0 = instant death. Default 6."/>
+                                    <TextBlock x:Name="TxtGameOfLifeFadeGenerations" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Heat Boost:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <Slider x:Name="SliderGameOfLifeHeatBoost" Minimum="0" Maximum="100"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="5"
+                                            ValueChanged="SliderGameOfLifeHeatBoost_ValueChanged"
+                                            ToolTip="Brightness boost for newly born cells. Higher = brighter flash on birth. Default 60."/>
+                                    <TextBlock x:Name="TxtGameOfLifeHeatBoost" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Density:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <Slider x:Name="SliderGameOfLifeDensity" Minimum="1" Maximum="10"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="1"
+                                            ValueChanged="SliderGameOfLifeDensity_ValueChanged"
+                                            ToolTip="Controls how many cell clusters are injected. 1 = sparse, 5 = default, 10 = dense."/>
+                                    <TextBlock x:Name="TxtGameOfLifeDensity" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Old Age Pruning:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <ComboBox x:Name="CbGameOfLifeOldAgePruning" Width="150"
+                                              SelectionChanged="CbGameOfLifeOldAgePruning_SelectionChanged"
+                                              ToolTip="Kill cells that have been alive too long. Off = no pruning. Low = 60s. Medium = 30s. High = 15s.">
+                                        <ComboBoxItem Content="Off"/>
+                                        <ComboBoxItem Content="Low (60s)"/>
+                                        <ComboBoxItem Content="Medium (30s)"/>
+                                        <ComboBoxItem Content="High (15s)"/>
+                                    </ComboBox>
+                                </StackPanel>
+                            </StackPanel>
+
                             <!-- ═══ SECTION: ProjectM Tuning (visible only when any pattern is ProjectM) ═══ -->
                             <StackPanel x:Name="PanelProjectMTuning" Visibility="Collapsed">
                                 <TextBlock Text="PROJECTM TUNING" FontSize="12" FontWeight="Bold"
