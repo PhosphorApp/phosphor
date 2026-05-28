@@ -1956,7 +1956,7 @@ public partial class DmdWindow : JukeboxWindow
             _playfieldProxy?.RestartGameOfLife();
             _backglassProxy?.RestartGameOfLife();
             _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.RestartGameOfLife());
-            Dispatcher.BeginInvoke(RestartGameOfLife);
+            _ = Dispatcher.BeginInvoke(RestartGameOfLife);
         }
         FerrofluidSimulator.CoreGravity = _appSettings.FerrofluidCoreGravity;
         FerrofluidSimulator.MutualAttraction = _appSettings.FerrofluidMutualAttraction;

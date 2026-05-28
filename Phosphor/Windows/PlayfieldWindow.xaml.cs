@@ -191,7 +191,7 @@ public partial class PlayfieldWindow : JukeboxWindow
         var gradBrushes = _currentPattern?.GradientBrushes;
         if (brushes == null || brushes.Count == 0) return;
 
-        bool patternOwnsColors = _currentPattern.ManagesOwnColors;
+        bool patternOwnsColors = _currentPattern!.ManagesOwnColors;
 
         if (!patternOwnsColors)
             _hueOffset += 1.0;
