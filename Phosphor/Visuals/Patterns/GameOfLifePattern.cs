@@ -38,7 +38,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
     /// <summary>Whether camera roam is enabled. Default true.</summary>
     public static bool CameraRoam { get; set; } = true;
 
-    /// <summary>Maximum zoom level for camera roam (1.2–2.0). Default 1.6.</summary>
+    /// <summary>Maximum zoom level for camera roam (1.2–3.0). Default 1.6.</summary>
     public static double CameraMaxZoom { get; set; } = 1.6;
 
     /// <summary>Percentage of extra grid beyond the visible area (0–100). Default 50.</summary>
@@ -73,6 +73,8 @@ public sealed class GameOfLifePattern : BlobPatternBase
     private RoygbivColor _pulseBand;
     private const int PulseFrameCount = 6;
     private const uint PulseBrightnessBoost = 80;
+    private DateTime _lastPulseTime = DateTime.MinValue;
+    private static readonly TimeSpan PulseCooldown = TimeSpan.FromSeconds(8);
 
     // Generation counter for periodic injection when audio is off
     private int _generationCount;
@@ -101,6 +103,15 @@ public sealed class GameOfLifePattern : BlobPatternBase
     private const int SectorCountY = 8;
     private int[] _sectorBirths = new int[SectorCountX * SectorCountY];
     private int[] _sectorAlive = new int[SectorCountX * SectorCountY];
+
+    // Stagnation detection — two snapshots taken SnapshotInterval generations apart.
+    // Cells alive in both snapshots at the same position are considered stagnant
+    // (still-lifes or short-period oscillators). Used to bias injection locations.
+    private const int SnapshotInterval = 30;   // generations between snapshots
+    private bool[] _snapshotA = [];            // older snapshot (alive = true)
+    private bool[] _snapshotB = [];            // newer snapshot
+    private int _snapshotGen;                  // generation counter for snapshot timing
+    private bool _snapshotReady;               // true once both snapshots have been taken
 
     public GameOfLifePattern(BlobPatternConfig config) : base(config) { }
 
@@ -171,6 +182,10 @@ public sealed class GameOfLifePattern : BlobPatternBase
         _fadeColor = new uint[totalCells];
         _sectorBirths = new int[SectorCountX * SectorCountY];
         _sectorAlive = new int[SectorCountX * SectorCountY];
+        _snapshotA = new bool[totalCells];
+        _snapshotB = new bool[totalCells];
+        _snapshotGen = 0;
+        _snapshotReady = false;
 
         _bitmap = new WriteableBitmap(_gridW, _gridH, 96, 96, PixelFormats.Bgra32, null);
 
@@ -321,6 +336,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
     private void StepSimulation()
     {
         int w = _gridW, h = _gridH;
+        int totalCells = w * h;
         Array.Clear(_colorNext);
         Array.Clear(_sectorBirths);
         Array.Clear(_sectorAlive);
@@ -415,6 +431,19 @@ public sealed class GameOfLifePattern : BlobPatternBase
 
         // Swap buffers
         (_colorCurrent, _colorNext) = (_colorNext, _colorCurrent);
+
+        // Stagnation snapshots: take a snapshot every SnapshotInterval generations.
+        // Rotate A <- B <- current so we compare two points in time.
+        _snapshotGen++;
+        if (_snapshotGen >= SnapshotInterval)
+        {
+            _snapshotGen = 0;
+            // Rotate: A gets the old B, B gets the current state
+            (_snapshotA, _snapshotB) = (_snapshotB, _snapshotA);
+            for (int i = 0; i < totalCells; i++)
+                _snapshotB[i] = _colorCurrent[i] != 0;
+            _snapshotReady = true;
+        }
     }
 
     private void RenderFrame()
@@ -511,7 +540,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
         if (!CameraRoam || _scaleTransform == null || _translateTransform == null || _rotateTransform == null)
             return;
 
-        double maxZoom = Math.Clamp(CameraMaxZoom, 1.1, 2.0);
+        double maxZoom = Math.Clamp(CameraMaxZoom, 1.1, 3.0);
 
         // Always apply a very slow constant drift — gives the "floating in space" feel
         _cameraTargetX += _cameraDriftX;
@@ -694,6 +723,22 @@ public sealed class GameOfLifePattern : BlobPatternBase
         // When camera roam is active, bias 70% of injections toward the visible viewport
         bool biasToViewport = CameraRoam && _cameraZoom > 1.05;
 
+        // Build a list of stagnant cell positions to use as injection targets.
+        // Stagnant = alive in both snapshots (still-life or oscillator).
+        List<int>? stagnantCells = null;
+        if (_snapshotReady)
+        {
+            stagnantCells = new List<int>();
+            int cellCount = _gridW * _gridH;
+            for (int i = 0; i < cellCount; i++)
+            {
+                if (_snapshotA[i] && _snapshotB[i])
+                    stagnantCells.Add(i);
+            }
+            if (stagnantCells.Count == 0)
+                stagnantCells = null;
+        }
+
         for (int s = 0; s < clustersToAdd; s++)
         {
             double hue = (baseHue + _rng.NextDouble() * 60.0 - 30.0) % 360.0;
@@ -702,7 +747,15 @@ public sealed class GameOfLifePattern : BlobPatternBase
             uint packed = PackColor(color);
 
             int cx, cy;
-            if (biasToViewport && _rng.NextDouble() < 0.7)
+
+            // 60% chance to target a stagnant cell when available
+            if (stagnantCells != null && _rng.NextDouble() < 0.6)
+            {
+                int pick = stagnantCells[_rng.Next(stagnantCells.Count)];
+                cx = pick % _gridW;
+                cy = pick / _gridW;
+            }
+            else if (biasToViewport && _rng.NextDouble() < 0.7)
             {
                 // Place near the camera's current focus area
                 int cellSize = Math.Max(1, CellSize);
@@ -741,6 +794,11 @@ public sealed class GameOfLifePattern : BlobPatternBase
     public override void PulseDominantColor(RoygbivColor band)
     {
         if (_disposed) return;
+
+        var now = DateTime.UtcNow;
+        if (now - _lastPulseTime < PulseCooldown) return;
+        _lastPulseTime = now;
+
         _pulseBand = band;
         _pulseFramesRemaining = PulseFrameCount;
     }
