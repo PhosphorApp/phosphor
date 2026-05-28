@@ -80,7 +80,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
     private int _generationCount;
     private bool _audioReactiveActive;
 
-    // Frame timing diagnostics (baseline single-threaded; matches GoL-MT branch logger)
+    // Frame timing diagnostics
     private readonly System.Diagnostics.Stopwatch _frameSw = new();
     private const int FrameTimingLogInterval = 1000;
 
@@ -338,8 +338,13 @@ public sealed class GameOfLifePattern : BlobPatternBase
 
         _frameSw.Stop();
         if (_generationCount % FrameTimingLogInterval == 0)
-            DebugLog.Log($"[GoL-ST] Frame {_generationCount}: {_frameSw.Elapsed.TotalMilliseconds:F2} ms  grid={_gridW}x{_gridH} ({_gridW * _gridH} cells)");
+            DebugLog.Log($"[GoL] Frame {_generationCount}: {_frameSw.Elapsed.TotalMilliseconds:F2} ms  grid={_gridW}x{_gridH} ({_gridW * _gridH} cells)");
     }
+
+    // Cells/row threshold above which we parallelize sim + render. Below this,
+    // thread-pool dispatch overhead exceeds the work (e.g. cellSize=5 on 1080p
+    // is ~83k cells — already worth it; cellSize=10 is ~21k — not).
+    private const int ParallelCellThreshold = 50_000;
 
     private void StepSimulation()
     {
@@ -350,77 +355,38 @@ public sealed class GameOfLifePattern : BlobPatternBase
         Array.Clear(_sectorAlive);
         int sectorW = Math.Max(1, w / SectorCountX);
         int sectorH = Math.Max(1, h / SectorCountY);
+        int sectorCount = SectorCountX * SectorCountY;
 
-        for (int y = 0; y < h; y++)
-        for (int x = 0; x < w; x++)
+        if (totalCells >= ParallelCellThreshold)
         {
-            int idx = y * w + x;
-            int neighbors = 0;
-            uint rSum = 0, gSum = 0, bSum = 0;
-
-            // Count live neighbors and accumulate colors
-            for (int dy = -1; dy <= 1; dy++)
-            for (int dx = -1; dx <= 1; dx++)
-            {
-                if (dx == 0 && dy == 0) continue;
-                int nx = x + dx, ny = y + dy;
-
-                // Wrap around edges for seamless borders
-                if (nx < 0) nx = w - 1; else if (nx >= w) nx = 0;
-                if (ny < 0) ny = h - 1; else if (ny >= h) ny = 0;
-
-                uint nc = _colorCurrent[ny * w + nx];
-                if (nc != 0)
+            // Parallelize over rows. Each row writes only to its own indices
+            // in _colorNext/_age/_fade/_fadeColor — disjoint, no locks needed.
+            // Sector counters are accumulated thread-locally and merged once
+            // per worker in localFinally.
+            object mergeLock = new();
+            Parallel.For(0, h,
+                () => (births: new int[sectorCount], alive: new int[sectorCount]),
+                (y, _, local) =>
                 {
-                    neighbors++;
-                    rSum += (nc >> 16) & 0xFF;
-                    gSum += (nc >> 8) & 0xFF;
-                    bSum += nc & 0xFF;
-                }
-            }
-
-            bool alive = _colorCurrent[idx] != 0;
-
-            if (alive)
-            {
-                if (neighbors == 2 || neighbors == 3)
+                    StepRow(y, w, h, sectorW, sectorH, local.births, local.alive);
+                    return local;
+                },
+                local =>
                 {
-                    // Survives — keep its color, increment age
-                    _colorNext[idx] = _colorCurrent[idx];
-                    _age[idx] = (ushort)Math.Min(ushort.MaxValue, _age[idx] + 1);
-                    _fade[idx] = 0;
-                    int si = Math.Min(x / sectorW, SectorCountX - 1) + Math.Min(y / sectorH, SectorCountY - 1) * SectorCountX;
-                    _sectorAlive[si]++;
-                }
-                else
-                {
-                    // Dies — start fade
-                    _colorNext[idx] = 0;
-                    _fade[idx] = (byte)Math.Clamp(FadeGenerations, 1, 255);
-                    _fadeColor[idx] = _colorCurrent[idx];
-                    _age[idx] = 0;
-                }
-            }
-            else
-            {
-                if (neighbors == 3)
-                {
-                    // Birth — color is average of parents
-                    uint r = rSum / 3, g = gSum / 3, b = bSum / 3;
-                    _colorNext[idx] = 0xFF000000 | (r << 16) | (g << 8) | b;
-                    _age[idx] = 1;
-                    _fade[idx] = 0;
-                    int bi = Math.Min(x / sectorW, SectorCountX - 1) + Math.Min(y / sectorH, SectorCountY - 1) * SectorCountX;
-                    _sectorBirths[bi]++;
-                }
-                else
-                {
-                    // Still dead — tick fade if active
-                    _colorNext[idx] = 0;
-                    if (_fade[idx] > 0) _fade[idx]--;
-                    // age stays 0
-                }
-            }
+                    lock (mergeLock)
+                    {
+                        for (int i = 0; i < sectorCount; i++)
+                        {
+                            _sectorBirths[i] += local.births[i];
+                            _sectorAlive[i] += local.alive[i];
+                        }
+                    }
+                });
+        }
+        else
+        {
+            for (int y = 0; y < h; y++)
+                StepRow(y, w, h, sectorW, sectorH, _sectorBirths, _sectorAlive);
         }
 
         // Swap buffers
@@ -440,6 +406,83 @@ public sealed class GameOfLifePattern : BlobPatternBase
         }
     }
 
+    /// <summary>
+    /// Process one row of the Conway step. Writes only to its own row's
+    /// indices in _colorNext/_age/_fade/_fadeColor — safe to call concurrently
+    /// from multiple threads provided each row is owned by one worker.
+    /// Sector counters are accumulated into the caller-supplied arrays so
+    /// each thread can use its own buffers (merged in StepSimulation).
+    /// </summary>
+    private void StepRow(int y, int w, int h, int sectorW, int sectorH, int[] sectorBirths, int[] sectorAlive)
+    {
+        int sy = Math.Min(y / sectorH, SectorCountY - 1);
+        int yUp = y == 0 ? h - 1 : y - 1;
+        int yDn = y == h - 1 ? 0 : y + 1;
+        int rowBase = y * w;
+        int upBase = yUp * w;
+        int dnBase = yDn * w;
+
+        for (int x = 0; x < w; x++)
+        {
+            int idx = rowBase + x;
+            int xL = x == 0 ? w - 1 : x - 1;
+            int xR = x == w - 1 ? 0 : x + 1;
+
+            int neighbors = 0;
+            uint rSum = 0, gSum = 0, bSum = 0;
+
+            // Eight neighbors, inlined (faster than a dx/dy loop and avoids
+            // the dx==0&&dy==0 branch on the hot path).
+            uint nc;
+            nc = _colorCurrent[upBase + xL]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
+            nc = _colorCurrent[upBase + x ]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
+            nc = _colorCurrent[upBase + xR]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
+            nc = _colorCurrent[rowBase + xL]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
+            nc = _colorCurrent[rowBase + xR]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
+            nc = _colorCurrent[dnBase + xL]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
+            nc = _colorCurrent[dnBase + x ]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
+            nc = _colorCurrent[dnBase + xR]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
+
+            bool alive = _colorCurrent[idx] != 0;
+
+            if (alive)
+            {
+                if (neighbors == 2 || neighbors == 3)
+                {
+                    _colorNext[idx] = _colorCurrent[idx];
+                    _age[idx] = (ushort)Math.Min(ushort.MaxValue, _age[idx] + 1);
+                    _fade[idx] = 0;
+                    int si = Math.Min(x / sectorW, SectorCountX - 1) + sy * SectorCountX;
+                    sectorAlive[si]++;
+                }
+                else
+                {
+                    _colorNext[idx] = 0;
+                    _fade[idx] = (byte)Math.Clamp(FadeGenerations, 1, 255);
+                    _fadeColor[idx] = _colorCurrent[idx];
+                    _age[idx] = 0;
+                }
+            }
+            else
+            {
+                if (neighbors == 3)
+                {
+                    uint r = rSum / 3, g = gSum / 3, b = bSum / 3;
+                    _colorNext[idx] = 0xFF000000 | (r << 16) | (g << 8) | b;
+                    _age[idx] = 1;
+                    _fade[idx] = 0;
+                    int bi = Math.Min(x / sectorW, SectorCountX - 1) + sy * SectorCountX;
+                    sectorBirths[bi]++;
+                }
+                else
+                {
+                    _colorNext[idx] = 0;
+                    if (_fade[idx] > 0) _fade[idx]--;
+                }
+            }
+        }
+    }
+
     private void RenderFrame()
     {
         if (_bitmap == null) return;
@@ -454,59 +497,37 @@ public sealed class GameOfLifePattern : BlobPatternBase
         _bitmap.Lock();
         try
         {
-            unsafe
+            int w = _gridW, h = _gridH;
+            int totalCells = w * h;
+            IntPtr backBuffer = _bitmap.BackBuffer;
+
+            if (totalCells >= ParallelCellThreshold)
             {
-                uint* pixels = (uint*)_bitmap.BackBuffer;
-                int w = _gridW, h = _gridH;
-
-                for (int i = 0; i < w * h; i++)
-                {
-                    uint c = _colorCurrent[i];
-                    if (c != 0)
+                // Each row writes disjoint pixels — safe to parallelize. Color
+                // sums are accumulated thread-locally and merged in localFinally.
+                object mergeLock = new();
+                Parallel.For(0, h,
+                    () => (r: 0L, g: 0L, b: 0L, n: 0),
+                    (y, _, local) =>
                     {
-                        uint cr = (c >> 16) & 0xFF;
-                        uint cg = (c >> 8) & 0xFF;
-                        uint cb = c & 0xFF;
-                        totalR += cr;
-                        totalG += cg;
-                        totalB += cb;
-                        aliveCount++;
-
-                        // Apply heat boost for young cells + pulse boost for matching band
-                        uint boost = _age[i] <= 2 ? (uint)Math.Clamp(HeatBoost, 0, 255) : 0u;
-                        if (pulsing && CellMatchesBand(cr, cg, cb, _pulseBand))
-                            boost += PulseBrightnessBoost;
-
-                        if (boost > 0)
+                        RenderRow(y, w, backBuffer, pulsing, ref local.r, ref local.g, ref local.b, ref local.n);
+                        return local;
+                    },
+                    local =>
+                    {
+                        lock (mergeLock)
                         {
-                            uint r = Math.Min(255, cr + boost);
-                            uint g = Math.Min(255, cg + boost);
-                            uint b = Math.Min(255, cb + boost);
-                            pixels[i] = 0xFF000000 | (r << 16) | (g << 8) | b;
+                            totalR += local.r;
+                            totalG += local.g;
+                            totalB += local.b;
+                            aliveCount += local.n;
                         }
-                        else
-                        {
-                            pixels[i] = c;
-                        }
-                    }
-                    else if (_fade[i] > 0)
-                    {
-                        uint fc = _fadeColor[i];
-                        int fadeMax = Math.Max(1, FadeGenerations);
-                        uint alpha = (uint)(255 * _fade[i] / fadeMax);
-                        uint r = (fc >> 16) & 0xFF;
-                        uint g = (fc >> 8) & 0xFF;
-                        uint b = fc & 0xFF;
-                        r = r * alpha / 255;
-                        g = g * alpha / 255;
-                        b = b * alpha / 255;
-                        pixels[i] = (alpha << 24) | (r << 16) | (g << 8) | b;
-                    }
-                    else
-                    {
-                        pixels[i] = 0;
-                    }
-                }
+                    });
+            }
+            else
+            {
+                for (int y = 0; y < h; y++)
+                    RenderRow(y, w, backBuffer, pulsing, ref totalR, ref totalG, ref totalB, ref aliveCount);
             }
 
             _bitmap.AddDirtyRect(new Int32Rect(0, 0, _gridW, _gridH));
@@ -524,6 +545,69 @@ public sealed class GameOfLifePattern : BlobPatternBase
             byte avgG = (byte)(totalG / aliveCount);
             byte avgB = (byte)(totalB / aliveCount);
             _brushes[0].Color = Color.FromRgb(avgR, avgG, avgB);
+        }
+    }
+
+    /// <summary>
+    /// Render one row of the bitmap. Writes only into its own row's pixels —
+    /// safe to call concurrently from multiple threads. Color sums and alive
+    /// count are accumulated through caller-supplied refs (which point at
+    /// thread-local storage when parallelized).
+    /// </summary>
+    private unsafe void RenderRow(int y, int w, IntPtr backBuffer, bool pulsing,
+        ref long totalR, ref long totalG, ref long totalB, ref int aliveCount)
+    {
+        uint* pixels = (uint*)backBuffer;
+        int fadeMax = Math.Max(1, FadeGenerations);
+        uint heat = (uint)Math.Clamp(HeatBoost, 0, 255);
+        int rowBase = y * w;
+
+        for (int x = 0; x < w; x++)
+        {
+            int i = rowBase + x;
+            uint c = _colorCurrent[i];
+            if (c != 0)
+            {
+                uint cr = (c >> 16) & 0xFF;
+                uint cg = (c >> 8) & 0xFF;
+                uint cb = c & 0xFF;
+                totalR += cr;
+                totalG += cg;
+                totalB += cb;
+                aliveCount++;
+
+                uint boost = _age[i] <= 2 ? heat : 0u;
+                if (pulsing && CellMatchesBand(cr, cg, cb, _pulseBand))
+                    boost += PulseBrightnessBoost;
+
+                if (boost > 0)
+                {
+                    uint r = Math.Min(255, cr + boost);
+                    uint g = Math.Min(255, cg + boost);
+                    uint b = Math.Min(255, cb + boost);
+                    pixels[i] = 0xFF000000 | (r << 16) | (g << 8) | b;
+                }
+                else
+                {
+                    pixels[i] = c;
+                }
+            }
+            else if (_fade[i] > 0)
+            {
+                uint fc = _fadeColor[i];
+                uint alpha = (uint)(255 * _fade[i] / fadeMax);
+                uint r = (fc >> 16) & 0xFF;
+                uint g = (fc >> 8) & 0xFF;
+                uint b = fc & 0xFF;
+                r = r * alpha / 255;
+                g = g * alpha / 255;
+                b = b * alpha / 255;
+                pixels[i] = (alpha << 24) | (r << 16) | (g << 8) | b;
+            }
+            else
+            {
+                pixels[i] = 0;
+            }
         }
     }
 
