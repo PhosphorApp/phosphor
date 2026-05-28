@@ -189,3 +189,29 @@ Moving `StepSimulation` off the dispatcher thread would unlock multi-core scalin
 - Stagnation snapshots are a simple copy — stay single-threaded after the parallel step.
 - Expected: near-linear scaling with core count for the simulation step.
 - Rendering (`RenderFrame`) is already fast (1 write per cell) and unlikely to need it.
+
+### Phase 1 MT (branch `GoL-MT`)
+Implemented row-level `Parallel.For` for both `StepSimulation` and the pixel
+write inside `RenderFrame`. Kept everything on the dispatcher thread — the
+`WriteableBitmap` `Lock`/`AddDirtyRect`/`Unlock` calls stay on the owning
+thread, and inside the lock, multiple threads writing disjoint pixels into the
+back buffer is safe.
+
+- Extracted `StepRow(y, …)` and `RenderRow(y, …)` helpers. Each writes only
+  to its own row's indices — no shared mutable state across rows.
+- Sector counters (`_sectorBirths`/`_sectorAlive`) accumulated into per-worker
+  `int[]`s via `Parallel.For`'s `localInit`/`localFinally`, merged under a
+  single lock at the end of the step (one lock per worker, not per cell).
+- Avg-color sums in `RenderFrame` use the same per-worker pattern.
+- Neighbor accumulation in `StepRow` was unrolled (the previous dy/dx loop +
+  `dx==0&&dy==0` skip was a hot branch in the inner loop). Y-wrap and x-wrap
+  computed once per row / per cell instead of per neighbor.
+- `ParallelCellThreshold = 50_000` guard keeps tiny grids (e.g. cellSize=10
+  on 1080p) single-threaded, where the thread-pool dispatch cost exceeds the
+  work.
+- Frame timing log (`DebugLog.Log` every 1000 frames) added to measure the
+  before/after.
+
+Phase 2 (offload the whole tick to a worker thread, marshal only `Lock`/
+`Unlock`/`UpdateCamera` back to the dispatcher) is on hold pending Phase 1
+measurements.
