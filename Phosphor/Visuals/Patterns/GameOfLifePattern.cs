@@ -80,6 +80,10 @@ public sealed class GameOfLifePattern : BlobPatternBase
     private int _generationCount;
     private bool _audioReactiveActive;
 
+    // Frame timing diagnostics (baseline single-threaded; matches GoL-MT branch logger)
+    private readonly System.Diagnostics.Stopwatch _frameSw = new();
+    private const int FrameTimingLogInterval = 1000;
+
     // Camera roam state — continuous exploration model
     private enum CameraState { Settling, Exploring }
     private CameraState _cameraState = CameraState.Settling;
@@ -309,6 +313,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
     {
         if (_disposed) return;
 
+        _frameSw.Restart();
         _generationCount++;
 
         // Inject new cells on beat
@@ -330,6 +335,10 @@ public sealed class GameOfLifePattern : BlobPatternBase
         StepSimulation();
         RenderFrame();
         UpdateCamera();
+
+        _frameSw.Stop();
+        if (_generationCount % FrameTimingLogInterval == 0)
+            DebugLog.Log($"[GoL-ST] Frame {_generationCount}: {_frameSw.Elapsed.TotalMilliseconds:F2} ms  grid={_gridW}x{_gridH} ({_gridW * _gridH} cells)");
     }
 
     private void StepSimulation()
