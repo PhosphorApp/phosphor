@@ -118,6 +118,9 @@ public class AppSettings
     public int GameOfLifeDensity { get; set; } = 5;
     /// <summary>Old age pruning: 0 = Off, 1 = Low (60s), 2 = Medium (30s), 3 = High (15s).</summary>
     public int GameOfLifeOldAgePruning { get; set; }
+    public bool GameOfLifeCameraRoam { get; set; } = true;
+    public double GameOfLifeCameraMaxZoom { get; set; } = 1.6;
+    public int GameOfLifeCameraOverscan { get; set; } = 50;
 
     // Ferrofluid tuning
     public double FerrofluidCoreGravity { get; set; } = 280.0;

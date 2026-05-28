@@ -35,6 +35,15 @@ public sealed class GameOfLifePattern : BlobPatternBase
     /// <summary>Old age pruning mode: 0 = Off, 1 = Low (60s), 2 = Medium (30s), 3 = High (15s).</summary>
     public static int OldAgePruning { get; set; }
 
+    /// <summary>Whether camera roam is enabled. Default true.</summary>
+    public static bool CameraRoam { get; set; } = true;
+
+    /// <summary>Maximum zoom level for camera roam (1.2–2.0). Default 1.6.</summary>
+    public static double CameraMaxZoom { get; set; } = 1.6;
+
+    /// <summary>Percentage of extra grid beyond the visible area (0–100). Default 50.</summary>
+    public static int CameraOverscan { get; set; } = 50;
+
     /// <summary>Fraction of grid edge to keep clear when placing seed clusters (0.0–0.5).</summary>
     private const double PlacementMargin = 0.05;
 
@@ -68,6 +77,30 @@ public sealed class GameOfLifePattern : BlobPatternBase
     // Generation counter for periodic injection when audio is off
     private int _generationCount;
     private bool _audioReactiveActive;
+
+    // Camera roam state — continuous exploration model
+    private enum CameraState { Settling, Exploring }
+    private CameraState _cameraState = CameraState.Settling;
+    private int _cameraRetargetTicks;       // ticks until we pick a new wander target
+    private double _cameraZoom = 1.0;       // current zoom level
+    private double _cameraTargetZoom = 1.0;
+    private double _cameraPanX, _cameraPanY; // current pan offset in pixels
+    private double _cameraTargetX, _cameraTargetY;
+    private double _cameraAngle;            // current rotation in degrees
+    private double _cameraTargetAngle;
+    private double _cameraDriftX, _cameraDriftY; // very slow constant drift velocity
+    private double _cameraDriftAngle;       // very slow rotational drift
+    private ScaleTransform? _scaleTransform;
+    private TranslateTransform? _translateTransform;
+    private RotateTransform? _rotateTransform;
+    private double _displayW, _displayH;    // visible canvas size
+    private double _overscanW, _overscanH;  // total image size (display + overscan)
+
+    // Sector activity tracking for intelligent camera targeting
+    private const int SectorCountX = 8;
+    private const int SectorCountY = 8;
+    private int[] _sectorBirths = new int[SectorCountX * SectorCountY];
+    private int[] _sectorAlive = new int[SectorCountX * SectorCountY];
 
     public GameOfLifePattern(BlobPatternConfig config) : base(config) { }
 
@@ -118,10 +151,17 @@ public sealed class GameOfLifePattern : BlobPatternBase
     {
         double w = Math.Max(200, _canvas.ActualWidth);
         double h = Math.Max(200, _canvas.ActualHeight);
+        _displayW = w;
+        _displayH = h;
+
+        // When camera roam is enabled, expand the grid beyond the visible area
+        double overscanFrac = CameraRoam ? Math.Clamp(CameraOverscan, 0, 100) / 100.0 : 0.0;
+        _overscanW = w * (1.0 + overscanFrac);
+        _overscanH = h * (1.0 + overscanFrac);
 
         int cellSize = Math.Max(1, CellSize);
-        _gridW = Math.Max(1, (int)(w / cellSize));
-        _gridH = Math.Max(1, (int)(h / cellSize));
+        _gridW = Math.Max(1, (int)(_overscanW / cellSize));
+        _gridH = Math.Max(1, (int)(_overscanH / cellSize));
 
         int totalCells = _gridW * _gridH;
         _colorCurrent = new uint[totalCells];
@@ -129,13 +169,15 @@ public sealed class GameOfLifePattern : BlobPatternBase
         _age = new ushort[totalCells];
         _fade = new byte[totalCells];
         _fadeColor = new uint[totalCells];
+        _sectorBirths = new int[SectorCountX * SectorCountY];
+        _sectorAlive = new int[SectorCountX * SectorCountY];
 
         _bitmap = new WriteableBitmap(_gridW, _gridH, 96, 96, PixelFormats.Bgra32, null);
 
         _image = new Image
         {
-            Width = w,
-            Height = h,
+            Width = _overscanW,
+            Height = _overscanH,
             Source = _bitmap,
             Stretch = Stretch.Fill,
             Opacity = 0,
@@ -143,6 +185,40 @@ public sealed class GameOfLifePattern : BlobPatternBase
 
         // Nearest-neighbor scaling to keep the blocky cell look
         RenderOptions.SetBitmapScalingMode(_image!, BitmapScalingMode.NearestNeighbor);
+
+        // Position oversized image so the visible center aligns with the canvas center
+        double offsetX = -(_overscanW - w) / 2.0;
+        double offsetY = -(_overscanH - h) / 2.0;
+        Canvas.SetLeft(_image!, offsetX);
+        Canvas.SetTop(_image!, offsetY);
+
+        // Clip canvas so overscan edges are never visible
+        _canvas.ClipToBounds = true;
+
+        // Set up camera transforms
+        _scaleTransform = new ScaleTransform(1.0, 1.0);
+        _translateTransform = new TranslateTransform(0, 0);
+        _rotateTransform = new RotateTransform(0);
+        var transformGroup = new TransformGroup();
+        transformGroup.Children.Add(_scaleTransform);
+        transformGroup.Children.Add(_rotateTransform);
+        transformGroup.Children.Add(_translateTransform);
+        _image!.RenderTransform = transformGroup;
+        _image.RenderTransformOrigin = new System.Windows.Point(0.5, 0.5);
+
+        // Reset camera state
+        _cameraState = CameraState.Settling;
+        _cameraZoom = 1.0;
+        _cameraTargetZoom = 1.0;
+        _cameraPanX = 0; _cameraPanY = 0;
+        _cameraTargetX = 0; _cameraTargetY = 0;
+        _cameraAngle = 0; _cameraTargetAngle = 0;
+        _cameraRetargetTicks = TicksFromSeconds(3, 6);
+
+        // Initial gentle drift
+        _cameraDriftX = (_rng.NextDouble() - 0.5) * 0.22;
+        _cameraDriftY = (_rng.NextDouble() - 0.5) * 0.22;
+        _cameraDriftAngle = (_rng.NextDouble() - 0.5) * 0.012;
 
         // Dummy brush/grad so base class indexing doesn't crash
         _brushes.Add(new SolidColorBrush(Colors.Black));
@@ -154,9 +230,18 @@ public sealed class GameOfLifePattern : BlobPatternBase
         SeedGrid();
     }
 
+    /// <summary>Returns a random tick count between minSeconds and maxSeconds based on current TickIntervalMs.</summary>
+    private int TicksFromSeconds(double minSeconds, double maxSeconds)
+    {
+        double seconds = minSeconds + _rng.NextDouble() * (maxSeconds - minSeconds);
+        return Math.Max(1, (int)(seconds * 1000.0 / Math.Max(16, TickIntervalMs)));
+    }
+
     private void SeedGrid()
     {
-        int count = Math.Max(1, _blobCount);
+        // Scale seed count by the overscan area ratio so visible density stays uniform
+        double areaRatio = (_overscanW * _overscanH) / Math.Max(1, _displayW * _displayH);
+        int count = Math.Max(1, (int)(_blobCount * areaRatio));
         int marginX = Math.Max(2, (int)(_gridW * PlacementMargin));
         int marginY = Math.Max(2, (int)(_gridH * PlacementMargin));
 
@@ -230,12 +315,17 @@ public sealed class GameOfLifePattern : BlobPatternBase
 
         StepSimulation();
         RenderFrame();
+        UpdateCamera();
     }
 
     private void StepSimulation()
     {
         int w = _gridW, h = _gridH;
         Array.Clear(_colorNext);
+        Array.Clear(_sectorBirths);
+        Array.Clear(_sectorAlive);
+        int sectorW = Math.Max(1, w / SectorCountX);
+        int sectorH = Math.Max(1, h / SectorCountY);
 
         for (int y = 0; y < h; y++)
         for (int x = 0; x < w; x++)
@@ -275,6 +365,8 @@ public sealed class GameOfLifePattern : BlobPatternBase
                     _colorNext[idx] = _colorCurrent[idx];
                     _age[idx] = (ushort)Math.Min(ushort.MaxValue, _age[idx] + 1);
                     _fade[idx] = 0;
+                    int si = Math.Min(x / sectorW, SectorCountX - 1) + Math.Min(y / sectorH, SectorCountY - 1) * SectorCountX;
+                    _sectorAlive[si]++;
 
                     // Old age pruning: kill cells that have been alive too long
                     if (OldAgePruning > 0)
@@ -308,6 +400,8 @@ public sealed class GameOfLifePattern : BlobPatternBase
                     _colorNext[idx] = 0xFF000000 | (r << 16) | (g << 8) | b;
                     _age[idx] = 1;
                     _fade[idx] = 0;
+                    int bi = Math.Min(x / sectorW, SectorCountX - 1) + Math.Min(y / sectorH, SectorCountY - 1) * SectorCountX;
+                    _sectorBirths[bi]++;
                 }
                 else
                 {
@@ -410,6 +504,162 @@ public sealed class GameOfLifePattern : BlobPatternBase
         }
     }
 
+    // ─── Camera Roam ──────────────────────────────────────────
+
+    private void UpdateCamera()
+    {
+        if (!CameraRoam || _scaleTransform == null || _translateTransform == null || _rotateTransform == null)
+            return;
+
+        double maxZoom = Math.Clamp(CameraMaxZoom, 1.1, 2.0);
+
+        // Always apply a very slow constant drift — gives the "floating in space" feel
+        _cameraTargetX += _cameraDriftX;
+        _cameraTargetY += _cameraDriftY;
+        _cameraTargetAngle += _cameraDriftAngle;
+        ClampCameraTarget();
+
+        switch (_cameraState)
+        {
+            case CameraState.Settling:
+                // Initial settle: slowly zoom in to a first target
+                _cameraZoom = Lerp(_cameraZoom, _cameraTargetZoom, 0.007);
+                _cameraPanX = Lerp(_cameraPanX, _cameraTargetX, 0.007);
+                _cameraPanY = Lerp(_cameraPanY, _cameraTargetY, 0.007);
+                _cameraAngle = Lerp(_cameraAngle, _cameraTargetAngle, 0.005);
+
+                _cameraRetargetTicks--;
+                if (_cameraRetargetTicks <= 0)
+                {
+                    PickCameraTarget(maxZoom);
+                    _cameraState = CameraState.Exploring;
+                    _cameraRetargetTicks = TicksFromSeconds(10, 25);
+                }
+                break;
+
+            case CameraState.Exploring:
+                // Very slowly lerp toward current target; drift keeps us moving between retargets
+                _cameraZoom = Lerp(_cameraZoom, _cameraTargetZoom, 0.005);
+                _cameraPanX = Lerp(_cameraPanX, _cameraTargetX, 0.005);
+                _cameraPanY = Lerp(_cameraPanY, _cameraTargetY, 0.005);
+                _cameraAngle = Lerp(_cameraAngle, _cameraTargetAngle, 0.0035);
+
+                _cameraRetargetTicks--;
+                if (_cameraRetargetTicks <= 0)
+                {
+                    PickCameraTarget(maxZoom);
+                    _cameraRetargetTicks = TicksFromSeconds(10, 25);
+                }
+                break;
+        }
+
+        // Apply transforms
+        _scaleTransform.ScaleX = _cameraZoom;
+        _scaleTransform.ScaleY = _cameraZoom;
+        _translateTransform.X = _cameraPanX;
+        _translateTransform.Y = _cameraPanY;
+        _rotateTransform.Angle = _cameraAngle;
+    }
+
+    /// <summary>
+    /// Pick a new camera wander target by finding an active sector.
+    /// Targets vary zoom gently and compute the maximum safe rotation
+    /// given the current zoom and overscan.
+    /// </summary>
+    private void PickCameraTarget(double maxZoom)
+    {
+        // Score each sector: births × 3 + alive
+        int totalSectors = SectorCountX * SectorCountY;
+        int bestScore = 0;
+
+        Span<int> scores = stackalloc int[totalSectors];
+        for (int i = 0; i < totalSectors; i++)
+        {
+            scores[i] = _sectorBirths[i] * 3 + _sectorAlive[i];
+            if (scores[i] > bestScore) bestScore = scores[i];
+        }
+
+        // Accept sectors scoring at least 40% of the best
+        int threshold = Math.Max(1, bestScore * 2 / 5);
+        int candidateCount = 0;
+        for (int i = 0; i < totalSectors; i++)
+            if (scores[i] >= threshold) candidateCount++;
+
+        if (candidateCount == 0) candidateCount = totalSectors;
+
+        int pick = _rng.Next(candidateCount);
+        int seen = 0;
+        int bestIdx = 0;
+        for (int i = 0; i < totalSectors; i++)
+        {
+            if (scores[i] >= threshold || candidateCount == totalSectors)
+            {
+                if (seen == pick) { bestIdx = i; break; }
+                seen++;
+            }
+        }
+
+        // Convert sector to fractional position on the image (0..1)
+        int sectorX = bestIdx % SectorCountX;
+        int sectorY = bestIdx / SectorCountX;
+        double fracX = (sectorX + 0.5) / SectorCountX; // 0..1
+        double fracY = (sectorY + 0.5) / SectorCountY;
+
+        // Gently vary zoom — wander between ~60% and 100% of max zoom so it stays interesting
+        double minWander = 1.0 + (maxZoom - 1.0) * 0.5;
+        _cameraTargetZoom = minWander + _rng.NextDouble() * (maxZoom - minWander);
+
+        // Pan offset: move the target sector toward the viewport center
+        double imgCenterFracX = fracX - 0.5; // -0.5..+0.5
+        double imgCenterFracY = fracY - 0.5;
+        _cameraTargetX = -imgCenterFracX * _overscanW * (_cameraTargetZoom - 1.0) * 0.8;
+        _cameraTargetY = -imgCenterFracY * _overscanH * (_cameraTargetZoom - 1.0) * 0.8;
+
+        // Compute the maximum safe rotation angle given zoom, overscan, and pan offset.
+        // The available margin at current zoom is (overscanDim * zoom - displayDim) / 2 - |pan|.
+        // Rotation by angle θ requires extra margin ≈ sin(θ) * diagonal / 2.
+        // Solve for max θ: the geometry fully determines how far we can rotate.
+        double marginX = Math.Max(0, (_overscanW * _cameraTargetZoom - _displayW) / 2.0 - Math.Abs(_cameraTargetX));
+        double marginY = Math.Max(0, (_overscanH * _cameraTargetZoom - _displayH) / 2.0 - Math.Abs(_cameraTargetY));
+        double minMargin = Math.Min(marginX, marginY);
+        double diagonal = Math.Sqrt(_displayW * _displayW + _displayH * _displayH) / 2.0;
+        double maxAngle = diagonal > 0 ? Math.Asin(Math.Clamp(minMargin / diagonal, 0, 1)) * (180.0 / Math.PI) : 0;
+
+        _cameraTargetAngle = (_rng.NextDouble() - 0.5) * 2.0 * maxAngle;
+
+        // Set a new gentle drift direction — keeps the camera floating between retargets
+        _cameraDriftX = (_rng.NextDouble() - 0.5) * 0.22;
+        _cameraDriftY = (_rng.NextDouble() - 0.5) * 0.22;
+        // Scale rotational drift to the available rotation range — gentle at edges, freer at center
+        _cameraDriftAngle = (_rng.NextDouble() - 0.5) * 0.012 * Math.Max(1.0, maxAngle / 15.0);
+
+        ClampCameraTarget();
+    }
+
+    /// <summary>Clamp camera pan and rotation targets so the viewport stays within bounds.</summary>
+    private void ClampCameraTarget()
+    {
+        double marginX = (_overscanW * _cameraTargetZoom - _displayW) / 2.0;
+        double marginY = (_overscanH * _cameraTargetZoom - _displayH) / 2.0;
+        marginX = Math.Max(0, marginX);
+        marginY = Math.Max(0, marginY);
+        _cameraTargetX = Math.Clamp(_cameraTargetX, -marginX, marginX);
+        _cameraTargetY = Math.Clamp(_cameraTargetY, -marginY, marginY);
+
+        // Clamp rotation to what the remaining margin supports
+        double remX = Math.Max(0, marginX - Math.Abs(_cameraTargetX));
+        double remY = Math.Max(0, marginY - Math.Abs(_cameraTargetY));
+        double minMargin = Math.Min(remX, remY);
+        double diagonal = Math.Sqrt(_displayW * _displayW + _displayH * _displayH) / 2.0;
+        double maxAngle = diagonal > 0 ? Math.Asin(Math.Clamp(minMargin / diagonal, 0, 1)) * (180.0 / Math.PI) : 0;
+        _cameraTargetAngle = Math.Clamp(_cameraTargetAngle, -maxAngle, maxAngle);
+    }
+
+    private static double Lerp(double current, double target, double t)
+    {
+        return current + (target - current) * t;
+    }
+
     private void InjectCells()
     {
         // Count current population
@@ -420,8 +670,10 @@ public sealed class GameOfLifePattern : BlobPatternBase
 
         double density = (double)alive / totalCells;
 
-        // Inject more cells when population is low, fewer when crowded
+        // Inject more cells when population is low, fewer when crowded.
+        // Scale by overscan area ratio so the larger grid gets proportionally more clusters.
         double densityFactor = Density / 5.0;
+        double areaRatio = (_overscanW * _overscanH) / Math.Max(1, _displayW * _displayH);
         int clustersToAdd = (int)Math.Max(1, (density switch
         {
             < 0.04 => 8,
@@ -431,13 +683,16 @@ public sealed class GameOfLifePattern : BlobPatternBase
             < 0.20 => 2,
             < 0.24 => 1,
             _ => 1,
-        }) * densityFactor);
+        }) * densityFactor * areaRatio);
 
         // Use a hue based on current time for variety
         double baseHue = (Environment.TickCount64 / 50.0) % 360.0;
 
         int marginX = Math.Max(2, (int)(_gridW * PlacementMargin));
         int marginY = Math.Max(2, (int)(_gridH * PlacementMargin));
+
+        // When camera roam is active, bias 70% of injections toward the visible viewport
+        bool biasToViewport = CameraRoam && _cameraZoom > 1.05;
 
         for (int s = 0; s < clustersToAdd; s++)
         {
@@ -446,8 +701,23 @@ public sealed class GameOfLifePattern : BlobPatternBase
             var color = HslToColor(hue, 0.9, 0.6);
             uint packed = PackColor(color);
 
-            int cx = _rng.Next(marginX, _gridW - marginX);
-            int cy = _rng.Next(marginY, _gridH - marginY);
+            int cx, cy;
+            if (biasToViewport && _rng.NextDouble() < 0.7)
+            {
+                // Place near the camera's current focus area
+                int cellSize = Math.Max(1, CellSize);
+                double viewCenterX = _gridW / 2.0 - _cameraPanX / cellSize;
+                double viewCenterY = _gridH / 2.0 - _cameraPanY / cellSize;
+                double viewRadiusX = _gridW / (_cameraZoom * 2.0);
+                double viewRadiusY = _gridH / (_cameraZoom * 2.0);
+                cx = (int)Math.Clamp(viewCenterX + (_rng.NextDouble() - 0.5) * 2.0 * viewRadiusX, marginX, _gridW - marginX - 1);
+                cy = (int)Math.Clamp(viewCenterY + (_rng.NextDouble() - 0.5) * 2.0 * viewRadiusY, marginY, _gridH - marginY - 1);
+            }
+            else
+            {
+                cx = _rng.Next(marginX, _gridW - marginX);
+                cy = _rng.Next(marginY, _gridH - marginY);
+            }
 
             for (int dy = -1; dy <= 1; dy++)
             for (int dx = -1; dx <= 1; dx++)

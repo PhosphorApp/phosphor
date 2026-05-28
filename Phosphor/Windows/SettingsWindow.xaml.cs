@@ -92,6 +92,9 @@ public partial class SettingsWindow : JukeboxWindow
     private int _originalGameOfLifeHeatBoost;
     private int _originalGameOfLifeDensity;
     private int _originalGameOfLifeOldAgePruning;
+    private bool _originalGameOfLifeCameraRoam;
+    private double _originalGameOfLifeCameraMaxZoom;
+    private int _originalGameOfLifeCameraOverscan;
     private double _originalProjectMPresetDuration;
     private double _originalProjectMSoftCut;
     private bool _originalProjectMHardCut;
@@ -218,7 +221,10 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.GameOfLifeFadeGenerations != _originalGameOfLifeFadeGenerations ||
         _settings.GameOfLifeHeatBoost != _originalGameOfLifeHeatBoost ||
         _settings.GameOfLifeDensity != _originalGameOfLifeDensity ||
-        _settings.GameOfLifeOldAgePruning != _originalGameOfLifeOldAgePruning;
+        _settings.GameOfLifeOldAgePruning != _originalGameOfLifeOldAgePruning ||
+        _settings.GameOfLifeCameraRoam != _originalGameOfLifeCameraRoam ||
+        _settings.GameOfLifeCameraMaxZoom != _originalGameOfLifeCameraMaxZoom ||
+        _settings.GameOfLifeCameraOverscan != _originalGameOfLifeCameraOverscan;
 
     public event Action? SettingsApplied;
 
@@ -517,6 +523,12 @@ public partial class SettingsWindow : JukeboxWindow
         SliderGameOfLifeDensity.Value = settings.GameOfLifeDensity;
         TxtGameOfLifeDensity.Text = $"{settings.GameOfLifeDensity}";
         CbGameOfLifeOldAgePruning.SelectedIndex = Math.Clamp(settings.GameOfLifeOldAgePruning, 0, 3);
+        CbGameOfLifeCameraRoam.IsChecked = settings.GameOfLifeCameraRoam;
+        SliderGameOfLifeCameraMaxZoom.Value = settings.GameOfLifeCameraMaxZoom;
+        TxtGameOfLifeCameraMaxZoom.Text = $"{settings.GameOfLifeCameraMaxZoom:F1}x";
+        SliderGameOfLifeCameraOverscan.Value = settings.GameOfLifeCameraOverscan;
+        TxtGameOfLifeCameraOverscan.Text = $"{settings.GameOfLifeCameraOverscan}%";
+        UpdateGameOfLifeCameraVisibility();
         UpdateGameOfLifeTuningVisibility();
 
         CbReactiveBlobsPlayfield.IsChecked = settings.ReactiveBlobsPlayfield;
@@ -745,6 +757,9 @@ public partial class SettingsWindow : JukeboxWindow
         _originalGameOfLifeHeatBoost = settings.GameOfLifeHeatBoost;
         _originalGameOfLifeDensity = settings.GameOfLifeDensity;
         _originalGameOfLifeOldAgePruning = settings.GameOfLifeOldAgePruning;
+        _originalGameOfLifeCameraRoam = settings.GameOfLifeCameraRoam;
+        _originalGameOfLifeCameraMaxZoom = settings.GameOfLifeCameraMaxZoom;
+        _originalGameOfLifeCameraOverscan = settings.GameOfLifeCameraOverscan;
         _originalProjectMPresetDuration = settings.ProjectMPresetDuration;
         _originalProjectMSoftCut = settings.ProjectMSoftCutDuration;
         _originalProjectMHardCut = settings.ProjectMHardCutEnabled;
@@ -1810,6 +1825,29 @@ public partial class SettingsWindow : JukeboxWindow
         // No display text to update — ComboBox shows its own selection
     }
 
+    private void CbGameOfLifeCameraRoam_Changed(object sender, RoutedEventArgs e)
+    {
+        UpdateGameOfLifeCameraVisibility();
+    }
+
+    private void SliderGameOfLifeCameraMaxZoom_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtGameOfLifeCameraMaxZoom != null)
+            TxtGameOfLifeCameraMaxZoom.Text = $"{e.NewValue:F1}x";
+    }
+
+    private void SliderGameOfLifeCameraOverscan_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtGameOfLifeCameraOverscan != null)
+            TxtGameOfLifeCameraOverscan.Text = $"{(int)e.NewValue}%";
+    }
+
+    private void UpdateGameOfLifeCameraVisibility()
+    {
+        if (PanelGameOfLifeCameraSettings != null)
+            PanelGameOfLifeCameraSettings.Visibility = CbGameOfLifeCameraRoam.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private void SliderFerrofluidCoreGravity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (TxtFerrofluidCoreGravity != null)
@@ -2306,6 +2344,9 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.GameOfLifeHeatBoost = (int)SliderGameOfLifeHeatBoost.Value;
         _settings.GameOfLifeDensity = (int)SliderGameOfLifeDensity.Value;
         _settings.GameOfLifeOldAgePruning = CbGameOfLifeOldAgePruning.SelectedIndex;
+        _settings.GameOfLifeCameraRoam = CbGameOfLifeCameraRoam.IsChecked == true;
+        _settings.GameOfLifeCameraMaxZoom = SliderGameOfLifeCameraMaxZoom.Value;
+        _settings.GameOfLifeCameraOverscan = (int)SliderGameOfLifeCameraOverscan.Value;
         _settings.ReactiveBlobsPlayfield = CbReactiveBlobsPlayfield.IsChecked == true;
         _settings.ReactiveBlobsBackglass = CbReactiveBlobsBackglass.IsChecked == true;
         _settings.ReactiveBlobsTopper = CbReactiveBlobsTopper.IsChecked == true;
@@ -2392,6 +2433,9 @@ public partial class SettingsWindow : JukeboxWindow
         _originalGameOfLifeHeatBoost = _settings.GameOfLifeHeatBoost;
         _originalGameOfLifeDensity = _settings.GameOfLifeDensity;
         _originalGameOfLifeOldAgePruning = _settings.GameOfLifeOldAgePruning;
+        _originalGameOfLifeCameraRoam = _settings.GameOfLifeCameraRoam;
+        _originalGameOfLifeCameraMaxZoom = _settings.GameOfLifeCameraMaxZoom;
+        _originalGameOfLifeCameraOverscan = _settings.GameOfLifeCameraOverscan;
         _originalProjectMPresetDuration = _settings.ProjectMPresetDuration;
         _originalProjectMSoftCut = _settings.ProjectMSoftCutDuration;
         _originalProjectMHardCut = _settings.ProjectMHardCutEnabled;

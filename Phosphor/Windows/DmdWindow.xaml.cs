@@ -622,6 +622,9 @@ public partial class DmdWindow : JukeboxWindow
         GameOfLifePattern.HeatBoost = Math.Clamp(settings.GameOfLifeHeatBoost, 0, 100);
         GameOfLifePattern.Density = Math.Clamp(settings.GameOfLifeDensity, 1, 10);
         GameOfLifePattern.OldAgePruning = Math.Clamp(settings.GameOfLifeOldAgePruning, 0, 3);
+        GameOfLifePattern.CameraRoam = settings.GameOfLifeCameraRoam;
+        GameOfLifePattern.CameraMaxZoom = Math.Clamp(settings.GameOfLifeCameraMaxZoom, 1.1, 2.0);
+        GameOfLifePattern.CameraOverscan = Math.Clamp(settings.GameOfLifeCameraOverscan, 0, 100);
         FerrofluidSimulator.CoreGravity = settings.FerrofluidCoreGravity;
         FerrofluidSimulator.MutualAttraction = settings.FerrofluidMutualAttraction;
         FerrofluidSimulator.Damping = settings.FerrofluidDamping;
@@ -1945,6 +1948,9 @@ public partial class DmdWindow : JukeboxWindow
         GameOfLifePattern.HeatBoost = Math.Clamp(_appSettings.GameOfLifeHeatBoost, 0, 100);
         GameOfLifePattern.Density = Math.Clamp(_appSettings.GameOfLifeDensity, 1, 10);
         GameOfLifePattern.OldAgePruning = Math.Clamp(_appSettings.GameOfLifeOldAgePruning, 0, 3);
+        GameOfLifePattern.CameraRoam = _appSettings.GameOfLifeCameraRoam;
+        GameOfLifePattern.CameraMaxZoom = Math.Clamp(_appSettings.GameOfLifeCameraMaxZoom, 1.1, 2.0);
+        GameOfLifePattern.CameraOverscan = Math.Clamp(_appSettings.GameOfLifeCameraOverscan, 0, 100);
         if (settingsWindow.GameOfLifeSettingsChanged)
         {
             _playfieldProxy?.RestartGameOfLife();
