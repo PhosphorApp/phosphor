@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using WinFormsScreen = System.Windows.Forms.Screen;
@@ -13,6 +14,8 @@ public class JukeboxWindow : Window
     private WindowLayout? _layout;
     private bool _isExpanded;
     private bool _resizable = true;
+    private int _lastRefreshRate;
+    private string _lastMonitorDevice = string.Empty;
 
     public void SetResizable(bool resizable)
     {
@@ -168,6 +171,7 @@ public class JukeboxWindow : Window
     private void RaiseLayoutSettled()
     {
         IsLayoutSettled = true;
+        DetectRefreshRate();
         LayoutSettled?.Invoke();
     }
 
@@ -355,6 +359,97 @@ public class JukeboxWindow : Window
         }
         UpdateExpandButtonVisibility(IsActive);
     }
+
+    /// <summary>
+    /// The current monitor refresh rate in Hz, or 0 if unknown.
+    /// </summary>
+    public int RefreshRateHz => _lastRefreshRate;
+
+    /// <summary>
+    /// Detects the refresh rate of the monitor this window currently occupies
+    /// and logs changes. Safe to call at any time; failures are swallowed.
+    /// </summary>
+    private void DetectRefreshRate()
+    {
+        try
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == nint.Zero) return;
+
+            var monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            var info = new MONITORINFOEXW { cbSize = (uint)Marshal.SizeOf<MONITORINFOEXW>() };
+            if (!GetMonitorInfoW(monitor, ref info)) return;
+
+            var dm = new DEVMODEW { dmSize = (ushort)Marshal.SizeOf<DEVMODEW>() };
+            if (!EnumDisplaySettingsW(info.szDevice, ENUM_CURRENT_SETTINGS, ref dm)) return;
+
+            var hz = (int)dm.dmDisplayFrequency;
+            var device = info.szDevice.TrimEnd('\0');
+
+            if (hz != _lastRefreshRate || device != _lastMonitorDevice)
+            {
+                _lastRefreshRate = hz;
+                _lastMonitorDevice = device;
+                DebugLog.Log($"{GetType().Name}: monitor {device} running at {hz} Hz");
+            }
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Log($"{GetType().Name}: failed to detect refresh rate – {ex.Message}");
+        }
+    }
+
+    protected override void OnLocationChanged(EventArgs e)
+    {
+        base.OnLocationChanged(e);
+        if (IsLayoutSettled)
+            DetectRefreshRate();
+    }
+
+    #region Refresh-rate P/Invoke
+
+    private const uint MONITOR_DEFAULTTONEAREST = 2;
+    private const int ENUM_CURRENT_SETTINGS = -1;
+
+    [DllImport("user32.dll")]
+    private static extern nint MonitorFromWindow(nint hwnd, uint dwFlags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool GetMonitorInfoW(nint hMonitor, ref MONITORINFOEXW lpmi);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool EnumDisplaySettingsW(string? lpszDeviceName, int iModeNum, ref DEVMODEW lpDevMode);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct MONITORINFOEXW
+    {
+        public uint cbSize;
+        public RECT2 rcMonitor, rcWork;
+        public uint dwFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string szDevice;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT2 { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct DEVMODEW
+    {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
+        public ushort dmSpecVersion, dmDriverVersion;
+        public ushort dmSize, dmDriverExtra;
+        public uint dmFields;
+        public int dmPositionX, dmPositionY;
+        public uint dmDisplayOrientation, dmDisplayFixedOutput;
+        public short dmColor, dmDuplex, dmYResolution, dmTTOption, dmCollate;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
+        public ushort dmLogPixels;
+        public uint dmBitsPerPel, dmPelsWidth, dmPelsHeight;
+        public uint dmDisplayFlags;
+        public uint dmDisplayFrequency;
+    }
+
+    #endregion
 
     protected override void OnMouseLeftButtonDown(System.Windows.Input.MouseButtonEventArgs e)
     {

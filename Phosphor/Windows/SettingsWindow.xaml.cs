@@ -78,7 +78,8 @@ public partial class SettingsWindow : JukeboxWindow
     private int _originalMandelbrotUseGpu;
     private bool _originalMandelbrotAdaptiveIterations;
     private int _originalMandelbrotMaxIterations;
-    private int _originalMandelbrotMaxHz;
+    private int _originalMandelbrotTickIntervalMs;
+    private bool _originalMandelbrotUseScreenRate;
     private double _originalMandelbrotRenderScale;
     private double _originalMandelbrotPerturbation;
     private bool _originalMandelbrotDiscovery;
@@ -88,10 +89,10 @@ public partial class SettingsWindow : JukeboxWindow
     private int _originalMandelbrotColorScheme;
     private int _originalGameOfLifeCellSize;
     private int _originalGameOfLifeTickIntervalMs;
+    private bool _originalGameOfLifeUseScreenRate;
     private int _originalGameOfLifeFadeGenerations;
     private int _originalGameOfLifeHeatBoost;
     private int _originalGameOfLifeDensity;
-    private int _originalGameOfLifeOldAgePruning;
     private bool _originalGameOfLifeCameraRoam;
     private double _originalGameOfLifeCameraMaxZoom;
     private int _originalGameOfLifeCameraOverscan;
@@ -206,7 +207,8 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.MandelbrotUseGpu != _originalMandelbrotUseGpu ||
         _settings.MandelbrotAdaptiveIterations != _originalMandelbrotAdaptiveIterations ||
         _settings.MandelbrotMaxIterations != _originalMandelbrotMaxIterations ||
-        _settings.MandelbrotMaxHz != _originalMandelbrotMaxHz ||
+        _settings.MandelbrotTickIntervalMs != _originalMandelbrotTickIntervalMs ||
+        _settings.MandelbrotUseScreenRate != _originalMandelbrotUseScreenRate ||
         Math.Abs(_settings.MandelbrotRenderScale - _originalMandelbrotRenderScale) > 0.001 ||
         Math.Abs(_settings.MandelbrotPerturbation - _originalMandelbrotPerturbation) > 0.001 ||
         _settings.MandelbrotDiscovery != _originalMandelbrotDiscovery ||
@@ -218,12 +220,11 @@ public partial class SettingsWindow : JukeboxWindow
     public bool GameOfLifeSettingsChanged =>
         _settings.GameOfLifeCellSize != _originalGameOfLifeCellSize ||
         _settings.GameOfLifeTickIntervalMs != _originalGameOfLifeTickIntervalMs ||
+        _settings.GameOfLifeUseScreenRate != _originalGameOfLifeUseScreenRate ||
         _settings.GameOfLifeFadeGenerations != _originalGameOfLifeFadeGenerations ||
         _settings.GameOfLifeHeatBoost != _originalGameOfLifeHeatBoost ||
         _settings.GameOfLifeDensity != _originalGameOfLifeDensity ||
-        _settings.GameOfLifeOldAgePruning != _originalGameOfLifeOldAgePruning ||
         _settings.GameOfLifeCameraRoam != _originalGameOfLifeCameraRoam ||
-        _settings.GameOfLifeCameraMaxZoom != _originalGameOfLifeCameraMaxZoom ||
         _settings.GameOfLifeCameraOverscan != _originalGameOfLifeCameraOverscan;
 
     public event Action? SettingsApplied;
@@ -455,8 +456,10 @@ public partial class SettingsWindow : JukeboxWindow
         CbMandelbrotAdaptiveIterations.IsChecked = settings.MandelbrotAdaptiveIterations;
         SliderMandelbrotMaxIterations.Value = settings.MandelbrotMaxIterations;
         TxtMandelbrotMaxIterations.Text = $"{settings.MandelbrotMaxIterations}";
-        SliderMandelbrotMaxHz.Value = settings.MandelbrotMaxHz;
-        TxtMandelbrotMaxHz.Text = settings.MandelbrotMaxHz == 0 ? "Unlimited" : $"{settings.MandelbrotMaxHz} Hz";
+        CbMandelbrotUseScreenRate.IsChecked = settings.MandelbrotUseScreenRate;
+        SliderMandelbrotTickInterval.Value = settings.MandelbrotTickIntervalMs;
+        TxtMandelbrotTickInterval.Text = settings.MandelbrotTickIntervalMs == 0 ? "Unlimited" : $"{settings.MandelbrotTickIntervalMs} ms";
+        UpdateMandelbrotTickIntervalVisibility();
         SliderMandelbrotRenderScale.Value = settings.MandelbrotRenderScale * 100;
         TxtMandelbrotRenderScale.Text = $"{(int)(settings.MandelbrotRenderScale * 100)}%";
         SliderMandelbrotPerturbation.Value = settings.MandelbrotPerturbation * 100;
@@ -514,20 +517,25 @@ public partial class SettingsWindow : JukeboxWindow
         // Game of Life tuning
         SliderGameOfLifeCellSize.Value = settings.GameOfLifeCellSize;
         TxtGameOfLifeCellSize.Text = $"{settings.GameOfLifeCellSize} px";
+        CbGameOfLifeUseScreenRate.IsChecked = settings.GameOfLifeUseScreenRate;
         SliderGameOfLifeTickInterval.Value = settings.GameOfLifeTickIntervalMs;
         TxtGameOfLifeTickInterval.Text = $"{settings.GameOfLifeTickIntervalMs} ms";
+        UpdateGameOfLifeTickIntervalVisibility();
         SliderGameOfLifeFadeGenerations.Value = settings.GameOfLifeFadeGenerations;
         TxtGameOfLifeFadeGenerations.Text = settings.GameOfLifeFadeGenerations == 0 ? "Off" : $"{settings.GameOfLifeFadeGenerations}";
         SliderGameOfLifeHeatBoost.Value = settings.GameOfLifeHeatBoost;
         TxtGameOfLifeHeatBoost.Text = settings.GameOfLifeHeatBoost == 0 ? "Off" : $"{settings.GameOfLifeHeatBoost}";
         SliderGameOfLifeDensity.Value = settings.GameOfLifeDensity;
         TxtGameOfLifeDensity.Text = $"{settings.GameOfLifeDensity}";
-        CbGameOfLifeOldAgePruning.SelectedIndex = Math.Clamp(settings.GameOfLifeOldAgePruning, 0, 3);
         CbGameOfLifeCameraRoam.IsChecked = settings.GameOfLifeCameraRoam;
         SliderGameOfLifeCameraMaxZoom.Value = settings.GameOfLifeCameraMaxZoom;
         TxtGameOfLifeCameraMaxZoom.Text = $"{settings.GameOfLifeCameraMaxZoom:F1}x";
         SliderGameOfLifeCameraOverscan.Value = settings.GameOfLifeCameraOverscan;
         TxtGameOfLifeCameraOverscan.Text = $"{settings.GameOfLifeCameraOverscan}%";
+        CbGameOfLifeScalingMode.Items.Clear();
+        CbGameOfLifeScalingMode.Items.Add("Nearest Neighbor");
+        CbGameOfLifeScalingMode.Items.Add("Smooth (Fant)");
+        CbGameOfLifeScalingMode.SelectedIndex = Math.Clamp(settings.GameOfLifeScalingMode, 0, 1);
         UpdateGameOfLifeCameraVisibility();
         UpdateGameOfLifeTuningVisibility();
 
@@ -743,7 +751,8 @@ public partial class SettingsWindow : JukeboxWindow
         _originalMandelbrotUseGpu = settings.MandelbrotUseGpu;
         _originalMandelbrotAdaptiveIterations = settings.MandelbrotAdaptiveIterations;
         _originalMandelbrotMaxIterations = settings.MandelbrotMaxIterations;
-        _originalMandelbrotMaxHz = settings.MandelbrotMaxHz;
+        _originalMandelbrotTickIntervalMs = settings.MandelbrotTickIntervalMs;
+        _originalMandelbrotUseScreenRate = settings.MandelbrotUseScreenRate;
         _originalMandelbrotRenderScale = settings.MandelbrotRenderScale;
         _originalMandelbrotPerturbation = settings.MandelbrotPerturbation;
         _originalMandelbrotDiscovery = settings.MandelbrotDiscovery;
@@ -753,10 +762,10 @@ public partial class SettingsWindow : JukeboxWindow
         _originalMandelbrotColorScheme = settings.MandelbrotColorScheme;
         _originalGameOfLifeCellSize = settings.GameOfLifeCellSize;
         _originalGameOfLifeTickIntervalMs = settings.GameOfLifeTickIntervalMs;
+        _originalGameOfLifeUseScreenRate = settings.GameOfLifeUseScreenRate;
         _originalGameOfLifeFadeGenerations = settings.GameOfLifeFadeGenerations;
         _originalGameOfLifeHeatBoost = settings.GameOfLifeHeatBoost;
         _originalGameOfLifeDensity = settings.GameOfLifeDensity;
-        _originalGameOfLifeOldAgePruning = settings.GameOfLifeOldAgePruning;
         _originalGameOfLifeCameraRoam = settings.GameOfLifeCameraRoam;
         _originalGameOfLifeCameraMaxZoom = settings.GameOfLifeCameraMaxZoom;
         _originalGameOfLifeCameraOverscan = settings.GameOfLifeCameraOverscan;
@@ -852,6 +861,10 @@ public partial class SettingsWindow : JukeboxWindow
         Loaded += (_, _) =>
         {
             RestoreScrollOffset(SettingsTabs.SelectedIndex);
+            // Refresh monitor info if About tab is already selected on open
+            if (SettingsTabs.SelectedItem is System.Windows.Controls.TabItem tab &&
+                tab.Header is string header && header == "ABOUT")
+                RefreshMonitorInfo();
         };
     }
 
@@ -1311,6 +1324,11 @@ public partial class SettingsWindow : JukeboxWindow
         if (e.OriginalSource != sender) return;
         if (_testModeActive)
             DisableTestMode();
+
+        // Refresh monitor info when the About tab is selected
+        if (SettingsTabs.SelectedItem is System.Windows.Controls.TabItem tab &&
+            tab.Header is string header && header == "ABOUT")
+            RefreshMonitorInfo();
     }
 
     private void OnTestModeKey(object sender, KeyEventArgs e)
@@ -1641,10 +1659,28 @@ public partial class SettingsWindow : JukeboxWindow
         if (label != null) label.Text = text;
     }
 
-    private void SliderMandelbrotMaxHz_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void CbMandelbrotUseScreenRate_Changed(object sender, RoutedEventArgs e)
     {
-        if (TxtMandelbrotMaxHz != null)
-            TxtMandelbrotMaxHz.Text = (int)e.NewValue == 0 ? "Unlimited" : $"{(int)e.NewValue} Hz";
+        UpdateMandelbrotTickIntervalVisibility();
+    }
+
+    private void UpdateMandelbrotTickIntervalVisibility()
+    {
+        if (SliderMandelbrotTickInterval == null) return;
+        bool useScreen = CbMandelbrotUseScreenRate.IsChecked == true;
+        SliderMandelbrotTickInterval.IsEnabled = !useScreen;
+
+        if (SliderMandelbrotTickInterval.Parent is FrameworkElement sliderRow)
+            sliderRow.Visibility = useScreen ? Visibility.Collapsed : Visibility.Visible;
+
+        if (TxtMandelbrotTickInterval != null)
+            TxtMandelbrotTickInterval.Text = useScreen ? "(auto)" : ((int)SliderMandelbrotTickInterval.Value == 0 ? "Unlimited" : $"{(int)SliderMandelbrotTickInterval.Value} ms");
+    }
+
+    private void SliderMandelbrotTickInterval_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtMandelbrotTickInterval != null && CbMandelbrotUseScreenRate?.IsChecked != true)
+            TxtMandelbrotTickInterval.Text = (int)e.NewValue == 0 ? "Unlimited" : $"{(int)e.NewValue} ms";
     }
 
     private void SliderMandelbrotMaxIterations_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -1796,9 +1832,28 @@ public partial class SettingsWindow : JukeboxWindow
             TxtGameOfLifeCellSize.Text = $"{(int)e.NewValue} px";
     }
 
+    private void CbGameOfLifeUseScreenRate_Changed(object sender, RoutedEventArgs e)
+    {
+        UpdateGameOfLifeTickIntervalVisibility();
+    }
+
+    private void UpdateGameOfLifeTickIntervalVisibility()
+    {
+        if (SliderGameOfLifeTickInterval == null) return;
+        bool useScreen = CbGameOfLifeUseScreenRate.IsChecked == true;
+        SliderGameOfLifeTickInterval.IsEnabled = !useScreen;
+
+        // Hide the entire slider row when using screen rate
+        if (SliderGameOfLifeTickInterval.Parent is FrameworkElement sliderRow)
+            sliderRow.Visibility = useScreen ? Visibility.Collapsed : Visibility.Visible;
+
+        if (TxtGameOfLifeTickInterval != null)
+            TxtGameOfLifeTickInterval.Text = useScreen ? "(auto)" : $"{(int)SliderGameOfLifeTickInterval.Value} ms";
+    }
+
     private void SliderGameOfLifeTickInterval_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        if (TxtGameOfLifeTickInterval != null)
+        if (TxtGameOfLifeTickInterval != null && CbGameOfLifeUseScreenRate?.IsChecked != true)
             TxtGameOfLifeTickInterval.Text = $"{(int)e.NewValue} ms";
     }
 
@@ -1820,11 +1875,6 @@ public partial class SettingsWindow : JukeboxWindow
             TxtGameOfLifeDensity.Text = $"{(int)e.NewValue}";
     }
 
-    private void CbGameOfLifeOldAgePruning_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-    {
-        // No display text to update — ComboBox shows its own selection
-    }
-
     private void CbGameOfLifeCameraRoam_Changed(object sender, RoutedEventArgs e)
     {
         UpdateGameOfLifeCameraVisibility();
@@ -1841,6 +1891,8 @@ public partial class SettingsWindow : JukeboxWindow
         if (TxtGameOfLifeCameraOverscan != null)
             TxtGameOfLifeCameraOverscan.Text = $"{(int)e.NewValue}%";
     }
+
+    private void CbGameOfLifeScalingMode_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) { }
 
     private void UpdateGameOfLifeCameraVisibility()
     {
@@ -2318,7 +2370,8 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.MandelbrotUseGpu = CbMandelbrotUseGpu.IsChecked == true ? 1 : 0;
         _settings.MandelbrotAdaptiveIterations = CbMandelbrotAdaptiveIterations.IsChecked == true;
         _settings.MandelbrotMaxIterations = (int)SliderMandelbrotMaxIterations.Value;
-        _settings.MandelbrotMaxHz = (int)SliderMandelbrotMaxHz.Value;
+        _settings.MandelbrotUseScreenRate = CbMandelbrotUseScreenRate.IsChecked == true;
+        _settings.MandelbrotTickIntervalMs = (int)SliderMandelbrotTickInterval.Value;
         _settings.MandelbrotRenderScale = SliderMandelbrotRenderScale.Value / 100.0;
         _settings.MandelbrotPerturbation = SliderMandelbrotPerturbation.Value / 100.0;
         _settings.MandelbrotDiscovery = CbMandelbrotDiscovery.IsChecked == true;
@@ -2339,14 +2392,15 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.MatrixInfiniteZoom = CbMatrixInfiniteZoom.IsChecked == true;
         _settings.MatrixZoomRate = SliderMatrixZoomRate.Value;
         _settings.GameOfLifeCellSize = (int)SliderGameOfLifeCellSize.Value;
+        _settings.GameOfLifeUseScreenRate = CbGameOfLifeUseScreenRate.IsChecked == true;
         _settings.GameOfLifeTickIntervalMs = (int)SliderGameOfLifeTickInterval.Value;
         _settings.GameOfLifeFadeGenerations = (int)SliderGameOfLifeFadeGenerations.Value;
         _settings.GameOfLifeHeatBoost = (int)SliderGameOfLifeHeatBoost.Value;
         _settings.GameOfLifeDensity = (int)SliderGameOfLifeDensity.Value;
-        _settings.GameOfLifeOldAgePruning = CbGameOfLifeOldAgePruning.SelectedIndex;
         _settings.GameOfLifeCameraRoam = CbGameOfLifeCameraRoam.IsChecked == true;
         _settings.GameOfLifeCameraMaxZoom = SliderGameOfLifeCameraMaxZoom.Value;
         _settings.GameOfLifeCameraOverscan = (int)SliderGameOfLifeCameraOverscan.Value;
+        _settings.GameOfLifeScalingMode = CbGameOfLifeScalingMode.SelectedIndex;
         _settings.ReactiveBlobsPlayfield = CbReactiveBlobsPlayfield.IsChecked == true;
         _settings.ReactiveBlobsBackglass = CbReactiveBlobsBackglass.IsChecked == true;
         _settings.ReactiveBlobsTopper = CbReactiveBlobsTopper.IsChecked == true;
@@ -2419,7 +2473,8 @@ public partial class SettingsWindow : JukeboxWindow
         _originalMandelbrotUseGpu = _settings.MandelbrotUseGpu;
         _originalMandelbrotAdaptiveIterations = _settings.MandelbrotAdaptiveIterations;
         _originalMandelbrotMaxIterations = _settings.MandelbrotMaxIterations;
-        _originalMandelbrotMaxHz = _settings.MandelbrotMaxHz;
+        _originalMandelbrotTickIntervalMs = _settings.MandelbrotTickIntervalMs;
+        _originalMandelbrotUseScreenRate = _settings.MandelbrotUseScreenRate;
         _originalMandelbrotRenderScale = _settings.MandelbrotRenderScale;
         _originalMandelbrotPerturbation = _settings.MandelbrotPerturbation;
         _originalMandelbrotDiscovery = _settings.MandelbrotDiscovery;
@@ -2429,10 +2484,10 @@ public partial class SettingsWindow : JukeboxWindow
         _originalMandelbrotColorScheme = _settings.MandelbrotColorScheme;
         _originalGameOfLifeCellSize = _settings.GameOfLifeCellSize;
         _originalGameOfLifeTickIntervalMs = _settings.GameOfLifeTickIntervalMs;
+        _originalGameOfLifeUseScreenRate = _settings.GameOfLifeUseScreenRate;
         _originalGameOfLifeFadeGenerations = _settings.GameOfLifeFadeGenerations;
         _originalGameOfLifeHeatBoost = _settings.GameOfLifeHeatBoost;
         _originalGameOfLifeDensity = _settings.GameOfLifeDensity;
-        _originalGameOfLifeOldAgePruning = _settings.GameOfLifeOldAgePruning;
         _originalGameOfLifeCameraRoam = _settings.GameOfLifeCameraRoam;
         _originalGameOfLifeCameraMaxZoom = _settings.GameOfLifeCameraMaxZoom;
         _originalGameOfLifeCameraOverscan = _settings.GameOfLifeCameraOverscan;
@@ -2867,4 +2922,114 @@ public partial class SettingsWindow : JukeboxWindow
             DofTestStatusText.Text = $"✗ {ex.Message}";
         }
     }
+
+    private void RefreshMonitorInfo()
+    {
+        if (PanelMonitorInfo == null) return;
+        PanelMonitorInfo.Children.Clear();
+
+        // Gather window-to-monitor mappings
+        var windowsByDevice = new Dictionary<string, List<string>>();
+        void MapWindow(string name, Func<(nint hwnd, double w, double h)?> getInfo)
+        {
+            try
+            {
+                var info = getInfo();
+                if (info == null || info.Value.hwnd == nint.Zero) return;
+                var screen = System.Windows.Forms.Screen.FromHandle(info.Value.hwnd);
+                var device = screen.DeviceName;
+                if (!windowsByDevice.TryGetValue(device, out var list))
+                {
+                    list = new List<string>();
+                    windowsByDevice[device] = list;
+                }
+                list.Add($"{name} ({info.Value.w:0}×{info.Value.h:0})");
+            }
+            catch { /* cross-thread or disposed — skip */ }
+        }
+
+        // Playfield and Backglass run on their own threads — must Invoke to read HWND/size
+        if (_playfieldProxy != null)
+            MapWindow("Playfield", () => _playfieldProxy.Dispatcher.Invoke(() =>
+            {
+                var w = _playfieldProxy.Window;
+                if (!w.IsVisible) return ((nint, double, double)?)null;
+                return (new System.Windows.Interop.WindowInteropHelper(w).Handle, w.ActualWidth, w.ActualHeight);
+            }));
+
+        if (_backglassProxy != null)
+            MapWindow("Backglass", () => _backglassProxy.Dispatcher.Invoke(() =>
+            {
+                var w = _backglassProxy.Window;
+                if (!w.IsVisible) return ((nint, double, double)?)null;
+                return (new System.Windows.Interop.WindowInteropHelper(w).Handle, w.ActualWidth, w.ActualHeight);
+            }));
+
+        if (_topperWindow != null)
+            MapWindow("Topper", () =>
+            {
+                if (!_topperWindow.IsVisible) return null;
+                var hwnd = new System.Windows.Interop.WindowInteropHelper(_topperWindow).Handle;
+                return (hwnd, _topperWindow.ActualWidth, _topperWindow.ActualHeight);
+            });
+
+        if (Application.Current.MainWindow is JukeboxWindow dmd && dmd.IsVisible)
+            MapWindow("DMD", () =>
+            {
+                var hwnd = new System.Windows.Interop.WindowInteropHelper(dmd).Handle;
+                return (hwnd, dmd.ActualWidth, dmd.ActualHeight);
+            });
+
+        // Enumerate all monitors — use DEVMODE for accurate resolution
+        foreach (var screen in System.Windows.Forms.Screen.AllScreens)
+        {
+            var device = screen.DeviceName;
+            var dm = new DEVMODEW_About { dmSize = (ushort)System.Runtime.InteropServices.Marshal.SizeOf<DEVMODEW_About>() };
+            EnumDisplaySettingsW(device, -1, ref dm);
+            int hz = (int)dm.dmDisplayFrequency;
+            int resW = (int)dm.dmPelsWidth;
+            int resH = (int)dm.dmPelsHeight;
+            string primary = screen.Primary ? " (primary)" : "";
+
+            var header = new System.Windows.Controls.TextBlock
+            {
+                Text = $"{device}{primary} — {resW}×{resH} @ {hz} Hz",
+                Foreground = (System.Windows.Media.Brush)FindResource("TextBrush"),
+                FontSize = 11,
+                Margin = new Thickness(0, 4, 0, 0),
+            };
+            PanelMonitorInfo.Children.Add(header);
+
+            if (windowsByDevice.TryGetValue(device, out var windows))
+            {
+                foreach (var w in windows)
+                {
+                    PanelMonitorInfo.Children.Add(new System.Windows.Controls.TextBlock
+                    {
+                        Text = $"    └ {w}",
+                        Foreground = (System.Windows.Media.Brush)FindResource("TextDimBrush"),
+                        FontSize = 10,
+                        Margin = new Thickness(0, 1, 0, 0),
+                    });
+                }
+            }
+        }
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private struct DEVMODEW_About
+    {
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
+        public ushort dmSpecVersion, dmDriverVersion, dmSize, dmDriverExtra;
+        public uint dmFields;
+        public int dmPositionX, dmPositionY;
+        public uint dmDisplayOrientation, dmDisplayFixedOutput;
+        public short dmColor, dmDuplex, dmYResolution, dmTTOption, dmCollate;
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
+        public ushort dmLogPixels;
+        public uint dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags, dmDisplayFrequency;
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern bool EnumDisplaySettingsW(string? lpszDeviceName, int iModeNum, ref DEVMODEW_About lpDevMode);
 }

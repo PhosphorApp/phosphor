@@ -197,17 +197,17 @@ public sealed class MandelbrotPattern : BlobPatternBase
         _spiralAngle = _rng.NextDouble() * Math.PI * 2;
         _viewAngle = PickInitialViewAngle(_rng);
         _zoomSpeed = _baseZoomSpeed;
-        _minFrameIntervalTicks = MandelbrotMaxHz > 0
-            ? Stopwatch.Frequency / MandelbrotMaxHz
+        _minFrameIntervalTicks = TickIntervalMs > 0
+            ? Stopwatch.Frequency * TickIntervalMs / 1000
             : 0;
         BuildPalette();
     }
 
     /// <summary>
-    /// Maximum render frame rate for Mandelbrot (Hz). 0 = unlimited (follows monitor vsync).
-    /// Set from <see cref="AppSettings.MandelbrotMaxHz"/>.
+    /// Tick interval in milliseconds for Mandelbrot rendering. 0 = unlimited (follows monitor vsync).
+    /// Set from <see cref="AppSettings.MandelbrotTickIntervalMs"/>.
     /// </summary>
-    public static int MandelbrotMaxHz { get; set; }
+    public static int TickIntervalMs { get; set; }
 
     /// <summary>
     /// Render resolution multiplier (0.2–1.0). Lower = fewer pixels = faster.

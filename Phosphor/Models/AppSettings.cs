@@ -90,7 +90,8 @@ public class AppSettings
     public int DmdBlobCount { get; set; } = 6;
     public int DmdBlobSizeOffset { get; set; } = 10;
     public bool ExcludeMandelbrotFromRandom { get; set; } = true;
-    public int MandelbrotMaxHz { get; set; }
+    public int MandelbrotTickIntervalMs { get; set; }
+    public bool MandelbrotUseScreenRate { get; set; }
     public double MandelbrotRenderScale { get; set; } = 0.6;
     public bool MandelbrotAdaptiveIterations { get; set; } = true;
     public int MandelbrotMaxIterations { get; set; } = 256;
@@ -113,14 +114,14 @@ public class AppSettings
     // Game of Life tuning
     public int GameOfLifeCellSize { get; set; } = 5;
     public int GameOfLifeTickIntervalMs { get; set; } = 100;
+    public bool GameOfLifeUseScreenRate { get; set; }
     public int GameOfLifeFadeGenerations { get; set; } = 6;
     public int GameOfLifeHeatBoost { get; set; } = 60;
     public int GameOfLifeDensity { get; set; } = 5;
-    /// <summary>Old age pruning: 0 = Off, 1 = Low (60s), 2 = Medium (30s), 3 = High (15s).</summary>
-    public int GameOfLifeOldAgePruning { get; set; }
     public bool GameOfLifeCameraRoam { get; set; } = true;
     public double GameOfLifeCameraMaxZoom { get; set; } = 1.6;
     public int GameOfLifeCameraOverscan { get; set; } = 50;
+    public int GameOfLifeScalingMode { get; set; } // 0 = NearestNeighbor, 1 = Fant
 
     // Ferrofluid tuning
     public double FerrofluidCoreGravity { get; set; } = 280.0;

@@ -145,3 +145,47 @@ externally-color-cycled patterns are passing `false`.
 6. **#4** LightCycle spatial index — only matters at long lifetimes/high cycle
    count.
 7. Smaller wins (#6, #7, #8, #10, 🟡 items) opportunistically.
+
+---
+
+## 🔴 Game of Life — SSAA & Scaling Experiments
+
+### Architecture
+Each cell is 1 pixel in a `WriteableBitmap` sized `(screenW / cellSize) × (screenH / cellSize)`.
+WPF's GPU texture sampling upscales it to screen resolution. The `BitmapScalingMode`
+on the `Image` element controls the filter:
+- **NearestNeighbor** — crisp blocky pixels, zero GPU filtering cost.
+- **Fant** — bilinear/Fant filter, smooth antialiased edges, essentially free (GPU-side).
+
+Now exposed as a user setting (`Scaling: Nearest Neighbor | Smooth (Fant)`).
+
+### Bottleneck: `StepSimulation` is single-threaded
+The simulation iterates every cell, checks 8 neighbors with bounds checks,
+accumulates color, and applies birth/death rules. Runs on the WPF dispatcher thread.
+
+- `CellSize=5` on 1920×1080: ~77k cells → fast.
+- `CellSize=1`: ~2M cells → tight at fast tick rates.
+
+**CPU and GPU utilization appear low** during slowdowns because only one dispatcher
+thread is saturated; all other cores are idle.
+
+### SSAA Experiments (reverted)
+
+**Fake SSAA (2×2 pixel blocks):** Rendered each cell as a 2×2 block in a 2× bitmap
+with Fant downscaling. Produced identical visual results to plain Fant on a 1:1
+bitmap — the GPU filter already blends edges. Pure waste: 4× pixel writes, 4× bitmap
+transfer, same output.
+
+**True 2× SSAA (halved cell size):** Doubled the grid in each dimension (4× cells).
+Visual quality was excellent — finer structures, smoother edges, richer detail.
+However, 4× simulation cost (neighbor checks, birth/death logic per cell) made it
+impractical at fast tick rates or small cell sizes.
+
+### Parallelization Opportunity (future)
+Moving `StepSimulation` off the dispatcher thread would unlock multi-core scaling:
+- Reads `_colorCurrent`, writes `_colorNext` — no overlap, so **row-parallel is safe**.
+- Buffer swap and `RenderFrame` must remain on the dispatcher (WPF bitmap access).
+- Sector birth/alive counters need per-thread accumulators or `Interlocked` adds.
+- Stagnation snapshots are a simple copy — stay single-threaded after the parallel step.
+- Expected: near-linear scaling with core count for the simulation step.
+- Rendering (`RenderFrame`) is already fast (1 write per cell) and unlikely to need it.

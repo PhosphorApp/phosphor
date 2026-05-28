@@ -478,6 +478,23 @@
                                 <CheckBox x:Name="CbMandelbrotAdaptiveIterations" Content="Adaptive iterations"
                                           Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
                                           ToolTip="Automatically scales iteration count with zoom depth — fewer iterations at low zoom for better performance."/>
+                                <CheckBox x:Name="CbMandelbrotUseScreenRate"
+                                          Content="Use Screen Rate" Foreground="{StaticResource TextBrush}"
+                                          Margin="0,8,0,0"
+                                          Checked="CbMandelbrotUseScreenRate_Changed"
+                                          Unchecked="CbMandelbrotUseScreenRate_Changed"
+                                          ToolTip="Match the tick rate to the monitor's refresh rate for the smoothest animation."/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Tick Interval:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <Slider x:Name="SliderMandelbrotTickInterval" Minimum="0" Maximum="100"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="1"
+                                            ValueChanged="SliderMandelbrotTickInterval_ValueChanged"
+                                            ToolTip="Frame interval in milliseconds. 0 = unlimited (vsync). Higher = slower rendering. Default 0."/>
+                                    <TextBlock x:Name="TxtMandelbrotTickInterval" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Max Iterations:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Width="100"/>
@@ -487,17 +504,6 @@
                                             ValueChanged="SliderMandelbrotMaxIterations_ValueChanged"
                                             ToolTip="Maximum iteration count per pixel. Higher = more detail at deep zoom but slower. Default 256."/>
                                     <TextBlock x:Name="TxtMandelbrotMaxIterations" Foreground="{StaticResource TextDimBrush}"
-                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
-                                    <TextBlock Text="Max FPS:" Foreground="{StaticResource TextBrush}"
-                                               VerticalAlignment="Center" Width="100"/>
-                                    <Slider x:Name="SliderMandelbrotMaxHz" Minimum="0" Maximum="240"
-                                            Width="150" VerticalAlignment="Center"
-                                            IsSnapToTickEnabled="True" TickFrequency="1"
-                                            ValueChanged="SliderMandelbrotMaxHz_ValueChanged"
-                                            ToolTip="Caps the Mandelbrot frame rate. 0 = unlimited (vsync). Lower values reduce CPU/GPU load."/>
-                                    <TextBlock x:Name="TxtMandelbrotMaxHz" Foreground="{StaticResource TextDimBrush}"
                                                VerticalAlignment="Center" Margin="8,0,0,0"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0" VerticalAlignment="Center">
@@ -566,6 +572,26 @@
                                 <TextBlock Text="GAME OF LIFE TUNING" FontSize="12" FontWeight="Bold"
                                     Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Tick Interval:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <CheckBox x:Name="CbGameOfLifeUseScreenRate"
+                                              Content="Use Screen Rate" Foreground="{StaticResource TextBrush}"
+                                              VerticalAlignment="Center" Margin="0,0,12,0"
+                                              Checked="CbGameOfLifeUseScreenRate_Changed"
+                                              Unchecked="CbGameOfLifeUseScreenRate_Changed"
+                                              ToolTip="Match the tick rate to the monitor's refresh rate for the smoothest animation."/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Width="100"/>
+                                    <Slider x:Name="SliderGameOfLifeTickInterval" Minimum="1" Maximum="100"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="1"
+                                            ValueChanged="SliderGameOfLifeTickInterval_ValueChanged"
+                                            ToolTip="Simulation speed in milliseconds per generation. Lower = faster. Default 100."/>
+                                    <TextBlock x:Name="TxtGameOfLifeTickInterval" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Cell Size:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Width="100"/>
                                     <Slider x:Name="SliderGameOfLifeCellSize" Minimum="1" Maximum="10"
@@ -574,17 +600,6 @@
                                             ValueChanged="SliderGameOfLifeCellSize_ValueChanged"
                                             ToolTip="Size of each cell in pixels. Smaller = higher resolution grid, more cells. Default 5."/>
                                     <TextBlock x:Name="TxtGameOfLifeCellSize" Foreground="{StaticResource TextDimBrush}"
-                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
-                                    <TextBlock Text="Tick Interval:" Foreground="{StaticResource TextBrush}"
-                                               VerticalAlignment="Center" Width="100"/>
-                                    <Slider x:Name="SliderGameOfLifeTickInterval" Minimum="1" Maximum="100"
-                                            Width="150" VerticalAlignment="Center"
-                                            IsSnapToTickEnabled="True" TickFrequency="1"
-                                            ValueChanged="SliderGameOfLifeTickInterval_ValueChanged"
-                                            ToolTip="Simulation speed in milliseconds per generation. Lower = faster. Default 100."/>
-                                    <TextBlock x:Name="TxtGameOfLifeTickInterval" Foreground="{StaticResource TextDimBrush}"
                                                VerticalAlignment="Center" Margin="8,0,0,0"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
@@ -621,18 +636,6 @@
                                                VerticalAlignment="Center" Margin="8,0,0,0"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
-                                    <TextBlock Text="Old Age Pruning:" Foreground="{StaticResource TextBrush}"
-                                               VerticalAlignment="Center" Width="100"/>
-                                    <ComboBox x:Name="CbGameOfLifeOldAgePruning" Width="150"
-                                              SelectionChanged="CbGameOfLifeOldAgePruning_SelectionChanged"
-                                              ToolTip="Kill cells that have been alive too long. Off = no pruning. Low = 60s. Medium = 30s. High = 15s.">
-                                        <ComboBoxItem Content="Off"/>
-                                        <ComboBoxItem Content="Low (60s)"/>
-                                        <ComboBoxItem Content="Medium (30s)"/>
-                                        <ComboBoxItem Content="High (15s)"/>
-                                    </ComboBox>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Camera Roam:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Width="100"/>
                                     <CheckBox x:Name="CbGameOfLifeCameraRoam"
@@ -663,6 +666,13 @@
                                         <TextBlock x:Name="TxtGameOfLifeCameraOverscan" Foreground="{StaticResource TextDimBrush}"
                                                    VerticalAlignment="Center" Margin="8,0,0,0"/>
                                     </StackPanel>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Scaling:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <ComboBox x:Name="CbGameOfLifeScalingMode" Width="170"
+                                              SelectionChanged="CbGameOfLifeScalingMode_SelectionChanged"
+                                              ToolTip="NearestNeighbor = crisp blocky pixels. Smooth (Fant) = antialiased cell edges via GPU filtering."/>
                                 </StackPanel>
                             </StackPanel>
 
@@ -1878,6 +1888,9 @@
                             <Button x:Name="BtnDeleteCrashLog" Content="🗑 Delete" Padding="6,2"
                                     FontSize="10" Click="DeleteCrashLog_Click" Visibility="Collapsed" Margin="6,0,0,0"/>
                         </StackPanel>
+                        <TextBlock Text="MONITORS" FontSize="12" FontWeight="Bold"
+                                    Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
+                        <StackPanel x:Name="PanelMonitorInfo"/>
                     </StackPanel>
                 </Border>
             </TabItem>

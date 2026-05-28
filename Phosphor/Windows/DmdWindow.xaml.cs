@@ -596,7 +596,9 @@ public partial class DmdWindow : JukeboxWindow
         _topperWindow.SetLogoRingsBrightness(settings.LogoRingsBrightness);
         _topperWindow.SetDistortion(settings.TopperDistortion);
         BlobTransition.ExcludeMandelbrotFromRandom = settings.ExcludeMandelbrotFromRandom;
-        MandelbrotPattern.MandelbrotMaxHz = settings.MandelbrotMaxHz;
+        MandelbrotPattern.TickIntervalMs = settings.MandelbrotUseScreenRate
+            ? ComputeScreenRateTickMs()
+            : settings.MandelbrotTickIntervalMs;
         MandelbrotPattern.RenderScale = Math.Clamp(settings.MandelbrotRenderScale, 0.2, 1.0);
         MandelbrotPattern.AdaptiveIterations = settings.MandelbrotAdaptiveIterations;
         MandelbrotPattern.MaxIterations = Math.Clamp(settings.MandelbrotMaxIterations, 64, 8192);
@@ -617,14 +619,20 @@ public partial class DmdWindow : JukeboxWindow
         MatrixBlobPattern.InfiniteZoom = settings.MatrixInfiniteZoom;
         MatrixBlobPattern.ZoomRate = settings.MatrixZoomRate;
         GameOfLifePattern.CellSize = Math.Clamp(settings.GameOfLifeCellSize, 1, 10);
-        GameOfLifePattern.TickIntervalMs = Math.Clamp(settings.GameOfLifeTickIntervalMs, 1, 100);
+        GameOfLifePattern.TickIntervalMs = settings.GameOfLifeUseScreenRate
+            ? ComputeScreenRateTickMs()
+            : Math.Clamp(settings.GameOfLifeTickIntervalMs, 1, 100);
         GameOfLifePattern.FadeGenerations = Math.Clamp(settings.GameOfLifeFadeGenerations, 0, 20);
         GameOfLifePattern.HeatBoost = Math.Clamp(settings.GameOfLifeHeatBoost, 0, 100);
         GameOfLifePattern.Density = Math.Clamp(settings.GameOfLifeDensity, 1, 10);
-        GameOfLifePattern.OldAgePruning = Math.Clamp(settings.GameOfLifeOldAgePruning, 0, 3);
         GameOfLifePattern.CameraRoam = settings.GameOfLifeCameraRoam;
         GameOfLifePattern.CameraMaxZoom = Math.Clamp(settings.GameOfLifeCameraMaxZoom, 1.1, 2.0);
         GameOfLifePattern.CameraOverscan = Math.Clamp(settings.GameOfLifeCameraOverscan, 0, 100);
+        GameOfLifePattern.ScalingMode = settings.GameOfLifeScalingMode switch
+        {
+            1 => BitmapScalingMode.Fant,
+            _ => BitmapScalingMode.NearestNeighbor,
+        };
         FerrofluidSimulator.CoreGravity = settings.FerrofluidCoreGravity;
         FerrofluidSimulator.MutualAttraction = settings.FerrofluidMutualAttraction;
         FerrofluidSimulator.Damping = settings.FerrofluidDamping;
@@ -1915,7 +1923,9 @@ public partial class DmdWindow : JukeboxWindow
             LogStep("BackglassBlobs (changed)");
         }
         BlobTransition.ExcludeMandelbrotFromRandom = _appSettings.ExcludeMandelbrotFromRandom;
-        MandelbrotPattern.MandelbrotMaxHz = _appSettings.MandelbrotMaxHz;
+        MandelbrotPattern.TickIntervalMs = _appSettings.MandelbrotUseScreenRate
+            ? ComputeScreenRateTickMs()
+            : _appSettings.MandelbrotTickIntervalMs;
         MandelbrotPattern.RenderScale = Math.Clamp(_appSettings.MandelbrotRenderScale, 0.2, 1.0);
         MandelbrotPattern.AdaptiveIterations = _appSettings.MandelbrotAdaptiveIterations;
         MandelbrotPattern.MaxIterations = Math.Clamp(_appSettings.MandelbrotMaxIterations, 64, 8192);
@@ -1943,11 +1953,12 @@ public partial class DmdWindow : JukeboxWindow
         MatrixBlobPattern.InfiniteZoom = _appSettings.MatrixInfiniteZoom;
         MatrixBlobPattern.ZoomRate = _appSettings.MatrixZoomRate;
         GameOfLifePattern.CellSize = Math.Clamp(_appSettings.GameOfLifeCellSize, 1, 10);
-        GameOfLifePattern.TickIntervalMs = Math.Clamp(_appSettings.GameOfLifeTickIntervalMs, 1, 100);
+        GameOfLifePattern.TickIntervalMs = _appSettings.GameOfLifeUseScreenRate
+            ? ComputeScreenRateTickMs()
+            : Math.Clamp(_appSettings.GameOfLifeTickIntervalMs, 1, 100);
         GameOfLifePattern.FadeGenerations = Math.Clamp(_appSettings.GameOfLifeFadeGenerations, 0, 20);
         GameOfLifePattern.HeatBoost = Math.Clamp(_appSettings.GameOfLifeHeatBoost, 0, 100);
         GameOfLifePattern.Density = Math.Clamp(_appSettings.GameOfLifeDensity, 1, 10);
-        GameOfLifePattern.OldAgePruning = Math.Clamp(_appSettings.GameOfLifeOldAgePruning, 0, 3);
         GameOfLifePattern.CameraRoam = _appSettings.GameOfLifeCameraRoam;
         GameOfLifePattern.CameraMaxZoom = Math.Clamp(_appSettings.GameOfLifeCameraMaxZoom, 1.1, 2.0);
         GameOfLifePattern.CameraOverscan = Math.Clamp(_appSettings.GameOfLifeCameraOverscan, 0, 100);
@@ -4020,5 +4031,23 @@ public partial class DmdWindow : JukeboxWindow
                 element = VisualTreeHelper.GetParent(element);
         }
         return null;
+    }
+
+    /// <summary>
+    /// Computes the tick interval in milliseconds from the highest screen refresh rate
+    /// among all jukebox windows. Falls back to 16ms (60 Hz) if no rate is detected.
+    /// </summary>
+    private int ComputeScreenRateTickMs()
+    {
+        int maxHz = RefreshRateHz;
+        if (_playfieldProxy != null)
+            maxHz = Math.Max(maxHz, _playfieldProxy.Window.RefreshRateHz);
+        if (_backglassProxy != null)
+            maxHz = Math.Max(maxHz, _backglassProxy.Window.RefreshRateHz);
+        if (_topperWindow != null)
+            maxHz = Math.Max(maxHz, _topperWindow.RefreshRateHz);
+
+        if (maxHz <= 0) return 16;
+        return Math.Max(1, (int)Math.Round(1000.0 / maxHz));
     }
 }

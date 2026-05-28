@@ -32,9 +32,6 @@ public sealed class GameOfLifePattern : BlobPatternBase
     /// <summary>Injection density (1–10). 5 = default, lower = sparser, higher = more crowded.</summary>
     public static int Density { get; set; } = 5;
 
-    /// <summary>Old age pruning mode: 0 = Off, 1 = Low (60s), 2 = Medium (30s), 3 = High (15s).</summary>
-    public static int OldAgePruning { get; set; }
-
     /// <summary>Whether camera roam is enabled. Default true.</summary>
     public static bool CameraRoam { get; set; } = true;
 
@@ -43,6 +40,9 @@ public sealed class GameOfLifePattern : BlobPatternBase
 
     /// <summary>Percentage of extra grid beyond the visible area (0–100). Default 50.</summary>
     public static int CameraOverscan { get; set; } = 50;
+
+    /// <summary>Bitmap scaling mode used when upscaling cells to screen size. Default NearestNeighbor.</summary>
+    public static BitmapScalingMode ScalingMode { get; set; } = BitmapScalingMode.NearestNeighbor;
 
     /// <summary>Fraction of grid edge to keep clear when placing seed clusters (0.0–0.5).</summary>
     private const double PlacementMargin = 0.05;
@@ -198,8 +198,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
             Opacity = 0,
         };
 
-        // Nearest-neighbor scaling to keep the blocky cell look
-        RenderOptions.SetBitmapScalingMode(_image!, BitmapScalingMode.NearestNeighbor);
+        RenderOptions.SetBitmapScalingMode(_image!, ScalingMode);
 
         // Position oversized image so the visible center aligns with the canvas center
         double offsetX = -(_overscanW - w) / 2.0;
@@ -290,7 +289,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
 
         _timer = new DispatcherTimer(DispatcherPriority.Render)
         {
-            Interval = TimeSpan.FromMilliseconds(Math.Max(16, TickIntervalMs)),
+            Interval = TimeSpan.FromMilliseconds(Math.Max(1, TickIntervalMs)),
         };
         _timer.Tick += OnTick;
         _timer.Start();
@@ -383,20 +382,6 @@ public sealed class GameOfLifePattern : BlobPatternBase
                     _fade[idx] = 0;
                     int si = Math.Min(x / sectorW, SectorCountX - 1) + Math.Min(y / sectorH, SectorCountY - 1) * SectorCountX;
                     _sectorAlive[si]++;
-
-                    // Old age pruning: kill cells that have been alive too long
-                    if (OldAgePruning > 0)
-                    {
-                        int pruneSeconds = OldAgePruning switch { 3 => 15, 2 => 30, _ => 60 };
-                        int pruneGens = pruneSeconds * 1000 / Math.Max(1, TickIntervalMs);
-                        if (_age[idx] >= pruneGens)
-                        {
-                            _colorNext[idx] = 0;
-                            _fade[idx] = (byte)Math.Clamp(FadeGenerations, 1, 255);
-                            _fadeColor[idx] = _colorCurrent[idx];
-                            _age[idx] = 0;
-                        }
-                    }
                 }
                 else
                 {
