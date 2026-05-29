@@ -1,9 +1,10 @@
 using System.Windows;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Shapes;
 using System.Windows.Threading;
-using WpfMedia = System.Windows.Media;
 using WpfColor = System.Windows.Media.Color;
+using WpfMedia = System.Windows.Media;
 using WpfPoint = System.Windows.Point;
 
 namespace Phosphor;
@@ -459,6 +460,14 @@ public partial class TopperWindow : JukeboxWindow
         }
 
         canvas.CacheMode = new WpfMedia.BitmapCache(1.0);
+        canvas.Effect = new System.Windows.Media.Effects.DropShadowEffect
+        {
+            Color = WpfColor.FromRgb(0, 0, 0),
+            BlurRadius = 7,
+            ShadowDepth = 2,
+            Opacity = 0.9,
+            RenderingBias = RenderingBias.Performance,
+        };
 
         if (spin)
         {

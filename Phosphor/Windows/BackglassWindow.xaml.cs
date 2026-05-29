@@ -1786,6 +1786,14 @@ public partial class BackglassWindow : JukeboxWindow
         }
 
         canvas.CacheMode = new WpfMedia.BitmapCache(1.0);
+        canvas.Effect = new System.Windows.Media.Effects.DropShadowEffect
+        {
+            Color = WpfColor.FromRgb(0, 0, 0),
+            BlurRadius = 7,
+            ShadowDepth = 2,
+            Opacity = 0.9,
+            RenderingBias = RenderingBias.Performance,
+        };
 
         if (_titleSpin)
         {
