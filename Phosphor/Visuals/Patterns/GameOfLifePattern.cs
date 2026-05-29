@@ -128,9 +128,20 @@ public sealed class GameOfLifePattern : BlobPatternBase
     private int _generationCount;
     private bool _audioReactiveActive;
 
-    // Frame timing diagnostics
+    // Frame timing diagnostics. Skip an initial warmup window (seeding,
+    // JIT, first beat injections), then average across a measurement window
+    // to smooth out beat-driven injections and dominant-brush throttling
+    // cycles that make single-frame snapshots noisy. Logs once when the
+    // window completes, then stops measuring (no per-frame overhead after).
     private readonly System.Diagnostics.Stopwatch _frameSw = new();
-    private const int FrameTimingLogInterval = 1000;
+    private const int FrameTimingWarmupFrames = 500;
+    private const int FrameTimingWindowFrames = 1000;
+    private double _frameTimeSumMs;
+    private double _frameTimeMinMs = double.MaxValue;
+    private double _frameTimeMaxMs;
+    private int _frameTimeSamples;
+    private double[] _frameTimeSamplesMs = new double[FrameTimingWindowFrames];
+    private bool _frameTimingReported;
 
     // Camera roam state — continuous exploration model
     private enum CameraState { Settling, Exploring }
@@ -423,8 +434,31 @@ public sealed class GameOfLifePattern : BlobPatternBase
         UpdateCamera();
 
         _frameSw.Stop();
-        if (_generationCount % FrameTimingLogInterval == 0)
-            DebugLog.Log($"[GoL] Frame {_generationCount}: {_frameSw.Elapsed.TotalMilliseconds:F2} ms  grid={_gridW}x{_gridH} ({_gridW * _gridH} cells)");
+        if (!_frameTimingReported && _generationCount > FrameTimingWarmupFrames)
+        {
+            double ms = _frameSw.Elapsed.TotalMilliseconds;
+            int i = _frameTimeSamples;
+            _frameTimeSamplesMs[i] = ms;
+            _frameTimeSumMs += ms;
+            if (ms < _frameTimeMinMs) _frameTimeMinMs = ms;
+            if (ms > _frameTimeMaxMs) _frameTimeMaxMs = ms;
+            _frameTimeSamples = i + 1;
+
+            if (_frameTimeSamples >= FrameTimingWindowFrames)
+            {
+                double mean = _frameTimeSumMs / _frameTimeSamples;
+                // p95 via in-place sort (one-shot, ~1000 doubles, trivial cost).
+                Array.Sort(_frameTimeSamplesMs, 0, _frameTimeSamples);
+                double p95 = _frameTimeSamplesMs[(int)(_frameTimeSamples * 0.95)];
+                double median = _frameTimeSamplesMs[_frameTimeSamples / 2];
+                DebugLog.Log($"[GoL] Timing window frames {FrameTimingWarmupFrames + 1}–{FrameTimingWarmupFrames + FrameTimingWindowFrames}: " +
+                    $"mean={mean:F2} ms  median={median:F2} ms  min={_frameTimeMinMs:F2} ms  max={_frameTimeMaxMs:F2} ms  p95={p95:F2} ms  " +
+                    $"grid={_gridW}x{_gridH} ({_gridW * _gridH} cells)  mode={ColorMode}");
+                _frameTimingReported = true;
+                // Free the sample buffer — we're done measuring for this session.
+                _frameTimeSamplesMs = Array.Empty<double>();
+            }
+        }
     }
 
     // Cells/row threshold above which we parallelize sim + render. Below this,
@@ -569,13 +603,11 @@ public sealed class GameOfLifePattern : BlobPatternBase
             _aliveBitboardDirty = false;
         }
 
-        // Pre-decay fade counters. The death branch below overwrites just-died
-        // cells with fadeStart, so newly-dead cells still start fresh.
-        for (int i = 0; i < totalCells; i++)
-            if (_fade[i] > 0) _fade[i]--;
-
-        // _colorNext is sparsely written; clear so dead-stay-dead cells are 0.
-        Array.Clear(_colorNext);
+        // NOTE: _colorNext clear and fade pre-decay are done per-row inside
+        // StepRowBitboard so they run in parallel and stay hot in L1/L2.
+        // The previous serial Array.Clear (32 MB) + fade pre-decay (16 MB)
+        // were the dominant cost at 4K, drowning out the bitboard's compute
+        // win. See PERFORMANCE_NOTES.md for the diagnosis.
 
         Array.Clear(_sectorBirths);
         Array.Clear(_sectorAlive);
@@ -685,6 +717,20 @@ public sealed class GameOfLifePattern : BlobPatternBase
         int upWordBase = yUp * wpr;
         int midWordBase = y * wpr;
         int dnWordBase = yDn * wpr;
+
+        // Per-row pre-passes (parallelized via the caller's Parallel.For):
+        // 1) Clear this row's slice of _colorNext so dead-stay-dead cells
+        //    read as 0 after the swap. Sparse births/survivors below
+        //    overwrite the live cells. 15 KB for 4K width — hot in L1.
+        // 2) Decrement fade counters for any cell with fade > 0. The death
+        //    branch below resets to fadeStart for just-died cells, so the
+        //    net effect matches the scalar path's per-cell fade-- semantics.
+        Array.Clear(_colorNext, rowBase, w);
+        for (int x = 0; x < w; x++)
+        {
+            byte f = _fade[rowBase + x];
+            if (f > 0) _fade[rowBase + x] = (byte)(f - 1);
+        }
 
         // Toroidal wrap carries for the leftmost word's left-shift come from
         // bit (gridW-1) of the row, i.e. bit _lastBit of the last word.
