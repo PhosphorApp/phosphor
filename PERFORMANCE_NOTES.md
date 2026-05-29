@@ -490,3 +490,93 @@ win (1.5–2× on render only) but a clean simplification.
   or the next step will overwrite the injection. Same applies to
   `SeedGrid`.
 
+---
+
+## ✅ Phase 3 Results — Bitboard EraBanded (shipped on `GoL-Bitboard`)
+
+Implemented as planned: dedicated `StepSimulationBitboard` for
+`ColorMode == EraBanded`, scalar `StepRow` path unchanged for `Genetic`.
+`SeedGrid` and `InjectCells` keep writing colors directly and set
+`_aliveBitboardDirty = true`; the bitboard path rebuilds `_aliveCurrent`
+from colors on its next step. Wrap correctness validated visually on
+all `cellSize` values.
+
+### Measured at 4K (2160×3840, 8,294,400 cells), windowed avg frames 501–1500
+
+| Path                              | median | mean   | min    | p95    |
+|-----------------------------------|--------|--------|--------|--------|
+| Scalar Genetic                    | 5.02 ms| 6.60 ms| 4.50 ms|14.60 ms|
+| Bitboard EraBanded (initial)      | 7.48 ms| 8.52 ms| 7.08 ms|15.86 ms|
+| Bitboard EraBanded (after fix)    | **3.04 ms**| **4.55 ms**| **2.68 ms**|11.78 ms|
+
+The "after fix" row is what the bitboard path actually delivers when its
+serial pre-passes are folded into the parallel worker — **2.5× faster
+median than the initial naive bitboard, and ~1.65× faster than scalar
+Genetic.** Comfortably clears 144 Hz (6.94 ms budget).
+
+### Key Lesson — Serial Pre-Passes Drown Out Bitboard Compute Wins
+
+The naive Phase 3 implementation had two serial pre-passes before the
+parallel `StepRowBitboard` loop:
+
+```csharp
+Array.Clear(_colorNext);                  // 32 MB serial memset
+for (int i = 0; i < totalCells; i++)      // 16 MB serial scan
+    if (_fade[i] > 0) _fade[i]--;
+```
+
+These cost ~2–3 ms on a 4K grid (memory bandwidth limited, single
+thread), and they **block all worker threads from starting** their
+bitboard rows. The bitboard step itself was correctly ~1 ms — but
+nobody could see that under 3 ms of stalled workers.
+
+**Fix:** move both pre-passes inside `StepRowBitboard`, per row:
+
+```csharp
+Array.Clear(_colorNext, rowBase, w);   // ~15 KB, hot in L1
+for (int x = 0; x < w; x++)            // touches the same _fade row
+    if (_fade[rowBase + x] > 0) _fade[rowBase + x]--;
+```
+
+Now the memory traffic is parallelized across cores, and the cleared/
+decayed cache lines are still hot in L1 when the sparse births and
+survivors land on the same row moments later. Result: serial overhead
+gone, bitboard compute win finally visible.
+
+**Generalizable rule:** when adding a parallel optimization to an
+existing algorithm, audit every `Array.Clear`, `memset`-style loop, or
+fold pass for whether it can be sliced and pushed inside the worker.
+Any serial O(N) pass before a parallel O(N) loop costs you P× the
+compute win (P = thread count) because it serializes the workers'
+start.
+
+### Remaining Noise (max 24 ms, p95 11.8 ms)
+
+The bitboard step itself is steady at ~3 ms. The p95 / max spikes are
+from:
+- **`InjectCells` triggers `RebuildAliveBitboardFromColors`** on the
+  next frame — a 32 MB serial scan. Cheap fix: rebuild only the cells
+  injected (track the dirty rectangle, or do the bit-set inline in
+  `InjectCells` / `SeedGrid` so dirty is never needed).
+- **`Parallel.For` localInit** allocates `new int[sectorCount]` per
+  worker per call. GC churn over time. Pool these.
+- WPF dispatcher / dominant-brush throttle cycle.
+
+These are follow-on wins, not blockers — current p95 still meets 144 Hz
+with margin.
+
+### What Did NOT Help
+
+- **Pre-decaying fades in a single serial loop** — see above, this was
+  the main regression source.
+- **Clearing `_colorNext` via a single `Array.Clear`** — see above.
+
+### What Stays as Future Work
+
+- **Phase B (AVX2 over bitboards)** — not needed for 4K @ 144 Hz given
+  current numbers. Would buy headroom for hypothetical 8K or `cellSize=1`
+  on lower-end hardware.
+- **`InjectCells` / `SeedGrid` direct bit writes** — eliminate the
+  rebuild scan to lower p95 further.
+- **Pooled per-thread sector counters** — reduce GC pressure.
+
