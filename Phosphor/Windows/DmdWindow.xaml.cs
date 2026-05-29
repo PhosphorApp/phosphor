@@ -626,8 +626,10 @@ public partial class DmdWindow : JukeboxWindow
         GameOfLifePattern.HeatBoost = Math.Clamp(settings.GameOfLifeHeatBoost, 0, 100);
         GameOfLifePattern.Density = Math.Clamp(settings.GameOfLifeDensity, 1, 10);
         GameOfLifePattern.CameraRoam = settings.GameOfLifeCameraRoam;
-        GameOfLifePattern.CameraMaxZoom = Math.Clamp(settings.GameOfLifeCameraMaxZoom, 1.1, 2.0);
+        GameOfLifePattern.CameraMaxZoom = Math.Clamp(settings.GameOfLifeCameraMaxZoom, 1.1, 5.0);
         GameOfLifePattern.CameraOverscan = Math.Clamp(settings.GameOfLifeCameraOverscan, 0, 100);
+        GameOfLifePattern.CameraSpeed = Math.Clamp(settings.GameOfLifeCameraSpeed, 0.1, 3.0);
+        GameOfLifePattern.RestartOnTrackChange = settings.GameOfLifeRestartOnTrackChange;
         GameOfLifePattern.ScalingMode = settings.GameOfLifeScalingMode switch
         {
             1 => BitmapScalingMode.Fant,
@@ -1960,8 +1962,10 @@ public partial class DmdWindow : JukeboxWindow
         GameOfLifePattern.HeatBoost = Math.Clamp(_appSettings.GameOfLifeHeatBoost, 0, 100);
         GameOfLifePattern.Density = Math.Clamp(_appSettings.GameOfLifeDensity, 1, 10);
         GameOfLifePattern.CameraRoam = _appSettings.GameOfLifeCameraRoam;
-        GameOfLifePattern.CameraMaxZoom = Math.Clamp(_appSettings.GameOfLifeCameraMaxZoom, 1.1, 2.0);
+        GameOfLifePattern.CameraMaxZoom = Math.Clamp(_appSettings.GameOfLifeCameraMaxZoom, 1.1, 5.0);
         GameOfLifePattern.CameraOverscan = Math.Clamp(_appSettings.GameOfLifeCameraOverscan, 0, 100);
+        GameOfLifePattern.CameraSpeed = Math.Clamp(_appSettings.GameOfLifeCameraSpeed, 0.1, 3.0);
+        GameOfLifePattern.RestartOnTrackChange = _appSettings.GameOfLifeRestartOnTrackChange;
         if (settingsWindow.GameOfLifeSettingsChanged)
         {
             _playfieldProxy?.RestartGameOfLife();
@@ -3343,6 +3347,15 @@ public partial class DmdWindow : JukeboxWindow
         _playfieldProxy?.OnSongChanged();
         _backglassProxy?.OnSongChanged();
         _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.OnSongChanged());
+
+        // Restart Game of Life simulation on track change if enabled
+        if (GameOfLifePattern.RestartOnTrackChange)
+        {
+            _playfieldProxy?.RestartGameOfLife();
+            _backglassProxy?.RestartGameOfLife();
+            _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.RestartGameOfLife());
+            _ = Dispatcher.BeginInvoke(RestartGameOfLife);
+        }
 
         // Switch ProjectM preset on queue transition if enabled
         if (_appSettings?.ProjectMNewVisualOnTrackChange == true

@@ -96,6 +96,8 @@ public partial class SettingsWindow : JukeboxWindow
     private bool _originalGameOfLifeCameraRoam;
     private double _originalGameOfLifeCameraMaxZoom;
     private int _originalGameOfLifeCameraOverscan;
+    private double _originalGameOfLifeCameraSpeed;
+    private bool _originalGameOfLifeRestartOnTrackChange;
     private double _originalProjectMPresetDuration;
     private double _originalProjectMSoftCut;
     private bool _originalProjectMHardCut;
@@ -225,7 +227,9 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.GameOfLifeHeatBoost != _originalGameOfLifeHeatBoost ||
         _settings.GameOfLifeDensity != _originalGameOfLifeDensity ||
         _settings.GameOfLifeCameraRoam != _originalGameOfLifeCameraRoam ||
-        _settings.GameOfLifeCameraOverscan != _originalGameOfLifeCameraOverscan;
+        _settings.GameOfLifeCameraOverscan != _originalGameOfLifeCameraOverscan ||
+        _settings.GameOfLifeCameraSpeed != _originalGameOfLifeCameraSpeed ||
+        _settings.GameOfLifeRestartOnTrackChange != _originalGameOfLifeRestartOnTrackChange;
 
     public event Action? SettingsApplied;
 
@@ -532,6 +536,9 @@ public partial class SettingsWindow : JukeboxWindow
         TxtGameOfLifeCameraMaxZoom.Text = $"{settings.GameOfLifeCameraMaxZoom:F1}x";
         SliderGameOfLifeCameraOverscan.Value = settings.GameOfLifeCameraOverscan;
         TxtGameOfLifeCameraOverscan.Text = $"{settings.GameOfLifeCameraOverscan}%";
+        SliderGameOfLifeCameraSpeed.Value = settings.GameOfLifeCameraSpeed;
+        TxtGameOfLifeCameraSpeed.Text = FormatCameraSpeed(settings.GameOfLifeCameraSpeed);
+        CbGameOfLifeRestartOnTrackChange.IsChecked = settings.GameOfLifeRestartOnTrackChange;
         CbGameOfLifeScalingMode.Items.Clear();
         CbGameOfLifeScalingMode.Items.Add("Nearest Neighbor");
         CbGameOfLifeScalingMode.Items.Add("Smooth (Fant)");
@@ -769,6 +776,8 @@ public partial class SettingsWindow : JukeboxWindow
         _originalGameOfLifeCameraRoam = settings.GameOfLifeCameraRoam;
         _originalGameOfLifeCameraMaxZoom = settings.GameOfLifeCameraMaxZoom;
         _originalGameOfLifeCameraOverscan = settings.GameOfLifeCameraOverscan;
+        _originalGameOfLifeCameraSpeed = settings.GameOfLifeCameraSpeed;
+        _originalGameOfLifeRestartOnTrackChange = settings.GameOfLifeRestartOnTrackChange;
         _originalProjectMPresetDuration = settings.ProjectMPresetDuration;
         _originalProjectMSoftCut = settings.ProjectMSoftCutDuration;
         _originalProjectMHardCut = settings.ProjectMHardCutEnabled;
@@ -1880,6 +1889,11 @@ public partial class SettingsWindow : JukeboxWindow
         UpdateGameOfLifeCameraVisibility();
     }
 
+    private void CbGameOfLifeRestartOnTrackChange_Changed(object sender, RoutedEventArgs e)
+    {
+        // No-op; tracked via originals/change-detection.
+    }
+
     private void SliderGameOfLifeCameraMaxZoom_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (TxtGameOfLifeCameraMaxZoom != null)
@@ -1891,6 +1905,21 @@ public partial class SettingsWindow : JukeboxWindow
         if (TxtGameOfLifeCameraOverscan != null)
             TxtGameOfLifeCameraOverscan.Text = $"{(int)e.NewValue}%";
     }
+
+    private void SliderGameOfLifeCameraSpeed_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtGameOfLifeCameraSpeed != null)
+            TxtGameOfLifeCameraSpeed.Text = FormatCameraSpeed(e.NewValue);
+    }
+
+    private static string FormatCameraSpeed(double v) => v switch
+    {
+        <= 0.25 => $"{v:F1}x (glacial)",
+        <= 0.75 => $"{v:F1}x (slow)",
+        <  1.25 => $"{v:F1}x (default)",
+        <  2.0  => $"{v:F1}x (brisk)",
+        _       => $"{v:F1}x (fast)",
+    };
 
     private void CbGameOfLifeScalingMode_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) { }
 
@@ -2400,6 +2429,8 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.GameOfLifeCameraRoam = CbGameOfLifeCameraRoam.IsChecked == true;
         _settings.GameOfLifeCameraMaxZoom = SliderGameOfLifeCameraMaxZoom.Value;
         _settings.GameOfLifeCameraOverscan = (int)SliderGameOfLifeCameraOverscan.Value;
+        _settings.GameOfLifeCameraSpeed = SliderGameOfLifeCameraSpeed.Value;
+        _settings.GameOfLifeRestartOnTrackChange = CbGameOfLifeRestartOnTrackChange.IsChecked == true;
         _settings.GameOfLifeScalingMode = CbGameOfLifeScalingMode.SelectedIndex;
         _settings.ReactiveBlobsPlayfield = CbReactiveBlobsPlayfield.IsChecked == true;
         _settings.ReactiveBlobsBackglass = CbReactiveBlobsBackglass.IsChecked == true;
@@ -2491,6 +2522,8 @@ public partial class SettingsWindow : JukeboxWindow
         _originalGameOfLifeCameraRoam = _settings.GameOfLifeCameraRoam;
         _originalGameOfLifeCameraMaxZoom = _settings.GameOfLifeCameraMaxZoom;
         _originalGameOfLifeCameraOverscan = _settings.GameOfLifeCameraOverscan;
+        _originalGameOfLifeCameraSpeed = _settings.GameOfLifeCameraSpeed;
+        _originalGameOfLifeRestartOnTrackChange = _settings.GameOfLifeRestartOnTrackChange;
         _originalProjectMPresetDuration = _settings.ProjectMPresetDuration;
         _originalProjectMSoftCut = _settings.ProjectMSoftCutDuration;
         _originalProjectMHardCut = _settings.ProjectMHardCutEnabled;

@@ -35,11 +35,17 @@ public sealed class GameOfLifePattern : BlobPatternBase
     /// <summary>Whether camera roam is enabled. Default true.</summary>
     public static bool CameraRoam { get; set; } = true;
 
-    /// <summary>Maximum zoom level for camera roam (1.2–3.0). Default 1.6.</summary>
+    /// <summary>Maximum zoom level for camera roam (1.2–5.0). Default 1.6.</summary>
     public static double CameraMaxZoom { get; set; } = 1.6;
 
     /// <summary>Percentage of extra grid beyond the visible area (0–100). Default 50.</summary>
     public static int CameraOverscan { get; set; } = 50;
+
+    /// <summary>Multiplier on camera pan/zoom/rotation animation speed (0.1–3.0). 1.0 = default.</summary>
+    public static double CameraSpeed { get; set; } = 1.0;
+
+    /// <summary>When true, restart the Game of Life simulation whenever a new track starts.</summary>
+    public static bool RestartOnTrackChange { get; set; } = false;
 
     /// <summary>Bitmap scaling mode used when upscaling cells to screen size. Default NearestNeighbor.</summary>
     public static BitmapScalingMode ScalingMode { get; set; } = BitmapScalingMode.NearestNeighbor;
@@ -107,6 +113,12 @@ public sealed class GameOfLifePattern : BlobPatternBase
     private const int SectorCountY = 8;
     private int[] _sectorBirths = new int[SectorCountX * SectorCountY];
     private int[] _sectorAlive = new int[SectorCountX * SectorCountY];
+
+    // Smoothed (EWMA) sector heat — averaged across recent frames so persistent
+    // blooms dominate over single-frame noise. Updated every step in StepSimulation.
+    private readonly double[] _sectorHeat = new double[SectorCountX * SectorCountY];
+    // Smoothing factor: heat = heat*(1-α) + currentScore*α. Lower = more inertia.
+    private const double SectorHeatAlpha = 0.08;
 
     // Stagnation detection — two snapshots taken SnapshotInterval generations apart.
     // Cells alive in both snapshots at the same position are considered stagnant
@@ -392,6 +404,15 @@ public sealed class GameOfLifePattern : BlobPatternBase
         // Swap buffers
         (_colorCurrent, _colorNext) = (_colorNext, _colorCurrent);
 
+        // Update smoothed sector heat (EWMA). Persistent blooms accumulate weight;
+        // fading regions decay. Drives camera target selection in PickCameraTarget.
+        int sectorCount2 = SectorCountX * SectorCountY;
+        for (int i = 0; i < sectorCount2; i++)
+        {
+            double instant = _sectorBirths[i] * 3 + _sectorAlive[i];
+            _sectorHeat[i] = _sectorHeat[i] * (1.0 - SectorHeatAlpha) + instant * SectorHeatAlpha;
+        }
+
         // Stagnation snapshots: take a snapshot every SnapshotInterval generations.
         // Rotate A <- B <- current so we compare two points in time.
         _snapshotGen++;
@@ -537,15 +558,146 @@ public sealed class GameOfLifePattern : BlobPatternBase
             _bitmap.Unlock();
         }
 
-        // Update the dummy brush with the average living cell color so the
+        // Update the dummy brush with the dominant on-screen color so the
         // color cycling timer can detect dominant band changes for DOF.
-        if (aliveCount > 0 && _brushes.Count > 0)
+        // When camera roam is active and zoomed in, only sample the visible
+        // grid region so DOF reflects what the user actually sees.
+        UpdateDominantBrush();
+    }
+
+    /// <summary>
+    /// Scans live cells (whole grid, or only the visible region when camera
+    /// roam is zoomed in) and sets <c>_brushes[0]</c> to the average color of
+    /// the dominant ROYGBIV band. This drives the playfield's dominant-color
+    /// detection and DOF lighting.
+    /// </summary>
+    private void UpdateDominantBrush()
+    {
+        if (_brushes.Count == 0) return;
+
+        int x0 = 0, y0 = 0, x1 = _gridW, y1 = _gridH;
+        if (CameraRoam && _cameraZoom > 1.05)
+            (x0, y0, x1, y1) = GetVisibleGridRect();
+
+        Span<int> bandCount = stackalloc int[8];
+        Span<long> bandR = stackalloc long[8];
+        Span<long> bandG = stackalloc long[8];
+        Span<long> bandB = stackalloc long[8];
+
+        // Stride 2 in both axes — dominant-band stats don't need every cell.
+        const int stride = 2;
+        for (int y = y0; y < y1; y += stride)
         {
-            byte avgR = (byte)(totalR / aliveCount);
-            byte avgG = (byte)(totalG / aliveCount);
-            byte avgB = (byte)(totalB / aliveCount);
-            _brushes[0].Color = Color.FromRgb(avgR, avgG, avgB);
+            int rowBase = y * _gridW;
+            for (int x = x0; x < x1; x += stride)
+            {
+                uint c = _colorCurrent[rowBase + x];
+                if (c == 0) continue;
+                uint cr = (c >> 16) & 0xFF;
+                uint cg = (c >> 8) & 0xFF;
+                uint cb = c & 0xFF;
+                int band = ClassifyBand(cr, cg, cb);
+                bandCount[band]++;
+                bandR[band] += cr;
+                bandG[band] += cg;
+                bandB[band] += cb;
+            }
         }
+
+        int bestBand = 0, bestCount = 0;
+        for (int b = 0; b < 8; b++)
+            if (bandCount[b] > bestCount) { bestCount = bandCount[b]; bestBand = b; }
+
+        if (bestCount > 0)
+        {
+            byte ar = (byte)(bandR[bestBand] / bestCount);
+            byte ag = (byte)(bandG[bestBand] / bestCount);
+            byte ab = (byte)(bandB[bestBand] / bestCount);
+            _brushes[0].Color = Color.FromRgb(ar, ag, ab);
+        }
+    }
+
+    /// <summary>
+    /// Returns the axis-aligned bounding box (in grid cell indices) of the
+    /// portion of the overscanned image currently visible on the display,
+    /// given the camera's zoom, pan, and rotation. Half-open: [x0,x1) × [y0,y1).
+    /// </summary>
+    private (int x0, int y0, int x1, int y1) GetVisibleGridRect()
+    {
+        double zoom = Math.Max(0.001, _cameraZoom);
+        double inv = 1.0 / zoom;
+        double rad = _cameraAngle * Math.PI / 180.0;
+        double cs = Math.Cos(rad), sn = Math.Sin(rad);
+        double halfW = _displayW * 0.5;
+        double halfH = _displayH * 0.5;
+
+        double minX = double.MaxValue, minY = double.MaxValue;
+        double maxX = double.MinValue, maxY = double.MinValue;
+
+        // For each display-rect corner, invert the camera transform to get the
+        // corresponding image-relative coordinate (origin at image center).
+        // Forward: display = pan + zoom * R(angle) * imageRel
+        // Inverse: imageRel = (1/zoom) * R(-angle) * (display - pan)
+        for (int i = 0; i < 4; i++)
+        {
+            double dx = ((i & 1) == 0 ? -halfW : halfW);
+            double dy = ((i & 2) == 0 ? -halfH : halfH);
+            double ux = dx - _cameraPanX;
+            double uy = dy - _cameraPanY;
+            double rx = (cs * ux + sn * uy) * inv;
+            double ry = (-sn * ux + cs * uy) * inv;
+            if (rx < minX) minX = rx;
+            if (ry < minY) minY = ry;
+            if (rx > maxX) maxX = rx;
+            if (ry > maxY) maxY = ry;
+        }
+
+        int cellSize = Math.Max(1, CellSize);
+        int gx0 = (int)Math.Floor((minX + _overscanW * 0.5) / cellSize);
+        int gy0 = (int)Math.Floor((minY + _overscanH * 0.5) / cellSize);
+        int gx1 = (int)Math.Ceiling((maxX + _overscanW * 0.5) / cellSize);
+        int gy1 = (int)Math.Ceiling((maxY + _overscanH * 0.5) / cellSize);
+
+        gx0 = Math.Clamp(gx0, 0, _gridW);
+        gy0 = Math.Clamp(gy0, 0, _gridH);
+        gx1 = Math.Clamp(gx1, 0, _gridW);
+        gy1 = Math.Clamp(gy1, 0, _gridH);
+        if (gx1 <= gx0) gx1 = Math.Min(_gridW, gx0 + 1);
+        if (gy1 <= gy0) gy1 = Math.Min(_gridH, gy0 + 1);
+        return (gx0, gy0, gx1, gy1);
+    }
+
+    /// <summary>
+    /// Fast integer ROYGBIV classification matching <see cref="CellMatchesBand"/>.
+    /// Returns the band index (cast of <see cref="RoygbivColor"/>).
+    /// </summary>
+    private static int ClassifyBand(uint r, uint g, uint b)
+    {
+        int ri = (int)r, gi = (int)g, bi = (int)b;
+        int max = Math.Max(ri, Math.Max(gi, bi));
+        int min = Math.Min(ri, Math.Min(gi, bi));
+        int delta = max - min;
+
+        if (delta < 20 && max > 150) return (int)RoygbivColor.White;
+        if (delta < 5) return (int)RoygbivColor.White;
+
+        int hue;
+        if (max == ri) hue = 60 * (gi - bi) / delta;
+        else if (max == gi) hue = 60 * (bi - ri) / delta + 120;
+        else hue = 60 * (ri - gi) / delta + 240;
+        if (hue < 0) hue += 360;
+
+        return (uint)hue switch
+        {
+            < 30 => (int)RoygbivColor.Red,
+            < 60 => (int)RoygbivColor.Orange,
+            < 90 => (int)RoygbivColor.Yellow,
+            < 180 => (int)RoygbivColor.Green,
+            < 210 => (int)RoygbivColor.Blue,
+            < 270 => (int)RoygbivColor.Indigo,
+            < 330 => (int)RoygbivColor.Violet,
+            _ => (int)RoygbivColor.Red,
+        };
     }
 
     /// <summary>
@@ -618,22 +770,24 @@ public sealed class GameOfLifePattern : BlobPatternBase
         if (!CameraRoam || _scaleTransform == null || _translateTransform == null || _rotateTransform == null)
             return;
 
-        double maxZoom = Math.Clamp(CameraMaxZoom, 1.1, 3.0);
+        double maxZoom = Math.Clamp(CameraMaxZoom, 1.1, 5.0);
+        double speed = Math.Clamp(CameraSpeed, 0.1, 3.0);
 
-        // Always apply a very slow constant drift — gives the "floating in space" feel
-        _cameraTargetX += _cameraDriftX;
-        _cameraTargetY += _cameraDriftY;
-        _cameraTargetAngle += _cameraDriftAngle;
+        // Always apply a very slow constant drift — gives the "floating in space" feel.
+        // Drift is scaled by the speed multiplier so "Glacial" really crawls and "Fast" zips.
+        _cameraTargetX += _cameraDriftX * speed;
+        _cameraTargetY += _cameraDriftY * speed;
+        _cameraTargetAngle += _cameraDriftAngle * speed;
         ClampCameraTarget();
 
         switch (_cameraState)
         {
             case CameraState.Settling:
                 // Initial settle: slowly zoom in to a first target
-                _cameraZoom = Lerp(_cameraZoom, _cameraTargetZoom, 0.007);
-                _cameraPanX = Lerp(_cameraPanX, _cameraTargetX, 0.007);
-                _cameraPanY = Lerp(_cameraPanY, _cameraTargetY, 0.007);
-                _cameraAngle = Lerp(_cameraAngle, _cameraTargetAngle, 0.005);
+                _cameraZoom = Lerp(_cameraZoom, _cameraTargetZoom, 0.00525 * speed);
+                _cameraPanX = Lerp(_cameraPanX, _cameraTargetX, 0.00525 * speed);
+                _cameraPanY = Lerp(_cameraPanY, _cameraTargetY, 0.00525 * speed);
+                _cameraAngle = Lerp(_cameraAngle, _cameraTargetAngle, 0.00375 * speed);
 
                 _cameraRetargetTicks--;
                 if (_cameraRetargetTicks <= 0)
@@ -646,10 +800,10 @@ public sealed class GameOfLifePattern : BlobPatternBase
 
             case CameraState.Exploring:
                 // Very slowly lerp toward current target; drift keeps us moving between retargets
-                _cameraZoom = Lerp(_cameraZoom, _cameraTargetZoom, 0.005);
-                _cameraPanX = Lerp(_cameraPanX, _cameraTargetX, 0.005);
-                _cameraPanY = Lerp(_cameraPanY, _cameraTargetY, 0.005);
-                _cameraAngle = Lerp(_cameraAngle, _cameraTargetAngle, 0.0035);
+                _cameraZoom = Lerp(_cameraZoom, _cameraTargetZoom, 0.00375 * speed);
+                _cameraPanX = Lerp(_cameraPanX, _cameraTargetX, 0.00375 * speed);
+                _cameraPanY = Lerp(_cameraPanY, _cameraTargetY, 0.00375 * speed);
+                _cameraAngle = Lerp(_cameraAngle, _cameraTargetAngle, 0.002625 * speed);
 
                 _cameraRetargetTicks--;
                 if (_cameraRetargetTicks <= 0)
@@ -669,48 +823,52 @@ public sealed class GameOfLifePattern : BlobPatternBase
     }
 
     /// <summary>
-    /// Pick a new camera wander target by finding an active sector.
-    /// Targets vary zoom gently and compute the maximum safe rotation
-    /// given the current zoom and overscan.
+    /// Pick a new camera wander target. Uses the smoothed <see cref="_sectorHeat"/>
+    /// map (EWMA across recent frames) so persistent blooms dominate over
+    /// single-frame noise. Selection is heat²-weighted random, then the actual
+    /// centroid of live cells inside the chosen sector is computed so the
+    /// camera lands on the bloom rather than at the sector midpoint.
     /// </summary>
     private void PickCameraTarget(double maxZoom)
     {
-        // Score each sector: births × 3 + alive
         int totalSectors = SectorCountX * SectorCountY;
-        int bestScore = 0;
 
-        Span<int> scores = stackalloc int[totalSectors];
+        // Heat² weighting strongly biases toward the hottest sectors but keeps
+        // a chance of visiting secondary blooms. Add a small uniform floor so
+        // dead grids still pick *something* without dividing by zero.
+        Span<double> weights = stackalloc double[totalSectors];
+        double weightSum = 0;
+        double maxHeat = 0;
+        for (int i = 0; i < totalSectors; i++)
+            if (_sectorHeat[i] > maxHeat) maxHeat = _sectorHeat[i];
+
+        double floor = Math.Max(1e-6, maxHeat * 0.02); // 2% floor relative to peak
         for (int i = 0; i < totalSectors; i++)
         {
-            scores[i] = _sectorBirths[i] * 3 + _sectorAlive[i];
-            if (scores[i] > bestScore) bestScore = scores[i];
+            double h = _sectorHeat[i] + floor;
+            double w = h * h;
+            weights[i] = w;
+            weightSum += w;
         }
 
-        // Accept sectors scoring at least 40% of the best
-        int threshold = Math.Max(1, bestScore * 2 / 5);
-        int candidateCount = 0;
-        for (int i = 0; i < totalSectors; i++)
-            if (scores[i] >= threshold) candidateCount++;
-
-        if (candidateCount == 0) candidateCount = totalSectors;
-
-        int pick = _rng.Next(candidateCount);
-        int seen = 0;
+        // Weighted random pick
+        double r = _rng.NextDouble() * weightSum;
         int bestIdx = 0;
+        double acc = 0;
         for (int i = 0; i < totalSectors; i++)
         {
-            if (scores[i] >= threshold || candidateCount == totalSectors)
-            {
-                if (seen == pick) { bestIdx = i; break; }
-                seen++;
-            }
+            acc += weights[i];
+            if (r <= acc) { bestIdx = i; break; }
         }
 
-        // Convert sector to fractional position on the image (0..1)
+        // Compute actual centroid of live cells inside the chosen sector so we
+        // aim at the bloom, not the sector midpoint. Fall back to the midpoint
+        // if the sector is empty (which can happen with EWMA inertia).
         int sectorX = bestIdx % SectorCountX;
         int sectorY = bestIdx / SectorCountX;
-        double fracX = (sectorX + 0.5) / SectorCountX; // 0..1
+        double fracX = (sectorX + 0.5) / SectorCountX;
         double fracY = (sectorY + 0.5) / SectorCountY;
+        ComputeSectorCentroid(sectorX, sectorY, ref fracX, ref fracY);
 
         // Gently vary zoom — wander between ~60% and 100% of max zoom so it stays interesting
         double minWander = 1.0 + (maxZoom - 1.0) * 0.5;
@@ -723,9 +881,6 @@ public sealed class GameOfLifePattern : BlobPatternBase
         _cameraTargetY = -imgCenterFracY * _overscanH * (_cameraTargetZoom - 1.0) * 0.8;
 
         // Compute the maximum safe rotation angle given zoom, overscan, and pan offset.
-        // The available margin at current zoom is (overscanDim * zoom - displayDim) / 2 - |pan|.
-        // Rotation by angle θ requires extra margin ≈ sin(θ) * diagonal / 2.
-        // Solve for max θ: the geometry fully determines how far we can rotate.
         double marginX = Math.Max(0, (_overscanW * _cameraTargetZoom - _displayW) / 2.0 - Math.Abs(_cameraTargetX));
         double marginY = Math.Max(0, (_overscanH * _cameraTargetZoom - _displayH) / 2.0 - Math.Abs(_cameraTargetY));
         double minMargin = Math.Min(marginX, marginY);
@@ -735,12 +890,56 @@ public sealed class GameOfLifePattern : BlobPatternBase
         _cameraTargetAngle = (_rng.NextDouble() - 0.5) * 2.0 * maxAngle;
 
         // Set a new gentle drift direction — keeps the camera floating between retargets
-        _cameraDriftX = (_rng.NextDouble() - 0.5) * 0.22;
-        _cameraDriftY = (_rng.NextDouble() - 0.5) * 0.22;
-        // Scale rotational drift to the available rotation range — gentle at edges, freer at center
-        _cameraDriftAngle = (_rng.NextDouble() - 0.5) * 0.012 * Math.Max(1.0, maxAngle / 15.0);
+        _cameraDriftX = (_rng.NextDouble() - 0.5) * 0.165;
+        _cameraDriftY = (_rng.NextDouble() - 0.5) * 0.165;
+        _cameraDriftAngle = (_rng.NextDouble() - 0.5) * 0.009 * Math.Max(1.0, maxAngle / 15.0);
 
         ClampCameraTarget();
+    }
+
+    /// <summary>
+    /// Find the weighted centroid of live cells inside a single sector and
+    /// convert it to a fractional position on the image (0..1). Falls back to
+    /// the sector midpoint (preserving the input values) if the sector has no
+    /// live cells. Sampled (every Nth cell) so the cost stays trivial even on
+    /// 2M+ cell grids — accuracy doesn't need to be pixel-perfect for camera aim.
+    /// </summary>
+    private void ComputeSectorCentroid(int sectorX, int sectorY, ref double fracX, ref double fracY)
+    {
+        int w = _gridW, h = _gridH;
+        if (w == 0 || h == 0) return;
+
+        int sectorW = Math.Max(1, w / SectorCountX);
+        int sectorH = Math.Max(1, h / SectorCountY);
+        int x0 = sectorX * sectorW;
+        int y0 = sectorY * sectorH;
+        int x1 = sectorX == SectorCountX - 1 ? w : Math.Min(w, x0 + sectorW);
+        int y1 = sectorY == SectorCountY - 1 ? h : Math.Min(h, y0 + sectorH);
+
+        // Stride to keep this under ~4k samples per sector regardless of grid size
+        int cellsInSector = (x1 - x0) * (y1 - y0);
+        int stride = Math.Max(1, (int)Math.Sqrt(cellsInSector / 4096.0));
+
+        long sumX = 0, sumY = 0, count = 0;
+        for (int y = y0; y < y1; y += stride)
+        {
+            int rowBase = y * w;
+            for (int x = x0; x < x1; x += stride)
+            {
+                if (_colorCurrent[rowBase + x] != 0)
+                {
+                    sumX += x;
+                    sumY += y;
+                    count++;
+                }
+            }
+        }
+
+        if (count > 0)
+        {
+            fracX = (sumX / (double)count) / w;
+            fracY = (sumY / (double)count) / h;
+        }
     }
 
     /// <summary>Clamp camera pan and rotation targets so the viewport stays within bounds.</summary>

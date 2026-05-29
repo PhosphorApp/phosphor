@@ -636,6 +636,14 @@
                                                VerticalAlignment="Center" Margin="8,0,0,0"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Reset on Track:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <CheckBox x:Name="CbGameOfLifeRestartOnTrackChange"
+                                              Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
+                                              Checked="CbGameOfLifeRestartOnTrackChange_Changed" Unchecked="CbGameOfLifeRestartOnTrackChange_Changed"
+                                              ToolTip="Restart the Game of Life simulation with a fresh seed whenever a new track starts."/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Camera Roam:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Width="100"/>
                                     <CheckBox x:Name="CbGameOfLifeCameraRoam"
@@ -647,9 +655,9 @@
                                     <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                         <TextBlock Text="Max Zoom:" Foreground="{StaticResource TextBrush}"
                                                    VerticalAlignment="Center" Width="100"/>
-                                        <Slider x:Name="SliderGameOfLifeCameraMaxZoom" Minimum="1.2" Maximum="3.0"
+                                        <Slider x:Name="SliderGameOfLifeCameraMaxZoom" Minimum="1.2" Maximum="5.0"
                                                 Width="150" VerticalAlignment="Center"
-                                                IsSnapToTickEnabled="True" TickFrequency="0.1"
+                                                IsSnapToTickEnabled="True" TickFrequency="0.2"
                                                 ValueChanged="SliderGameOfLifeCameraMaxZoom_ValueChanged"
                                                 ToolTip="Maximum zoom level for camera roam. Default 1.6."/>
                                         <TextBlock x:Name="TxtGameOfLifeCameraMaxZoom" Foreground="{StaticResource TextDimBrush}"
@@ -664,6 +672,17 @@
                                                 ValueChanged="SliderGameOfLifeCameraOverscan_ValueChanged"
                                                 ToolTip="Extra grid beyond the visible area (%). More overscan = smoother camera without edge exposure. Default 50%."/>
                                         <TextBlock x:Name="TxtGameOfLifeCameraOverscan" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Speed:" Foreground="{StaticResource TextBrush}"
+                                                   VerticalAlignment="Center" Width="100"/>
+                                        <Slider x:Name="SliderGameOfLifeCameraSpeed" Minimum="0.1" Maximum="3.0"
+                                                Width="150" VerticalAlignment="Center"
+                                                IsSnapToTickEnabled="True" TickFrequency="0.1"
+                                                ValueChanged="SliderGameOfLifeCameraSpeed_ValueChanged"
+                                                ToolTip="Multiplier on pan/zoom/rotation animation rate. 0.1 = glacial, 1.0 = default, 3.0 = fast."/>
+                                        <TextBlock x:Name="TxtGameOfLifeCameraSpeed" Foreground="{StaticResource TextDimBrush}"
                                                    VerticalAlignment="Center" Margin="8,0,0,0"/>
                                     </StackPanel>
                                 </StackPanel>

@@ -121,6 +121,10 @@ public class AppSettings
     public bool GameOfLifeCameraRoam { get; set; } = true;
     public double GameOfLifeCameraMaxZoom { get; set; } = 1.6;
     public int GameOfLifeCameraOverscan { get; set; } = 50;
+    /// <summary>Multiplier on camera pan/zoom/rotation animation speed. 1.0 = default. Range 0.1–3.0.</summary>
+    public double GameOfLifeCameraSpeed { get; set; } = 1.0;
+    /// <summary>Restart the Game of Life simulation whenever a new track starts.</summary>
+    public bool GameOfLifeRestartOnTrackChange { get; set; } = false;
     public int GameOfLifeScalingMode { get; set; } // 0 = NearestNeighbor, 1 = Fant
 
     // Ferrofluid tuning
