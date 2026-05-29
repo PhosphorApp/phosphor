@@ -553,30 +553,57 @@ start.
 ### Remaining Noise (max 24 ms, p95 11.8 ms)
 
 The bitboard step itself is steady at ~3 ms. The p95 / max spikes are
-from:
-- **`InjectCells` triggers `RebuildAliveBitboardFromColors`** on the
-  next frame — a 32 MB serial scan. Cheap fix: rebuild only the cells
-  injected (track the dirty rectangle, or do the bit-set inline in
-  `InjectCells` / `SeedGrid` so dirty is never needed).
-- **`Parallel.For` localInit** allocates `new int[sectorCount]` per
-  worker per call. GC churn over time. Pool these.
-- WPF dispatcher / dominant-brush throttle cycle.
+**not** from the bitboard sim — the follow-on polish (rebuild scan
+elimination + Parallel.For buffer pool) targeted the suspected causes
+and did not move p95 meaningfully. So the remaining spikes are most
+likely:
+- WPF dispatcher / render-thread contention
+- The dominant-brush throttle cycle in `RenderFrame`
+- Occasional GC pauses unrelated to the sim allocations
 
-These are follow-on wins, not blockers — current p95 still meets 144 Hz
-with margin.
+Out of scope for this branch.
+
+### Final Numbers (post-polish, 4K, 1000-frame averaged window)
+
+| Mode      | median  | mean    | min     | p95      | 144 Hz budget (6.94 ms) |
+|-----------|---------|---------|---------|----------|-------------------------|
+| Genetic   | 5.10 ms | 6.34 ms | 4.66 ms | 10.84 ms | median ✓, mean borderline, p95 misses |
+| EraBanded | 2.98 ms | 4.71 ms | 2.60 ms | 12.73 ms | median ✓✓, mean ✓, p95 misses |
+
+EraBanded is ~1.7× faster than Genetic on steady-state cost.
+Both clear median budget; both still spike occasionally (WPF, not sim).
+Genetic at 4K is do-able with occasional hitches; EraBanded is the
+recommended mode if a user wants 4K @ 144 Hz with comfortable headroom.
+
+### Polish Applied (shipped after the main Phase 3)
+
+1. **Eliminated `RebuildAliveBitboardFromColors` (32 MB serial scan)** —
+   `SeedGrid` and `InjectCells` now set the bitboard bit inline when
+   they write a color. Cost: one OR per injected cell (~9 cells per
+   cluster × a few clusters per beat = trivial). Eliminates the
+   post-injection rebuild that was the suspected p95 spike source.
+
+2. **Pooled per-thread sector counter buffers** —
+   `Parallel.For`'s `localInit` previously allocated
+   `new int[sectorCount]` twice per worker per frame. Replaced with a
+   `ConcurrentBag<(int[] births, int[] alive)>` pool. After a few
+   frames, pool stabilizes at worker-count buffers reused forever.
 
 ### What Did NOT Help
 
 - **Pre-decaying fades in a single serial loop** — see above, this was
   the main regression source.
 - **Clearing `_colorNext` via a single `Array.Clear`** — see above.
+- **Removing rebuild scan + pooling buffers (the polish above)** —
+  shipped because they're correct and cheap, but didn't move p95
+  measurably. The remaining spikes are outside the sim.
 
 ### What Stays as Future Work
 
 - **Phase B (AVX2 over bitboards)** — not needed for 4K @ 144 Hz given
   current numbers. Would buy headroom for hypothetical 8K or `cellSize=1`
   on lower-end hardware.
-- **`InjectCells` / `SeedGrid` direct bit writes** — eliminate the
-  rebuild scan to lower p95 further.
-- **Pooled per-thread sector counters** — reduce GC pressure.
+- **Investigate p95 / max spikes outside the sim** — likely WPF render
+  thread, dominant-brush cycle, or unrelated GC. Out of scope for this
+  branch.
 
