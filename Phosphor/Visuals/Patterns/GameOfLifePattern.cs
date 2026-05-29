@@ -96,9 +96,12 @@ public sealed class GameOfLifePattern : BlobPatternBase
     private int _wordsPerRow;            // ceil(_gridW / 64)
     private int _lastBit;                // (_gridW - 1) % 64 — last real bit in lastWord
     private ulong _lastWordMask;         // bits 0.._lastBit set, rest zero
-    // Set true by SeedGrid / InjectCells (external writes to _colorCurrent).
-    // Cleared by RebuildAliveBitboardFromColors at the top of the next bitboard step.
-    private bool _aliveBitboardDirty;
+
+    // Pool of per-thread (births, alive) sector counter buffers, reused
+    // across Parallel.For calls in StepSimulationBitboard. Avoids the
+    // 2 * sizeof(int[64]) allocation per worker per frame, which at
+    // ~200+ fps produces measurable Gen0 pressure.
+    private readonly System.Collections.Concurrent.ConcurrentBag<(int[] births, int[] alive)> _sectorBufferPool = new();
 
     // Reused buffer of stagnant cell indices, refilled in InjectCells.
     // Avoids a per-beat List<int> allocation on grids with hundreds of stagnant cells.
@@ -264,7 +267,10 @@ public sealed class GameOfLifePattern : BlobPatternBase
         _lastWordMask = _lastBit == 63 ? ulong.MaxValue : ((1UL << (_lastBit + 1)) - 1);
         _aliveCurrent = new ulong[_wordsPerRow * _gridH];
         _aliveNext = new ulong[_wordsPerRow * _gridH];
-        _aliveBitboardDirty = true;
+        // Clear pool — grid size may have changed, old buffers are still
+        // sized correctly (sectorCount is constant) but drop them anyway
+        // to avoid retaining references after a settings restart.
+        while (_sectorBufferPool.TryTake(out _)) { }
 
         _bitmap = new WriteableBitmap(_gridW, _gridH, 96, 96, PixelFormats.Bgra32, null);
 
@@ -370,13 +376,11 @@ public sealed class GameOfLifePattern : BlobPatternBase
                     int idx = y * _gridW + x;
                     _colorCurrent[idx] = packed;
                     _age[idx] = 1;
+                    // Keep bitboard in sync so the EraBanded step sees the seed.
+                    _aliveCurrent[y * _wordsPerRow + (x >> 6)] |= 1UL << (x & 63);
                 }
             }
         }
-
-        // Tell the bitboard path (if used) to rebuild _aliveCurrent from
-        // the colors we just wrote at the top of its next step.
-        _aliveBitboardDirty = true;
     }
 
     protected override void StartMotion()
@@ -597,12 +601,6 @@ public sealed class GameOfLifePattern : BlobPatternBase
         uint birthColor = _currentBirthColor;
         byte fadeStart = (byte)Math.Clamp(FadeGenerations, 1, 255);
 
-        if (_aliveBitboardDirty)
-        {
-            RebuildAliveBitboardFromColors();
-            _aliveBitboardDirty = false;
-        }
-
         // NOTE: _colorNext clear and fade pre-decay are done per-row inside
         // StepRowBitboard so they run in parallel and stay hot in L1/L2.
         // The previous serial Array.Clear (32 MB) + fade pre-decay (16 MB)
@@ -620,7 +618,19 @@ public sealed class GameOfLifePattern : BlobPatternBase
         {
             object mergeLock = new();
             Parallel.For(0, h,
-                () => (births: new int[sectorCount], alive: new int[sectorCount]),
+                () =>
+                {
+                    // Pull a pre-allocated buffer pair from the pool, or
+                    // allocate one on first use. Cleared here since the
+                    // pool stores them in whatever state localFinally left.
+                    if (_sectorBufferPool.TryTake(out var buf))
+                    {
+                        Array.Clear(buf.births);
+                        Array.Clear(buf.alive);
+                        return buf;
+                    }
+                    return (births: new int[sectorCount], alive: new int[sectorCount]);
+                },
                 (y, _, local) =>
                 {
                     StepRowBitboard(y, w, h, wpr, lastWordIdx, lastMask,
@@ -639,6 +649,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
                             _sectorAlive[i] += local.alive[i];
                         }
                     }
+                    _sectorBufferPool.Add(local);
                 });
         }
         else
@@ -667,31 +678,6 @@ public sealed class GameOfLifePattern : BlobPatternBase
             for (int i = 0; i < totalCells; i++)
                 _snapshotB[i] = _colorCurrent[i] != 0;
             _snapshotReady = true;
-        }
-    }
-
-    /// <summary>
-    /// Populate <see cref="_aliveCurrent"/> from <see cref="_colorCurrent"/>.
-    /// Used after seed/inject (which write colors directly) and the first
-    /// time the bitboard path runs. Sets one bit per non-zero color.
-    /// </summary>
-    private void RebuildAliveBitboardFromColors()
-    {
-        int w = _gridW, h = _gridH;
-        int wpr = _wordsPerRow;
-        ulong lastMask = _lastWordMask;
-        Array.Clear(_aliveCurrent);
-        for (int y = 0; y < h; y++)
-        {
-            int rowBase = y * w;
-            int wordBase = y * wpr;
-            for (int x = 0; x < w; x++)
-            {
-                if (_colorCurrent[rowBase + x] != 0)
-                    _aliveCurrent[wordBase + (x >> 6)] |= 1UL << (x & 63);
-            }
-            // Defensive: clear any ghost bits in the last word.
-            _aliveCurrent[wordBase + wpr - 1] &= lastMask;
         }
     }
 
@@ -1559,12 +1545,11 @@ public sealed class GameOfLifePattern : BlobPatternBase
                     _colorCurrent[idx] = packed;
                     _age[idx] = 1;
                     _fade[idx] = 0;
+                    // Keep bitboard in sync so the EraBanded step sees the injection.
+                    _aliveCurrent[y * _wordsPerRow + (x >> 6)] |= 1UL << (x & 63);
                 }
             }
         }
-
-        // Bitboard path will rebuild from _colorCurrent at top of next step.
-        _aliveBitboardDirty = true;
     }
 
     /// <summary>
