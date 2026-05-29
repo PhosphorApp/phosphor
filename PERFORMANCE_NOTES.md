@@ -215,3 +215,81 @@ back buffer is safe.
 Phase 2 (offload the whole tick to a worker thread, marshal only `Lock`/
 `Unlock`/`UpdateCamera` back to the dispatcher) is on hold pending Phase 1
 measurements.
+
+### Dominant-Color Scoping to Visible Region
+`_brushes[0]` (the dummy brush that PlayfieldWindow reads for DOF dominant-color
+detection) was previously set to the whole-grid RGB average — expensive on large
+grids and semantically wrong when zoomed in (DOF might pulse red while the
+viewport shows green).
+
+Replaced with `UpdateDominantBrush()`: a stride-2 scan that builds an 8-bucket
+ROYGBIV histogram and sets the brush to the dominant band's average color. When
+`CameraRoam` is active and `_cameraZoom > 1.05`, the scan is restricted to the
+axis-aligned bounding box of the visible region (derived by inverting the camera
+transform at the four display-rect corners). At 5× zoom this touches ~4% of the
+grid; at 2× ~25%. Rotation uses the AABB of the rotated rect (worst case ~41%
+overshoot, still far smaller than the full grid).
+
+### Restart Simulation on Track Change
+Added `GameOfLifeRestartOnTrackChange` setting (default off). When enabled,
+`OnPlaybackStartedTransition()` in DmdWindow calls the existing
+`RestartGameOfLife()` fan-out on all windows, reusing the same plumbing as
+settings-change restarts. No new events or transport needed.
+
+---
+
+## 🔵 Future — P-Core Affinity for Parallel.For
+
+### Problem
+On hybrid CPUs (Intel 12th+ gen), `Parallel.For` partitions rows across all
+available cores. E-cores (~60–70% IPC of P-cores, smaller caches) become
+straggler bottlenecks — P-core workers finish first and wait. Meanwhile,
+disabling E-cores in BIOS removes capacity that WPF compositor, audio decode,
+and OS background work could use.
+
+### Proposed Solution: P-Core Process Affinity at Startup
+Set `Process.ProcessorAffinity` early in `App.OnStartup` to a bitmask covering
+only P-cores, letting E-cores absorb OS/WPF background work:
+
+```csharp
+// Example for a 14900K: 8 P-cores on logical 0-15 (with HT) or 0-7 (HT off)
+// Adjust mask per CPU topology — use `GetLogicalProcessorInformationEx` for
+// runtime detection, or make it a configurable AppSettings value.
+using var proc = System.Diagnostics.Process.GetCurrentProcess();
+// P-cores only (bits 0-7 for 8 P-cores, HT off)
+proc.ProcessorAffinity = (nint)0xFF;
+```
+
+### Runtime Detection Sketch
+`GetLogicalProcessorInformationEx(RelationProcessorCore)` returns per-core
+records with an `EfficiencyClass` field (0 = E-core, 1 = P-core on Intel
+hybrid). Walk the records, collect P-core logical processor masks, OR them
+together:
+
+```csharp
+[DllImport("kernel32.dll")]
+static extern bool GetLogicalProcessorInformationEx(
+    int RelationshipType, IntPtr buffer, ref int returnedLength);
+
+// RelationProcessorCore = 0
+// Each PROCESSOR_RELATIONSHIP has: EfficiencyClass (byte) + GroupMask[]
+// Build affinity mask from records where EfficiencyClass == 1 (P-core)
+```
+
+### Trade-offs
+| Approach | Pros | Cons |
+|---|---|---|
+| HT off + E-cores off (BIOS) | Simplest, most consistent frame times | Reduces total system capacity |
+| Process affinity to P-cores | GoL gets fast cores; E-cores absorb WPF/OS | Needs per-CPU mask; incorrect mask → underutilization |
+| Thread affinity per `Parallel.For` | Finest control | Complex; `Thread.SetProcessorAffinity` is per-thread, awkward with thread pool |
+| No affinity (status quo) | Zero complexity | E-core stragglers inflate worst-case frame times |
+
+### Recommendation
+Start with process-level affinity behind an opt-in `AppSettings.PCoreMask`
+(default 0 = disabled). If set, apply at startup. Document common masks:
+- 14900K (8P+16E, HT off): `0xFF`
+- 14900K (8P+16E, HT on): `0xFFFF`
+- 13600K (6P+8E, HT off): `0x3F`
+
+Long term, auto-detect via `GetLogicalProcessorInformationEx` so it's
+zero-config.
