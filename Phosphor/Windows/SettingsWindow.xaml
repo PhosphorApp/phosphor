@@ -659,6 +659,21 @@
                                               ToolTip="Restart the Game of Life simulation with a fresh seed whenever a new track starts."/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Anti-Stagnation:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <CheckBox x:Name="CbGameOfLifeAntiStagnation"
+                                              Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
+                                              Checked="CbGameOfLifeAntiStagnation_Changed" Unchecked="CbGameOfLifeAntiStagnation_Changed"
+                                              ToolTip="Periodically nudges or disrupts small still-life / oscillator patterns (blinkers, blocks, beacons) and occasionally sweeps in a glider so the field keeps evolving instead of locking into static repeating shapes. Off by default for Conway purists."/>
+                                    <Slider x:Name="SliderGameOfLifeAntiStagnationIntensity" Minimum="1" Maximum="10"
+                                            Width="120" VerticalAlignment="Center" Margin="12,0,0,0"
+                                            IsSnapToTickEnabled="True" TickFrequency="1"
+                                            ValueChanged="SliderGameOfLifeAntiStagnationIntensity_ValueChanged"
+                                            ToolTip="How aggressively to perturb stagnant patterns. 1 = barely noticeable, 5 = subtle (default), 10 = constant churn."/>
+                                    <TextBlock x:Name="TxtGameOfLifeAntiStagnationIntensity" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Camera Roam:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Width="100"/>
                                     <CheckBox x:Name="CbGameOfLifeCameraRoam"

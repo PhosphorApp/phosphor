@@ -65,6 +65,22 @@ public sealed class GameOfLifePattern : BlobPatternBase
     /// <summary>Selected color model for births. Default <see cref="ColorModeKind.Genetic"/>.</summary>
     public static ColorModeKind ColorMode { get; set; } = ColorModeKind.Genetic;
 
+    /// <summary>
+    /// When true, periodically nudge or disrupt stagnant patterns (still lifes and
+    /// short-period oscillators like blinkers / beacons / toads) so the simulation
+    /// keeps evolving instead of locking into a static field of small repeating shapes.
+    /// Off by default — purists can leave it disabled. See <see cref="AntiStagnationIntensity"/>.
+    /// </summary>
+    public static bool AntiStagnation { get; set; } = false;
+
+    /// <summary>
+    /// Intervention intensity (1–10) used when <see cref="AntiStagnation"/> is enabled.
+    /// Controls how often interventions fire and what fraction of stagnant cells are
+    /// perturbed each time. 5 = balanced/subtle (default); 1 = barely noticeable;
+    /// 10 = constant churn. Not currently exposed in the settings UI.
+    /// </summary>
+    public static int AntiStagnationIntensity { get; set; } = 5;
+
     /// <summary>Fraction of grid edge to keep clear when placing seed clusters (0.0–0.5).</summary>
     private const double PlacementMargin = 0.05;
 
@@ -164,6 +180,13 @@ public sealed class GameOfLifePattern : BlobPatternBase
     private double _displayW, _displayH;    // visible canvas size
     private double _overscanW, _overscanH;  // total image size (display + overscan)
 
+    // Camera animation runs at the WPF composition rate (vsync) instead of
+    // the sim tick rate, so panning stays smooth at 144 Hz even when the
+    // simulation is ticking at 10 Hz. The sim tick still owns *targets* and
+    // drift velocities — only the per-frame lerp + transform writes live here.
+    private EventHandler? _renderingHandler;
+    private long _lastRenderTickMs;
+
     // Sector activity tracking for intelligent camera targeting
     private const int SectorCountX = 8;
     private const int SectorCountY = 8;
@@ -184,6 +207,28 @@ public sealed class GameOfLifePattern : BlobPatternBase
     private bool[] _snapshotB = [];            // newer snapshot
     private int _snapshotGen;                  // generation counter for snapshot timing
     private bool _snapshotReady;               // true once both snapshots have been taken
+
+    // Anti-stagnation: rolling 2-generation history of the alive bitboard. A cell
+    // alive in both _aliveHist0 (gen N-2) and _aliveCurrent (gen N) is "boring" —
+    // it's either a still life or a period-2 oscillator cell that's currently on
+    // its "on" half-cycle. Allocated lazily the first tick AntiStagnation runs so
+    // grids that never enable it pay zero memory cost.
+    private ulong[] _aliveHist0 = [];          // gen N-2 alive bitboard
+    private ulong[] _aliveHist1 = [];          // gen N-1 alive bitboard
+    private int _antiStagHistFilled;           // 0,1,2 = how many history snapshots are valid
+    private int _antiStagInterventionCounter;  // ticks until next intervention
+    private int _antiStagSweeperCounter;       // ticks until next sweeper glider
+
+    // Minimum live-cell density before anti-stagnation starts firing. Below
+    // this the population is still building up from the initial sparse seed
+    // and pruning would just stunt growth (a few isolated blinkers in an
+    // otherwise empty grid look stagnant to the detector but the sim isn't
+    // really stuck — it's still spreading). 3% sits just under the natural
+    // Conway equilibrium density (~3.5%), so once the field has filled out
+    // we engage; before then we let it grow. Framerate-independent and
+    // grid-size-independent, unlike a fixed-time warmup.
+    private const double AntiStagMinDensity = 0.03;
+    private readonly List<int> _antiStagBoring = new(); // reusable boring-cell index list
 
     public GameOfLifePattern(BlobPatternConfig config) : base(config) { }
 
@@ -258,7 +303,15 @@ public sealed class GameOfLifePattern : BlobPatternBase
         _snapshotB = new bool[totalCells];
         _snapshotGen = 0;
         _snapshotReady = false;
-
+        // Anti-stagnation history: drop old buffers; they get lazy-allocated on
+        // first tick if AntiStagnation is enabled. Reset cadence counters so
+        // the first intervention doesn't fire until at least one full cycle.
+        _aliveHist0 = [];
+        _aliveHist1 = [];
+        _antiStagHistFilled = 0;
+        _antiStagInterventionCounter = 0;
+        _antiStagSweeperCounter = 0;
+        _antiStagBoring.Clear();
         // Bitboard layout: one ulong per 64 cells, padded per-row.
         // Allocated for both modes (cheap — 8 bytes per 64 cells = 1MB per 8M cells)
         // so we can switch modes at runtime without re-allocating.
@@ -393,10 +446,21 @@ public sealed class GameOfLifePattern : BlobPatternBase
         };
         _timer.Tick += OnTick;
         _timer.Start();
+
+        // Decouple camera animation from the sim tick — drive it from the
+        // composition pipeline so transforms update every presented frame.
+        _lastRenderTickMs = Environment.TickCount64;
+        _renderingHandler = OnCompositionRendering;
+        CompositionTarget.Rendering += _renderingHandler;
     }
 
     protected override void StopMotion()
     {
+        if (_renderingHandler != null)
+        {
+            CompositionTarget.Rendering -= _renderingHandler;
+            _renderingHandler = null;
+        }
         if (_timer != null)
         {
             _timer.Stop();
@@ -434,8 +498,9 @@ public sealed class GameOfLifePattern : BlobPatternBase
         }
 
         StepSimulation();
+        if (AntiStagnation) RunAntiStagnationTick();
         RenderFrame();
-        UpdateCamera();
+        AdvanceCameraTargets();
 
         _frameSw.Stop();
         if (!_frameTimingReported && _generationCount > FrameTimingWarmupFrames)
@@ -1240,60 +1305,95 @@ public sealed class GameOfLifePattern : BlobPatternBase
 
     // ─── Camera Roam ──────────────────────────────────────────
 
-    private void UpdateCamera()
+    /// <summary>
+    /// Sim-tick portion of camera roam: accumulates time-quantized drift onto the
+    /// targets and runs the retarget state machine. Does NOT touch the WPF
+    /// transforms — those are written by <see cref="OnCompositionRendering"/> at
+    /// vsync rate so panning stays smooth on high-refresh displays even when the
+    /// simulation is ticking slowly.
+    /// </summary>
+    private void AdvanceCameraTargets()
     {
-        if (!CameraRoam || _scaleTransform == null || _translateTransform == null || _rotateTransform == null)
-            return;
+        if (!CameraRoam) return;
 
-        double maxZoom = Math.Clamp(CameraMaxZoom, 1.1, 5.0);
         double speed = Math.Clamp(CameraSpeed, 0.1, 3.0);
+        double maxZoom = Math.Clamp(CameraMaxZoom, 1.1, 5.0);
 
-        // Always apply a very slow constant drift — gives the "floating in space" feel.
-        // Drift is scaled by the speed multiplier so "Glacial" really crawls and "Fast" zips.
+        // Drift accumulates onto targets at the sim-tick rate (sub-pixel motion
+        // between explicit retargets). Tuned for the original 100ms-tick feel.
         _cameraTargetX += _cameraDriftX * speed;
         _cameraTargetY += _cameraDriftY * speed;
         _cameraTargetAngle += _cameraDriftAngle * speed;
         ClampCameraTarget();
 
-        switch (_cameraState)
+        _cameraRetargetTicks--;
+        if (_cameraRetargetTicks <= 0)
         {
-            case CameraState.Settling:
-                // Initial settle: slowly zoom in to a first target
-                _cameraZoom = Lerp(_cameraZoom, _cameraTargetZoom, 0.00525 * speed);
-                _cameraPanX = Lerp(_cameraPanX, _cameraTargetX, 0.00525 * speed);
-                _cameraPanY = Lerp(_cameraPanY, _cameraTargetY, 0.00525 * speed);
-                _cameraAngle = Lerp(_cameraAngle, _cameraTargetAngle, 0.00375 * speed);
+            PickCameraTarget(maxZoom);
+            if (_cameraState == CameraState.Settling)
+                _cameraState = CameraState.Exploring;
+            _cameraRetargetTicks = TicksFromSeconds(10, 25);
+        }
+    }
 
-                _cameraRetargetTicks--;
-                if (_cameraRetargetTicks <= 0)
-                {
-                    PickCameraTarget(maxZoom);
-                    _cameraState = CameraState.Exploring;
-                    _cameraRetargetTicks = TicksFromSeconds(10, 25);
-                }
-                break;
+    /// <summary>
+    /// Composition-rate portion of camera roam: lerps the current camera values
+    /// toward their targets and writes the four transform properties. Runs once
+    /// per WPF rendered frame (~vsync), independent of the sim tick. Lerp
+    /// coefficients are scaled from the original per-tick values to per-frame
+    /// equivalents so animation feel is preserved at any refresh rate.
+    /// </summary>
+    private void OnCompositionRendering(object? sender, EventArgs e)
+    {
+        if (_disposed) return;
+        if (!CameraRoam || _scaleTransform == null || _translateTransform == null || _rotateTransform == null)
+            return;
 
-            case CameraState.Exploring:
-                // Very slowly lerp toward current target; drift keeps us moving between retargets
-                _cameraZoom = Lerp(_cameraZoom, _cameraTargetZoom, 0.00375 * speed);
-                _cameraPanX = Lerp(_cameraPanX, _cameraTargetX, 0.00375 * speed);
-                _cameraPanY = Lerp(_cameraPanY, _cameraTargetY, 0.00375 * speed);
-                _cameraAngle = Lerp(_cameraAngle, _cameraTargetAngle, 0.002625 * speed);
+        long nowMs = Environment.TickCount64;
+        double frameMs = nowMs - _lastRenderTickMs;
+        _lastRenderTickMs = nowMs;
+        // Cap dt to avoid huge jumps after pauses / window minimize / GC stalls.
+        if (frameMs <= 0) return;
+        if (frameMs > 100) frameMs = 100;
 
-                _cameraRetargetTicks--;
-                if (_cameraRetargetTicks <= 0)
-                {
-                    PickCameraTarget(maxZoom);
-                    _cameraRetargetTicks = TicksFromSeconds(10, 25);
-                }
-                break;
+        double speed = Math.Clamp(CameraSpeed, 0.1, 3.0);
+        double tickMs = Math.Max(1, TickIntervalMs);
+
+        // Per-tick lerp coefficients (preserved from the original design).
+        // Settling lerps a touch faster than Exploring; rotation a touch slower
+        // than translate/zoom because angle is visually more attention-grabbing.
+        double zoomPerTick, panPerTick, anglePerTick;
+        if (_cameraState == CameraState.Settling)
+        {
+            zoomPerTick  = 0.00525  * speed;
+            panPerTick   = 0.00525  * speed;
+            anglePerTick = 0.00375  * speed;
+        }
+        else
+        {
+            zoomPerTick  = 0.00375  * speed;
+            panPerTick   = 0.00375  * speed;
+            anglePerTick = 0.002625 * speed;
         }
 
-        // Apply transforms
+        // Convert per-tick lerp factor α to a per-frame factor for the elapsed
+        // frame time: 1 - (1-α)^(dt/tick). This is the standard frame-rate-
+        // independent exponential smoothing — preserves perceived animation
+        // speed whether dt is 7ms (144Hz) or 16ms (60Hz).
+        double exp = frameMs / tickMs;
+        double zoomA  = 1.0 - Math.Pow(1.0 - zoomPerTick,  exp);
+        double panA   = 1.0 - Math.Pow(1.0 - panPerTick,   exp);
+        double angleA = 1.0 - Math.Pow(1.0 - anglePerTick, exp);
+
+        _cameraZoom  = Lerp(_cameraZoom,  _cameraTargetZoom,  zoomA);
+        _cameraPanX  = Lerp(_cameraPanX,  _cameraTargetX,     panA);
+        _cameraPanY  = Lerp(_cameraPanY,  _cameraTargetY,     panA);
+        _cameraAngle = Lerp(_cameraAngle, _cameraTargetAngle, angleA);
+
         _scaleTransform.ScaleX = _cameraZoom;
         _scaleTransform.ScaleY = _cameraZoom;
-        _translateTransform.X = _cameraPanX;
-        _translateTransform.Y = _cameraPanY;
+        _translateTransform.X  = _cameraPanX;
+        _translateTransform.Y  = _cameraPanY;
         _rotateTransform.Angle = _cameraAngle;
     }
 
@@ -1549,6 +1649,390 @@ public sealed class GameOfLifePattern : BlobPatternBase
                     _aliveCurrent[y * _wordsPerRow + (x >> 6)] |= 1UL << (x & 63);
                 }
             }
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Anti-Stagnation
+    // ---------------------------------------------------------------------
+    // The simulation tends to settle into seas of small period-2 oscillators
+    // and still lifes (blinkers, blocks, beehives, beacons). They're stable,
+    // boring, and don't generate new events for the camera to follow.
+    //
+    // Strategy (single user-facing toggle, intensity is an internal tunable):
+    //
+    //  1. Detect "boring" cells: any cell alive in THREE consecutive generations
+    //     (N-2, N-1, N). Catches still lifes and the permanent cells of period-2
+    //     oscillators (blinker center, beacon corners). Does NOT false-positive
+    //     on gliders or active blooms since their cells turn over each tick.
+    //     Computed via two bitwise ANDs over the rolling alive bitboards.
+    //
+    //  2. Every InterventionPeriod ticks, perturb a small random subset of
+    //     boring cells with a mix of actions designed to be visually subtle:
+    //       - 70% NUDGE: kill the boring cell AND birth an adjacent dead cell.
+    //         The shape "shifts by one" — usually enough to break a symmetric
+    //         oscillator into a glider/bloom/eventual die-out, and looks like
+    //         organic drift rather than a hand of god.
+    //       - 25% DECAY: kill the cell with normal fade-out. Removes still lifes
+    //         quietly without explosions.
+    //       -  5% CATALYST: drop a small glider in a random empty area nearby.
+    //         Gliders are native to Life and produce satisfying chain reactions
+    //         when they collide with debris.
+    //
+    //  3. Every SweeperPeriod ticks, spawn one glider from a random overscan
+    //     edge aimed roughly toward the camera focus area. These sweepers cross
+    //     the field and clear out static regions over time. Always fires (even
+    //     if no boring cells were found) for low-density-but-still scenes.
+    //
+    // Cost: two bitboard ANDs + one O(grid) sparse scan per intervention tick.
+    // At default intensity (5/10), interventions fire every ~10 ticks (~1s at
+    // 100ms tick rate). Population scan visits ~_wordsPerRow * _gridH ulongs;
+    // for a 4K grid that's ~5K ulongs — well under 100µs total.
+
+    /// <summary>Catalyst shape: a glider (period-4 spaceship) in NE-traveling orientation.</summary>
+    private static readonly (int dx, int dy)[] s_glider =
+    {
+        (1, 0), (2, 1), (0, 2), (1, 2), (2, 2),
+    };
+
+    private void RunAntiStagnationTick()
+    {
+        int totalCells = _gridW * _gridH;
+        if (totalCells <= 0) return;
+
+        // Population gate: skip intervention while the field is still
+        // building up. _sectorAlive is refreshed by every StepSimulation
+        // path (Genetic + EraBanded), so summing 64 ints is essentially
+        // free. While gated, also reset the history-fill counter so the
+        // 3-gen detection re-warms cleanly the moment we cross the
+        // threshold — otherwise the first post-gate intervention would
+        // run against stale history from the sparse seed phase.
+        int alive = 0;
+        for (int i = 0; i < _sectorAlive.Length; i++) alive += _sectorAlive[i];
+        if (alive < totalCells * AntiStagMinDensity)
+        {
+            _antiStagHistFilled = 0;
+            return;
+        }
+
+        int wpr = _wordsPerRow;
+        int totalWords = wpr * _gridH;
+
+        // Lazy allocate / re-allocate history buffers if the grid was resized
+        // since the last enable. Cheap: 1MB per 8M cells per buffer.
+        if (_aliveHist0.Length != totalWords)
+        {
+            _aliveHist0 = new ulong[totalWords];
+            _aliveHist1 = new ulong[totalWords];
+            _antiStagHistFilled = 0;
+        }
+
+        // For Genetic mode, _aliveCurrent isn't maintained by the step path —
+        // build a fresh alive bitmap from _colorCurrent so detection works in
+        // both modes. (We can't simply switch StepRow to maintain it because
+        // Genetic mode's bitboard would have to flip-flop with _colorCurrent.)
+        ulong[] aliveNow;
+        if (ColorMode == ColorModeKind.EraBanded)
+        {
+            aliveNow = _aliveCurrent;
+        }
+        else
+        {
+            // Reuse _aliveNext as scratch (it gets overwritten next sim tick anyway
+            // in EraBanded mode, and is unused in Genetic mode).
+            aliveNow = _aliveNext;
+            BuildAliveBitboardFromColors(aliveNow);
+        }
+
+        // History pump: hist0 holds gen(N-2), hist1 holds gen(N-1), and
+        // aliveNow IS gen(N). Detection runs against these three, THEN we
+        // promote so that on the next tick hist0/hist1 are still correctly
+        // dated. Warm-up requires 2 previous snapshots before detection works.
+        if (_antiStagHistFilled < 2)
+        {
+            // Need the actual values, not aliases. Copy aliveNow into the
+            // appropriate history slot since aliveNow is either _aliveCurrent
+            // (which the next sim step mutates via the swap) or _aliveNext
+            // (which we'll overwrite below).
+            if (_antiStagHistFilled == 0)
+                Array.Copy(aliveNow, _aliveHist0, totalWords);
+            else
+                Array.Copy(aliveNow, _aliveHist1, totalWords);
+            _antiStagHistFilled++;
+            // Reset counters now that we're past the warm-up gate
+            if (_antiStagHistFilled == 2)
+            {
+                _antiStagInterventionCounter = AntiStagInterventionPeriod();
+                _antiStagSweeperCounter = AntiStagSweeperPeriod();
+            }
+            return;
+        }
+
+        bool didIntervene = false;
+
+        if (--_antiStagInterventionCounter <= 0)
+        {
+            _antiStagInterventionCounter = AntiStagInterventionPeriod();
+            didIntervene = TryDisruptBoringCells(aliveNow);
+        }
+
+        if (--_antiStagSweeperCounter <= 0)
+        {
+            _antiStagSweeperCounter = AntiStagSweeperPeriod();
+            SpawnSweeperGlider();
+            didIntervene = true;
+        }
+
+        // Promote AFTER detection/intervention. hist0 <- hist1 (was N-1, becomes
+        // the next tick's N-2); hist1 <- aliveNow (was N, becomes next tick's N-1).
+        // Rotate buffer slots to avoid a 2nd copy; we then overwrite hist1.
+        (_aliveHist0, _aliveHist1) = (_aliveHist1, _aliveHist0);
+        Array.Copy(aliveNow, _aliveHist1, totalWords);
+
+        // Note: didIntervene is currently unused but reserved for future
+        // adaptive cadence (e.g. fire sooner if nothing changed last cycle).
+        _ = didIntervene;
+    }
+
+    /// <summary>
+    /// Build a 1-bit-per-cell alive bitboard from <see cref="_colorCurrent"/> into
+    /// <paramref name="dst"/>. Used in Genetic mode where the step path doesn't
+    /// maintain a bitboard. Walks 8 cells at a time and packs into a ulong word.
+    /// </summary>
+    private void BuildAliveBitboardFromColors(ulong[] dst)
+    {
+        int w = _gridW, h = _gridH;
+        int wpr = _wordsPerRow;
+        Array.Clear(dst);
+        for (int y = 0; y < h; y++)
+        {
+            int rowBase = y * w;
+            int wordBase = y * wpr;
+            for (int x = 0; x < w; x++)
+            {
+                if (_colorCurrent[rowBase + x] != 0)
+                    dst[wordBase + (x >> 6)] |= 1UL << (x & 63);
+            }
+        }
+    }
+
+    /// <summary>Ticks between intervention sweeps. Scales inversely with intensity.</summary>
+    private static int AntiStagInterventionPeriod()
+    {
+        // intensity 1 -> ~30 ticks, 5 -> ~10 ticks, 10 -> ~3 ticks (at 100ms tick = 0.3–3s)
+        int i = Math.Clamp(AntiStagnationIntensity, 1, 10);
+        return Math.Max(2, 33 - i * 3);
+    }
+
+    /// <summary>Ticks between sweeper-glider spawns. Slower at low intensity.</summary>
+    private static int AntiStagSweeperPeriod()
+    {
+        // intensity 1 -> ~180 ticks, 5 -> ~60 ticks, 10 -> ~20 ticks
+        int i = Math.Clamp(AntiStagnationIntensity, 1, 10);
+        return Math.Max(15, 200 - i * 18);
+    }
+
+    /// <summary>
+    /// Find cells alive in three consecutive generations (boring), then perturb a
+    /// random subset. Returns true if at least one cell was perturbed.
+    /// </summary>
+    private bool TryDisruptBoringCells(ulong[] aliveNow)
+    {
+        int wpr = _wordsPerRow;
+        int h = _gridH;
+
+        _antiStagBoring.Clear();
+
+        // Two ANDs per word, sparse iterate set bits. At 4K width this is
+        // ~5K words * (2 AND + ~few set bits) = sub-millisecond.
+        for (int y = 0; y < h; y++)
+        {
+            int wordBase = y * wpr;
+            for (int wi = 0; wi < wpr; wi++)
+            {
+                ulong boring = _aliveHist0[wordBase + wi] & _aliveHist1[wordBase + wi] & aliveNow[wordBase + wi];
+                if (boring == 0) continue;
+                int xBase = wi << 6;
+                while (boring != 0)
+                {
+                    int b = System.Numerics.BitOperations.TrailingZeroCount(boring);
+                    boring &= boring - 1;
+                    int x = xBase + b;
+                    if (x < _gridW) _antiStagBoring.Add(y * _gridW + x);
+                }
+            }
+        }
+
+        int count = _antiStagBoring.Count;
+        if (count == 0) return false;
+
+        // Perturb a small fraction so action stays subtle. At intensity 5
+        // that's ~3% of boring cells per sweep; at intensity 10, ~10%.
+        int i = Math.Clamp(AntiStagnationIntensity, 1, 10);
+        double fraction = 0.005 + i * 0.01;          // 0.015 .. 0.105
+        int toPerturb = Math.Max(1, (int)(count * fraction));
+        // Cap to avoid pathological spikes on enormous still-life seas
+        toPerturb = Math.Min(toPerturb, 256);
+
+        uint birthColor = _currentBirthColor;
+        bool useEraBanded = ColorMode == ColorModeKind.EraBanded;
+
+        for (int n = 0; n < toPerturb; n++)
+        {
+            int idx = _antiStagBoring[_rng.Next(count)];
+            double roll = _rng.NextDouble();
+
+            if (roll < 0.70)
+            {
+                // NUDGE: kill self, birth a random empty neighbor. Shifts the
+                // shape by 1 cell, almost always breaking the oscillator.
+                NudgeCell(idx, useEraBanded, birthColor);
+            }
+            else if (roll < 0.95)
+            {
+                // DECAY: quiet death with fade-out, like a normal Conway death.
+                KillCell(idx);
+            }
+            else
+            {
+                // CATALYST: drop a glider in a small empty area nearby
+                int x = idx % _gridW, y = idx / _gridW;
+                int gx = Math.Clamp(x + _rng.Next(-8, 9), 1, _gridW - 4);
+                int gy = Math.Clamp(y + _rng.Next(-8, 9), 1, _gridH - 4);
+                StampShape(s_glider, gx, gy, _rng.Next(0, 4), useEraBanded, birthColor);
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Kill the cell at <paramref name="idx"/> as if it died of natural causes:
+    /// clear color/age, set the fade trail, and keep the bitboard in sync.
+    /// </summary>
+    private void KillCell(int idx)
+    {
+        uint self = _colorCurrent[idx];
+        if (self == 0) return;
+        byte fadeStart = (byte)Math.Clamp(FadeGenerations, 1, 255);
+        _fadeColor[idx] = self;
+        _fade[idx] = fadeStart;
+        _colorCurrent[idx] = 0;
+        _age[idx] = 0;
+        int x = idx % _gridW, y = idx / _gridW;
+        _aliveCurrent[y * _wordsPerRow + (x >> 6)] &= ~(1UL << (x & 63));
+    }
+
+    /// <summary>
+    /// "Nudge" a boring cell by 1: kill it and birth a random dead 8-neighbor.
+    /// If no dead neighbor exists (cell is buried in a stable mass) just kill it.
+    /// </summary>
+    private void NudgeCell(int idx, bool useEraBanded, uint birthColor)
+    {
+        int x = idx % _gridW, y = idx / _gridW;
+
+        // Collect dead 8-neighbors. Tiny fixed-size buffer, no alloc.
+        Span<int> deadNeighbors = stackalloc int[8];
+        int deadCount = 0;
+        for (int dy = -1; dy <= 1; dy++)
+        for (int dx = -1; dx <= 1; dx++)
+        {
+            if (dx == 0 && dy == 0) continue;
+            int nx = x + dx, ny = y + dy;
+            if (nx < 0 || nx >= _gridW || ny < 0 || ny >= _gridH) continue;
+            int nidx = ny * _gridW + nx;
+            if (_colorCurrent[nidx] == 0) deadNeighbors[deadCount++] = nidx;
+        }
+
+        uint donorColor = useEraBanded ? birthColor : _colorCurrent[idx];
+        KillCell(idx);
+
+        if (deadCount > 0)
+        {
+            int newIdx = deadNeighbors[_rng.Next(deadCount)];
+            int nx = newIdx % _gridW, ny = newIdx / _gridW;
+            _colorCurrent[newIdx] = donorColor != 0 ? donorColor : birthColor;
+            _age[newIdx] = 1;
+            _fade[newIdx] = 0;
+            _aliveCurrent[ny * _wordsPerRow + (nx >> 6)] |= 1UL << (nx & 63);
+        }
+    }
+
+    /// <summary>
+    /// Spawn a glider near a random edge of the overscan area aimed inward.
+    /// Sweepers travel across the field and naturally clean up debris on contact.
+    /// </summary>
+    private void SpawnSweeperGlider()
+    {
+        if (_gridW < 8 || _gridH < 8) return;
+
+        int edge = _rng.Next(4); // 0=top, 1=right, 2=bottom, 3=left
+        int rotation;            // pick rotation that travels inward
+        int gx, gy;
+        int margin = 3;
+        int innerMarginX = Math.Max(margin, (int)(_gridW * 0.1));
+        int innerMarginY = Math.Max(margin, (int)(_gridH * 0.1));
+        switch (edge)
+        {
+            case 0: // top -> travel SE
+                gx = _rng.Next(margin, _gridW - margin - 3);
+                gy = _rng.Next(margin, innerMarginY);
+                rotation = 2; // SE
+                break;
+            case 1: // right -> travel SW
+                gx = _rng.Next(_gridW - innerMarginX - 3, _gridW - margin - 3);
+                gy = _rng.Next(margin, _gridH - margin - 3);
+                rotation = 3; // SW
+                break;
+            case 2: // bottom -> travel NW
+                gx = _rng.Next(margin, _gridW - margin - 3);
+                gy = _rng.Next(_gridH - innerMarginY - 3, _gridH - margin - 3);
+                rotation = 0; // NW (our base shape is NE, rotated 0 = NE — we'll repurpose below)
+                break;
+            default: // left -> travel NE
+                gx = _rng.Next(margin, innerMarginX);
+                gy = _rng.Next(margin, _gridH - margin - 3);
+                rotation = 1;
+                break;
+        }
+
+        bool useEraBanded = ColorMode == ColorModeKind.EraBanded;
+        StampShape(s_glider, gx, gy, rotation, useEraBanded, _currentBirthColor);
+    }
+
+    /// <summary>
+    /// Stamp a small fixed shape onto the grid at (<paramref name="cx"/>,<paramref name="cy"/>),
+    /// rotated by <paramref name="rotation"/> * 90°. Used for catalyst gliders.
+    /// Overwrites existing cells (intentional — collision IS the interesting event).
+    /// </summary>
+    private void StampShape((int dx, int dy)[] shape, int cx, int cy, int rotation, bool useEraBanded, uint birthColor)
+    {
+        if (!useEraBanded)
+        {
+            // Genetic mode: pick a distinct hue so the sweeper is visually traceable
+            double hue = _rng.NextDouble() * 360.0;
+            birthColor = PackColor(HslToColor(hue, 0.9, 0.65));
+        }
+
+        rotation &= 3;
+        for (int s = 0; s < shape.Length; s++)
+        {
+            int dx = shape[s].dx, dy = shape[s].dy;
+            int rx, ry;
+            switch (rotation)
+            {
+                case 1: rx = -dy; ry = dx; break;
+                case 2: rx = -dx; ry = -dy; break;
+                case 3: rx = dy; ry = -dx; break;
+                default: rx = dx; ry = dy; break;
+            }
+            int x = cx + rx, y = cy + ry;
+            if (x < 0 || x >= _gridW || y < 0 || y >= _gridH) continue;
+            int idx = y * _gridW + x;
+            _colorCurrent[idx] = birthColor;
+            _age[idx] = 1;
+            _fade[idx] = 0;
+            _aliveCurrent[y * _wordsPerRow + (x >> 6)] |= 1UL << (x & 63);
         }
     }
 

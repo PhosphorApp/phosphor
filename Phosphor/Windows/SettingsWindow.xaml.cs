@@ -548,6 +548,9 @@ public partial class SettingsWindow : JukeboxWindow
         SliderGameOfLifeCameraSpeed.Value = settings.GameOfLifeCameraSpeed;
         TxtGameOfLifeCameraSpeed.Text = FormatCameraSpeed(settings.GameOfLifeCameraSpeed);
         CbGameOfLifeRestartOnTrackChange.IsChecked = settings.GameOfLifeRestartOnTrackChange;
+        CbGameOfLifeAntiStagnation.IsChecked = settings.GameOfLifeAntiStagnation;
+        SliderGameOfLifeAntiStagnationIntensity.Value = Math.Clamp(settings.GameOfLifeAntiStagnationIntensity, 1, 10);
+        TxtGameOfLifeAntiStagnationIntensity.Text = $"{Math.Clamp(settings.GameOfLifeAntiStagnationIntensity, 1, 10)}";
         CbGameOfLifeScalingMode.Items.Clear();
         CbGameOfLifeScalingMode.Items.Add("Nearest Neighbor");
         CbGameOfLifeScalingMode.Items.Add("Smooth (Fant)");
@@ -1948,6 +1951,19 @@ public partial class SettingsWindow : JukeboxWindow
         // No-op; tracked via originals/change-detection.
     }
 
+    private void CbGameOfLifeAntiStagnation_Changed(object sender, RoutedEventArgs e)
+    {
+        // No-op; tracked via originals/change-detection. Excluded from
+        // GameOfLifeSettingsChanged on purpose so toggling it live doesn't
+        // reseed the field — the new flag takes effect on the next tick.
+    }
+
+    private void SliderGameOfLifeAntiStagnationIntensity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtGameOfLifeAntiStagnationIntensity != null)
+            TxtGameOfLifeAntiStagnationIntensity.Text = $"{(int)e.NewValue}";
+    }
+
     private void SliderGameOfLifeCameraMaxZoom_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (TxtGameOfLifeCameraMaxZoom != null)
@@ -2488,6 +2504,8 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.GameOfLifeCameraOverscan = (int)SliderGameOfLifeCameraOverscan.Value;
         _settings.GameOfLifeCameraSpeed = SliderGameOfLifeCameraSpeed.Value;
         _settings.GameOfLifeRestartOnTrackChange = CbGameOfLifeRestartOnTrackChange.IsChecked == true;
+        _settings.GameOfLifeAntiStagnation = CbGameOfLifeAntiStagnation.IsChecked == true;
+        _settings.GameOfLifeAntiStagnationIntensity = (int)SliderGameOfLifeAntiStagnationIntensity.Value;
         _settings.GameOfLifeScalingMode = CbGameOfLifeScalingMode.SelectedIndex;
         _settings.GameOfLifeColorMode = CbGameOfLifeColorMode.SelectedIndex;
         _settings.ReactiveBlobsPlayfield = CbReactiveBlobsPlayfield.IsChecked == true;

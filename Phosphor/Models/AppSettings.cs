@@ -128,7 +128,18 @@ public class AppSettings
     public int GameOfLifeScalingMode { get; set; } // 0 = NearestNeighbor, 1 = Fant
     /// <summary>Color model for births. 0 = Genetic (blend of parent colors), 1 = EraBanded (current global rotating hue).</summary>
     public int GameOfLifeColorMode { get; set; } // 0 = Genetic, 1 = EraBanded
-
+    /// <summary>
+    /// When true, periodically nudges or disrupts small still-life / oscillator patterns
+    /// (blinkers, blocks, beacons) so the simulation keeps evolving rather than locking
+    /// into static repeating shapes. Off by default for Conway purists.
+    /// </summary>
+    public bool GameOfLifeAntiStagnation { get; set; } = false;
+    /// <summary>
+    /// Aggressiveness of anti-stagnation interventions (1–10). 5 = subtle (default),
+    /// 1 = barely noticeable, 10 = constant churn. Only used when
+    /// <see cref="GameOfLifeAntiStagnation"/> is true.
+    /// </summary>
+    public int GameOfLifeAntiStagnationIntensity { get; set; } = 5;
     // Ferrofluid tuning
     public double FerrofluidCoreGravity { get; set; } = 280.0;
     public double FerrofluidMutualAttraction { get; set; } = 40.0;
