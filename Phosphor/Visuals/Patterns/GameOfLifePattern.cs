@@ -86,6 +86,20 @@ public sealed class GameOfLifePattern : BlobPatternBase
     private byte[] _fade = [];           // remaining fade-out ticks (>0 = recently died, still rendering)
     private uint[] _fadeColor = [];      // color at moment of death, for fade rendering
 
+    // --- Bitboard state (EraBanded mode only) ---------------------------------
+    // Packed alive/dead bits, row-major. Bit b of word (y * _wordsPerRow + w)
+    // represents the cell at column (w * 64 + b). Bits at positions past
+    // (_gridW - 1) in the last word per row are ghost bits, always kept 0
+    // via _lastWordMask. Allocated/used only when ColorMode == EraBanded.
+    private ulong[] _aliveCurrent = [];
+    private ulong[] _aliveNext = [];
+    private int _wordsPerRow;            // ceil(_gridW / 64)
+    private int _lastBit;                // (_gridW - 1) % 64 — last real bit in lastWord
+    private ulong _lastWordMask;         // bits 0.._lastBit set, rest zero
+    // Set true by SeedGrid / InjectCells (external writes to _colorCurrent).
+    // Cleared by RebuildAliveBitboardFromColors at the top of the next bitboard step.
+    private bool _aliveBitboardDirty;
+
     // Reused buffer of stagnant cell indices, refilled in InjectCells.
     // Avoids a per-beat List<int> allocation on grids with hundreds of stagnant cells.
     private readonly List<int> _stagnantCells = new();
@@ -231,6 +245,16 @@ public sealed class GameOfLifePattern : BlobPatternBase
         _snapshotGen = 0;
         _snapshotReady = false;
 
+        // Bitboard layout: one ulong per 64 cells, padded per-row.
+        // Allocated for both modes (cheap — 8 bytes per 64 cells = 1MB per 8M cells)
+        // so we can switch modes at runtime without re-allocating.
+        _wordsPerRow = (_gridW + 63) >> 6;
+        _lastBit = (_gridW - 1) & 63;
+        _lastWordMask = _lastBit == 63 ? ulong.MaxValue : ((1UL << (_lastBit + 1)) - 1);
+        _aliveCurrent = new ulong[_wordsPerRow * _gridH];
+        _aliveNext = new ulong[_wordsPerRow * _gridH];
+        _aliveBitboardDirty = true;
+
         _bitmap = new WriteableBitmap(_gridW, _gridH, 96, 96, PixelFormats.Bgra32, null);
 
         _image = new Image
@@ -338,6 +362,10 @@ public sealed class GameOfLifePattern : BlobPatternBase
                 }
             }
         }
+
+        // Tell the bitboard path (if used) to rebuild _aliveCurrent from
+        // the colors we just wrote at the top of its next step.
+        _aliveBitboardDirty = true;
     }
 
     protected override void StartMotion()
@@ -420,18 +448,20 @@ public sealed class GameOfLifePattern : BlobPatternBase
 
     private void StepSimulation()
     {
-        // Both Genetic and EraBanded modes currently share this scalar code path.
-        // Phase 2 (this commit): EraBanded swaps the per-birth color from a
-        // parent-color average to a single global rotating hue, controlled by
-        // the useEraBanded local captured below. The grid/neighbor logic is
-        // identical to Genetic mode, so correctness is trivially preserved.
-        // Phase 3 (future): when ColorMode == EraBanded, dispatch to a dedicated
-        // bitboard alive/dead step instead of the scalar loop. See
+        // EraBanded mode uses a dedicated bitboard step: all live cells share
+        // one global color per tick, so we don't need the per-cell parent-color
+        // average that Genetic mode does. The bitboard step computes neighbor
+        // counts 64 cells at a time with bit-parallel adders. See
         // PERFORMANCE_NOTES.md "Bitboard Simulation + EraBanded Color Mode".
+        if (ColorMode == ColorModeKind.EraBanded)
+        {
+            StepSimulationBitboard();
+            return;
+        }
 
         // Capture the static ColorMode + per-tick birth color into locals so the
         // inner loop's birth branch can use them without re-reading statics.
-        bool useEraBanded = ColorMode == ColorModeKind.EraBanded;
+        bool useEraBanded = false;
         uint eraBandedColor = _currentBirthColor;
 
         int w = _gridW, h = _gridH;
@@ -499,6 +529,297 @@ public sealed class GameOfLifePattern : BlobPatternBase
             for (int i = 0; i < totalCells; i++)
                 _snapshotB[i] = _colorCurrent[i] != 0;
             _snapshotReady = true;
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Bitboard step (EraBanded only)
+    // ---------------------------------------------------------------------
+    // Layout: _aliveCurrent[y * _wordsPerRow + w] holds 64 cells, bit b at
+    // column (w * 64 + b). Bits beyond _lastBit in the last word per row are
+    // ghost bits; we mask them off in the final aliveNew per word.
+    //
+    // Per word we compute 9 shifted neighbor bit-vectors (uL/uM/uR, mL/mR,
+    // dL/dM/dR), sum them via half/full adders into 4 bit-planes b0..b3
+    // representing per-cell neighbor count (0..8), then apply Conway:
+    //   aliveNext = (count==3) | (alive & (count==2 | count==3))
+    // Births / deaths / survivors are then iterated as set bits in their
+    // respective masks (sparse, O(active cells) per word), keeping the
+    // color/age/fade arrays in sync.
+    //
+    // Toroidal wrap: column 0's left neighbor is column gridW-1, and column
+    // gridW-1's right neighbor is column 0. The leftmost word handles wrap
+    // for the left-shift carry-in; the rightmost (last) word handles wrap
+    // for the right-shift carry-in. Interior words use pure word-to-word
+    // carries with no wrap branches.
+
+    private void StepSimulationBitboard()
+    {
+        int w = _gridW, h = _gridH;
+        int totalCells = w * h;
+        int wpr = _wordsPerRow;
+        ulong lastMask = _lastWordMask;
+        int lastWordIdx = wpr - 1;
+        uint birthColor = _currentBirthColor;
+        byte fadeStart = (byte)Math.Clamp(FadeGenerations, 1, 255);
+
+        if (_aliveBitboardDirty)
+        {
+            RebuildAliveBitboardFromColors();
+            _aliveBitboardDirty = false;
+        }
+
+        // Pre-decay fade counters. The death branch below overwrites just-died
+        // cells with fadeStart, so newly-dead cells still start fresh.
+        for (int i = 0; i < totalCells; i++)
+            if (_fade[i] > 0) _fade[i]--;
+
+        // _colorNext is sparsely written; clear so dead-stay-dead cells are 0.
+        Array.Clear(_colorNext);
+
+        Array.Clear(_sectorBirths);
+        Array.Clear(_sectorAlive);
+        int sectorW = Math.Max(1, w / SectorCountX);
+        int sectorH = Math.Max(1, h / SectorCountY);
+        int sectorCount = SectorCountX * SectorCountY;
+        int sectorCx = SectorCountX - 1;
+
+        if (totalCells >= ParallelCellThreshold)
+        {
+            object mergeLock = new();
+            Parallel.For(0, h,
+                () => (births: new int[sectorCount], alive: new int[sectorCount]),
+                (y, _, local) =>
+                {
+                    StepRowBitboard(y, w, h, wpr, lastWordIdx, lastMask,
+                        sectorW, sectorH, sectorCx,
+                        birthColor, fadeStart,
+                        local.births, local.alive);
+                    return local;
+                },
+                local =>
+                {
+                    lock (mergeLock)
+                    {
+                        for (int i = 0; i < sectorCount; i++)
+                        {
+                            _sectorBirths[i] += local.births[i];
+                            _sectorAlive[i] += local.alive[i];
+                        }
+                    }
+                });
+        }
+        else
+        {
+            for (int y = 0; y < h; y++)
+                StepRowBitboard(y, w, h, wpr, lastWordIdx, lastMask,
+                    sectorW, sectorH, sectorCx,
+                    birthColor, fadeStart,
+                    _sectorBirths, _sectorAlive);
+        }
+
+        (_colorCurrent, _colorNext) = (_colorNext, _colorCurrent);
+        (_aliveCurrent, _aliveNext) = (_aliveNext, _aliveCurrent);
+
+        for (int i = 0; i < sectorCount; i++)
+        {
+            double instant = _sectorBirths[i] * 3 + _sectorAlive[i];
+            _sectorHeat[i] = _sectorHeat[i] * (1.0 - SectorHeatAlpha) + instant * SectorHeatAlpha;
+        }
+
+        _snapshotGen++;
+        if (_snapshotGen >= SnapshotInterval)
+        {
+            _snapshotGen = 0;
+            (_snapshotA, _snapshotB) = (_snapshotB, _snapshotA);
+            for (int i = 0; i < totalCells; i++)
+                _snapshotB[i] = _colorCurrent[i] != 0;
+            _snapshotReady = true;
+        }
+    }
+
+    /// <summary>
+    /// Populate <see cref="_aliveCurrent"/> from <see cref="_colorCurrent"/>.
+    /// Used after seed/inject (which write colors directly) and the first
+    /// time the bitboard path runs. Sets one bit per non-zero color.
+    /// </summary>
+    private void RebuildAliveBitboardFromColors()
+    {
+        int w = _gridW, h = _gridH;
+        int wpr = _wordsPerRow;
+        ulong lastMask = _lastWordMask;
+        Array.Clear(_aliveCurrent);
+        for (int y = 0; y < h; y++)
+        {
+            int rowBase = y * w;
+            int wordBase = y * wpr;
+            for (int x = 0; x < w; x++)
+            {
+                if (_colorCurrent[rowBase + x] != 0)
+                    _aliveCurrent[wordBase + (x >> 6)] |= 1UL << (x & 63);
+            }
+            // Defensive: clear any ghost bits in the last word.
+            _aliveCurrent[wordBase + wpr - 1] &= lastMask;
+        }
+    }
+
+    /// <summary>
+    /// Bitboard step for one row. Computes neighbor counts 64 cells at a
+    /// time with bit-parallel half/full adders, then iterates the births /
+    /// deaths / survivors masks sparsely to keep color/age/fade in sync.
+    /// Writes only to this row's slice of <see cref="_aliveNext"/>,
+    /// <see cref="_colorNext"/>, <see cref="_age"/>, <see cref="_fade"/>,
+    /// and <see cref="_fadeColor"/> — safe to parallelize across rows.
+    /// </summary>
+    private void StepRowBitboard(int y, int w, int h, int wpr, int lastWordIdx, ulong lastMask,
+        int sectorW, int sectorH, int sectorCx,
+        uint birthColor, byte fadeStart,
+        int[] sectorBirths, int[] sectorAlive)
+    {
+        int yUp = y == 0 ? h - 1 : y - 1;
+        int yDn = y == h - 1 ? 0 : y + 1;
+        int sy = Math.Min(y / sectorH, SectorCountY - 1);
+        int sectorRowBase = sy * SectorCountX;
+
+        int rowBase = y * w;
+        int upWordBase = yUp * wpr;
+        int midWordBase = y * wpr;
+        int dnWordBase = yDn * wpr;
+
+        // Toroidal wrap carries for the leftmost word's left-shift come from
+        // bit (gridW-1) of the row, i.e. bit _lastBit of the last word.
+        int lastBit = (w - 1) & 63;
+        ulong upWrapLeft = (_aliveCurrent[upWordBase + lastWordIdx] >> lastBit) & 1UL;
+        ulong midWrapLeft = (_aliveCurrent[midWordBase + lastWordIdx] >> lastBit) & 1UL;
+        ulong dnWrapLeft = (_aliveCurrent[dnWordBase + lastWordIdx] >> lastBit) & 1UL;
+
+        // Toroidal wrap carries for the last word's right-shift come from
+        // bit 0 of the first word per row.
+        ulong upWrapRight = _aliveCurrent[upWordBase] & 1UL;
+        ulong midWrapRight = _aliveCurrent[midWordBase] & 1UL;
+        ulong dnWrapRight = _aliveCurrent[dnWordBase] & 1UL;
+
+        for (int wi = 0; wi < wpr; wi++)
+        {
+            ulong upMid = _aliveCurrent[upWordBase + wi];
+            ulong midMid = _aliveCurrent[midWordBase + wi];
+            ulong dnMid = _aliveCurrent[dnWordBase + wi];
+
+            // Left-shifted neighbor row (bit b receives original column c-1).
+            ulong upL, midL, dnL;
+            if (wi == 0)
+            {
+                upL = (upMid << 1) | upWrapLeft;
+                midL = (midMid << 1) | midWrapLeft;
+                dnL = (dnMid << 1) | dnWrapLeft;
+            }
+            else
+            {
+                upL = (upMid << 1) | (_aliveCurrent[upWordBase + wi - 1] >> 63);
+                midL = (midMid << 1) | (_aliveCurrent[midWordBase + wi - 1] >> 63);
+                dnL = (dnMid << 1) | (_aliveCurrent[dnWordBase + wi - 1] >> 63);
+            }
+
+            // Right-shifted neighbor row (bit b receives original column c+1).
+            ulong upR, midR, dnR;
+            if (wi == lastWordIdx)
+            {
+                upR = (upMid >> 1) | (upWrapRight << lastBit);
+                midR = (midMid >> 1) | (midWrapRight << lastBit);
+                dnR = (dnMid >> 1) | (dnWrapRight << lastBit);
+            }
+            else
+            {
+                upR = (upMid >> 1) | (_aliveCurrent[upWordBase + wi + 1] << 63);
+                midR = (midMid >> 1) | (_aliveCurrent[midWordBase + wi + 1] << 63);
+                dnR = (dnMid >> 1) | (_aliveCurrent[dnWordBase + wi + 1] << 63);
+            }
+
+            // Sum the three bits of the upper row (0..3, 2 bits).
+            ulong uXor = upL ^ upMid;
+            ulong uLo = uXor ^ upR;
+            ulong uHi = (upL & upMid) | (upR & uXor);
+
+            // Sum the two side bits of the middle row (0..2, 2 bits).
+            ulong mLo = midL ^ midR;
+            ulong mHi = midL & midR;
+
+            // Sum the three bits of the lower row (0..3, 2 bits).
+            ulong dXor = dnL ^ dnMid;
+            ulong dLo = dXor ^ dnR;
+            ulong dHi = (dnL & dnMid) | (dnR & dXor);
+
+            // Combine the three 2-bit partials. Low bits first.
+            ulong loXor = uLo ^ mLo;
+            ulong b0 = loXor ^ dLo;
+            ulong cLo = (uLo & mLo) | (dLo & loXor);
+
+            // High bits sum + carry-in from low bits.
+            ulong hiXor = uHi ^ mHi;
+            ulong sHi = hiXor ^ dHi;
+            ulong cHi = (uHi & mHi) | (dHi & hiXor);
+
+            ulong b1 = sHi ^ cLo;
+            ulong cHi2 = sHi & cLo;
+
+            ulong b2 = cHi ^ cHi2;
+            ulong b3 = cHi & cHi2;
+
+            // Conway B3/S23: alive iff count==3, or alive and count in {2,3}.
+            // count in {2,3} <=> b3=0, b2=0, b1=1. count==3 also has b0=1.
+            ulong twoOrThree = b1 & ~b2 & ~b3;
+            ulong three = twoOrThree & b0;
+            ulong aliveNew = three | (midMid & twoOrThree);
+
+            if (wi == lastWordIdx) aliveNew &= lastMask;
+
+            _aliveNext[midWordBase + wi] = aliveNew;
+
+            int xBase = wi << 6;
+
+            // Births: dead -> alive. Use shared per-tick rotating hue.
+            ulong births = aliveNew & ~midMid;
+            while (births != 0)
+            {
+                int b = System.Numerics.BitOperations.TrailingZeroCount(births);
+                births &= births - 1;
+                int x = xBase + b;
+                int idx = rowBase + x;
+                _colorNext[idx] = birthColor;
+                _age[idx] = 1;
+                _fade[idx] = 0;
+                int si = Math.Min(x / sectorW, sectorCx) + sectorRowBase;
+                sectorBirths[si]++;
+            }
+
+            // Deaths: alive -> dead. Start fade-out from cell's last color.
+            ulong deaths = midMid & ~aliveNew;
+            while (deaths != 0)
+            {
+                int b = System.Numerics.BitOperations.TrailingZeroCount(deaths);
+                deaths &= deaths - 1;
+                int x = xBase + b;
+                int idx = rowBase + x;
+                _fadeColor[idx] = _colorCurrent[idx];
+                _fade[idx] = fadeStart;
+                _age[idx] = 0;
+                // _colorNext[idx] already 0 from Array.Clear at step start.
+            }
+
+            // Survivors: alive -> alive. Carry color forward, bump age.
+            ulong survivors = midMid & aliveNew;
+            while (survivors != 0)
+            {
+                int b = System.Numerics.BitOperations.TrailingZeroCount(survivors);
+                survivors &= survivors - 1;
+                int x = xBase + b;
+                int idx = rowBase + x;
+                _colorNext[idx] = _colorCurrent[idx];
+                if (_age[idx] < 3) _age[idx]++;
+                _fade[idx] = 0;
+                int si = Math.Min(x / sectorW, sectorCx) + sectorRowBase;
+                sectorAlive[si]++;
+            }
         }
     }
 
@@ -1195,6 +1516,9 @@ public sealed class GameOfLifePattern : BlobPatternBase
                 }
             }
         }
+
+        // Bitboard path will rebuild from _colorCurrent at top of next step.
+        _aliveBitboardDirty = true;
     }
 
     /// <summary>
