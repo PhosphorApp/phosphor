@@ -216,6 +216,39 @@ Phase 2 (offload the whole tick to a worker thread, marshal only `Lock`/
 `Unlock`/`UpdateCamera` back to the dispatcher) is on hold pending Phase 1
 measurements.
 
+### Phase 1.5 — Inner-loop & per-frame wins
+Small but cumulative tweaks layered on top of the Phase 1 MT work:
+
+- **Dropped `Array.Clear(_colorNext)` in `StepSimulation`.** Every code path
+  in `StepRow` writes `_colorNext[idx]` unconditionally (color or 0), so the
+  up-front zeroing was pure waste — ~4 MB of writes per frame on a 2M-cell
+  grid, multiplied by every visible window.
+- **Demoted `_age` from `ushort[]` to `byte[]` and clamped at 3.** Only the
+  `_age[i] <= 2` test in `RenderRow` ever reads it, so anything past 3 is
+  equivalent. Halves age-array bandwidth and improves cache residency next
+  to `_colorCurrent`. Also dropped the per-cell `Math.Min(ushort.MaxValue, …)`
+  in favor of a single `if (_age[idx] < 3) _age[idx]++;`.
+- **Split `StepRow` into edge / interior / edge** so the `w - 2` interior
+  cells per row execute without the `x==0 ? w-1 : x-1` and
+  `x==w-1 ? 0 : x+1` wrap branches. Inner body extracted into an
+  `[AggressiveInlining]` `ProcessCell` helper to keep both call sites tight.
+  Also lifted `fadeStart = (byte)Math.Clamp(FadeGenerations, 1, 255)` and the
+  sector row base out of the inner loop.
+- **Throttled `UpdateDominantBrush` to ~once every 2 seconds of wall-clock
+  time** (`interval = max(1, 2000 / max(1, TickIntervalMs))` ticks). Because
+  `TickIntervalMs` ranges 1–100 ms via the slider — and can be as low as
+  ~4–7 ms when `GameOfLifeUseScreenRate` syncs to a 144/240 Hz display — the
+  divisor must use the actual tick rate, not a 16 ms floor, or fast tick
+  rates would still update the brush several times per second. DOF
+  band-change events already gate themselves with a multi-second cooldown,
+  so running the stride-2 visible-region scan + 8-bucket histogram any
+  faster than ~0.5 Hz is wasted work. This was the second-most-expensive
+  per-frame thing after the sim itself.
+- **`InjectCells`: fused the alive-count pass with the stagnant-cells scan**
+  and reused a field-level `List<int> _stagnantCells` buffer. Removes one
+  full-grid pass per beat and the per-beat list allocation (which on big
+  grids with persistent still-lifes could be hundreds of entries).
+
 ### Dominant-Color Scoping to Visible Region
 `_brushes[0]` (the dummy brush that PlayfieldWindow reads for DOF dominant-color
 detection) was previously set to the whole-grid RGB average — expensive on large
@@ -293,3 +326,167 @@ Start with process-level affinity behind an opt-in `AppSettings.PCoreMask`
 
 Long term, auto-detect via `GetLogicalProcessorInformationEx` so it's
 zero-config.
+
+---
+
+## 🟣 Future — Bitboard Simulation + EraBanded Color Mode
+
+### Goal
+Hit **144 Hz @ 4K with `cellSize = 1`** (currently `cellSize = 2` runs with
+some headroom; `cellSize = 1` cannot keep up). At 4K with `cellSize = 1`
+that's a 3840×2160 grid = ~8.3M cells per step, per window.
+
+### Why the current ceiling exists
+`StepSimulation` is bandwidth-bound on `_colorCurrent` (4 bytes/cell × 9
+neighbor reads per cell). The Phase 1 MT work fans rows across cores, but
+each row's inner loop still does 9 scalar `uint` reads + branches per cell.
+Bitboards collapse the alive/dead computation to ~1/64th the work, but only
+if cells aren't carrying genetic color information that requires
+per-neighbor lookups.
+
+### Strategic Move: Decouple Color From the Simulation Rule
+The reason the bitboard ceiling for our code looked like "only 3–8× wall
+clock" in earlier analysis was the genetic color blend on birth:
+
+```csharp
+uint r = rSum / 3, g = gSum / 3, b = bSum / 3;
+```
+
+That requires knowing *which* three neighbors were alive and reading their
+colors — i.e. scalar 8-neighbor fixup per birth, against the original
+`_colorCurrent`. If birth color comes from a single global per-frame value
+instead, the fixup collapses to "write `currentHueColor` to every birth
+lane." `_colorCurrent` is no longer read during the neighbor scan at all —
+only written on births, copied on survivals, snapshotted on deaths.
+
+### Proposed: `GameOfLifeColorMode` Setting
+New `AppSettings.GameOfLifeColorMode` enum (default = `Genetic` to preserve
+existing look). Two values:
+
+- **`Genetic`** (default, current behavior): births inherit a blended RGB
+  average of the three live parents. Visually rich — collisions between
+  red and yellow regions birth orange offspring. Uses the existing scalar
+  `StepRow` / `ProcessCell` path verbatim.
+- **`EraBanded`**: births take the simulation's current rotating-hue value
+  (slow ROYGBIV cycle). Survivors keep their birth color until death, so
+  regions visually band by age — old still-lifes wear last week's hue, new
+  blooms wear this week's. Lets the camera roam reveal "color geology."
+  Unlocks the bitboard path.
+
+### Data Layout (EraBanded mode)
+- `ulong[] _aliveCurrent`, `ulong[] _aliveNext` — bitpacked, one row padded
+  to a multiple of 64 bits. `aliveWordsPerRow = (gridW + 63) / 64`.
+- `_colorCurrent: uint[]` stays as today but is only **written** on births,
+  **read** on render and `UpdateDominantBrush` — never touched during the
+  neighbor scan.
+- `_age: byte[]`, `_fade: byte[]`, `_fadeColor: uint[]` unchanged.
+- `_currentBirthColor: uint` — recomputed once per tick from the global
+  hue rotator.
+
+### Step Algorithm (EraBanded)
+1. **Bitboard alive/dead step** (parallelizable per row group):
+   For each row word, load three windows (`prevRow`, `thisRow`, `nextRow`)
+   and their left/right shifts (handling row-end wrap into the next/prev
+   word, with toroidal wrap at row edges). Compute neighbor counts using
+   the classic shift-and-add adder tree (4 bits of count per cell, since
+   max neighbors = 8). Apply B3/S23: `next = (count == 3) | (alive & count == 2)`.
+   Output: `_aliveNext` word.
+2. **Color/decay sweep** (single linear pass over `_aliveCurrent` and
+   `_aliveNext`, parallelizable):
+   - `births = _aliveNext & ~_aliveCurrent` — for each set bit, write
+     `_currentBirthColor` to `_colorCurrent[i]`, set `_age[i] = 1`,
+     `_fade[i] = 0`, increment sector birth counter.
+   - `deaths = _aliveCurrent & ~_aliveNext` — for each set bit, save
+     `_colorCurrent[i]` to `_fadeColor[i]`, set `_fade[i] = fadeStart`,
+     `_age[i] = 0`, clear `_colorCurrent[i]`.
+   - `survivors = _aliveCurrent & _aliveNext` — increment `_age` (clamped
+     at 3), increment sector alive counter. Color and fade left alone.
+   - `idle = ~_aliveCurrent & ~_aliveNext` — decrement `_fade[i]` if
+     non-zero. (Empty bitword shortcut: skip the inner loop entirely if
+     both words are zero AND no `_fade` is non-zero in this slice.)
+   Use `BitOperations.TrailingZeroCount` to iterate set bits, skipping
+   empty regions in bulk.
+3. **Sector counters** — accumulated via per-thread arrays in the
+   color/decay sweep (same pattern as today's `Parallel.For`
+   `localInit`/`localFinally`).
+4. **Stagnation snapshots** — `_snapshotA`/`_snapshotB` change from
+   `bool[]` to `ulong[]` aligned with the alive bitboard. The "stagnant"
+   set becomes a simple `_snapshotA & _snapshotB` AND of bitwords, with
+   bit iteration to fill `_stagnantCells` only during `InjectCells`.
+
+### Toroidal Wrap Notes
+- **Horizontal wrap** at row edges: the leftmost word's "left shift in"
+  bit comes from the bit at `gridW - 1`; the rightmost word's "right
+  shift in" bit comes from bit 0 of the same row. When `gridW` is not
+  a multiple of 64, the rightmost word is partial — mask off unused
+  high bits before storing back, and source the wrap bit from the
+  correct in-row position, not from the word's bit 63.
+- **Vertical wrap** is unchanged from today's `yUp`/`yDn` logic — just
+  applied per word instead of per cell.
+
+### Expected Performance
+- **Bitboard alive/dead step alone**: 15–30× the scalar cost on the
+  neighbor count (textbook bitboard win).
+- **Color/decay sweep**: bandwidth-bound at one `uint` write per
+  birth/death and one byte read/write per survivor — much smaller than
+  the scalar 9-read inner loop today.
+- **Wall-clock net on `StepSimulation`**: estimated **15–25×** vs.
+  current scalar. Combined with the existing Phase 1 MT row
+  parallelization, this should be the difference between "can't run
+  cellSize=1 @ 4K" and "runs with headroom."
+
+### Optional Phase B: SIMD Over the Bitboard
+Bitboards are themselves SIMD (64-wide). The natural next step, if
+Phase A still isn't enough headroom, is to wrap the shift/add neighbor
+math in `Vector256<ulong>` (AVX2) so each loop iteration handles 4
+`ulong`s = **256 cells per instruction**. Same algorithm, wider lane.
+Falls back to scalar bitboards on non-AVX2 CPUs via
+`Avx2.IsSupported` guard.
+
+We would **not** also do a separate `Vector256<byte>` over a `byte[]
+_alive` mask — that's a competing data layout for the same problem,
+and bitboards are 8× denser. Pick one. Phase B is purely "same
+algorithm, wider execution."
+
+### Optional: `Buffer.MemoryCopy` Bitmap Blit
+Today's `RenderRow` writes the final pixel value with one `unsafe
+uint*` store per cell, so the suggestion "use `Buffer.MemoryCopy`
+instead of `WriteableBitmap.SetPixel`" doesn't apply — we're already
+past that. However, the EraBanded refactor opens the door to
+pre-baking `_colorCurrent` directly in BGRA32 layout (it already is,
+modulo per-cell heat/fade post-processing). If those post-processing
+passes are folded into the decay sweep, `RenderFrame` collapses to a
+single `Buffer.MemoryCopy(_colorCurrent → BackBuffer)`. Modest extra
+win (1.5–2× on render only) but a clean simplification.
+
+### Implementation Order
+1. **Add `GameOfLifeColorMode` setting + UI toggle** (default `Genetic`).
+   No perf work yet. Just plumbing: `AppSettings` field, `SettingsWindow`
+   UI, `DmdWindow` fan-out, restart-on-change.
+2. **Implement `EraBanded` branch using scalar bitboards.** Keep the
+   existing scalar `StepRow` for `Genetic` mode as both the correctness
+   reference and the active path when the user prefers the genetic look.
+3. **Correctness test** — run both modes side by side on a small grid
+   with deterministic seeding, diff `_colorCurrent` snapshots tick by
+   tick. Bitboard alive/dead must match scalar exactly modulo color.
+4. **Parallelize the bitboard step** by row groups (same threshold
+   logic as today's `ParallelCellThreshold`).
+5. **Benchmark `cellSize=1` @ 4K** via the existing `[GoL] Frame N: …
+   ms` log. Decide if Phase B (AVX2) is needed.
+
+### Risks / Open Questions
+- **Visual reception of `EraBanded`** — the genetic blend is part of
+  the current pattern's character. Some users will prefer it; the
+  setting must default to `Genetic` and the toggle must be clearly
+  labeled.
+- **Bitboard wrap correctness** — toroidal edge handling at the
+  rightmost partial word is the most error-prone bit. The
+  side-by-side correctness test above is non-negotiable.
+- **Sector counter accuracy** — popcount-per-sector is exact for
+  alive, and births/deaths are exact via `xor`/`and-not` popcount.
+  Should be no precision loss vs. today.
+- **`InjectCells` writes to `_colorCurrent` directly** today — under
+  EraBanded it must also set the corresponding bit in `_aliveCurrent`,
+  or the next step will overwrite the injection. Same applies to
+  `SeedGrid`.
+

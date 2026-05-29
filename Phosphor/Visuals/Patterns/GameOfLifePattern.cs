@@ -65,9 +65,15 @@ public sealed class GameOfLifePattern : BlobPatternBase
     // Per-cell state: color RGB (0 = dead), age (generations alive), fade (countdown when dying)
     private uint[] _colorCurrent = [];   // packed BGRA — 0 means dead
     private uint[] _colorNext = [];
-    private ushort[] _age = [];            // how many generations this cell has been alive
+    // Age is clamped at 3 — only the "<= 2" test in RenderRow (newborn brightness boost)
+    // ever inspects it, so a single byte (vs. ushort) halves this array's memory bandwidth.
+    private byte[] _age = [];              // how many generations this cell has been alive (clamped to 3)
     private byte[] _fade = [];           // remaining fade-out ticks (>0 = recently died, still rendering)
     private uint[] _fadeColor = [];      // color at moment of death, for fade rendering
+
+    // Reused buffer of stagnant cell indices, refilled in InjectCells.
+    // Avoids a per-beat List<int> allocation on grids with hundreds of stagnant cells.
+    private readonly List<int> _stagnantCells = new();
 
     // Audio state
     private bool _pendingBeat;
@@ -193,7 +199,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
         int totalCells = _gridW * _gridH;
         _colorCurrent = new uint[totalCells];
         _colorNext = new uint[totalCells];
-        _age = new ushort[totalCells];
+        _age = new byte[totalCells];
         _fade = new byte[totalCells];
         _fadeColor = new uint[totalCells];
         _sectorBirths = new int[SectorCountX * SectorCountY];
@@ -362,7 +368,8 @@ public sealed class GameOfLifePattern : BlobPatternBase
     {
         int w = _gridW, h = _gridH;
         int totalCells = w * h;
-        Array.Clear(_colorNext);
+        // _colorNext is fully overwritten by StepRow (every cell writes either a color or 0),
+        // so an explicit Array.Clear here is dead work — saves ~4MB of zeroing on a 2M-cell grid.
         Array.Clear(_sectorBirths);
         Array.Clear(_sectorAlive);
         int sectorW = Math.Max(1, w / SectorCountX);
@@ -442,64 +449,84 @@ public sealed class GameOfLifePattern : BlobPatternBase
         int rowBase = y * w;
         int upBase = yUp * w;
         int dnBase = yDn * w;
+        int sectorRowBase = sy * SectorCountX;
+        byte fadeStart = (byte)Math.Clamp(FadeGenerations, 1, 255);
+        int sectorCx = SectorCountX - 1;
 
-        for (int x = 0; x < w; x++)
+        // Edge column x=0 (left wraps to w-1)
+        ProcessCell(0, w - 1, w > 1 ? 1 : 0, rowBase, upBase, dnBase, sectorW, sectorCx, sectorRowBase, fadeStart, sectorBirths, sectorAlive);
+
+        // Interior columns — no wrap branches; xL = x-1, xR = x+1 are always valid.
+        // Most cells live here, so eliminating two branches per cell is a real win.
+        for (int x = 1; x < w - 1; x++)
+            ProcessCell(x, x - 1, x + 1, rowBase, upBase, dnBase, sectorW, sectorCx, sectorRowBase, fadeStart, sectorBirths, sectorAlive);
+
+        // Edge column x=w-1 (right wraps to 0). Skip when w==1 (already handled above).
+        if (w > 1)
+            ProcessCell(w - 1, w - 2, 0, rowBase, upBase, dnBase, sectorW, sectorCx, sectorRowBase, fadeStart, sectorBirths, sectorAlive);
+    }
+
+    /// <summary>
+    /// Inner Conway step for a single cell. Inlined into the StepRow loop by JIT.
+    /// xL/xR are pre-resolved column indices so the inner loop has no wrap branches.
+    /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private void ProcessCell(int x, int xL, int xR, int rowBase, int upBase, int dnBase,
+        int sectorW, int sectorCx, int sectorRowBase, byte fadeStart, int[] sectorBirths, int[] sectorAlive)
+    {
+        int idx = rowBase + x;
+
+        int neighbors = 0;
+        uint rSum = 0, gSum = 0, bSum = 0;
+
+        // Eight neighbors, inlined (faster than a dx/dy loop and avoids
+        // the dx==0&&dy==0 branch on the hot path).
+        uint nc;
+        nc = _colorCurrent[upBase + xL]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
+        nc = _colorCurrent[upBase + x ]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
+        nc = _colorCurrent[upBase + xR]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
+        nc = _colorCurrent[rowBase + xL]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
+        nc = _colorCurrent[rowBase + xR]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
+        nc = _colorCurrent[dnBase + xL]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
+        nc = _colorCurrent[dnBase + x ]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
+        nc = _colorCurrent[dnBase + xR]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
+
+        uint self = _colorCurrent[idx];
+
+        if (self != 0)
         {
-            int idx = rowBase + x;
-            int xL = x == 0 ? w - 1 : x - 1;
-            int xR = x == w - 1 ? 0 : x + 1;
-
-            int neighbors = 0;
-            uint rSum = 0, gSum = 0, bSum = 0;
-
-            // Eight neighbors, inlined (faster than a dx/dy loop and avoids
-            // the dx==0&&dy==0 branch on the hot path).
-            uint nc;
-            nc = _colorCurrent[upBase + xL]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
-            nc = _colorCurrent[upBase + x ]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
-            nc = _colorCurrent[upBase + xR]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
-            nc = _colorCurrent[rowBase + xL]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
-            nc = _colorCurrent[rowBase + xR]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
-            nc = _colorCurrent[dnBase + xL]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
-            nc = _colorCurrent[dnBase + x ]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
-            nc = _colorCurrent[dnBase + xR]; if (nc != 0) { neighbors++; rSum += (nc >> 16) & 0xFF; gSum += (nc >> 8) & 0xFF; bSum += nc & 0xFF; }
-
-            bool alive = _colorCurrent[idx] != 0;
-
-            if (alive)
+            if (neighbors == 2 || neighbors == 3)
             {
-                if (neighbors == 2 || neighbors == 3)
-                {
-                    _colorNext[idx] = _colorCurrent[idx];
-                    _age[idx] = (ushort)Math.Min(ushort.MaxValue, _age[idx] + 1);
-                    _fade[idx] = 0;
-                    int si = Math.Min(x / sectorW, SectorCountX - 1) + sy * SectorCountX;
-                    sectorAlive[si]++;
-                }
-                else
-                {
-                    _colorNext[idx] = 0;
-                    _fade[idx] = (byte)Math.Clamp(FadeGenerations, 1, 255);
-                    _fadeColor[idx] = _colorCurrent[idx];
-                    _age[idx] = 0;
-                }
+                _colorNext[idx] = self;
+                // Age is clamped at 3 — anything ≥ 3 produces the same RenderRow result.
+                if (_age[idx] < 3) _age[idx]++;
+                _fade[idx] = 0;
+                int si = Math.Min(x / sectorW, sectorCx) + sectorRowBase;
+                sectorAlive[si]++;
             }
             else
             {
-                if (neighbors == 3)
-                {
-                    uint r = rSum / 3, g = gSum / 3, b = bSum / 3;
-                    _colorNext[idx] = 0xFF000000 | (r << 16) | (g << 8) | b;
-                    _age[idx] = 1;
-                    _fade[idx] = 0;
-                    int bi = Math.Min(x / sectorW, SectorCountX - 1) + sy * SectorCountX;
-                    sectorBirths[bi]++;
-                }
-                else
-                {
-                    _colorNext[idx] = 0;
-                    if (_fade[idx] > 0) _fade[idx]--;
-                }
+                _colorNext[idx] = 0;
+                _fade[idx] = fadeStart;
+                _fadeColor[idx] = self;
+                _age[idx] = 0;
+            }
+        }
+        else
+        {
+            if (neighbors == 3)
+            {
+                uint r = rSum / 3, g = gSum / 3, b = bSum / 3;
+                _colorNext[idx] = 0xFF000000 | (r << 16) | (g << 8) | b;
+                _age[idx] = 1;
+                _fade[idx] = 0;
+                int bi = Math.Min(x / sectorW, sectorCx) + sectorRowBase;
+                sectorBirths[bi]++;
+            }
+            else
+            {
+                _colorNext[idx] = 0;
+                if (_fade[idx] > 0) _fade[idx]--;
             }
         }
     }
@@ -562,7 +589,21 @@ public sealed class GameOfLifePattern : BlobPatternBase
         // color cycling timer can detect dominant band changes for DOF.
         // When camera roam is active and zoomed in, only sample the visible
         // grid region so DOF reflects what the user actually sees.
-        UpdateDominantBrush();
+        //
+        // Throttle to roughly once every ~2 seconds of wall-clock time. DOF
+        // band-change events have a multi-second cooldown of their own, so
+        // running the stride-2 visible-region scan + 8-bucket histogram at
+        // anything close to the frame rate is wasted work.
+        //
+        // TickIntervalMs ranges 1–100 ms (user slider), or matches screen
+        // refresh when GameOfLifeUseScreenRate is on (~7 ms on a 144 Hz
+        // display, ~4 ms on 240 Hz). Compute interval from the actual tick
+        // rate so the wall-clock cadence stays constant: e.g. 20 ticks at
+        // 100 ms, ~285 ticks at 7 ms, 2000 ticks at 1 ms.
+        int tickMs = Math.Max(1, TickIntervalMs);
+        int interval = Math.Max(1, 2000 / tickMs);
+        if (_generationCount % interval == 0)
+            UpdateDominantBrush();
     }
 
     /// <summary>
@@ -968,11 +1009,24 @@ public sealed class GameOfLifePattern : BlobPatternBase
 
     private void InjectCells()
     {
-        // Count current population
+        // Single pass: count population AND collect stagnant cells (alive in both
+        // snapshots) so we don't walk the full grid twice on big simulations.
         int totalCells = _gridW * _gridH;
         int alive = 0;
-        for (int i = 0; i < totalCells; i++)
-            if (_colorCurrent[i] != 0) alive++;
+        _stagnantCells.Clear();
+        if (_snapshotReady)
+        {
+            for (int i = 0; i < totalCells; i++)
+            {
+                if (_colorCurrent[i] != 0) alive++;
+                if (_snapshotA[i] && _snapshotB[i]) _stagnantCells.Add(i);
+            }
+        }
+        else
+        {
+            for (int i = 0; i < totalCells; i++)
+                if (_colorCurrent[i] != 0) alive++;
+        }
 
         double density = (double)alive / totalCells;
 
@@ -1000,21 +1054,8 @@ public sealed class GameOfLifePattern : BlobPatternBase
         // When camera roam is active, bias 70% of injections toward the visible viewport
         bool biasToViewport = CameraRoam && _cameraZoom > 1.05;
 
-        // Build a list of stagnant cell positions to use as injection targets.
-        // Stagnant = alive in both snapshots (still-life or oscillator).
-        List<int>? stagnantCells = null;
-        if (_snapshotReady)
-        {
-            stagnantCells = new List<int>();
-            int cellCount = _gridW * _gridH;
-            for (int i = 0; i < cellCount; i++)
-            {
-                if (_snapshotA[i] && _snapshotB[i])
-                    stagnantCells.Add(i);
-            }
-            if (stagnantCells.Count == 0)
-                stagnantCells = null;
-        }
+        // Stagnant cell list was populated in the alive-count pass above.
+        bool hasStagnant = _stagnantCells.Count > 0;
 
         for (int s = 0; s < clustersToAdd; s++)
         {
@@ -1026,9 +1067,9 @@ public sealed class GameOfLifePattern : BlobPatternBase
             int cx, cy;
 
             // 60% chance to target a stagnant cell when available
-            if (stagnantCells != null && _rng.NextDouble() < 0.6)
+            if (hasStagnant && _rng.NextDouble() < 0.6)
             {
-                int pick = stagnantCells[_rng.Next(stagnantCells.Count)];
+                int pick = _stagnantCells[_rng.Next(_stagnantCells.Count)];
                 cx = pick % _gridW;
                 cy = pick / _gridW;
             }
