@@ -126,6 +126,8 @@ public class AppSettings
     /// <summary>Restart the Game of Life simulation whenever a new track starts.</summary>
     public bool GameOfLifeRestartOnTrackChange { get; set; } = false;
     public int GameOfLifeScalingMode { get; set; } // 0 = NearestNeighbor, 1 = Fant
+    /// <summary>Color model for births. 0 = Genetic (blend of parent colors), 1 = EraBanded (current global rotating hue).</summary>
+    public int GameOfLifeColorMode { get; set; } // 0 = Genetic, 1 = EraBanded
 
     // Ferrofluid tuning
     public double FerrofluidCoreGravity { get; set; } = 280.0;

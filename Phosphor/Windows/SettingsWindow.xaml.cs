@@ -98,6 +98,7 @@ public partial class SettingsWindow : JukeboxWindow
     private int _originalGameOfLifeCameraOverscan;
     private double _originalGameOfLifeCameraSpeed;
     private bool _originalGameOfLifeRestartOnTrackChange;
+    private int _originalGameOfLifeColorMode;
     private double _originalProjectMPresetDuration;
     private double _originalProjectMSoftCut;
     private bool _originalProjectMHardCut;
@@ -229,7 +230,8 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.GameOfLifeCameraRoam != _originalGameOfLifeCameraRoam ||
         _settings.GameOfLifeCameraOverscan != _originalGameOfLifeCameraOverscan ||
         _settings.GameOfLifeCameraSpeed != _originalGameOfLifeCameraSpeed ||
-        _settings.GameOfLifeRestartOnTrackChange != _originalGameOfLifeRestartOnTrackChange;
+        _settings.GameOfLifeRestartOnTrackChange != _originalGameOfLifeRestartOnTrackChange ||
+        _settings.GameOfLifeColorMode != _originalGameOfLifeColorMode;
 
     public event Action? SettingsApplied;
 
@@ -550,6 +552,10 @@ public partial class SettingsWindow : JukeboxWindow
         CbGameOfLifeScalingMode.Items.Add("Nearest Neighbor");
         CbGameOfLifeScalingMode.Items.Add("Smooth (Fant)");
         CbGameOfLifeScalingMode.SelectedIndex = Math.Clamp(settings.GameOfLifeScalingMode, 0, 1);
+        CbGameOfLifeColorMode.Items.Clear();
+        CbGameOfLifeColorMode.Items.Add("Genetic (blend parents)");
+        CbGameOfLifeColorMode.Items.Add("Era-Banded (rotating hue)");
+        CbGameOfLifeColorMode.SelectedIndex = Math.Clamp(settings.GameOfLifeColorMode, 0, 1);
         UpdateGameOfLifeCameraVisibility();
         UpdateGameOfLifeTuningVisibility();
 
@@ -785,6 +791,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalGameOfLifeCameraOverscan = settings.GameOfLifeCameraOverscan;
         _originalGameOfLifeCameraSpeed = settings.GameOfLifeCameraSpeed;
         _originalGameOfLifeRestartOnTrackChange = settings.GameOfLifeRestartOnTrackChange;
+        _originalGameOfLifeColorMode = settings.GameOfLifeColorMode;
         _originalProjectMPresetDuration = settings.ProjectMPresetDuration;
         _originalProjectMSoftCut = settings.ProjectMSoftCutDuration;
         _originalProjectMHardCut = settings.ProjectMHardCutEnabled;
@@ -1970,6 +1977,8 @@ public partial class SettingsWindow : JukeboxWindow
 
     private void CbGameOfLifeScalingMode_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) { }
 
+    private void CbGameOfLifeColorMode_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) { }
+
     private void UpdateGameOfLifeCameraVisibility()
     {
         if (PanelGameOfLifeCameraSettings != null)
@@ -2480,6 +2489,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.GameOfLifeCameraSpeed = SliderGameOfLifeCameraSpeed.Value;
         _settings.GameOfLifeRestartOnTrackChange = CbGameOfLifeRestartOnTrackChange.IsChecked == true;
         _settings.GameOfLifeScalingMode = CbGameOfLifeScalingMode.SelectedIndex;
+        _settings.GameOfLifeColorMode = CbGameOfLifeColorMode.SelectedIndex;
         _settings.ReactiveBlobsPlayfield = CbReactiveBlobsPlayfield.IsChecked == true;
         _settings.ReactiveBlobsBackglass = CbReactiveBlobsBackglass.IsChecked == true;
         _settings.ReactiveBlobsTopper = CbReactiveBlobsTopper.IsChecked == true;
@@ -2572,6 +2582,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalGameOfLifeCameraOverscan = _settings.GameOfLifeCameraOverscan;
         _originalGameOfLifeCameraSpeed = _settings.GameOfLifeCameraSpeed;
         _originalGameOfLifeRestartOnTrackChange = _settings.GameOfLifeRestartOnTrackChange;
+        _originalGameOfLifeColorMode = _settings.GameOfLifeColorMode;
         _originalProjectMPresetDuration = _settings.ProjectMPresetDuration;
         _originalProjectMSoftCut = _settings.ProjectMSoftCutDuration;
         _originalProjectMHardCut = _settings.ProjectMHardCutEnabled;

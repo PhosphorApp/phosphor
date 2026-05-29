@@ -635,6 +635,7 @@ public partial class DmdWindow : JukeboxWindow
             1 => BitmapScalingMode.Fant,
             _ => BitmapScalingMode.NearestNeighbor,
         };
+        GameOfLifePattern.ColorMode = (GameOfLifePattern.ColorModeKind)Math.Clamp(settings.GameOfLifeColorMode, 0, 1);
         FerrofluidSimulator.CoreGravity = settings.FerrofluidCoreGravity;
         FerrofluidSimulator.MutualAttraction = settings.FerrofluidMutualAttraction;
         FerrofluidSimulator.Damping = settings.FerrofluidDamping;
@@ -1966,6 +1967,7 @@ public partial class DmdWindow : JukeboxWindow
         GameOfLifePattern.CameraOverscan = Math.Clamp(_appSettings.GameOfLifeCameraOverscan, 0, 100);
         GameOfLifePattern.CameraSpeed = Math.Clamp(_appSettings.GameOfLifeCameraSpeed, 0.1, 3.0);
         GameOfLifePattern.RestartOnTrackChange = _appSettings.GameOfLifeRestartOnTrackChange;
+        GameOfLifePattern.ColorMode = (GameOfLifePattern.ColorModeKind)Math.Clamp(_appSettings.GameOfLifeColorMode, 0, 1);
         if (settingsWindow.GameOfLifeSettingsChanged)
         {
             _playfieldProxy?.RestartGameOfLife();

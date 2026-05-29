@@ -50,6 +50,21 @@ public sealed class GameOfLifePattern : BlobPatternBase
     /// <summary>Bitmap scaling mode used when upscaling cells to screen size. Default NearestNeighbor.</summary>
     public static BitmapScalingMode ScalingMode { get; set; } = BitmapScalingMode.NearestNeighbor;
 
+    /// <summary>
+    /// Color model for new births.
+    /// <list type="bullet">
+    /// <item><c>Genetic</c> — inherit a blended RGB average of the three live parents.
+    /// Produces collisions between regions that birth new mixed colors (e.g. red+yellow → orange).</item>
+    /// <item><c>EraBanded</c> — take the simulation's current rotating-hue value. Survivors keep
+    /// their birth color until death, so regions visually band by age ("color geology"). This
+    /// mode unlocks future bitboard optimizations because color is no longer derived from neighbors.</item>
+    /// </list>
+    /// </summary>
+    public enum ColorModeKind { Genetic = 0, EraBanded = 1 }
+
+    /// <summary>Selected color model for births. Default <see cref="ColorModeKind.Genetic"/>.</summary>
+    public static ColorModeKind ColorMode { get; set; } = ColorModeKind.Genetic;
+
     /// <summary>Fraction of grid edge to keep clear when placing seed clusters (0.0–0.5).</summary>
     private const double PlacementMargin = 0.05;
 
@@ -366,6 +381,14 @@ public sealed class GameOfLifePattern : BlobPatternBase
 
     private void StepSimulation()
     {
+        // Phase 1: both Genetic and EraBanded modes share this scalar code path.
+        // EraBanded will diverge here in a future phase to use a bitboard
+        // alive/dead step + global-hue color writes (see PERFORMANCE_NOTES.md
+        // "Bitboard Simulation + EraBanded Color Mode" section). The setting is
+        // already wired through end-to-end so the UI and persistence are final.
+        // TODO(GoL-Bitboard): when ColorMode == EraBanded, dispatch to the
+        // bitboard implementation instead of the scalar path below.
+
         int w = _gridW, h = _gridH;
         int totalCells = w * h;
         // _colorNext is fully overwritten by StepRow (every cell writes either a color or 0),
