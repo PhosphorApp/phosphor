@@ -210,7 +210,18 @@ public class AppSettings
     public bool RepeatEnabled { get; set; }
     public bool AutoDjEnabled { get; set; }
     public bool AutoPlayQueueOnStart { get; set; }
+    /// <summary>
+    /// Legacy single-path setting. Retained for backward compatibility with older
+    /// settings files. When loaded, it is merged into <see cref="StartupDittiPaths"/>
+    /// and cleared on next save.
+    /// </summary>
     public string StartupDittiPath { get; set; } = "";
+    /// <summary>
+    /// List of audio file paths to use as startup ditties. A random entry is chosen
+    /// each launch. Paths may be relative (resolved against the app base directory,
+    /// allowing portable settings) or absolute.
+    /// </summary>
+    public List<string> StartupDittiPaths { get; set; } = [];
     public bool EnableStartupDitti { get; set; }
     public int LastQueueIndex { get; set; } = -1;
     public bool DofEnabled { get; set; }
@@ -300,7 +311,15 @@ public class AppSettings
             try
             {
                 var json = File.ReadAllText(SettingsPath);
-                return JsonSerializer.Deserialize<AppSettings>(json) ?? Defaults;
+                var loaded = JsonSerializer.Deserialize<AppSettings>(json) ?? Defaults;
+                // Migrate legacy single StartupDittiPath into the list-based StartupDittiPaths
+                if (!string.IsNullOrWhiteSpace(loaded.StartupDittiPath) &&
+                    !loaded.StartupDittiPaths.Contains(loaded.StartupDittiPath))
+                {
+                    loaded.StartupDittiPaths.Insert(0, loaded.StartupDittiPath);
+                }
+                loaded.StartupDittiPath = "";
+                return loaded;
             }
             catch
             {

@@ -285,7 +285,14 @@ public partial class SettingsWindow : JukeboxWindow
         CbShowPlayfield.IsChecked = settings.ShowPlayfield;
         CbShowTopper.IsChecked = settings.ShowTopper;
         CbAutoPlayQueue.IsChecked = settings.AutoPlayQueueOnStart;
-        TbStartupDittiPath.Text = settings.StartupDittiPath;
+        // Populate startup ditti list (migrate legacy single path if present)
+        _startupDittiPaths.Clear();
+        foreach (var p in settings.StartupDittiPaths)
+            if (!string.IsNullOrWhiteSpace(p))
+                _startupDittiPaths.Add(p);
+        if (_startupDittiPaths.Count == 0 && !string.IsNullOrWhiteSpace(settings.StartupDittiPath))
+            _startupDittiPaths.Add(settings.StartupDittiPath);
+        LbStartupDittiPaths.ItemsSource = _startupDittiPaths;
         CbEnableStartupDitti.IsChecked = settings.EnableStartupDitti;
         CbDofEnabled.IsChecked = settings.DofEnabled;
         TbDofRomName.Text = settings.DofRomName;
@@ -1004,21 +1011,61 @@ public partial class SettingsWindow : JukeboxWindow
             TbStaticImagePath.Text = dlg.FileName;
     }
 
-    private void BrowseStartupDitti_Click(object sender, RoutedEventArgs e)
+    private readonly ObservableCollection<string> _startupDittiPaths = new();
+
+    private void AddStartupDitti_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
             Title = "Select Startup Ditti Audio",
-            Filter = "Audio files|*.mp3;*.m4a;*.ogg;*.wav;*.flac;*.wma;*.aac|All files|*.*"
+            Filter = "Audio files|*.mp3;*.m4a;*.ogg;*.wav;*.flac;*.wma;*.aac|All files|*.*",
+            Multiselect = true
         };
-        if (!string.IsNullOrWhiteSpace(TbStartupDittiPath.Text))
+        // Seed initial directory from an existing entry if any
+        if (_startupDittiPaths.Count > 0)
         {
-            var dir = System.IO.Path.GetDirectoryName(TbStartupDittiPath.Text);
+            var first = _startupDittiPaths[0];
+            var resolved = System.IO.Path.IsPathRooted(first)
+                ? first
+                : System.IO.Path.Combine(AppContext.BaseDirectory, first);
+            var dir = System.IO.Path.GetDirectoryName(resolved);
             if (!string.IsNullOrEmpty(dir) && System.IO.Directory.Exists(dir))
                 dlg.InitialDirectory = dir;
         }
-        if (dlg.ShowDialog(this) == true)
-            TbStartupDittiPath.Text = dlg.FileName;
+        if (dlg.ShowDialog(this) != true) return;
+
+        foreach (var file in dlg.FileNames)
+        {
+            var stored = MakePortableDittiPath(file);
+            if (!_startupDittiPaths.Contains(stored))
+                _startupDittiPaths.Add(stored);
+        }
+    }
+
+    private void RemoveStartupDitti_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button btn && btn.DataContext is string path)
+            _startupDittiPaths.Remove(path);
+    }
+
+    /// <summary>
+    /// If <paramref name="fullPath"/> lives inside the executing app's base directory
+    /// (or any subfolder of it), returns a relative path so settings are portable.
+    /// Otherwise returns the original absolute path.
+    /// </summary>
+    private static string MakePortableDittiPath(string fullPath)
+    {
+        try
+        {
+            var baseDir = System.IO.Path.GetFullPath(AppContext.BaseDirectory)
+                .TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar)
+                + System.IO.Path.DirectorySeparatorChar;
+            var full = System.IO.Path.GetFullPath(fullPath);
+            if (full.StartsWith(baseDir, StringComparison.OrdinalIgnoreCase))
+                return full.Substring(baseDir.Length);
+        }
+        catch { }
+        return fullPath;
     }
 
     private void BrowseVideo_Click(object sender, RoutedEventArgs e)
@@ -2215,7 +2262,8 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.ShowPlayfield = CbShowPlayfield.IsChecked == true;
         _settings.ShowTopper = CbShowTopper.IsChecked == true;
         _settings.AutoPlayQueueOnStart = CbAutoPlayQueue.IsChecked == true;
-        _settings.StartupDittiPath = TbStartupDittiPath.Text;
+        _settings.StartupDittiPaths = new List<string>(_startupDittiPaths);
+        _settings.StartupDittiPath = ""; // legacy field cleared; data lives in StartupDittiPaths
         _settings.EnableStartupDitti = CbEnableStartupDitti.IsChecked == true;
         _settings.DofEnabled = CbDofEnabled.IsChecked == true;
         _settings.DofRomName = string.IsNullOrWhiteSpace(TbDofRomName.Text) ? "vpinjukebox" : TbDofRomName.Text.Trim();

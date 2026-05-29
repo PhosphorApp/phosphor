@@ -340,15 +340,32 @@ public partial class App : Application
 
     private void PlayStartupDitti(JukeboxViewModel viewModel)
     {
-        DebugLog.Log("Ditti", $"PlayStartupDitti called: Enabled={_settings.EnableStartupDitti}, Path='{_settings.StartupDittiPath}', AutoPlay={_settings.AutoPlayQueueOnStart}, QueueCount={viewModel.Queue.Count}");
+        var paths = _settings.StartupDittiPaths ?? new List<string>();
+        // Honor legacy single-path setting if list is empty
+        if (paths.Count == 0 && !string.IsNullOrWhiteSpace(_settings.StartupDittiPath))
+            paths = new List<string> { _settings.StartupDittiPath };
+
+        DebugLog.Log("Ditti", $"PlayStartupDitti called: Enabled={_settings.EnableStartupDitti}, Count={paths.Count}, AutoPlay={_settings.AutoPlayQueueOnStart}, QueueCount={viewModel.Queue.Count}");
         if (!_settings.EnableStartupDitti) { DebugLog.Log("Ditti", "Skipped: not enabled"); return; }
-        if (string.IsNullOrWhiteSpace(_settings.StartupDittiPath)) { DebugLog.Log("Ditti", "Skipped: no path"); return; }
-        var dittiPath = _settings.StartupDittiPath;
-        if (!System.IO.Path.IsPathRooted(dittiPath))
-            dittiPath = System.IO.Path.Combine(AppContext.BaseDirectory, dittiPath);
-        if (!System.IO.File.Exists(dittiPath)) { DebugLog.Log("Ditti", $"Skipped: file not found: {dittiPath}"); return; }
+        if (paths.Count == 0) { DebugLog.Log("Ditti", "Skipped: no paths"); return; }
         if (_settings.AutoPlayQueueOnStart && viewModel.Queue.Count > 0) { DebugLog.Log("Ditti", "Skipped: auto-play queue active"); return; }
 
+        // Resolve relative paths against base directory; filter to ones that exist
+        var resolved = new List<string>();
+        foreach (var p in paths)
+        {
+            if (string.IsNullOrWhiteSpace(p)) continue;
+            var full = System.IO.Path.IsPathRooted(p)
+                ? p
+                : System.IO.Path.Combine(AppContext.BaseDirectory, p);
+            if (System.IO.File.Exists(full))
+                resolved.Add(full);
+            else
+                DebugLog.Log("Ditti", $"Skipping missing file: {p}");
+        }
+        if (resolved.Count == 0) { DebugLog.Log("Ditti", "Skipped: no existing files"); return; }
+
+        var dittiPath = resolved[Random.Shared.Next(resolved.Count)];
         StartDittiPlayback(viewModel, dittiPath);
     }
 
