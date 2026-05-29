@@ -90,6 +90,13 @@ public sealed class GameOfLifePattern : BlobPatternBase
     // Avoids a per-beat List<int> allocation on grids with hundreds of stagnant cells.
     private readonly List<int> _stagnantCells = new();
 
+    // EraBanded color state: a global rotating hue used as the birth color for
+    // every cell born this tick (and for seed/injection cells too). Survivors
+    // keep their original birth color until death, so regions visually band by
+    // age. Updated once per OnTick in UpdateBirthColor().
+    private uint _currentBirthColor = 0xFFFFFFFF;
+    private const double HueRotationPeriodMs = 60_000.0; // full ROYGBIV cycle in 60s
+
     // Audio state
     private bool _pendingBeat;
     private float _lastLevel;
@@ -296,11 +303,24 @@ public sealed class GameOfLifePattern : BlobPatternBase
         int marginX = Math.Max(2, (int)(_gridW * PlacementMargin));
         int marginY = Math.Max(2, (int)(_gridH * PlacementMargin));
 
+        // EraBanded mode: every seed cell shares the current rotating-hue color
+        // (cells born at time T wear color(T)). Refresh once here since SeedGrid
+        // runs before the first OnTick.
+        bool useEraBanded = ColorMode == ColorModeKind.EraBanded;
+        if (useEraBanded) UpdateBirthColor();
+
         for (int s = 0; s < count; s++)
         {
-            double hue = _rng.NextDouble() * 360.0;
-            var color = HslToColor(hue, 0.9, 0.6);
-            uint packed = PackColor(color);
+            uint packed;
+            if (useEraBanded)
+            {
+                packed = _currentBirthColor;
+            }
+            else
+            {
+                double hue = _rng.NextDouble() * 360.0;
+                packed = PackColor(HslToColor(hue, 0.9, 0.6));
+            }
 
             int cx = _rng.Next(marginX, _gridW - marginX);
             int cy = _rng.Next(marginY, _gridH - marginY);
@@ -349,6 +369,11 @@ public sealed class GameOfLifePattern : BlobPatternBase
         _frameSw.Restart();
         _generationCount++;
 
+        // Advance the EraBanded rotating birth color once per tick so all
+        // births this generation (Conway births, beat injections, periodic
+        // injections) share a single hue — the defining property of the mode.
+        UpdateBirthColor();
+
         // Inject new cells on beat
         if (_pendingBeat)
         {
@@ -379,15 +404,35 @@ public sealed class GameOfLifePattern : BlobPatternBase
     // is ~83k cells — already worth it; cellSize=10 is ~21k — not).
     private const int ParallelCellThreshold = 50_000;
 
+    /// <summary>
+    /// Recompute <see cref="_currentBirthColor"/> from wall-clock time. The hue
+    /// completes a full 360° rotation every <see cref="HueRotationPeriodMs"/>
+    /// milliseconds. Called once per tick (and at seed time before the first
+    /// tick) so every new cell born in the same tick gets exactly the same
+    /// color in EraBanded mode.
+    /// </summary>
+    private void UpdateBirthColor()
+    {
+        double phase = (Environment.TickCount64 % (long)HueRotationPeriodMs) / HueRotationPeriodMs;
+        double hue = phase * 360.0;
+        _currentBirthColor = PackColor(HslToColor(hue, 0.9, 0.6));
+    }
+
     private void StepSimulation()
     {
-        // Phase 1: both Genetic and EraBanded modes share this scalar code path.
-        // EraBanded will diverge here in a future phase to use a bitboard
-        // alive/dead step + global-hue color writes (see PERFORMANCE_NOTES.md
-        // "Bitboard Simulation + EraBanded Color Mode" section). The setting is
-        // already wired through end-to-end so the UI and persistence are final.
-        // TODO(GoL-Bitboard): when ColorMode == EraBanded, dispatch to the
-        // bitboard implementation instead of the scalar path below.
+        // Both Genetic and EraBanded modes currently share this scalar code path.
+        // Phase 2 (this commit): EraBanded swaps the per-birth color from a
+        // parent-color average to a single global rotating hue, controlled by
+        // the useEraBanded local captured below. The grid/neighbor logic is
+        // identical to Genetic mode, so correctness is trivially preserved.
+        // Phase 3 (future): when ColorMode == EraBanded, dispatch to a dedicated
+        // bitboard alive/dead step instead of the scalar loop. See
+        // PERFORMANCE_NOTES.md "Bitboard Simulation + EraBanded Color Mode".
+
+        // Capture the static ColorMode + per-tick birth color into locals so the
+        // inner loop's birth branch can use them without re-reading statics.
+        bool useEraBanded = ColorMode == ColorModeKind.EraBanded;
+        uint eraBandedColor = _currentBirthColor;
 
         int w = _gridW, h = _gridH;
         int totalCells = w * h;
@@ -410,7 +455,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
                 () => (births: new int[sectorCount], alive: new int[sectorCount]),
                 (y, _, local) =>
                 {
-                    StepRow(y, w, h, sectorW, sectorH, local.births, local.alive);
+                    StepRow(y, w, h, sectorW, sectorH, local.births, local.alive, useEraBanded, eraBandedColor);
                     return local;
                 },
                 local =>
@@ -428,7 +473,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
         else
         {
             for (int y = 0; y < h; y++)
-                StepRow(y, w, h, sectorW, sectorH, _sectorBirths, _sectorAlive);
+                StepRow(y, w, h, sectorW, sectorH, _sectorBirths, _sectorAlive, useEraBanded, eraBandedColor);
         }
 
         // Swap buffers
@@ -464,7 +509,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
     /// Sector counters are accumulated into the caller-supplied arrays so
     /// each thread can use its own buffers (merged in StepSimulation).
     /// </summary>
-    private void StepRow(int y, int w, int h, int sectorW, int sectorH, int[] sectorBirths, int[] sectorAlive)
+    private void StepRow(int y, int w, int h, int sectorW, int sectorH, int[] sectorBirths, int[] sectorAlive, bool useEraBanded, uint eraBandedColor)
     {
         int sy = Math.Min(y / sectorH, SectorCountY - 1);
         int yUp = y == 0 ? h - 1 : y - 1;
@@ -477,16 +522,16 @@ public sealed class GameOfLifePattern : BlobPatternBase
         int sectorCx = SectorCountX - 1;
 
         // Edge column x=0 (left wraps to w-1)
-        ProcessCell(0, w - 1, w > 1 ? 1 : 0, rowBase, upBase, dnBase, sectorW, sectorCx, sectorRowBase, fadeStart, sectorBirths, sectorAlive);
+        ProcessCell(0, w - 1, w > 1 ? 1 : 0, rowBase, upBase, dnBase, sectorW, sectorCx, sectorRowBase, fadeStart, sectorBirths, sectorAlive, useEraBanded, eraBandedColor);
 
         // Interior columns — no wrap branches; xL = x-1, xR = x+1 are always valid.
         // Most cells live here, so eliminating two branches per cell is a real win.
         for (int x = 1; x < w - 1; x++)
-            ProcessCell(x, x - 1, x + 1, rowBase, upBase, dnBase, sectorW, sectorCx, sectorRowBase, fadeStart, sectorBirths, sectorAlive);
+            ProcessCell(x, x - 1, x + 1, rowBase, upBase, dnBase, sectorW, sectorCx, sectorRowBase, fadeStart, sectorBirths, sectorAlive, useEraBanded, eraBandedColor);
 
         // Edge column x=w-1 (right wraps to 0). Skip when w==1 (already handled above).
         if (w > 1)
-            ProcessCell(w - 1, w - 2, 0, rowBase, upBase, dnBase, sectorW, sectorCx, sectorRowBase, fadeStart, sectorBirths, sectorAlive);
+            ProcessCell(w - 1, w - 2, 0, rowBase, upBase, dnBase, sectorW, sectorCx, sectorRowBase, fadeStart, sectorBirths, sectorAlive, useEraBanded, eraBandedColor);
     }
 
     /// <summary>
@@ -495,7 +540,8 @@ public sealed class GameOfLifePattern : BlobPatternBase
     /// </summary>
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     private void ProcessCell(int x, int xL, int xR, int rowBase, int upBase, int dnBase,
-        int sectorW, int sectorCx, int sectorRowBase, byte fadeStart, int[] sectorBirths, int[] sectorAlive)
+        int sectorW, int sectorCx, int sectorRowBase, byte fadeStart, int[] sectorBirths, int[] sectorAlive,
+        bool useEraBanded, uint eraBandedColor)
     {
         int idx = rowBase + x;
 
@@ -539,8 +585,20 @@ public sealed class GameOfLifePattern : BlobPatternBase
         {
             if (neighbors == 3)
             {
-                uint r = rSum / 3, g = gSum / 3, b = bSum / 3;
-                _colorNext[idx] = 0xFF000000 | (r << 16) | (g << 8) | b;
+                // EraBanded mode: every birth this tick uses the same rotating-hue
+                // color, so regions visually band by age. Genetic mode: average
+                // the three live parents' RGB (the current default behavior).
+                uint birthColor;
+                if (useEraBanded)
+                {
+                    birthColor = eraBandedColor;
+                }
+                else
+                {
+                    uint r = rSum / 3, g = gSum / 3, b = bSum / 3;
+                    birthColor = 0xFF000000 | (r << 16) | (g << 8) | b;
+                }
+                _colorNext[idx] = birthColor;
                 _age[idx] = 1;
                 _fade[idx] = 0;
                 int bi = Math.Min(x / sectorW, sectorCx) + sectorRowBase;
@@ -1068,7 +1126,9 @@ public sealed class GameOfLifePattern : BlobPatternBase
             _ => 1,
         }) * densityFactor * areaRatio);
 
-        // Use a hue based on current time for variety
+        // Use a hue based on current time for variety (Genetic mode). In
+        // EraBanded mode every cluster this tick shares the global birth color.
+        bool useEraBanded = ColorMode == ColorModeKind.EraBanded;
         double baseHue = (Environment.TickCount64 / 50.0) % 360.0;
 
         int marginX = Math.Max(2, (int)(_gridW * PlacementMargin));
@@ -1082,10 +1142,18 @@ public sealed class GameOfLifePattern : BlobPatternBase
 
         for (int s = 0; s < clustersToAdd; s++)
         {
-            double hue = (baseHue + _rng.NextDouble() * 60.0 - 30.0) % 360.0;
-            if (hue < 0) hue += 360.0;
-            var color = HslToColor(hue, 0.9, 0.6);
-            uint packed = PackColor(color);
+            uint packed;
+            if (useEraBanded)
+            {
+                packed = _currentBirthColor;
+            }
+            else
+            {
+                double hue = (baseHue + _rng.NextDouble() * 60.0 - 30.0) % 360.0;
+                if (hue < 0) hue += 360.0;
+                var color = HslToColor(hue, 0.9, 0.6);
+                packed = PackColor(color);
+            }
 
             int cx, cy;
 

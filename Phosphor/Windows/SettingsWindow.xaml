@@ -711,7 +711,7 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Color:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Width="100"/>
-                                    <ComboBox x:Name="CbGameOfLifeColorMode" Width="170"
+                                    <ComboBox x:Name="CbGameOfLifeColorMode" Width="220"
                                               SelectionChanged="CbGameOfLifeColorMode_SelectionChanged"
                                               ToolTip="Genetic = births inherit a blend of parent colors (rich mixing). EraBanded = births take the current rotating hue (regions band by age)."/>
                                 </StackPanel>
