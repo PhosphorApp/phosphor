@@ -76,7 +76,7 @@ public class VideoCache
             SaveIndex();
 
             DebugLog.Log("VideoCache", $"Hit: {videoId} ({entry.Resolution}, {entry.SizeBytes / 1024 / 1024}MB)");
-            return new CachedVideo(filePath, entry.Resolution);
+            return new CachedVideo(filePath, entry.Resolution, entry.Chapters);
         }
     }
 
@@ -166,6 +166,24 @@ public class VideoCache
             DebugLog.Log("VideoCache", $"Download failed for {videoId}: {ex.Message}");
             // Clean up partial files
             CleanPartialFiles(videoId);
+        }
+    }
+
+    /// <summary>
+    /// Updates chapter data for a cached video entry.
+    /// </summary>
+    public void UpdateChapters(string videoId, List<ChapterMarker>? chapters)
+    {
+        if (chapters == null || chapters.Count == 0) return;
+        lock (_lock)
+        {
+            var entry = _entries.FirstOrDefault(e => e.VideoId == videoId);
+            if (entry != null && entry.Chapters == null)
+            {
+                entry.Chapters = chapters;
+                SaveIndex();
+                DebugLog.Log("VideoCache", $"Stored {chapters.Count} chapters for {videoId}");
+            }
         }
     }
 
@@ -369,6 +387,7 @@ public class CacheEntry
     public string Resolution { get; set; } = "";
     public DateTime CachedAt { get; set; }
     public DateTime LastAccessed { get; set; }
+    public List<ChapterMarker>? Chapters { get; set; }
 }
 
-public record CachedVideo(string FilePath, string Resolution);
+public record CachedVideo(string FilePath, string Resolution, List<ChapterMarker>? Chapters = null);

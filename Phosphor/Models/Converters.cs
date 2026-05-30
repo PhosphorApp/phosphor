@@ -66,3 +66,19 @@ public class IsCurrentQueueItemConverter : IMultiValueConverter
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }
+
+/// <summary>
+/// Converts a fractional position (0.0–1.0) and container width to a Canvas.Left value.
+/// </summary>
+public class FractionToCanvasLeftConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (values.Length >= 2 && values[0] is double fraction && values[1] is double width)
+            return fraction * width;
+        return 0.0;
+    }
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}

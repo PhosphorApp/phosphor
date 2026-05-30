@@ -23,9 +23,10 @@ public class PlexService
     }
 
     /// <summary>
-    /// Always includes stream metadata so we can detect native audio channel counts.
+    /// Always includes stream metadata so we can detect native audio channel counts,
+    /// and chapter markers for video items.
     /// </summary>
-    private string StreamParam => "&includeStreams=1";
+    private string StreamParam => "&includeStreams=1&includeChapters=1";
 
     public void Configure(string serverUrl, string token, bool stereoAudio = false)
     {
@@ -33,6 +34,54 @@ public class PlexService
         _token = token;
         _stereoAudio = stereoAudio;
         DebugLog.Log("Plex", $"Configured: server={_serverUrl} stereoAudio={_stereoAudio}");
+    }
+
+    /// <summary>
+    /// Fetch chapter markers for a specific Plex item by rating key.
+    /// Returns null if no chapters are found.
+    /// </summary>
+    public async Task<List<ChapterMarker>?> GetChaptersAsync(string ratingKey)
+    {
+        try
+        {
+            var url = $"{_serverUrl}/library/metadata/{ratingKey}?X-Plex-Token={_token}&includeChapters=1";
+            var doc = await FetchJsonAsync(url);
+
+            if (doc.RootElement.TryGetProperty("MediaContainer", out var mc) &&
+                mc.TryGetProperty("Metadata", out var metadata))
+            {
+                foreach (var m in metadata.EnumerateArray())
+                {
+                    if (m.TryGetProperty("Chapter", out var chapterArr))
+                    {
+                        var chapters = new List<ChapterMarker>();
+                        foreach (var ch in chapterArr.EnumerateArray())
+                        {
+                            var title = ch.TryGetProperty("tag", out var ct) ? ct.GetString() ?? "" : "";
+                            var startMs = ch.TryGetProperty("startTimeOffset", out var sto) ? sto.GetInt64() : 0;
+                            var endMs = ch.TryGetProperty("endTimeOffset", out var eto) ? eto.GetInt64() : 0;
+                            chapters.Add(new ChapterMarker
+                            {
+                                Title = title,
+                                StartTime = TimeSpan.FromMilliseconds(startMs),
+                                EndTime = TimeSpan.FromMilliseconds(endMs)
+                            });
+                        }
+                        if (chapters.Count > 0)
+                        {
+                            DiagLog($"GetChaptersAsync({ratingKey}): {chapters.Count} chapters found");
+                            return chapters;
+                        }
+                    }
+                }
+            }
+            DiagLog($"GetChaptersAsync({ratingKey}): no chapters found");
+        }
+        catch (Exception ex)
+        {
+            DiagLog($"GetChaptersAsync({ratingKey}) error: {ex.Message}");
+        }
+        return null;
     }
 
     /// <summary>
@@ -74,7 +123,7 @@ public class PlexService
     public async Task<List<VideoItem>> SearchAsync(string query)
     {
         var encoded = Uri.EscapeDataString(query);
-        var url = $"{_serverUrl}/hubs/search?query={encoded}&limit=50&X-Plex-Token={_token}{StreamParam}";
+        var url = $"{_serverUrl}/hubs/search?query={encoded}&limit=100&X-Plex-Token={_token}{StreamParam}";
         var doc = await FetchJsonAsync(url);
         return ParseSearchResults(doc);
     }
@@ -743,6 +792,27 @@ public class PlexService
             DiagLog($"  stream: {ds}");
         DiagLog($"  => PlexAudioStream={audioStream}  streamUrl={streamUrl}");
 
+        // Parse chapter markers if present
+        List<ChapterMarker>? chapters = null;
+        if (m.TryGetProperty("Chapter", out var chapterArr))
+        {
+            chapters = [];
+            foreach (var ch in chapterArr.EnumerateArray())
+            {
+                var chTitle = ch.TryGetProperty("tag", out var ct) ? ct.GetString() ?? "" : "";
+                var startMs = ch.TryGetProperty("startTimeOffset", out var sto) ? sto.GetInt64() : 0;
+                var endMs = ch.TryGetProperty("endTimeOffset", out var eto) ? eto.GetInt64() : 0;
+                chapters.Add(new ChapterMarker
+                {
+                    Title = chTitle,
+                    StartTime = TimeSpan.FromMilliseconds(startMs),
+                    EndTime = TimeSpan.FromMilliseconds(endMs)
+                });
+            }
+            if (chapters.Count == 0) chapters = null;
+            else DiagLog($"  chapters: {chapters.Count} found");
+        }
+
         return new VideoItem
         {
             Title = title,
@@ -752,8 +822,10 @@ public class PlexService
             Duration = duration,
             StreamUrl = streamUrl,
             PlexItemType = isAudio ? PlexItemType.Track : PlexItemType.None,
+            PlexRatingKey = ratingKey,
             IsAudioOnly = isAudio,
-            PlexAudioStream = audioStream
+            PlexAudioStream = audioStream,
+            Chapters = chapters
         };
     }
 

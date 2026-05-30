@@ -162,6 +162,8 @@ public partial class DmdWindow : JukeboxWindow
                         _dofClient?.Trigger('E', 110, vmLoaded.PlayTransitioning ? 1 : 0);
                     if (args.PropertyName == nameof(JukeboxViewModel.CurrentQueueItem) && vmLoaded.CurrentQueueItem != null)
                         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => QueueList.ScrollIntoView(vmLoaded.CurrentQueueItem));
+                    if (args.PropertyName == nameof(JukeboxViewModel.ChapterTickPositions))
+                        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, UpdateChapterTickPositions);
                 };
                 vmLoaded.SearchResults.CollectionChanged += (_, args) =>
                 {
@@ -267,6 +269,7 @@ public partial class DmdWindow : JukeboxWindow
     }
 
     private bool _scrubDragging;
+    private System.Windows.Controls.ToolTip? _scrubToolTip;
 
     private void WireScrubBar()
     {
@@ -284,10 +287,14 @@ public partial class DmdWindow : JukeboxWindow
             new System.Windows.Controls.Primitives.DragCompletedEventHandler((_, _) =>
             {
                 _scrubDragging = false;
+                HideScrubToolTip();
                 if (DataContext is JukeboxViewModel vm)
                 {
-                    DebugLog.Log("ScrubBar", $"DragCompleted | SeekTo={(long)ScrubBar.Value} Duration={vm.PlaybackDuration} Position={vm.PlaybackPosition}");
-                    vm.SeekTo((long)ScrubBar.Value);
+                    var seekPos = SnapToChapter(vm, (long)ScrubBar.Value);
+                    DebugLog.Log("ScrubBar", $"DragCompleted | SeekTo={seekPos} Duration={vm.PlaybackDuration} Position={vm.PlaybackPosition}");
+                    if (vm.CurrentlyPlaying?.Chapters?.Count > 0)
+                        vm.PlayTransitioning = true;
+                    vm.SeekTo(seekPos);
                     Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
                     {
                         vm.IsSeeking = false;
@@ -302,9 +309,137 @@ public partial class DmdWindow : JukeboxWindow
             if (_scrubDragging) return; // handled by DragCompleted
             if (DataContext is JukeboxViewModel vm && vm.IsPlaying)
             {
-                vm.SeekTo((long)ScrubBar.Value);
+                var seekPos = SnapToChapter(vm, (long)ScrubBar.Value);
+                if (vm.CurrentlyPlaying?.Chapters?.Count > 0)
+                    vm.PlayTransitioning = true;
+                vm.SeekTo(seekPos);
             }
         };
+
+        // Tooltip showing chapter name on hover/drag
+        ScrubBar.MouseMove += (_, e) =>
+        {
+            if (DataContext is not JukeboxViewModel vm) return;
+            var chapters = vm.CurrentlyPlaying?.Chapters;
+            if (chapters == null || chapters.Count == 0 || vm.PlaybackDuration <= 1) { HideScrubToolTip(); return; }
+
+            var pos = e.GetPosition(ScrubBar);
+            var fraction = Math.Clamp(pos.X / ScrubBar.ActualWidth, 0, 1);
+            var timeMs = fraction * vm.PlaybackDuration;
+            var chapter = GetChapterAtTime(chapters, timeMs);
+            if (chapter != null && !string.IsNullOrEmpty(chapter.Title))
+                ShowScrubToolTip(chapter.Title, pos);
+            else
+                HideScrubToolTip();
+        };
+
+        ScrubBar.MouseLeave += (_, _) => HideScrubToolTip();
+    }
+
+    /// <summary>
+    /// Snaps a seek position to the nearest chapter start when ShouldSnapToChapters is true.
+    /// </summary>
+    private long SnapToChapter(JukeboxViewModel vm, long positionMs)
+    {
+        if (!vm.ShouldSnapToChapters) return positionMs;
+        var chapters = vm.CurrentlyPlaying?.Chapters;
+        if (chapters == null || chapters.Count == 0) return positionMs;
+
+        // Find the chapter whose start is closest
+        long closest = positionMs;
+        double minDist = double.MaxValue;
+        foreach (var ch in chapters)
+        {
+            var dist = Math.Abs(ch.StartTime.TotalMilliseconds - positionMs);
+            if (dist < minDist)
+            {
+                minDist = dist;
+                closest = (long)ch.StartTime.TotalMilliseconds;
+            }
+        }
+        return closest;
+    }
+
+    private ChapterMarker? GetChapterAtTime(List<ChapterMarker> chapters, double timeMs)
+    {
+        for (int i = chapters.Count - 1; i >= 0; i--)
+        {
+            if (timeMs >= chapters[i].StartTime.TotalMilliseconds)
+                return chapters[i];
+        }
+        return chapters.Count > 0 ? chapters[0] : null;
+    }
+
+    private void ShowScrubToolTip(string text, System.Windows.Point position)
+    {
+        if (_scrubToolTip == null)
+        {
+            _scrubToolTip = new System.Windows.Controls.ToolTip
+            {
+                Placement = System.Windows.Controls.Primitives.PlacementMode.Relative,
+                PlacementTarget = ScrubBar,
+                IsOpen = false
+            };
+            ScrubBar.ToolTip = _scrubToolTip;
+        }
+        _scrubToolTip.Content = text;
+        _scrubToolTip.HorizontalOffset = position.X;
+        _scrubToolTip.VerticalOffset = -28;
+        _scrubToolTip.IsOpen = true;
+    }
+
+    private void HideScrubToolTip()
+    {
+        if (_scrubToolTip != null)
+            _scrubToolTip.IsOpen = false;
+    }
+
+    private void ChapterTicksOverlay_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        PositionChapterTicks();
+    }
+
+    private void UpdateChapterTickPositions()
+    {
+        if (ChapterTicksOverlay == null) return;
+
+        // When the ItemsSource changes, the generator needs time to create containers.
+        // Hook StatusChanged so we position ticks once containers are materialized.
+        ChapterTicksOverlay.ItemContainerGenerator.StatusChanged -= OnChapterContainerStatusChanged;
+        ChapterTicksOverlay.ItemContainerGenerator.StatusChanged += OnChapterContainerStatusChanged;
+
+        // Also try immediately in case containers are already ready (e.g. SizeChanged)
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Render, PositionChapterTicks);
+    }
+
+    private void OnChapterContainerStatusChanged(object? sender, EventArgs e)
+    {
+        if (ChapterTicksOverlay.ItemContainerGenerator.Status == System.Windows.Controls.Primitives.GeneratorStatus.ContainersGenerated)
+        {
+            ChapterTicksOverlay.ItemContainerGenerator.StatusChanged -= OnChapterContainerStatusChanged;
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Render, PositionChapterTicks);
+        }
+    }
+
+    private void PositionChapterTicks()
+    {
+        if (ChapterTicksOverlay == null) return;
+        if (DataContext is not JukeboxViewModel vm) return;
+
+        var width = ChapterTicksOverlay.ActualWidth;
+        if (width <= 0 || vm.ChapterTickPositions.Count == 0) return;
+
+        var generator = ChapterTicksOverlay.ItemContainerGenerator;
+        int placed = 0;
+        for (int i = 0; i < vm.ChapterTickPositions.Count; i++)
+        {
+            if (generator.ContainerFromIndex(i) is System.Windows.Controls.ContentPresenter cp)
+            {
+                System.Windows.Controls.Canvas.SetLeft(cp, vm.ChapterTickPositions[i] * width);
+                placed++;
+            }
+        }
+        DebugLog.Log("Chapters", $"PositionChapterTicks: {placed}/{vm.ChapterTickPositions.Count} placed, width={width:F1}");
     }
 
     private void WirePlaylistPicker()
@@ -2090,6 +2225,10 @@ public partial class DmdWindow : JukeboxWindow
         // Update cache settings
         if (DataContext is JukeboxViewModel vm)
         {
+            // Configure Plex first so SyncPlexLibraries updates categories.json before reload
+            if (!string.IsNullOrWhiteSpace(_appSettings.PlexServerUrl) && !string.IsNullOrWhiteSpace(_appSettings.PlexToken))
+                vm.ConfigurePlex(_appSettings.PlexServerUrl, _appSettings.PlexToken, _appSettings.PlexLibraries, _appSettings.PlexStereoAudio, skipRebuild: true);
+            LogStep("ConfigurePlex");
             vm.ReloadGenreCategories();
             LogStep("ReloadGenreCategories");
             vm.Cache?.UpdateSettings(_appSettings.CacheEnabled, _appSettings.CacheMaxSizeGb, _appSettings.CacheMaxClipLengthMinutes);
@@ -2109,9 +2248,6 @@ public partial class DmdWindow : JukeboxWindow
             vm.CacheMode = _appSettings.CacheMode;
             vm.GaplessPlayback = _appSettings.PlexGaplessPlayback;
             LogStep("VmProperties");
-            if (!string.IsNullOrWhiteSpace(_appSettings.PlexServerUrl) && !string.IsNullOrWhiteSpace(_appSettings.PlexToken))
-                vm.ConfigurePlex(_appSettings.PlexServerUrl, _appSettings.PlexToken, _appSettings.PlexLibraries, _appSettings.PlexStereoAudio, skipRebuild: true);
-            LogStep("ConfigurePlex");
         }
         LogStep("Cache/ViewModel");
 

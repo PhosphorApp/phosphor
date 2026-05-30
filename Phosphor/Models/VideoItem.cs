@@ -59,6 +59,11 @@ public class VideoItem : ObservableObject
     /// </summary>
     public PlexAudioStream PlexAudioStream { get; set; }
 
+    /// <summary>
+    /// Chapter markers for Plex video items, if available.
+    /// </summary>
+    public List<ChapterMarker>? Chapters { get; set; }
+
     private TimeSpan? _duration;
     public TimeSpan? Duration
     {

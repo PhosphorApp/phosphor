@@ -2390,6 +2390,39 @@ public partial class SettingsWindow : JukeboxWindow
             }
         }
         _LogStep("InvalidateCache");
+
+        // Sync Plex library additions/removals into _categoryVisibilityItems
+        // so the category save below reflects the current Plex library state
+        var plexKeys = new HashSet<string>(_plexLibraries.Select(l => l.Key));
+        _categoryVisibilityItems.RemoveAll(i => i.IsPlex && !plexKeys.Contains(i.PlexLibraryKey!));
+        foreach (var lib in _plexLibraries)
+        {
+            var existing = _categoryVisibilityItems.FirstOrDefault(i => i.PlexLibraryKey == lib.Key);
+            if (existing != null)
+            {
+                existing.Name = $"Plex {lib.Title}";
+                existing.PlexLibraryType = lib.Type;
+                existing.PlexHubsEnabled = lib.HubsEnabled;
+                existing.PlexPlaylistsEnabled = lib.PlaylistsEnabled;
+            }
+            else
+            {
+                _categoryVisibilityItems.Add(new CategoryVisibilityItem
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    Name = $"Plex {lib.Title}",
+                    Icon = "\U0001f7e0",
+                    IsPlex = true,
+                    PlexLibraryKey = lib.Key,
+                    PlexLibraryType = lib.Type,
+                    PlexHubsEnabled = lib.HubsEnabled,
+                    PlexPlaylistsEnabled = lib.PlaylistsEnabled,
+                    IsVisible = true,
+                    SortOrder = _categoryVisibilityItems.Count
+                });
+            }
+        }
+
         // Assign sequential SortOrder based on current list position
         for (int i = 0; i < _categoryVisibilityItems.Count; i++)
             _categoryVisibilityItems[i].SortOrder = i;

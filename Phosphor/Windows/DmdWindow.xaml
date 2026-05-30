@@ -13,6 +13,7 @@
         <local:QueueIndexConverter x:Key="QueueIndexConverter"/>
         <local:IsCurrentQueueItemConverter x:Key="IsCurrentQueueItemConverter"/>
         <local:ThumbnailCacheConverter x:Key="ThumbnailCacheConverter"/>
+        <local:FractionToCanvasLeftConverter x:Key="FractionToCanvasLeft"/>
         <sys:Double x:Key="ResultTitleFontSize">13</sys:Double>
         <sys:Double x:Key="ResultDetailFontSize">11</sys:Double>
         <sys:Double x:Key="NowPlayingTitleFontSize">17</sys:Double>
@@ -28,6 +29,7 @@
         <sys:Double x:Key="NowPlayingSliderThumbHoverSize">16</sys:Double>
         <sys:Double x:Key="NowPlayingSliderTrackHeight">4</sys:Double>
         <sys:Double x:Key="NowPlayingSliderHeight">18</sys:Double>
+        <sys:Double x:Key="ChapterTickHeight">9</sys:Double>
         <sys:Double x:Key="PlayButtonFontSize">28</sys:Double>
         <sys:Double x:Key="PlayButtonSize">52</sys:Double>
         <sys:Double x:Key="SmallButtonFontSize">16</sys:Double>
@@ -765,7 +767,7 @@
                     <StackPanel x:Name="NowPlayingInfoPanel" VerticalAlignment="Center">
                         <TextBlock Text="NOW PLAYING" Foreground="{StaticResource TextDimBrush}"
                                    FontSize="{DynamicResource NowPlayingLabelFontSize}" FontWeight="Bold" Margin="0,0,0,2"/>
-                        <TextBlock Text="{Binding CurrentlyPlaying.Title, FallbackValue='Nothing playing'}"
+                        <TextBlock Text="{Binding NowPlayingTitle, FallbackValue='Nothing playing'}"
                                    Foreground="{StaticResource Accent2Brush}" FontWeight="SemiBold"
                                    FontSize="{DynamicResource NowPlayingTitleFontSize}" TextTrimming="CharacterEllipsis"/>
                         <!-- Progress bar row -->
@@ -789,11 +791,35 @@
                                     VerticalAlignment="Center" IsMoveToPointEnabled="True"/>
                             <TextBlock Text="&#x1F50A;" DockPanel.Dock="Right" Foreground="{StaticResource TextDimBrush}" FontSize="{DynamicResource NowPlayingSpeakerFontSize}"
                                        VerticalAlignment="Center" Margin="8,0,2,0"/>
-                            <Slider x:Name="ScrubBar" Minimum="0" Maximum="{Binding PlaybackDuration}"
+                            <Grid>
+                                <Slider x:Name="ScrubBar" Minimum="0" Maximum="{Binding PlaybackDuration}"
                                      Value="{Binding PlaybackPosition}"
                                      Style="{StaticResource NowPlayingSliderStyle}"
                                      VerticalAlignment="Center" IsMoveToPointEnabled="True"
                                      IsEnabled="{Binding IsPlaying}"/>
+                                <!-- Chapter tick marks overlay -->
+                                <ItemsControl x:Name="ChapterTicksOverlay" ItemsSource="{Binding ChapterTickPositions}" IsHitTestVisible="False"
+                                              VerticalAlignment="Center" Margin="8,0"
+                                              SizeChanged="ChapterTicksOverlay_SizeChanged">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <Canvas Height="{DynamicResource ChapterTickHeight}" ClipToBounds="False"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemContainerStyle>
+                                        <Style TargetType="ContentPresenter">
+                                            <Setter Property="Canvas.Top" Value="0"/>
+                                        </Style>
+                                    </ItemsControl.ItemContainerStyle>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Rectangle Width="2" Fill="{StaticResource TextDimBrush}" Opacity="0.6"
+                                                       Height="{DynamicResource ChapterTickHeight}"
+                                                       IsHitTestVisible="False"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Grid>
                         </DockPanel>
                     </StackPanel>
                 </DockPanel>

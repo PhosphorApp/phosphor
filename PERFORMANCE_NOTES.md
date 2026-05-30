@@ -675,3 +675,38 @@ detection re-warms cleanly when the threshold is crossed. Otherwise
 the first post-gate intervention would compare gen N against stale
 sparse-seed-era history and over-prune.
 
+---
+
+## 📝 Future — JSON deserialization with streaming
+
+Currently all JSON cache/playlist files (e.g. `plex_concerts`, `playlists.json`,
+`cache/index.json`) are loaded with `JsonSerializer.Deserialize<T>(string)`,
+which reads the entire file into a single string before parsing.
+
+**Why it works today:** largest file is ~146 KB — trivial parse time, no GC
+pressure.
+
+**When to revisit:** if any JSON file approaches **50–100 MB**, switch to
+`JsonSerializer.DeserializeAsync<T>(FileStream)` to avoid a single large string
+allocation on the Large Object Heap. The synchronous path allocates ~2× file
+size in memory (UTF-16 string + object graph); the async/stream path avoids
+the intermediate string entirely.
+
+**Sharding:** at 100 MB+ consider splitting into multiple files or moving to
+SQLite/LiteDB. Unlikely for Phosphor's current data volumes, but worth noting
+if cached chapter data or result caches grow significantly.
+
+**Trade-offs of the async/stream approach:**
+
+| Concern | Impact |
+|---------|--------|
+| Slower for small files | Async state machine and buffer management add overhead. For files under ~1 MB the synchronous `string` path is faster (microseconds vs. low milliseconds). |
+| Sync-only callers | Callers must be `async`. Using `.GetAwaiter().GetResult()` on a UI thread risks deadlocks, so the call chain may need restructuring. |
+| Error diagnostics | Stream-based errors report byte positions rather than line/column, making malformed-JSON debugging slightly harder. |
+| UTF-8 requirement | Stream path feeds UTF-8 bytes directly (skipping the UTF-16 `string` intermediate — actually an advantage). JSON spec requires UTF-8 anyway, so not a practical issue. |
+| No random access | Stream is read forward-only. Fine for deserialization, but partial parsing or retries would need a stream position reset. |
+| Code complexity | Minimal — one-line change plus `using var stream = File.OpenRead(...)`. |
+
+**Conclusion:** at current file sizes the synchronous path is faster and simpler.
+Only switch when LOH avoidance outweighs the async overhead (50+ MB).
+

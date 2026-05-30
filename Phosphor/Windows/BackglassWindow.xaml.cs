@@ -120,6 +120,8 @@ public partial class BackglassWindow : JukeboxWindow
         var mp = new MediaPlayer(vlc);
         // Wire EndReached on our dispatcher so the handler can touch UI
         Dispatcher.Invoke(() => mp.EndReached += OnMediaEnded);
+        // Clear chapter-seek spinner once VLC finishes buffering
+        mp.Buffering += OnMediaBuffering;
         _libVLC = vlc;
         _mediaPlayer = mp;
     }
@@ -626,6 +628,14 @@ public partial class BackglassWindow : JukeboxWindow
                     var media = new Media(_libVLC, new Uri(cached.FilePath));
                     _mediaPlayer.Play(media);
                     cachedResolution = cached.Resolution;
+
+                    // Restore cached chapters to the playing item
+                    if (cached.Chapters is { Count: > 0 } && vm?.CurrentlyPlaying is { } cp && cp.Chapters == null)
+                    {
+                        cp.Chapters = cached.Chapters;
+                        DebugLog.Log("Chapters", $"Restored {cached.Chapters.Count} chapters from cache");
+                        vm.NotifyCachedChaptersRestored();
+                    }
                 }
                 else
                 {
@@ -876,6 +886,18 @@ public partial class BackglassWindow : JukeboxWindow
             _colorTimer.Start();
             ResetLogoDimIdle();
         });
+    }
+
+    private void OnMediaBuffering(object? sender, LibVLCSharp.Shared.MediaPlayerBufferingEventArgs e)
+    {
+        if (e.Cache >= 100f)
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (DataContext is JukeboxViewModel vm && vm.PlayTransitioning)
+                    vm.NotifyPlaybackStarted();
+            });
+        }
     }
 
     private void OnMediaEnded(object? sender, EventArgs e)

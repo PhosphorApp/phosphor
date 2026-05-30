@@ -100,7 +100,7 @@ public partial class JukeboxViewModel : ObservableObject
     public bool PlayTransitioning
     {
         get => _playTransitioning;
-        private set => SetProperty(ref _playTransitioning, value);
+        internal set => SetProperty(ref _playTransitioning, value);
     }
 
     /// <summary>
@@ -123,11 +123,112 @@ public partial class JukeboxViewModel : ObservableObject
             if (SetProperty(ref _currentlyPlaying, value))
                 {
                     IsPaused = false;
+                    _lastChapterIndex = -1;
+                    CurrentChapterName = "";
+                    ChapterTickPositions = [];
                     OnPropertyChanged(nameof(IsPlaying));
                     OnPropertyChanged(nameof(CanStartOrStop));
+                    OnPropertyChanged(nameof(ShouldSnapToChapters));
+                    OnPropertyChanged(nameof(NowPlayingTitle));
                 }
         }
     }
+
+    /// <summary>
+    /// Fractional positions (0.0–1.0) of chapter markers relative to total duration,
+    /// used to render tick marks on the scrub bar.
+    /// </summary>
+    private List<double> _chapterTickPositions = [];
+    public List<double> ChapterTickPositions
+    {
+        get => _chapterTickPositions;
+        private set => SetProperty(ref _chapterTickPositions, value);
+    }
+
+    private void UpdateChapterTickPositions()
+    {
+        var chapters = _currentlyPlaying?.Chapters;
+        var duration = _playbackDuration;
+        DebugLog.Log("Chapters", $"UpdateChapterTickPositions: chapters={chapters?.Count ?? 0} duration={duration}");
+        if (chapters == null || chapters.Count == 0 || duration <= 1)
+        {
+            ChapterTickPositions = [];
+            return;
+        }
+        var ticks = chapters
+            .Select(c => c.StartTime.TotalMilliseconds / duration)
+            .Where(p => p > 0 && p < 1)
+            .ToList();
+        DebugLog.Log("Chapters", $"Tick positions: [{string.Join(", ", ticks.Select(t => t.ToString("F3")))}]");
+        ChapterTickPositions = ticks;
+    }
+
+    /// <summary>
+    /// Called when chapters are restored from cache on a currently playing item.
+    /// </summary>
+    public void NotifyCachedChaptersRestored()
+    {
+        UpdateChapterTickPositions();
+        OnPropertyChanged(nameof(ShouldSnapToChapters));
+        UpdateCurrentChapter();
+    }
+
+    /// <summary>
+    /// Name of the chapter currently playing, or empty if no chapters.
+    /// </summary>
+    private string _currentChapterName = "";
+    public string CurrentChapterName
+    {
+        get => _currentChapterName;
+        private set
+        {
+            if (SetProperty(ref _currentChapterName, value))
+                OnPropertyChanged(nameof(NowPlayingTitle));
+        }
+    }
+
+    /// <summary>
+    /// Display title for the now-playing area. Appends chapter name when available.
+    /// </summary>
+    public string NowPlayingTitle
+    {
+        get
+        {
+            var title = _currentlyPlaying?.Title ?? "Nothing playing";
+            return string.IsNullOrEmpty(_currentChapterName) ? title : $"{title} \u2014 {_currentChapterName}";
+        }
+    }
+
+    private int _lastChapterIndex = -1;
+
+    /// <summary>
+    /// Updates CurrentChapterName based on playback position. Called from PlaybackPosition setter.
+    /// </summary>
+    private void UpdateCurrentChapter()
+    {
+        var chapters = _currentlyPlaying?.Chapters;
+        if (chapters == null || chapters.Count == 0 || _playbackDuration <= 1)
+        {
+            if (_lastChapterIndex != -1)
+            {
+                _lastChapterIndex = -1;
+                CurrentChapterName = "";
+            }
+            return;
+        }
+
+        int idx = GetCurrentChapterIndex(chapters);
+        if (idx != _lastChapterIndex)
+        {
+            _lastChapterIndex = idx;
+            CurrentChapterName = chapters[idx].Title;
+        }
+    }
+
+    /// <summary>
+    /// True when the current item has enough chapters (3+) that the scrub bar should snap to chapter boundaries.
+    /// </summary>
+    public bool ShouldSnapToChapters => (_currentlyPlaying?.Chapters?.Count ?? 0) >= 3 && _playbackDuration > 1;
 
     public bool IsPlaying => CurrentlyPlaying != null;
 
@@ -330,7 +431,10 @@ public partial class JukeboxViewModel : ObservableObject
         set
         {
             if (SetProperty(ref _playbackPosition, value))
+            {
                 OnPropertyChanged(nameof(PlaybackTimeText));
+                UpdateCurrentChapter();
+            }
         }
     }
 
@@ -341,7 +445,10 @@ public partial class JukeboxViewModel : ObservableObject
         set
         {
             if (SetProperty(ref _playbackDuration, value))
+            {
                 OnPropertyChanged(nameof(PlaybackTimeText));
+                UpdateChapterTickPositions();
+            }
         }
     }
 
@@ -1177,7 +1284,7 @@ public partial class JukeboxViewModel : ObservableObject
 
     // ── Plex browsing ──
 
-    private const int PlexPageSize = 20;
+    private const int PlexPageSize = 40;
     private int _plexTotalSize;
     private bool _isPlexBrowsing;
     public bool IsPlexBrowsing
@@ -2224,9 +2331,13 @@ public partial class JukeboxViewModel : ObservableObject
         _history.Add(item);
         PlayRequested?.Invoke(item.VideoId);
 
-        // Refresh duration from stream info for accuracy (YouTube only)
-        if (!item.IsPlex)
-            _ = SafeFireAndForget(RefreshDurationAsync(item));
+        // Refresh duration and fetch chapters for YouTube items (skip if already populated from cache/playlist)
+        if (!item.IsPlex && item.Chapters == null)
+            _ = SafeFireAndForget(FetchYouTubeChaptersAsync(item));
+
+        // Fetch chapter markers for Plex items (requires individual metadata lookup)
+        if (item.IsPlex && item.PlexRatingKey != null && item.Chapters == null && _plex.IsConfigured)
+            _ = SafeFireAndForget(FetchPlexChaptersAsync(item));
 
         // Cache on playback when mode is Everything (YouTube only)
         if (_cache is { Enabled: true } && CacheMode == CacheMode.Everything && !item.IsPlex)
@@ -2265,6 +2376,21 @@ public partial class JukeboxViewModel : ObservableObject
         PlaybackPosition = 0;
         PlaybackDuration = 1;
         StatusText = "Playback stopped";
+    }
+
+    private async Task FetchPlexChaptersAsync(VideoItem item)
+    {
+        var chapters = await _plex.GetChaptersAsync(item.PlexRatingKey!);
+        if (chapters != null && chapters.Count > 0)
+        {
+            item.Chapters = chapters;
+            if (ReferenceEquals(item, _currentlyPlaying))
+            {
+                UpdateChapterTickPositions();
+                OnPropertyChanged(nameof(ShouldSnapToChapters));
+                UpdateCurrentChapter();
+            }
+        }
     }
 
     /// <summary>
@@ -2389,28 +2515,82 @@ public partial class JukeboxViewModel : ObservableObject
     [RelayCommand]
     private void Skip()
     {
+        var chapters = _currentlyPlaying?.Chapters;
+        if (chapters != null && chapters.Count > 0 && _playbackDuration > 1)
+        {
+            int currentChapter = GetCurrentChapterIndex(chapters);
+            if (currentChapter < chapters.Count - 1)
+            {
+                // Seek to next chapter
+                var nextStart = (long)chapters[currentChapter + 1].StartTime.TotalMilliseconds;
+                PlayTransitioning = true;
+                SeekRequested?.Invoke(nextStart);
+                return;
+            }
+        }
+
+        // Last chapter or no chapters — skip to next queue item
         if (IsPlaying)
             StopRequested?.Invoke();
         PlayNext();
     }
 
+    /// <summary>
+    /// Returns the index of the chapter that contains the current playback position.
+    /// Falls back to the last chapter if position is beyond all chapter starts.
+    /// </summary>
+    private int GetCurrentChapterIndex(List<ChapterMarker> chapters)
+    {
+        var posMs = PlaybackPosition;
+        for (int i = chapters.Count - 1; i >= 0; i--)
+        {
+            if (posMs >= chapters[i].StartTime.TotalMilliseconds)
+                return i;
+        }
+        return 0;
+    }
+
     [RelayCommand]
     private void PreviousTrack()
     {
-        if (!IsPlaying || Queue.Count == 0) return;
+        if (!IsPlaying) return;
 
+        var chapters = _currentlyPlaying?.Chapters;
+        if (chapters != null && chapters.Count > 0 && _playbackDuration > 1)
+        {
+            int currentChapter = GetCurrentChapterIndex(chapters);
+            var chapterStartMs = chapters[currentChapter].StartTime.TotalMilliseconds;
+            bool isNearChapterStart = (PlaybackPosition - chapterStartMs) < 10000;
+
+            if (!isNearChapterStart)
+            {
+                // Restart current chapter
+                PlayTransitioning = true;
+                SeekRequested?.Invoke((long)chapterStartMs);
+                return;
+            }
+            else if (currentChapter > 0)
+            {
+                // Jump to previous chapter
+                PlayTransitioning = true;
+                SeekRequested?.Invoke((long)chapters[currentChapter - 1].StartTime.TotalMilliseconds);
+                return;
+            }
+            // First chapter and near start — fall through to previous queue item logic
+        }
+
+        // No chapters — original behavior
+        if (Queue.Count == 0) return;
         int currentIdx = _queueIndex;
         bool isFirstItem = currentIdx <= 0;
-        bool isBeyond10Seconds = PlaybackPosition >= 10000; // 10 seconds in ms
+        bool isBeyond10Seconds = PlaybackPosition >= 10000;
 
         if (isBeyond10Seconds || isFirstItem)
         {
-            // Restart current track
             SeekRequested?.Invoke(0);
         }
         else
         {
-            // Skip to previous track
             PlayFromQueueIndex(currentIdx - 1);
         }
     }
@@ -2494,6 +2674,9 @@ public partial class JukeboxViewModel : ObservableObject
         PlayTransitioning = false;
         _statusPrefixCts?.Cancel();
         StatusPrefix = "";
+
+        if (item.IsPlex && item.PlexRatingKey != null && item.Chapters == null && _plex.IsConfigured)
+            _ = SafeFireAndForget(FetchPlexChaptersAsync(item));
 
         if (_autoDjEnabled)
             _ = SafeFireAndForget(AutoDjFillQueue());
@@ -2935,6 +3118,83 @@ public partial class JukeboxViewModel : ObservableObject
             DebugLog.LogException($"Duration fetch ({videoId})", ex);
         }
         return null;
+    }
+
+    /// <summary>
+    /// Fetch YouTube video metadata and extract chapters from the description.
+    /// Also refreshes the item's duration.
+    /// </summary>
+    private async Task FetchYouTubeChaptersAsync(VideoItem item)
+    {
+        try
+        {
+            var video = await _youtube.Videos.GetAsync(item.VideoId);
+
+            if (video.Duration.HasValue)
+                item.Duration = video.Duration;
+
+            var chapters = ParseYouTubeChapters(video.Description, video.Duration);
+            if (chapters.Count > 0)
+            {
+                item.Chapters = chapters;
+                DebugLog.Log("Chapters", $"YouTube chapters parsed: {chapters.Count} from description");
+                if (ReferenceEquals(item, _currentlyPlaying))
+                {
+                    UpdateChapterTickPositions();
+                    OnPropertyChanged(nameof(ShouldSnapToChapters));
+                    UpdateCurrentChapter();
+                }
+
+                // Persist chapters to video cache if the item is cached
+                _cache?.UpdateChapters(item.VideoId, chapters);
+            }
+        }
+        catch (Exception ex)
+        {
+            DebugLog.LogException($"YouTube chapters ({item.VideoId})", ex);
+        }
+    }
+
+    /// <summary>
+    /// Parses chapter markers from a YouTube video description.
+    /// Looks for lines starting with timestamps like "0:00", "1:23:45", etc.
+    /// </summary>
+    private static List<ChapterMarker> ParseYouTubeChapters(string description, TimeSpan? totalDuration)
+    {
+        var chapters = new List<ChapterMarker>();
+        if (string.IsNullOrWhiteSpace(description)) return chapters;
+
+        // Match lines like "0:00 Intro" or "1:23:45 - Song Name" or "(0:00) Title"
+        var regex = new System.Text.RegularExpressions.Regex(
+            @"(?:^|\()\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*(?:\)?\s*[-–—]?\s*)(.+)",
+            System.Text.RegularExpressions.RegexOptions.Multiline);
+
+        foreach (System.Text.RegularExpressions.Match match in regex.Matches(description))
+        {
+            var timeParts = match.Groups[1].Value.Split(':');
+            TimeSpan ts;
+            if (timeParts.Length == 3)
+                ts = new TimeSpan(int.Parse(timeParts[0]), int.Parse(timeParts[1]), int.Parse(timeParts[2]));
+            else
+                ts = new TimeSpan(0, int.Parse(timeParts[0]), int.Parse(timeParts[1]));
+
+            var title = match.Groups[2].Value.Trim();
+
+            chapters.Add(new ChapterMarker
+            {
+                Title = title,
+                StartTime = ts,
+                EndTime = TimeSpan.Zero // filled below
+            });
+        }
+
+        // Fill EndTime from next chapter's StartTime
+        for (int i = 0; i < chapters.Count - 1; i++)
+            chapters[i].EndTime = chapters[i + 1].StartTime;
+        if (chapters.Count > 0 && totalDuration.HasValue)
+            chapters[^1].EndTime = totalDuration.Value;
+
+        return chapters;
     }
 
     /// <summary>
