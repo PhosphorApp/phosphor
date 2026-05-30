@@ -94,7 +94,7 @@ public class VideoCache
         return duration.Value.TotalMinutes <= _maxClipLengthMinutes;
     }
 
-    public async Task CacheVideoAsync(string videoId, VideoQualityPreference quality = VideoQualityPreference.High, bool preferStereo = false, TimeSpan? duration = null, CancellationToken ct = default)
+    public async Task CacheVideoAsync(string videoId, VideoQualityPreference quality = VideoQualityPreference.High, bool preferStereo = false, TimeSpan? duration = null, List<ChapterMarker>? chapters = null, string? title = null, CancellationToken ct = default)
     {
         if (!_enabled) return;
         if (!IsWithinClipLengthLimit(duration)) return;
@@ -126,13 +126,21 @@ public class VideoCache
 
             // Mux video+audio into a single .mkv with proper cue points for seeking.
             // Raw WebM streams from YouTube lack cue points, making them unseekable.
-            var muxedFile = $"{videoId}.mkv";
+            var titleSuffix = !string.IsNullOrWhiteSpace(title) ? $"_{SanitizeFileName(title)}" : "";
+            var muxedFile = $"{videoId}{titleSuffix}.mkv";
             var muxedPath = Path.Combine(CacheDir, muxedFile);
-            var muxed = await MuxWithFfmpegAsync(videoPath, audioPath, muxedPath, ct);
+
+            // Write chapters XML if available
+            string? chaptersPath = null;
+            if (chapters != null && chapters.Count > 0)
+                chaptersPath = WriteChaptersMetadata(videoId, chapters);
+
+            var muxed = await MuxWithFfmpegAsync(videoPath, audioPath, muxedPath, chaptersPath, ct);
 
             // Remove intermediate files
             try { File.Delete(videoPath); } catch { }
             try { File.Delete(audioPath); } catch { }
+            if (chaptersPath != null) try { File.Delete(chaptersPath); } catch { }
 
             if (!muxed)
             {
@@ -152,7 +160,8 @@ public class VideoCache
                     SizeBytes = totalSize,
                     Resolution = resolution,
                     CachedAt = DateTime.UtcNow,
-                    LastAccessed = DateTime.UtcNow
+                    LastAccessed = DateTime.UtcNow,
+                    Chapters = chapters
                 });
                 SaveIndex();
                 Evict();
@@ -195,7 +204,7 @@ public class VideoCache
         foreach (var video in videos)
         {
             if (ct.IsCancellationRequested) break;
-            await CacheVideoAsync(video.VideoId, duration: video.Duration, ct: ct);
+            await CacheVideoAsync(video.VideoId, duration: video.Duration, chapters: video.Chapters, title: video.Title, ct: ct);
         }
     }
 
@@ -275,7 +284,7 @@ public class VideoCache
     /// Mux separate video and audio files into a single MKV container with
     /// proper cue points using ffmpeg. Returns true on success.
     /// </summary>
-    private static async Task<bool> MuxWithFfmpegAsync(string videoPath, string audioPath, string outputPath, CancellationToken ct)
+    private static async Task<bool> MuxWithFfmpegAsync(string videoPath, string audioPath, string outputPath, string? chaptersPath, CancellationToken ct)
     {
         try
         {
@@ -284,10 +293,14 @@ public class VideoCache
             if (File.Exists(localFfmpeg))
                 ffmpegName = localFfmpeg;
 
+            var args = chaptersPath != null
+                ? $"-i \"{videoPath}\" -i \"{audioPath}\" -f ffmetadata -i \"{chaptersPath}\" -map_metadata 2 -c copy -y \"{outputPath}\""
+                : $"-i \"{videoPath}\" -i \"{audioPath}\" -c copy -y \"{outputPath}\"";
+
             var psi = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = ffmpegName,
-                Arguments = $"-i \"{videoPath}\" -i \"{audioPath}\" -c copy -y \"{outputPath}\"",
+                Arguments = args,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardError = true,
@@ -306,7 +319,7 @@ public class VideoCache
 
             if (proc.ExitCode != 0)
             {
-                DebugLog.Log("VideoCache", $"ffmpeg exited with code {proc.ExitCode}: {stderr[..Math.Min(stderr.Length, 500)]}");
+                DebugLog.Log("VideoCache", $"ffmpeg exited with code {proc.ExitCode}: {stderr[..Math.Min(stderr.Length, 1000)]}");
                 try { File.Delete(outputPath); } catch { }
                 return false;
             }
@@ -376,6 +389,70 @@ public class VideoCache
             File.WriteAllText(IndexPath, json);
         }
         catch { }
+    }
+
+    /// <summary>
+    /// Writes an FFMETADATA1 chapters file for use with ffmpeg muxing.
+    /// Returns the file path, or null if no chapters are provided.
+    /// </summary>
+    private static string? WriteChaptersMetadata(string videoId, List<ChapterMarker> chapters)
+    {
+        if (chapters == null || chapters.Count == 0)
+            return null;
+
+        var path = Path.Combine(CacheDir, $"{videoId}_chapters.txt");
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine(";FFMETADATA1");
+
+        foreach (var ch in chapters)
+        {
+            sb.AppendLine("[CHAPTER]");
+            sb.AppendLine("TIMEBASE=1/1000");
+            sb.AppendLine($"START={(long)ch.StartTime.TotalMilliseconds}");
+            sb.AppendLine($"END={(long)ch.EndTime.TotalMilliseconds}");
+            sb.AppendLine($"title={EscapeFfmetadata(ch.Title)}");
+        }
+
+        File.WriteAllText(path, sb.ToString(), System.Text.Encoding.UTF8);
+        DebugLog.Log("VideoCache", $"Wrote {chapters.Count} chapters to {Path.GetFileName(path)}");
+        return path;
+    }
+
+    /// <summary>
+    /// Escapes special characters for FFMETADATA1 format.
+    /// </summary>
+    private static string EscapeFfmetadata(string value) =>
+        value.Replace("\\", "\\\\").Replace("=", "\\=").Replace(";", "\\;").Replace("#", "\\#").Replace("\n", "\\\n");
+
+    private static string SanitizeFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var sanitized = new string(name.Select(c => invalid.Contains(c) ? '_' : c).ToArray());
+
+        // Collapse runs of underscores/spaces into a single underscore
+        sanitized = System.Text.RegularExpressions.Regex.Replace(sanitized, @"[_\s]{2,}", "_");
+
+        // Limit length to avoid path issues
+        if (sanitized.Length > 80)
+            sanitized = sanitized[..80];
+
+        // Trim trailing dots and spaces (Windows silently strips them, causing path mismatches)
+        sanitized = sanitized.TrimEnd('.', ' ', '_');
+
+        // Guard against empty or Windows-reserved names
+        if (string.IsNullOrWhiteSpace(sanitized))
+            return "untitled";
+
+        var reserved = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "CON", "PRN", "AUX", "NUL",
+            "COM1","COM2","COM3","COM4","COM5","COM6","COM7","COM8","COM9",
+            "LPT1","LPT2","LPT3","LPT4","LPT5","LPT6","LPT7","LPT8","LPT9"
+        };
+        if (reserved.Contains(sanitized))
+            sanitized = $"_{sanitized}";
+
+        return sanitized;
     }
 }
 

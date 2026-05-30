@@ -2341,7 +2341,7 @@ public partial class JukeboxViewModel : ObservableObject
 
         // Cache on playback when mode is Everything (YouTube only)
         if (_cache is { Enabled: true } && CacheMode == CacheMode.Everything && !item.IsPlex)
-            _ = SafeFireAndForget(_cache.CacheVideoAsync(item.VideoId, VideoQuality, StereoAudio, item.Duration));
+            _ = SafeFireAndForget(_cache.CacheVideoAsync(item.VideoId, VideoQuality, StereoAudio, item.Duration, item.Chapters, item.Title));
     }
 
     /// <summary>
@@ -2716,7 +2716,7 @@ public partial class JukeboxViewModel : ObservableObject
                 {
                     _playlists.AddToPlaylist(ActivePlaylistName, track);
                     if (_cache is { Enabled: true } && !track.IsPlex)
-                        _ = SafeFireAndForget(_cache.CacheVideoAsync(track.VideoId, duration: track.Duration));
+                        _ = SafeFireAndForget(_cache.CacheVideoAsync(track.VideoId, duration: track.Duration, chapters: track.Chapters, title: track.Title));
                 }
                 StatusText = $"Added {tracks.Count} tracks from {item.Title} to {ActivePlaylistName}";
             }
@@ -2736,7 +2736,7 @@ public partial class JukeboxViewModel : ObservableObject
 
         // Trigger background caching for playlist items (YouTube only)
         if (_cache is { Enabled: true } && !item.IsPlex)
-            _ = SafeFireAndForget(_cache.CacheVideoAsync(item.VideoId, duration: item.Duration));
+            _ = SafeFireAndForget(_cache.CacheVideoAsync(item.VideoId, duration: item.Duration, chapters: item.Chapters, title: item.Title));
     }
 
     /// <summary>
