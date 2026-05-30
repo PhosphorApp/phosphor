@@ -128,6 +128,13 @@ public class AppSettings
     public int GameOfLifeScalingMode { get; set; } // 0 = NearestNeighbor, 1 = Fant
     /// <summary>Color model for births. 0 = Genetic (blend of parent colors), 1 = EraBanded (current global rotating hue).</summary>
     public int GameOfLifeColorMode { get; set; } // 0 = Genetic, 1 = EraBanded
+    /// <summary>Cellular-automaton rule engine. 0 = Conway, 1 = Brian's Brain, 2 = Star Wars.</summary>
+    public int GameOfLifeRulesEngine { get; set; } // 0 = Conway, 1 = BriansBrain, 2 = StarWars
+    /// <summary>
+    /// Multiplier on the EraBanded hue rotation speed. 1.0 = original ~60s full
+    /// ROYGBIV cycle. Higher = faster, finer bands. Only used in EraBanded color mode.
+    /// </summary>
+    public double GameOfLifeEraBandedHueSpeed { get; set; } = 1.0;
     /// <summary>
     /// When true, periodically nudges or disrupts small still-life / oscillator patterns
     /// (blinkers, blocks, beacons) so the simulation keeps evolving rather than locking

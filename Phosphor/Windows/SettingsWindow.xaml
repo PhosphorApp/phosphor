@@ -586,6 +586,15 @@
                             <StackPanel x:Name="PanelGameOfLifeTuning" Visibility="Collapsed">
                                 <TextBlock Text="GAME OF LIFE TUNING" FontSize="12" FontWeight="Bold"
                                     Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
+                                <!-- Rules-engine selector temporarily hidden: Brian's Brain and Star Wars
+                                     don't work as long-running ambient visuals. See docs/GameOfLifeRules.md. -->
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center" Visibility="Collapsed">
+                                    <TextBlock Text="Rules:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <ComboBox x:Name="CbGameOfLifeRulesEngine" Width="220"
+                                              SelectionChanged="CbGameOfLifeRulesEngine_SelectionChanged"
+                                              ToolTip="Cellular-automaton rule engine. Conway = classic Life (B3/S23). Brian's Brain and Star Wars are EraBanded-only."/>
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Tick Interval:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Width="100"/>
@@ -658,6 +667,7 @@
                                               Checked="CbGameOfLifeRestartOnTrackChange_Changed" Unchecked="CbGameOfLifeRestartOnTrackChange_Changed"
                                               ToolTip="Restart the Game of Life simulation with a fresh seed whenever a new track starts."/>
                                 </StackPanel>
+                                <StackPanel x:Name="PanelGameOfLifeConwayOnly" Orientation="Vertical">
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Anti-Stagnation:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Width="100"/>
@@ -672,6 +682,7 @@
                                             ToolTip="How aggressively to perturb stagnant patterns. 1 = barely noticeable, 5 = subtle (default), 10 = constant churn."/>
                                     <TextBlock x:Name="TxtGameOfLifeAntiStagnationIntensity" Foreground="{StaticResource TextDimBrush}"
                                                VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Camera Roam:" Foreground="{StaticResource TextBrush}"
@@ -723,12 +734,23 @@
                                               SelectionChanged="CbGameOfLifeScalingMode_SelectionChanged"
                                               ToolTip="NearestNeighbor = crisp blocky pixels. Smooth (Fant) = antialiased cell edges via GPU filtering."/>
                                 </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                <StackPanel x:Name="PanelGameOfLifeColorMode" Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Color:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Width="100"/>
                                     <ComboBox x:Name="CbGameOfLifeColorMode" Width="220"
                                               SelectionChanged="CbGameOfLifeColorMode_SelectionChanged"
                                               ToolTip="Genetic = births inherit a blend of parent colors (rich mixing). EraBanded = births take the current rotating hue (regions band by age)."/>
+                                </StackPanel>
+                                <StackPanel x:Name="PanelGameOfLifeEraBandedHueSpeed" Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Hue Speed:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <Slider x:Name="SliderGameOfLifeEraBandedHueSpeed" Minimum="0.1" Maximum="10.0"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="0.1"
+                                            ValueChanged="SliderGameOfLifeEraBandedHueSpeed_ValueChanged"
+                                            ToolTip="How quickly the EraBanded birth color rotates through the ROYGBIV cycle. 1.0 = full cycle in ~60s, 2.0 = twice as fast. Only used in EraBanded color mode."/>
+                                    <TextBlock x:Name="TxtGameOfLifeEraBandedHueSpeed" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
                                 </StackPanel>
                             </StackPanel>
 

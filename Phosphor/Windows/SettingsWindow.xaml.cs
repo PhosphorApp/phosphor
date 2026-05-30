@@ -99,6 +99,8 @@ public partial class SettingsWindow : JukeboxWindow
     private double _originalGameOfLifeCameraSpeed;
     private bool _originalGameOfLifeRestartOnTrackChange;
     private int _originalGameOfLifeColorMode;
+    private int _originalGameOfLifeRulesEngine;
+    private double _originalGameOfLifeEraBandedHueSpeed;
     private double _originalProjectMPresetDuration;
     private double _originalProjectMSoftCut;
     private bool _originalProjectMHardCut;
@@ -231,7 +233,9 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.GameOfLifeCameraOverscan != _originalGameOfLifeCameraOverscan ||
         _settings.GameOfLifeCameraSpeed != _originalGameOfLifeCameraSpeed ||
         _settings.GameOfLifeRestartOnTrackChange != _originalGameOfLifeRestartOnTrackChange ||
-        _settings.GameOfLifeColorMode != _originalGameOfLifeColorMode;
+        _settings.GameOfLifeColorMode != _originalGameOfLifeColorMode ||
+        _settings.GameOfLifeRulesEngine != _originalGameOfLifeRulesEngine ||
+        _settings.GameOfLifeEraBandedHueSpeed != _originalGameOfLifeEraBandedHueSpeed;
 
     public event Action? SettingsApplied;
 
@@ -559,8 +563,17 @@ public partial class SettingsWindow : JukeboxWindow
         CbGameOfLifeColorMode.Items.Add("Genetic (blend parents)");
         CbGameOfLifeColorMode.Items.Add("Era-Banded (rotating hue)");
         CbGameOfLifeColorMode.SelectedIndex = Math.Clamp(settings.GameOfLifeColorMode, 0, 1);
+        CbGameOfLifeRulesEngine.Items.Clear();
+        CbGameOfLifeRulesEngine.Items.Add("Conway (B3/S23)");
+        CbGameOfLifeRulesEngine.Items.Add("Brian's Brain (B2/S/refractory)");
+        CbGameOfLifeRulesEngine.Items.Add("Star Wars (B2/S345/4)");
+        CbGameOfLifeRulesEngine.SelectedIndex = Math.Clamp(settings.GameOfLifeRulesEngine, 0, 2);
+        double huSpeed = Math.Clamp(settings.GameOfLifeEraBandedHueSpeed, 0.1, 10.0);
+        SliderGameOfLifeEraBandedHueSpeed.Value = huSpeed;
+        TxtGameOfLifeEraBandedHueSpeed.Text = $"{huSpeed:F1}×";
         UpdateGameOfLifeCameraVisibility();
         UpdateGameOfLifeTuningVisibility();
+        UpdateGameOfLifeRulesVisibility();
 
         CbReactiveBlobsPlayfield.IsChecked = settings.ReactiveBlobsPlayfield;
         CbReactiveBlobsBackglass.IsChecked = settings.ReactiveBlobsBackglass;
@@ -795,6 +808,8 @@ public partial class SettingsWindow : JukeboxWindow
         _originalGameOfLifeCameraSpeed = settings.GameOfLifeCameraSpeed;
         _originalGameOfLifeRestartOnTrackChange = settings.GameOfLifeRestartOnTrackChange;
         _originalGameOfLifeColorMode = settings.GameOfLifeColorMode;
+        _originalGameOfLifeRulesEngine = settings.GameOfLifeRulesEngine;
+        _originalGameOfLifeEraBandedHueSpeed = settings.GameOfLifeEraBandedHueSpeed;
         _originalProjectMPresetDuration = settings.ProjectMPresetDuration;
         _originalProjectMSoftCut = settings.ProjectMSoftCutDuration;
         _originalProjectMHardCut = settings.ProjectMHardCutEnabled;
@@ -1892,6 +1907,33 @@ public partial class SettingsWindow : JukeboxWindow
         PanelGameOfLifeTuning.Visibility = anyGameOfLife ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    /// <summary>
+    /// Toggle visibility of Conway-only controls (anti-stagnation, color mode
+    /// chooser) based on the selected rules engine. Non-Conway rules force
+    /// EraBanded color mode at runtime, so their color chooser is hidden.
+    /// </summary>
+    private void UpdateGameOfLifeRulesVisibility()
+    {
+        // Rules engine is temporarily forced to Conway (see docs/GameOfLifeRules.md),
+        // so the Conway-only controls are always visible regardless of any
+        // persisted GameOfLifeRulesEngine value from a previous session.
+        if (PanelGameOfLifeConwayOnly != null)
+            PanelGameOfLifeConwayOnly.Visibility = Visibility.Visible;
+        if (PanelGameOfLifeColorMode != null)
+            PanelGameOfLifeColorMode.Visibility = Visibility.Visible;
+    }
+
+    private void CbGameOfLifeRulesEngine_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        UpdateGameOfLifeRulesVisibility();
+    }
+
+    private void SliderGameOfLifeEraBandedHueSpeed_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtGameOfLifeEraBandedHueSpeed != null)
+            TxtGameOfLifeEraBandedHueSpeed.Text = $"{e.NewValue:F1}×";
+    }
+
     private void SliderGameOfLifeCellSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (TxtGameOfLifeCellSize != null)
@@ -2508,6 +2550,8 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.GameOfLifeAntiStagnationIntensity = (int)SliderGameOfLifeAntiStagnationIntensity.Value;
         _settings.GameOfLifeScalingMode = CbGameOfLifeScalingMode.SelectedIndex;
         _settings.GameOfLifeColorMode = CbGameOfLifeColorMode.SelectedIndex;
+        _settings.GameOfLifeRulesEngine = Math.Max(0, CbGameOfLifeRulesEngine.SelectedIndex);
+        _settings.GameOfLifeEraBandedHueSpeed = SliderGameOfLifeEraBandedHueSpeed.Value;
         _settings.ReactiveBlobsPlayfield = CbReactiveBlobsPlayfield.IsChecked == true;
         _settings.ReactiveBlobsBackglass = CbReactiveBlobsBackglass.IsChecked == true;
         _settings.ReactiveBlobsTopper = CbReactiveBlobsTopper.IsChecked == true;
@@ -2601,6 +2645,8 @@ public partial class SettingsWindow : JukeboxWindow
         _originalGameOfLifeCameraSpeed = _settings.GameOfLifeCameraSpeed;
         _originalGameOfLifeRestartOnTrackChange = _settings.GameOfLifeRestartOnTrackChange;
         _originalGameOfLifeColorMode = _settings.GameOfLifeColorMode;
+        _originalGameOfLifeRulesEngine = _settings.GameOfLifeRulesEngine;
+        _originalGameOfLifeEraBandedHueSpeed = _settings.GameOfLifeEraBandedHueSpeed;
         _originalProjectMPresetDuration = _settings.ProjectMPresetDuration;
         _originalProjectMSoftCut = _settings.ProjectMSoftCutDuration;
         _originalProjectMHardCut = _settings.ProjectMHardCutEnabled;

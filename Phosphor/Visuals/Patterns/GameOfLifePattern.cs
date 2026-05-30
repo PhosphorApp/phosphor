@@ -66,6 +66,29 @@ public sealed class GameOfLifePattern : BlobPatternBase
     public static ColorModeKind ColorMode { get; set; } = ColorModeKind.Genetic;
 
     /// <summary>
+    /// Cellular-automaton rule engine used to step the simulation.
+    /// <list type="bullet">
+    /// <item><c>Conway</c> — classic B3/S23. Supports both Genetic and EraBanded color modes,
+    /// and is the only rule that uses <see cref="AntiStagnation"/> (the other rules cannot
+    /// form still lifes / period-2 oscillators, so intervention would be counter-productive).</item>
+    /// <item><c>BriansBrain</c> — 3-state B2/S/refractory. EraBanded only. (Phase 2.)</item>
+    /// <item><c>StarWars</c> — 4-state B2/S345/4. EraBanded only. (Phase 2.)</item>
+    /// </list>
+    /// </summary>
+    public enum RulesEngine { Conway = 0, BriansBrain = 1, StarWars = 2 }
+
+    /// <summary>Selected rules engine. Default <see cref="RulesEngine.Conway"/>.</summary>
+    public static RulesEngine Rules { get; set; } = RulesEngine.Conway;
+
+    /// <summary>
+    /// Multiplier on the EraBanded hue rotation speed. 1.0 = the original ~60s full
+    /// cycle. Higher values produce finer, more rapid color bands; lower values
+    /// produce slow geological bands. Only takes effect in EraBanded color mode.
+    /// Defaulted per-rule by the caller (Conway = 1.0; BB/SW = ~1.5–2.0).
+    /// </summary>
+    public static double EraBandedHueSpeed { get; set; } = 1.0;
+
+    /// <summary>
     /// When true, periodically nudge or disrupt stagnant patterns (still lifes and
     /// short-period oscillators like blinkers / beacons / toads) so the simulation
     /// keeps evolving instead of locking into a static field of small repeating shapes.
@@ -403,6 +426,14 @@ public sealed class GameOfLifePattern : BlobPatternBase
         bool useEraBanded = ColorMode == ColorModeKind.EraBanded;
         if (useEraBanded) UpdateBirthColor();
 
+        // B2-birth rules saturate from any dense seed — and with no reactive
+        // injection or torus wrap, they're meant to run as a long, slow burn
+        // from a single ignition point. Pick a tiny fixed number of seeds
+        // (typically 1–3) regardless of grid size so the pattern has room
+        // to spread before colliding or drifting off-screen.
+        bool b2Rule = Rules == RulesEngine.BriansBrain || Rules == RulesEngine.StarWars;
+        if (b2Rule) count = 1 + _rng.Next(3); // 1..3 seeds
+
         for (int s = 0; s < count; s++)
         {
             uint packed;
@@ -419,6 +450,12 @@ public sealed class GameOfLifePattern : BlobPatternBase
             int cx = _rng.Next(marginX, _gridW - marginX);
             int cy = _rng.Next(marginY, _gridH - marginY);
 
+            if (b2Rule)
+            {
+                PlantB2Seed(cx, cy, packed);
+                continue;
+            }
+
             for (int dy = -1; dy <= 1; dy++)
             for (int dx = -1; dx <= 1; dx++)
             {
@@ -433,6 +470,111 @@ public sealed class GameOfLifePattern : BlobPatternBase
                     _aliveCurrent[y * _wordsPerRow + (x >> 6)] |= 1UL << (x & 63);
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Plant a small B2-friendly "ignition" seed centered near (cx, cy).
+    /// Uses a small random-density patch (the canonical bootstrap for
+    /// Brian's Brain / Star Wars). Tiny structured seeds like dominoes
+    /// fire once and burn out, but a ~15x15 patch at ~35% density spawns
+    /// sustained chaotic activity that can run for thousands of generations
+    /// before drifting off-screen.
+    /// </summary>
+    private void PlantB2Seed(int cx, int cy, uint packed)
+    {
+        const int radius = 8;          // 17x17 patch
+        const double density = 0.35;   // ~100 live cells per patch
+
+        for (int dy = -radius; dy <= radius; dy++)
+        for (int dx = -radius; dx <= radius; dx++)
+        {
+            if (_rng.NextDouble() >= density) continue;
+            int x = cx + dx;
+            int y = cy + dy;
+            if (x < 0 || x >= _gridW || y < 0 || y >= _gridH) continue;
+            int idx = y * _gridW + x;
+            _colorCurrent[idx] = packed;
+            _age[idx] = 1;
+            _fade[idx] = 0;
+            _aliveCurrent[y * _wordsPerRow + (x >> 6)] |= 1UL << (x & 63);
+        }
+    }
+
+    /// <summary>
+    /// Cheap alive-cell density estimate (popcount over the alive bitboard).
+    /// Used by the OnTick injection gate so we don't fire periodic / beat
+    /// injections into an already-saturated B2 simulation.
+    /// </summary>
+    private double ApproxAliveDensity()
+    {
+        int totalCells = _gridW * _gridH;
+        if (totalCells <= 0 || _aliveCurrent == null) return 0.0;
+        long bits = 0;
+        var arr = _aliveCurrent;
+        for (int i = 0; i < arr.Length; i++)
+            bits += System.Numerics.BitOperations.PopCount(arr[i]);
+        return (double)bits / totalCells;
+    }
+
+    /// <summary>
+    /// Reseed a B2 rule (Brian's Brain, Star Wars) after it has burned out.
+    /// With no-wrap edges the initial seed eventually drifts off-screen and
+    /// the field goes black; this drops a handful of fresh ignition seeds
+    /// so the visual restarts on its own. Any lingering live cells are
+    /// pushed into the existing white-tint fade trail for a smooth handoff.
+    /// </summary>
+    private void SeedB2Fresh()
+    {
+        int w = _gridW, h = _gridH;
+        byte fadeStart = (byte)Math.Clamp(FadeGenerations, 1, 255);
+
+        // Push every alive cell into the fade trail.
+        for (int y = 0; y < h; y++)
+        {
+            int rowBase = y * w;
+            int wordBase = y * _wordsPerRow;
+            for (int wi = 0; wi < _wordsPerRow; wi++)
+            {
+                ulong bits = _aliveCurrent[wordBase + wi];
+                int xBase = wi << 6;
+                while (bits != 0)
+                {
+                    int b = System.Numerics.BitOperations.TrailingZeroCount(bits);
+                    bits &= bits - 1;
+                    int idx = rowBase + xBase + b;
+                    _fadeColor[idx] = 0x00FFFFFFu;
+                    _fade[idx] = fadeStart;
+                    _age[idx] = 0;
+                    _colorCurrent[idx] = 0;
+                }
+            }
+        }
+
+        Array.Clear(_aliveCurrent);
+        Array.Clear(_aliveNext);
+        Array.Clear(_colorNext);
+
+        // Drop a sparse handful of fresh ignition seeds.
+        int marginX = Math.Max(2, (int)(_gridW * PlacementMargin));
+        int marginY = Math.Max(2, (int)(_gridH * PlacementMargin));
+        bool useEraBanded = ColorMode == ColorModeKind.EraBanded;
+        int seedCount = Math.Max(2, _blobCount / 16);
+        for (int s = 0; s < seedCount; s++)
+        {
+            uint packed;
+            if (useEraBanded)
+            {
+                packed = _currentBirthColor;
+            }
+            else
+            {
+                double hue = _rng.NextDouble() * 360.0;
+                packed = PackColor(HslToColor(hue, 0.9, 0.6));
+            }
+            int cx = _rng.Next(marginX, _gridW - marginX);
+            int cy = _rng.Next(marginY, _gridH - marginY);
+            PlantB2Seed(cx, cy, packed);
         }
     }
 
@@ -481,13 +623,18 @@ public sealed class GameOfLifePattern : BlobPatternBase
         // injections) share a single hue — the defining property of the mode.
         UpdateBirthColor();
 
-        // Inject new cells on beat
+        // Inject new cells on beat (Conway only). B2-birth rules (Brian's
+        // Brain, Star Wars) get a single fixed seed in SeedGrid and then
+        // run unperturbed — any reactive injection saturates the field, and
+        // with no-wrap edges the initial pattern naturally drifts off-screen
+        // and burns out over time.
         if (_pendingBeat)
         {
             _pendingBeat = false;
-            InjectCells();
+            if (Rules == RulesEngine.Conway)
+                InjectCells();
         }
-        else if (!_audioReactiveActive)
+        else if (!_audioReactiveActive && Rules == RulesEngine.Conway)
         {
             // When audio reactive is off, periodically inject cells to keep
             // the simulation alive. Interval scales with tick rate so it's
@@ -497,8 +644,19 @@ public sealed class GameOfLifePattern : BlobPatternBase
                 InjectCells();
         }
 
+        // If a B2 rule has completely burned out (off-grid drift + collisions
+        // eventually leave nothing), reseed so the visual doesn't go black.
+        if (Rules != RulesEngine.Conway && _generationCount % 30 == 0)
+        {
+            if (ApproxAliveDensity() < 0.0005)
+                SeedB2Fresh();
+        }
+
         StepSimulation();
-        if (AntiStagnation) RunAntiStagnationTick();
+        // Anti-stagnation only makes sense for Conway: the other rules (Brian's Brain,
+        // Star Wars) can't form the still-lifes / period-2 oscillators it targets,
+        // and forcibly perturbing them would just create noise.
+        if (AntiStagnation && Rules == RulesEngine.Conway) RunAntiStagnationTick();
         RenderFrame();
         AdvanceCameraTargets();
 
@@ -544,7 +702,12 @@ public sealed class GameOfLifePattern : BlobPatternBase
     /// </summary>
     private void UpdateBirthColor()
     {
-        double phase = (Environment.TickCount64 % (long)HueRotationPeriodMs) / HueRotationPeriodMs;
+        // EraBandedHueSpeed scales the rotation rate: 1.0 = full ROYGBIV cycle in
+        // HueRotationPeriodMs, 2.0 = twice as fast, 0.5 = half speed. Clamp to a
+        // sensible range so an accidental 0 doesn't freeze the hue.
+        double speed = Math.Clamp(EraBandedHueSpeed, 0.05, 20.0);
+        double periodMs = HueRotationPeriodMs / speed;
+        double phase = (Environment.TickCount64 % (long)periodMs) / periodMs;
         double hue = phase * 360.0;
         _currentBirthColor = PackColor(HslToColor(hue, 0.9, 0.6));
     }
@@ -679,6 +842,14 @@ public sealed class GameOfLifePattern : BlobPatternBase
         int sectorCount = SectorCountX * SectorCountY;
         int sectorCx = SectorCountX - 1;
 
+        // Rule selector. Conway uses the specialized B3/S23 fused path
+        // (slightly tighter inner loop). Brian's Brain and Star Wars share
+        // the generic totalistic path, differing only in the B/S masks.
+        bool useGeneric = Rules != RulesEngine.Conway;
+        int birthMask = 0, surviveMask = 0;
+        if (Rules == RulesEngine.BriansBrain) { birthMask = 1 << 2; surviveMask = 0; }
+        else if (Rules == RulesEngine.StarWars) { birthMask = 1 << 2; surviveMask = (1 << 3) | (1 << 4) | (1 << 5); }
+
         if (totalCells >= ParallelCellThreshold)
         {
             object mergeLock = new();
@@ -698,10 +869,18 @@ public sealed class GameOfLifePattern : BlobPatternBase
                 },
                 (y, _, local) =>
                 {
-                    StepRowBitboard(y, w, h, wpr, lastWordIdx, lastMask,
-                        sectorW, sectorH, sectorCx,
-                        birthColor, fadeStart,
-                        local.births, local.alive);
+                    if (useGeneric)
+                        StepRowBitboardMultiState(y, w, h, wpr, lastWordIdx, lastMask,
+                            sectorW, sectorH, sectorCx,
+                            birthColor, fadeStart,
+                            birthMask, surviveMask,
+                            wrapEdges: false,
+                            local.births, local.alive);
+                    else
+                        StepRowBitboard(y, w, h, wpr, lastWordIdx, lastMask,
+                            sectorW, sectorH, sectorCx,
+                            birthColor, fadeStart,
+                            local.births, local.alive);
                     return local;
                 },
                 local =>
@@ -720,10 +899,20 @@ public sealed class GameOfLifePattern : BlobPatternBase
         else
         {
             for (int y = 0; y < h; y++)
-                StepRowBitboard(y, w, h, wpr, lastWordIdx, lastMask,
-                    sectorW, sectorH, sectorCx,
-                    birthColor, fadeStart,
-                    _sectorBirths, _sectorAlive);
+            {
+                if (useGeneric)
+                    StepRowBitboardMultiState(y, w, h, wpr, lastWordIdx, lastMask,
+                        sectorW, sectorH, sectorCx,
+                        birthColor, fadeStart,
+                        birthMask, surviveMask,
+                        wrapEdges: false,
+                        _sectorBirths, _sectorAlive);
+                else
+                    StepRowBitboard(y, w, h, wpr, lastWordIdx, lastMask,
+                        sectorW, sectorH, sectorCx,
+                        birthColor, fadeStart,
+                        _sectorBirths, _sectorAlive);
+            }
         }
 
         (_colorCurrent, _colorNext) = (_colorNext, _colorCurrent);
@@ -904,6 +1093,236 @@ public sealed class GameOfLifePattern : BlobPatternBase
             }
 
             // Survivors: alive -> alive. Carry color forward, bump age.
+            ulong survivors = midMid & aliveNew;
+            while (survivors != 0)
+            {
+                int b = System.Numerics.BitOperations.TrailingZeroCount(survivors);
+                survivors &= survivors - 1;
+                int x = xBase + b;
+                int idx = rowBase + x;
+                _colorNext[idx] = _colorCurrent[idx];
+                if (_age[idx] < 3) _age[idx]++;
+                _fade[idx] = 0;
+                int si = Math.Min(x / sectorW, sectorCx) + sectorRowBase;
+                sectorAlive[si]++;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Generic bit-parallel step for totalistic 2-state-plus-fade rules
+    /// (Brian's Brain B2/S, Star Wars B2/S345). Identical neighbor-count
+    /// pipeline to <see cref="StepRowBitboard"/>, but the birth/survive
+    /// decisions are driven by 9-bit masks indexed by neighbor count 0..8
+    /// (bit n = 1 means "transition allowed at count n").
+    ///
+    /// "Dying" cells (alive last tick, didn't survive) are pushed into the
+    /// existing fade buffers with a white tint so the renderer shows them
+    /// as the canonical bright trailing ghosts; they do NOT count toward
+    /// next-tick neighbor sums (only true-alive cells in <see cref="_aliveCurrent"/>
+    /// do — which matches both rules' standard definitions, since BB's
+    /// refractory state and StarWars' dying state are non-contributing).
+    /// </summary>
+    private void StepRowBitboardMultiState(int y, int w, int h, int wpr, int lastWordIdx, ulong lastMask,
+        int sectorW, int sectorH, int sectorCx,
+        uint birthColor, byte fadeStart,
+        int birthMask, int surviveMask,
+        bool wrapEdges,
+        int[] sectorBirths, int[] sectorAlive)
+    {
+        // No-wrap variant treats off-grid cells as permanently dead. This is
+        // essential for B2-birth rules (Brian's Brain, Star Wars): with a
+        // torus the spreading fronts re-collide from the opposite edge and
+        // the field always saturates. Off-grid-dead lets the fronts drift
+        // off the screen and the patterns burn themselves out naturally.
+        bool topRow = y == 0;
+        bool bottomRow = y == h - 1;
+        int yUp = topRow ? (wrapEdges ? h - 1 : 0) : y - 1;
+        int yDn = bottomRow ? (wrapEdges ? 0 : 0) : y + 1;
+        int sy = Math.Min(y / sectorH, SectorCountY - 1);
+        int sectorRowBase = sy * SectorCountX;
+
+        int rowBase = y * w;
+        int upWordBase = yUp * wpr;
+        int midWordBase = y * wpr;
+        int dnWordBase = yDn * wpr;
+
+        Array.Clear(_colorNext, rowBase, w);
+        for (int x = 0; x < w; x++)
+        {
+            byte f = _fade[rowBase + x];
+            if (f > 0) _fade[rowBase + x] = (byte)(f - 1);
+        }
+
+        int lastBit = (w - 1) & 63;
+        ulong upWrapLeft, midWrapLeft, dnWrapLeft;
+        ulong upWrapRight, midWrapRight, dnWrapRight;
+        if (wrapEdges)
+        {
+            upWrapLeft = (_aliveCurrent[upWordBase + lastWordIdx] >> lastBit) & 1UL;
+            midWrapLeft = (_aliveCurrent[midWordBase + lastWordIdx] >> lastBit) & 1UL;
+            dnWrapLeft = (_aliveCurrent[dnWordBase + lastWordIdx] >> lastBit) & 1UL;
+            upWrapRight = _aliveCurrent[upWordBase] & 1UL;
+            midWrapRight = _aliveCurrent[midWordBase] & 1UL;
+            dnWrapRight = _aliveCurrent[dnWordBase] & 1UL;
+        }
+        else
+        {
+            // Off-grid columns count as dead.
+            upWrapLeft = midWrapLeft = dnWrapLeft = 0UL;
+            upWrapRight = midWrapRight = dnWrapRight = 0UL;
+        }
+
+        // For no-wrap, the up-row at the top edge and the down-row at the
+        // bottom edge are off-grid; force their lanes to zero so they don't
+        // contribute to neighbor counts.
+        bool zeroUp = !wrapEdges && topRow;
+        bool zeroDn = !wrapEdges && bottomRow;
+
+        for (int wi = 0; wi < wpr; wi++)
+        {
+            ulong upMid = zeroUp ? 0UL : _aliveCurrent[upWordBase + wi];
+            ulong midMid = _aliveCurrent[midWordBase + wi];
+            ulong dnMid = zeroDn ? 0UL : _aliveCurrent[dnWordBase + wi];
+
+            ulong upL, midL, dnL;
+            if (wi == 0)
+            {
+                upL = (upMid << 1) | upWrapLeft;
+                midL = (midMid << 1) | midWrapLeft;
+                dnL = (dnMid << 1) | dnWrapLeft;
+            }
+            else
+            {
+                ulong upLeftCarry = zeroUp ? 0UL : (_aliveCurrent[upWordBase + wi - 1] >> 63);
+                ulong dnLeftCarry = zeroDn ? 0UL : (_aliveCurrent[dnWordBase + wi - 1] >> 63);
+                upL = (upMid << 1) | upLeftCarry;
+                midL = (midMid << 1) | (_aliveCurrent[midWordBase + wi - 1] >> 63);
+                dnL = (dnMid << 1) | dnLeftCarry;
+            }
+
+            ulong upR, midR, dnR;
+            if (wi == lastWordIdx)
+            {
+                upR = (upMid >> 1) | (upWrapRight << lastBit);
+                midR = (midMid >> 1) | (midWrapRight << lastBit);
+                dnR = (dnMid >> 1) | (dnWrapRight << lastBit);
+            }
+            else
+            {
+                ulong upRightCarry = zeroUp ? 0UL : (_aliveCurrent[upWordBase + wi + 1] << 63);
+                ulong dnRightCarry = zeroDn ? 0UL : (_aliveCurrent[dnWordBase + wi + 1] << 63);
+                upR = (upMid >> 1) | upRightCarry;
+                midR = (midMid >> 1) | (_aliveCurrent[midWordBase + wi + 1] << 63);
+                dnR = (dnMid >> 1) | dnRightCarry;
+            }
+
+            ulong uXor = upL ^ upMid;
+            ulong uLo = uXor ^ upR;
+            ulong uHi = (upL & upMid) | (upR & uXor);
+
+            ulong mLo = midL ^ midR;
+            ulong mHi = midL & midR;
+
+            ulong dXor = dnL ^ dnMid;
+            ulong dLo = dXor ^ dnR;
+            ulong dHi = (dnL & dnMid) | (dnR & dXor);
+
+            ulong loXor = uLo ^ mLo;
+            ulong b0 = loXor ^ dLo;
+            ulong cLo = (uLo & mLo) | (dLo & loXor);
+
+            ulong hiXor = uHi ^ mHi;
+            ulong sHi = hiXor ^ dHi;
+            ulong cHi = (uHi & mHi) | (dHi & hiXor);
+
+            ulong b1 = sHi ^ cLo;
+            ulong cHi2 = sHi & cLo;
+
+            ulong b2 = cHi ^ cHi2;
+            ulong b3 = cHi & cHi2;
+
+            // Build a "this cell's count == N" mask per N that any of our
+            // supported rules cares about (0..5 covers BB/SW; 6..8 too).
+            // count bits: b3 b2 b1 b0. We need lanes where the 4-bit value
+            // equals N. Each AND chain folds the 4 plane bits accordingly.
+            ulong nb0 = ~b0;
+            ulong nb1 = ~b1;
+            ulong nb2 = ~b2;
+            ulong nb3 = ~b3;
+
+            ulong eq0 = nb3 & nb2 & nb1 & nb0;
+            ulong eq1 = nb3 & nb2 & nb1 & b0;
+            ulong eq2 = nb3 & nb2 & b1 & nb0;
+            ulong eq3 = nb3 & nb2 & b1 & b0;
+            ulong eq4 = nb3 & b2 & nb1 & nb0;
+            ulong eq5 = nb3 & b2 & nb1 & b0;
+            ulong eq6 = nb3 & b2 & b1 & nb0;
+            ulong eq7 = nb3 & b2 & b1 & b0;
+            ulong eq8 = b3 & nb2 & nb1 & nb0;
+
+            ulong birthLanes = 0UL;
+            if ((birthMask & (1 << 0)) != 0) birthLanes |= eq0;
+            if ((birthMask & (1 << 1)) != 0) birthLanes |= eq1;
+            if ((birthMask & (1 << 2)) != 0) birthLanes |= eq2;
+            if ((birthMask & (1 << 3)) != 0) birthLanes |= eq3;
+            if ((birthMask & (1 << 4)) != 0) birthLanes |= eq4;
+            if ((birthMask & (1 << 5)) != 0) birthLanes |= eq5;
+            if ((birthMask & (1 << 6)) != 0) birthLanes |= eq6;
+            if ((birthMask & (1 << 7)) != 0) birthLanes |= eq7;
+            if ((birthMask & (1 << 8)) != 0) birthLanes |= eq8;
+
+            ulong surviveLanes = 0UL;
+            if ((surviveMask & (1 << 0)) != 0) surviveLanes |= eq0;
+            if ((surviveMask & (1 << 1)) != 0) surviveLanes |= eq1;
+            if ((surviveMask & (1 << 2)) != 0) surviveLanes |= eq2;
+            if ((surviveMask & (1 << 3)) != 0) surviveLanes |= eq3;
+            if ((surviveMask & (1 << 4)) != 0) surviveLanes |= eq4;
+            if ((surviveMask & (1 << 5)) != 0) surviveLanes |= eq5;
+            if ((surviveMask & (1 << 6)) != 0) surviveLanes |= eq6;
+            if ((surviveMask & (1 << 7)) != 0) surviveLanes |= eq7;
+            if ((surviveMask & (1 << 8)) != 0) surviveLanes |= eq8;
+
+            ulong aliveNew = (birthLanes & ~midMid) | (surviveLanes & midMid);
+
+            if (wi == lastWordIdx) aliveNew &= lastMask;
+
+            _aliveNext[midWordBase + wi] = aliveNew;
+
+            int xBase = wi << 6;
+
+            // Births: dead -> alive. Era-banded color.
+            ulong births = aliveNew & ~midMid;
+            while (births != 0)
+            {
+                int b = System.Numerics.BitOperations.TrailingZeroCount(births);
+                births &= births - 1;
+                int x = xBase + b;
+                int idx = rowBase + x;
+                _colorNext[idx] = birthColor;
+                _age[idx] = 1;
+                _fade[idx] = 0;
+                int si = Math.Min(x / sectorW, sectorCx) + sectorRowBase;
+                sectorBirths[si]++;
+            }
+
+            // Deaths (= dying-state transition for BB/SW): alive -> dead.
+            // Push the cell into the white-tinted fade trail so the
+            // renderer paints it as the canonical bright ghost.
+            ulong deaths = midMid & ~aliveNew;
+            while (deaths != 0)
+            {
+                int b = System.Numerics.BitOperations.TrailingZeroCount(deaths);
+                deaths &= deaths - 1;
+                int x = xBase + b;
+                int idx = rowBase + x;
+                _fadeColor[idx] = 0x00FFFFFFu;
+                _fade[idx] = fadeStart;
+                _age[idx] = 0;
+            }
+
+            // Survivors: alive -> alive. Carry color forward (Star Wars only;
+            // Brian's Brain has surviveMask == 0, so this loop is empty).
             ulong survivors = midMid & aliveNew;
             while (survivors != 0)
             {
@@ -1543,12 +1962,19 @@ public sealed class GameOfLifePattern : BlobPatternBase
 
     private void InjectCells()
     {
+        // For B2-birth rules a "cluster" injection is catastrophic — any
+        // 2-neighbor pair instantly nucleates a chain reaction that fills
+        // the grid in seconds. Drop a single cell instead, and inject far
+        // fewer of them. Anything denser than a sparse population should
+        // be self-sustaining for these rules.
+        bool b2Rule = Rules == RulesEngine.BriansBrain || Rules == RulesEngine.StarWars;
+
         // Single pass: count population AND collect stagnant cells (alive in both
         // snapshots) so we don't walk the full grid twice on big simulations.
         int totalCells = _gridW * _gridH;
         int alive = 0;
         _stagnantCells.Clear();
-        if (_snapshotReady)
+        if (_snapshotReady && !b2Rule)
         {
             for (int i = 0; i < totalCells; i++)
             {
@@ -1558,6 +1984,8 @@ public sealed class GameOfLifePattern : BlobPatternBase
         }
         else
         {
+            // B2 rules don't have meaningful stagnant cells (no still-lifes),
+            // so skip the snapshot scan and just count population.
             for (int i = 0; i < totalCells; i++)
                 if (_colorCurrent[i] != 0) alive++;
         }
@@ -1568,16 +1996,29 @@ public sealed class GameOfLifePattern : BlobPatternBase
         // Scale by overscan area ratio so the larger grid gets proportionally more clusters.
         double densityFactor = Density / 5.0;
         double areaRatio = (_overscanW * _overscanH) / Math.Max(1, _displayW * _displayH);
-        int clustersToAdd = (int)Math.Max(1, (density switch
+        int clustersToAdd;
+        if (b2Rule)
         {
-            < 0.04 => 8,
-            < 0.08 => 6,
-            < 0.12 => 4,
-            < 0.16 => 3,
-            < 0.20 => 2,
-            < 0.24 => 1,
-            _ => 1,
-        }) * densityFactor * areaRatio);
+            // B2 seeds (dominoes/trominoes) ignite small spreading patches
+            // that burn themselves out over time, so we need a steady trickle
+            // to keep the field interesting without filling it. Skip only
+            // when truly busy.
+            if (density > 0.10) return;
+            clustersToAdd = (int)Math.Max(2, Math.Round(4 * densityFactor));
+        }
+        else
+        {
+            clustersToAdd = (int)Math.Max(1, (density switch
+            {
+                < 0.04 => 8,
+                < 0.08 => 6,
+                < 0.12 => 4,
+                < 0.16 => 3,
+                < 0.20 => 2,
+                < 0.24 => 1,
+                _ => 1,
+            }) * densityFactor * areaRatio);
+        }
 
         // Use a hue based on current time for variety (Genetic mode). In
         // EraBanded mode every cluster this tick shares the global birth color.
@@ -1637,6 +2078,10 @@ public sealed class GameOfLifePattern : BlobPatternBase
             for (int dy = -1; dy <= 1; dy++)
             for (int dx = -1; dx <= 1; dx++)
             {
+                // B2 rules use a domino/tromino seed instead — a single
+                // isolated cell would simply die next tick (count 0 = no
+                // birth, no survival). Handled outside the loop.
+                if (b2Rule) continue;
                 if (_rng.NextDouble() < 0.4) continue;
                 int x = cx + dx, y = cy + dy;
                 if (x >= 0 && x < _gridW && y >= 0 && y < _gridH)
@@ -1649,6 +2094,8 @@ public sealed class GameOfLifePattern : BlobPatternBase
                     _aliveCurrent[y * _wordsPerRow + (x >> 6)] |= 1UL << (x & 63);
                 }
             }
+
+            if (b2Rule) PlantB2Seed(cx, cy, packed);
         }
     }
 
