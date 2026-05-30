@@ -607,3 +607,71 @@ recommended mode if a user wants 4K @ 144 Hz with comfortable headroom.
   thread, dominant-brush cycle, or unrelated GC. Out of scope for this
   branch.
 
+---
+
+## ✅ Anti-Stagnation (shipped on `master`)
+
+Conway sims naturally collapse into seas of small period-2 oscillators
+and still lifes (blinkers, blocks, beehives, beacons). Stable, boring,
+no new events for the camera to follow. The optional `AntiStagnation`
+toggle (default off) injects gentle perturbations to keep the field
+interesting without looking heavy-handed.
+
+### Detection
+A cell alive in **three consecutive generations** (N-2, N-1, N) is
+"boring" — catches still lifes and the always-on cells of period-2
+oscillators (blinker center, beacon corners), while ignoring gliders
+and active blooms (their cells turn over each tick). Computed with
+**two bitwise ANDs over the rolling alive bitboards** — reuses the
+Phase 3 bitboard infrastructure. At 4K that's ~5K ulongs scanned per
+intervention, sub-millisecond.
+
+### Intervention Mix (per detected boring cell, when sweep fires)
+- **70% NUDGE** — kill the boring cell + birth a random dead 8-neighbor.
+  Shifts the shape by 1 cell, almost always breaks the oscillator into
+  a glider/bloom/eventual die-out. Looks like organic drift, not a
+  hand of god.
+- **25% DECAY** — quiet death with normal fade-out. Removes still lifes
+  without explosions.
+- **5% CATALYST** — stamp a small glider in a nearby empty area.
+  Gliders are native to Life and chain-react satisfyingly into debris.
+
+Cadence scales with the user-facing `AntiStagnationIntensity` (1–10,
+default 5). At intensity 5 the intervention sweep fires every ~10
+ticks (~1 s at 100 ms tick rate) and perturbs ~3 % of boring cells per
+sweep (capped at 256 to prevent spikes on enormous still-life seas).
+A periodic **sweeper glider** also spawns from a random overscan edge,
+aimed roughly at the camera focus area, to clear static regions in
+low-density scenes where the boring-cell detector finds nothing.
+
+### Mode Compatibility
+EraBanded maintains `_aliveCurrent` natively, so detection is free
+data. Genetic mode rebuilds an alive bitmap from `_colorCurrent` into
+`_aliveNext` (used as scratch) once per intervention tick —
+sub-millisecond at 4K and only runs when AntiStagnation is enabled,
+so Genetic users who leave it off pay zero cost.
+
+### Population Gate (shipped after initial rollout)
+Initial behavior was always-on once the 3-generation history filled.
+Problem: early sparse seedings have isolated blinkers in mostly-empty
+grids — they look "boring" to the 3-gen detector, but the sim isn't
+stuck; it's still spreading. The detector was pruning the field before
+it could build up.
+
+**Fix:** skip `RunAntiStagnationTick` while alive cells < **3% of grid
+total** (`AntiStagMinDensity`). 3% sits just under Conway's natural
+equilibrium density (~3.5%), so the gate releases the moment the field
+fills out. Population sum is essentially free — 64 int adds on
+`_sectorAlive`, which the step path already maintains.
+
+Why density, not elapsed time:
+- Framerate-independent (tick rate is user-configurable 1–100 ms).
+- Grid-size-independent (3% of 4K = 250K cells; of 1080p = 60K cells).
+- Tracks actual sim state — fast seedings release in 1–2 s, slow ones
+  in 5–10 s, both correctly.
+
+While gated, `_antiStagHistFilled` is also reset so the 3-generation
+detection re-warms cleanly when the threshold is crossed. Otherwise
+the first post-gate intervention would compare gen N against stale
+sparse-seed-era history and over-prune.
+
