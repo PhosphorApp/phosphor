@@ -579,7 +579,8 @@ public partial class SettingsWindow : JukeboxWindow
         CbGameOfLifeColorMode.Items.Clear();
         CbGameOfLifeColorMode.Items.Add("Genetic (blend parents)");
         CbGameOfLifeColorMode.Items.Add("Era-Banded (rotating hue)");
-        CbGameOfLifeColorMode.SelectedIndex = Math.Clamp(settings.GameOfLifeColorMode, 0, 1);
+        CbGameOfLifeColorMode.Items.Add("Genetic Vivid (re-saturated)");
+        CbGameOfLifeColorMode.SelectedIndex = Math.Clamp(settings.GameOfLifeColorMode, 0, 2);
         CbGameOfLifeRulesEngine.Items.Clear();
         CbGameOfLifeRulesEngine.Items.Add("Conway (B3/S23)");
         CbGameOfLifeRulesEngine.Items.Add("Brian's Brain (B2/S/refractory)");

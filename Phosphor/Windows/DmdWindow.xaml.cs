@@ -773,7 +773,7 @@ public partial class DmdWindow : JukeboxWindow
         // Apply custom B/S rule from settings.
         GameOfLifePattern.ApplyRule(settings.GameOfLifeCustomRule ?? "B3/S23");
         GameOfLifePattern.Rules = GameOfLifePattern.RulesEngine.Conway;
-        GameOfLifePattern.ColorMode = (GameOfLifePattern.ColorModeKind)Math.Clamp(settings.GameOfLifeColorMode, 0, 1);
+        GameOfLifePattern.ColorMode = (GameOfLifePattern.ColorModeKind)Math.Clamp(settings.GameOfLifeColorMode, 0, 2);
         GameOfLifePattern.EraBandedHueSpeed = Math.Clamp(settings.GameOfLifeEraBandedHueSpeed, 0.1, 10.0);
         GameOfLifePattern.AntiStagnation = settings.GameOfLifeAntiStagnation;
         GameOfLifePattern.AntiStagnationIntensity = Math.Clamp(settings.GameOfLifeAntiStagnationIntensity, 1, 10);
@@ -2115,7 +2115,7 @@ public partial class DmdWindow : JukeboxWindow
         // Apply custom B/S rule from settings.
         GameOfLifePattern.ApplyRule(_appSettings.GameOfLifeCustomRule ?? "B3/S23");
         GameOfLifePattern.Rules = GameOfLifePattern.RulesEngine.Conway;
-        GameOfLifePattern.ColorMode = (GameOfLifePattern.ColorModeKind)Math.Clamp(_appSettings.GameOfLifeColorMode, 0, 1);
+        GameOfLifePattern.ColorMode = (GameOfLifePattern.ColorModeKind)Math.Clamp(_appSettings.GameOfLifeColorMode, 0, 2);
         GameOfLifePattern.EraBandedHueSpeed = Math.Clamp(_appSettings.GameOfLifeEraBandedHueSpeed, 0.1, 10.0);
         GameOfLifePattern.AntiStagnation = _appSettings.GameOfLifeAntiStagnation;
         GameOfLifePattern.AntiStagnationIntensity = Math.Clamp(_appSettings.GameOfLifeAntiStagnationIntensity, 1, 10);

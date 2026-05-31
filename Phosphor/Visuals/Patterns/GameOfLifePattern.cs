@@ -54,13 +54,17 @@ public sealed class GameOfLifePattern : BlobPatternBase
     /// Color model for new births.
     /// <list type="bullet">
     /// <item><c>Genetic</c> — inherit a blended RGB average of the three live parents.
-    /// Produces collisions between regions that birth new mixed colors (e.g. red+yellow → orange).</item>
+    /// Produces collisions between regions that birth new mixed colors (e.g. red+yellow → orange).
+    /// Colors gradually desaturate over many generations of blending.</item>
     /// <item><c>EraBanded</c> — take the simulation's current rotating-hue value. Survivors keep
     /// their birth color until death, so regions visually band by age ("color geology"). This
     /// mode unlocks future bitboard optimizations because color is no longer derived from neighbors.</item>
+    /// <item><c>GeneticVivid</c> — same hue-blending as Genetic, but re-saturates each birth to
+    /// maintain vivid colors indefinitely. Prevents the muddy gray convergence of standard Genetic
+    /// mode. Uses an integer-only hue extraction + precomputed lookup table for minimal overhead.</item>
     /// </list>
     /// </summary>
-    public enum ColorModeKind { Genetic = 0, EraBanded = 1 }
+    public enum ColorModeKind { Genetic = 0, EraBanded = 1, GeneticVivid = 2 }
 
     /// <summary>Selected color model for births. Default <see cref="ColorModeKind.Genetic"/>.</summary>
     public static ColorModeKind ColorMode { get; set; } = ColorModeKind.Genetic;
@@ -1501,7 +1505,9 @@ public sealed class GameOfLifePattern : BlobPatternBase
                     if (neighbors > 0)
                     {
                         uint r = rSum / (uint)neighbors, g = gSum / (uint)neighbors, b = bSum / (uint)neighbors;
-                        birthColor = 0xFF000000 | (r << 16) | (g << 8) | b;
+                        birthColor = ColorMode == ColorModeKind.GeneticVivid
+                            ? Resaturate(r, g, b)
+                            : 0xFF000000 | (r << 16) | (g << 8) | b;
                     }
                     else
                     {
@@ -2622,6 +2628,66 @@ public sealed class GameOfLifePattern : BlobPatternBase
     // ─── Helpers ──────────────────────────────────────────────
 
     private static uint PackColor(Color c) => 0xFF000000 | ((uint)c.R << 16) | ((uint)c.G << 8) | c.B;
+
+    /// <summary>
+    /// Precomputed saturated colors at S=0.9, L=0.6 for hue 0..359.
+    /// Used by GeneticVivid mode to re-saturate blended colors cheaply.
+    /// Packed as 0xFFRRGGBB.
+    /// </summary>
+    private static readonly uint[] s_vividHueTable = BuildVividHueTable();
+
+    private static uint[] BuildVividHueTable()
+    {
+        var table = new uint[360];
+        for (int h = 0; h < 360; h++)
+        {
+            const double s = 0.9, l = 0.6;
+            double c = (1.0 - Math.Abs(2.0 * l - 1.0)) * s;
+            double x = c * (1.0 - Math.Abs((h / 60.0) % 2.0 - 1.0));
+            double m = l - c / 2.0;
+            double r, g, b;
+            if (h < 60) { r = c; g = x; b = 0; }
+            else if (h < 120) { r = x; g = c; b = 0; }
+            else if (h < 180) { r = 0; g = c; b = x; }
+            else if (h < 240) { r = 0; g = x; b = c; }
+            else if (h < 300) { r = x; g = 0; b = c; }
+            else { r = c; g = 0; b = x; }
+            byte rb = (byte)Math.Clamp((r + m) * 255, 0, 255);
+            byte gb = (byte)Math.Clamp((g + m) * 255, 0, 255);
+            byte bb = (byte)Math.Clamp((b + m) * 255, 0, 255);
+            table[h] = 0xFF000000 | ((uint)rb << 16) | ((uint)gb << 8) | bb;
+        }
+        return table;
+    }
+
+    /// <summary>
+    /// Re-saturate an averaged RGB color by extracting its hue (integer math)
+    /// and looking up the vivid equivalent from the precomputed table.
+    /// Returns the original color if saturation is too low to extract a stable hue.
+    /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private static uint Resaturate(uint r, uint g, uint b)
+    {
+        int ri = (int)r, gi = (int)g, bi = (int)b;
+        int max = Math.Max(ri, Math.Max(gi, bi));
+        int min = Math.Min(ri, Math.Min(gi, bi));
+        int delta = max - min;
+
+        // Near-gray: hue is unstable, return the original averaged color
+        if (delta < 10) return 0xFF000000 | (r << 16) | (g << 8) | b;
+
+        int hue;
+        if (max == ri)
+            hue = 60 * (gi - bi) / delta;
+        else if (max == gi)
+            hue = 60 * (bi - ri) / delta + 120;
+        else
+            hue = 60 * (ri - gi) / delta + 240;
+        if (hue < 0) hue += 360;
+        if (hue >= 360) hue -= 360;
+
+        return s_vividHueTable[hue];
+    }
 
     /// <summary>
     /// Fast check whether a cell's RGB color falls in the given ROYGBIV band.
