@@ -81,6 +81,70 @@ public sealed class GameOfLifePattern : BlobPatternBase
     public static RulesEngine Rules { get; set; } = RulesEngine.Conway;
 
     /// <summary>
+    /// Birth bitmask for custom B/S rules. Bit N set means a dead cell with exactly
+    /// N live neighbors is born. Conway = 1 &lt;&lt; 3 = 8.
+    /// </summary>
+    public static int BirthMask { get; set; } = 1 << 3;
+
+    /// <summary>
+    /// Survival bitmask for custom B/S rules. Bit N set means a live cell with exactly
+    /// N live neighbors survives. Conway = (1 &lt;&lt; 2) | (1 &lt;&lt; 3) = 12.
+    /// </summary>
+    public static int SurviveMask { get; set; } = (1 << 2) | (1 << 3);
+
+    /// <summary>True when BirthMask/SurviveMask equal Conway B3/S23.</summary>
+    public static bool IsConwayRule => BirthMask == (1 << 3) && SurviveMask == ((1 << 2) | (1 << 3));
+
+    /// <summary>
+    /// Parse a B/S rule string like "B3/S23" or "B36/S23" into birth and survival bitmasks.
+    /// Returns (birthMask, surviveMask). On parse failure, returns Conway (B3/S23).
+    /// </summary>
+    public static (int birthMask, int surviveMask) ParseRule(string rule)
+    {
+        int b = 0, s = 0;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(rule)) return (1 << 3, (1 << 2) | (1 << 3));
+            rule = rule.Trim().ToUpperInvariant();
+            int slashIdx = rule.IndexOf('/');
+            if (slashIdx < 0) return (1 << 3, (1 << 2) | (1 << 3));
+            string bPart = rule[..slashIdx].TrimStart('B');
+            string sPart = rule[(slashIdx + 1)..].TrimStart('S');
+            foreach (char c in bPart)
+                if (c >= '0' && c <= '8') b |= 1 << (c - '0');
+            foreach (char c in sPart)
+                if (c >= '0' && c <= '8') s |= 1 << (c - '0');
+        }
+        catch { return (1 << 3, (1 << 2) | (1 << 3)); }
+        return (b, s);
+    }
+
+    /// <summary>
+    /// Format birth and survival bitmasks into a B/S rule string like "B3/S23".
+    /// </summary>
+    public static string FormatRule(int birthMask, int surviveMask)
+    {
+        var sb = new System.Text.StringBuilder("B");
+        for (int i = 0; i <= 8; i++)
+            if ((birthMask & (1 << i)) != 0) sb.Append(i);
+        sb.Append("/S");
+        for (int i = 0; i <= 8; i++)
+            if ((surviveMask & (1 << i)) != 0) sb.Append(i);
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Apply a B/S rule string (e.g. "B3/S23") by parsing it and setting
+    /// <see cref="BirthMask"/> and <see cref="SurviveMask"/>.
+    /// </summary>
+    public static void ApplyRule(string rule)
+    {
+        var (b, s) = ParseRule(rule);
+        BirthMask = b;
+        SurviveMask = s;
+    }
+
+    /// <summary>
     /// Multiplier on the EraBanded hue rotation speed. 1.0 = the original ~60s full
     /// cycle. Higher values produce finer, more rapid color bands; lower values
     /// produce slow geological bands. Only takes effect in EraBanded color mode.
@@ -426,13 +490,18 @@ public sealed class GameOfLifePattern : BlobPatternBase
         bool useEraBanded = ColorMode == ColorModeKind.EraBanded;
         if (useEraBanded) UpdateBirthColor();
 
-        // B2-birth rules saturate from any dense seed — and with no reactive
-        // injection or torus wrap, they're meant to run as a long, slow burn
-        // from a single ignition point. Pick a tiny fixed number of seeds
-        // (typically 1–3) regardless of grid size so the pattern has room
-        // to spread before colliding or drifting off-screen.
-        bool b2Rule = Rules == RulesEngine.BriansBrain || Rules == RulesEngine.StarWars;
-        if (b2Rule) count = 1 + _rng.Next(3); // 1..3 seeds
+        // Non-Conway rules with low birth thresholds (e.g. B2) saturate from
+        // any dense seed. Use fewer seeds so the pattern has room to spread.
+        // Conway (B3/S23) uses the full density-based count.
+        if (!IsConwayRule)
+        {
+            // Rules with B1 or B2 set are extremely explosive
+            bool lowBirth = (BirthMask & 0b111) != 0; // bits 0, 1, or 2
+            if (lowBirth)
+                count = 1 + _rng.Next(3); // 1..3 seeds
+            else
+                count = Math.Max(1, count / 2); // moderate reduction for other custom rules
+        }
 
         for (int s = 0; s < count; s++)
         {
@@ -450,7 +519,10 @@ public sealed class GameOfLifePattern : BlobPatternBase
             int cx = _rng.Next(marginX, _gridW - marginX);
             int cy = _rng.Next(marginY, _gridH - marginY);
 
-            if (b2Rule)
+            // Explosive rules (B0/B1/B2) use a larger random-density patch
+            // that produces sustained chaotic activity.
+            bool lowBirth = !IsConwayRule && (BirthMask & 0b111) != 0;
+            if (lowBirth)
             {
                 PlantB2Seed(cx, cy, packed);
                 continue;
@@ -623,18 +695,16 @@ public sealed class GameOfLifePattern : BlobPatternBase
         // injections) share a single hue — the defining property of the mode.
         UpdateBirthColor();
 
-        // Inject new cells on beat (Conway only). B2-birth rules (Brian's
-        // Brain, Star Wars) get a single fixed seed in SeedGrid and then
-        // run unperturbed — any reactive injection saturates the field, and
-        // with no-wrap edges the initial pattern naturally drifts off-screen
-        // and burns out over time.
+        // Inject new cells on beat. Explosive rules (low birth thresholds)
+        // skip injection to avoid saturating the field.
+        bool safeToInject = IsConwayRule || (BirthMask & 0b111) == 0;
         if (_pendingBeat)
         {
             _pendingBeat = false;
-            if (Rules == RulesEngine.Conway)
+            if (safeToInject)
                 InjectCells();
         }
-        else if (!_audioReactiveActive && Rules == RulesEngine.Conway)
+        else if (!_audioReactiveActive && safeToInject)
         {
             // When audio reactive is off, periodically inject cells to keep
             // the simulation alive. Interval scales with tick rate so it's
@@ -644,19 +714,17 @@ public sealed class GameOfLifePattern : BlobPatternBase
                 InjectCells();
         }
 
-        // If a B2 rule has completely burned out (off-grid drift + collisions
-        // eventually leave nothing), reseed so the visual doesn't go black.
-        if (Rules != RulesEngine.Conway && _generationCount % 30 == 0)
+        // If a non-Conway rule has completely burned out, reseed.
+        if (!IsConwayRule && _generationCount % 30 == 0)
         {
             if (ApproxAliveDensity() < 0.0005)
                 SeedB2Fresh();
         }
 
         StepSimulation();
-        // Anti-stagnation only makes sense for Conway: the other rules (Brian's Brain,
-        // Star Wars) can't form the still-lifes / period-2 oscillators it targets,
-        // and forcibly perturbing them would just create noise.
-        if (AntiStagnation && Rules == RulesEngine.Conway) RunAntiStagnationTick();
+        // Anti-stagnation only makes sense for Conway: other rules typically
+        // can't form the stable still-lifes / period-2 oscillators it targets.
+        if (AntiStagnation && IsConwayRule) RunAntiStagnationTick();
         RenderFrame();
         AdvanceCameraTargets();
 
@@ -842,13 +910,11 @@ public sealed class GameOfLifePattern : BlobPatternBase
         int sectorCount = SectorCountX * SectorCountY;
         int sectorCx = SectorCountX - 1;
 
-        // Rule selector. Conway uses the specialized B3/S23 fused path
-        // (slightly tighter inner loop). Brian's Brain and Star Wars share
-        // the generic totalistic path, differing only in the B/S masks.
-        bool useGeneric = Rules != RulesEngine.Conway;
-        int birthMask = 0, surviveMask = 0;
-        if (Rules == RulesEngine.BriansBrain) { birthMask = 1 << 2; surviveMask = 0; }
-        else if (Rules == RulesEngine.StarWars) { birthMask = 1 << 2; surviveMask = (1 << 3) | (1 << 4) | (1 << 5); }
+        // Rule selector. Conway B3/S23 uses the specialized fused path
+        // (slightly tighter inner loop). Any other B/S rule uses the generic
+        // totalistic path with per-count bitmask lookups.
+        bool useGeneric = !IsConwayRule;
+        int birthMask = BirthMask, surviveMask = SurviveMask;
 
         if (totalCells >= ParallelCellThreshold)
         {
@@ -1401,7 +1467,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
 
         if (self != 0)
         {
-            if (neighbors == 2 || neighbors == 3)
+            if ((SurviveMask & (1 << neighbors)) != 0)
             {
                 _colorNext[idx] = self;
                 // Age is clamped at 3 — anything ≥ 3 produces the same RenderRow result.
@@ -1420,11 +1486,11 @@ public sealed class GameOfLifePattern : BlobPatternBase
         }
         else
         {
-            if (neighbors == 3)
+            if ((BirthMask & (1 << neighbors)) != 0)
             {
                 // EraBanded mode: every birth this tick uses the same rotating-hue
                 // color, so regions visually band by age. Genetic mode: average
-                // the three live parents' RGB (the current default behavior).
+                // the live parents' RGB.
                 uint birthColor;
                 if (useEraBanded)
                 {
@@ -1432,8 +1498,15 @@ public sealed class GameOfLifePattern : BlobPatternBase
                 }
                 else
                 {
-                    uint r = rSum / 3, g = gSum / 3, b = bSum / 3;
-                    birthColor = 0xFF000000 | (r << 16) | (g << 8) | b;
+                    if (neighbors > 0)
+                    {
+                        uint r = rSum / (uint)neighbors, g = gSum / (uint)neighbors, b = bSum / (uint)neighbors;
+                        birthColor = 0xFF000000 | (r << 16) | (g << 8) | b;
+                    }
+                    else
+                    {
+                        birthColor = eraBandedColor; // B0 edge case — no parents to blend
+                    }
                 }
                 _colorNext[idx] = birthColor;
                 _age[idx] = 1;
@@ -1964,17 +2037,17 @@ public sealed class GameOfLifePattern : BlobPatternBase
     {
         // For B2-birth rules a "cluster" injection is catastrophic — any
         // 2-neighbor pair instantly nucleates a chain reaction that fills
+        // Explosive rules (low birth thresholds like B0/B1/B2) saturate
         // the grid in seconds. Drop a single cell instead, and inject far
-        // fewer of them. Anything denser than a sparse population should
-        // be self-sustaining for these rules.
-        bool b2Rule = Rules == RulesEngine.BriansBrain || Rules == RulesEngine.StarWars;
+        // fewer of them.
+        bool lowBirthRule = !IsConwayRule && (BirthMask & 0b111) != 0;
 
         // Single pass: count population AND collect stagnant cells (alive in both
         // snapshots) so we don't walk the full grid twice on big simulations.
         int totalCells = _gridW * _gridH;
         int alive = 0;
         _stagnantCells.Clear();
-        if (_snapshotReady && !b2Rule)
+        if (_snapshotReady && !lowBirthRule)
         {
             for (int i = 0; i < totalCells; i++)
             {
@@ -1984,7 +2057,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
         }
         else
         {
-            // B2 rules don't have meaningful stagnant cells (no still-lifes),
+            // Low-birth rules don't have meaningful stagnant cells (no still-lifes),
             // so skip the snapshot scan and just count population.
             for (int i = 0; i < totalCells; i++)
                 if (_colorCurrent[i] != 0) alive++;
@@ -1997,12 +2070,11 @@ public sealed class GameOfLifePattern : BlobPatternBase
         double densityFactor = Density / 5.0;
         double areaRatio = (_overscanW * _overscanH) / Math.Max(1, _displayW * _displayH);
         int clustersToAdd;
-        if (b2Rule)
+        if (lowBirthRule)
         {
-            // B2 seeds (dominoes/trominoes) ignite small spreading patches
-            // that burn themselves out over time, so we need a steady trickle
-            // to keep the field interesting without filling it. Skip only
-            // when truly busy.
+            // Low-birth seeds ignite small spreading patches that burn
+            // themselves out over time, so we need a steady trickle to keep
+            // the field interesting without filling it. Skip when truly busy.
             if (density > 0.10) return;
             clustersToAdd = (int)Math.Max(2, Math.Round(4 * densityFactor));
         }
@@ -2078,10 +2150,9 @@ public sealed class GameOfLifePattern : BlobPatternBase
             for (int dy = -1; dy <= 1; dy++)
             for (int dx = -1; dx <= 1; dx++)
             {
-                // B2 rules use a domino/tromino seed instead — a single
-                // isolated cell would simply die next tick (count 0 = no
-                // birth, no survival). Handled outside the loop.
-                if (b2Rule) continue;
+                // Low-birth rules use a larger patch seed instead — a single
+                // isolated cell would simply die next tick.
+                if (lowBirthRule) continue;
                 if (_rng.NextDouble() < 0.4) continue;
                 int x = cx + dx, y = cy + dy;
                 if (x >= 0 && x < _gridW && y >= 0 && y < _gridH)
@@ -2095,7 +2166,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
                 }
             }
 
-            if (b2Rule) PlantB2Seed(cx, cy, packed);
+            if (lowBirthRule) PlantB2Seed(cx, cy, packed);
         }
     }
 

@@ -101,6 +101,22 @@ public partial class SettingsWindow : JukeboxWindow
     private int _originalGameOfLifeColorMode;
     private int _originalGameOfLifeRulesEngine;
     private double _originalGameOfLifeEraBandedHueSpeed;
+    private string _originalGameOfLifeCustomRule = "B3/S23";
+    private bool _suppressBsCheckboxSync;
+
+    /// <summary>Named B/S rule presets for the dropdown.</summary>
+    private static readonly (string Name, string Rule)[] BsPresets =
+    [
+        ("Conway (B3/S23)", "B3/S23"),
+        ("HighLife (B36/S23)", "B36/S23"),
+        ("Day & Night (B3678/S34678)", "B3678/S34678"),
+        ("Seeds (B2/S)", "B2/S"),
+        ("Replicator (B1357/S1357)", "B1357/S1357"),
+        ("Diamoeba (B35678/S5678)", "B35678/S5678"),
+        ("Life Without Death (B3/S012345678)", "B3/S012345678"),
+        ("Coral (B3/S45678)", "B3/S45678"),
+        ("Custom", ""),
+    ];
     private double _originalProjectMPresetDuration;
     private double _originalProjectMSoftCut;
     private bool _originalProjectMHardCut;
@@ -235,7 +251,8 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.GameOfLifeRestartOnTrackChange != _originalGameOfLifeRestartOnTrackChange ||
         _settings.GameOfLifeColorMode != _originalGameOfLifeColorMode ||
         _settings.GameOfLifeRulesEngine != _originalGameOfLifeRulesEngine ||
-        _settings.GameOfLifeEraBandedHueSpeed != _originalGameOfLifeEraBandedHueSpeed;
+        _settings.GameOfLifeEraBandedHueSpeed != _originalGameOfLifeEraBandedHueSpeed ||
+        _settings.GameOfLifeCustomRule != _originalGameOfLifeCustomRule;
 
     public event Action? SettingsApplied;
 
@@ -568,6 +585,11 @@ public partial class SettingsWindow : JukeboxWindow
         CbGameOfLifeRulesEngine.Items.Add("Brian's Brain (B2/S/refractory)");
         CbGameOfLifeRulesEngine.Items.Add("Star Wars (B2/S345/4)");
         CbGameOfLifeRulesEngine.SelectedIndex = Math.Clamp(settings.GameOfLifeRulesEngine, 0, 2);
+        // B/S rule preset dropdown
+        CbGameOfLifeRulePreset.Items.Clear();
+        foreach (var (name, _) in BsPresets)
+            CbGameOfLifeRulePreset.Items.Add(name);
+        LoadBsCheckboxesFromRule(settings.GameOfLifeCustomRule);
         double huSpeed = Math.Clamp(settings.GameOfLifeEraBandedHueSpeed, 0.1, 10.0);
         SliderGameOfLifeEraBandedHueSpeed.Value = huSpeed;
         TxtGameOfLifeEraBandedHueSpeed.Text = $"{huSpeed:F1}×";
@@ -819,6 +841,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalGameOfLifeColorMode = settings.GameOfLifeColorMode;
         _originalGameOfLifeRulesEngine = settings.GameOfLifeRulesEngine;
         _originalGameOfLifeEraBandedHueSpeed = settings.GameOfLifeEraBandedHueSpeed;
+        _originalGameOfLifeCustomRule = settings.GameOfLifeCustomRule ?? "B3/S23";
         _originalProjectMPresetDuration = settings.ProjectMPresetDuration;
         _originalProjectMSoftCut = settings.ProjectMSoftCutDuration;
         _originalProjectMHardCut = settings.ProjectMHardCutEnabled;
@@ -1977,6 +2000,87 @@ public partial class SettingsWindow : JukeboxWindow
         UpdateGameOfLifeRulesVisibility();
     }
 
+    private void CbGameOfLifeRulePreset_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_suppressBsCheckboxSync) return;
+        int idx = CbGameOfLifeRulePreset.SelectedIndex;
+        if (idx < 0 || idx >= BsPresets.Length) return;
+        var (_, rule) = BsPresets[idx];
+        if (!string.IsNullOrEmpty(rule))
+        {
+            _suppressBsCheckboxSync = true;
+            SetBsCheckboxes(rule);
+            _suppressBsCheckboxSync = false;
+        }
+        UpdateRuleLabel();
+    }
+
+    private void BirthSurvivalCheckbox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressBsCheckboxSync) return;
+        // When user manually changes a checkbox, switch preset to "Custom"
+        // if the current checkboxes don't match any preset.
+        string current = BuildRuleStringFromCheckboxes();
+        _suppressBsCheckboxSync = true;
+        int matchIdx = -1;
+        for (int i = 0; i < BsPresets.Length - 1; i++) // skip "Custom" entry
+        {
+            if (BsPresets[i].Rule.Equals(current, StringComparison.OrdinalIgnoreCase))
+            { matchIdx = i; break; }
+        }
+        CbGameOfLifeRulePreset.SelectedIndex = matchIdx >= 0 ? matchIdx : BsPresets.Length - 1;
+        _suppressBsCheckboxSync = false;
+        UpdateRuleLabel();
+    }
+
+    private void LoadBsCheckboxesFromRule(string? rule)
+    {
+        rule ??= "B3/S23";
+        _suppressBsCheckboxSync = true;
+        SetBsCheckboxes(rule);
+        // Find matching preset
+        int matchIdx = BsPresets.Length - 1; // default to Custom
+        for (int i = 0; i < BsPresets.Length - 1; i++)
+        {
+            if (BsPresets[i].Rule.Equals(rule, StringComparison.OrdinalIgnoreCase))
+            { matchIdx = i; break; }
+        }
+        CbGameOfLifeRulePreset.SelectedIndex = matchIdx;
+        _suppressBsCheckboxSync = false;
+        UpdateRuleLabel();
+    }
+
+    private void SetBsCheckboxes(string rule)
+    {
+        var (b, s) = GameOfLifePattern.ParseRule(rule);
+        System.Windows.Controls.CheckBox[] birthCbs = [CbBirth0, CbBirth1, CbBirth2, CbBirth3, CbBirth4, CbBirth5, CbBirth6, CbBirth7, CbBirth8];
+        System.Windows.Controls.CheckBox[] survCbs = [CbSurvive0, CbSurvive1, CbSurvive2, CbSurvive3, CbSurvive4, CbSurvive5, CbSurvive6, CbSurvive7, CbSurvive8];
+        for (int i = 0; i <= 8; i++)
+        {
+            birthCbs[i].IsChecked = (b & (1 << i)) != 0;
+            survCbs[i].IsChecked = (s & (1 << i)) != 0;
+        }
+    }
+
+    private string BuildRuleStringFromCheckboxes()
+    {
+        System.Windows.Controls.CheckBox[] birthCbs = [CbBirth0, CbBirth1, CbBirth2, CbBirth3, CbBirth4, CbBirth5, CbBirth6, CbBirth7, CbBirth8];
+        System.Windows.Controls.CheckBox[] survCbs = [CbSurvive0, CbSurvive1, CbSurvive2, CbSurvive3, CbSurvive4, CbSurvive5, CbSurvive6, CbSurvive7, CbSurvive8];
+        int b = 0, s = 0;
+        for (int i = 0; i <= 8; i++)
+        {
+            if (birthCbs[i].IsChecked == true) b |= 1 << i;
+            if (survCbs[i].IsChecked == true) s |= 1 << i;
+        }
+        return GameOfLifePattern.FormatRule(b, s);
+    }
+
+    private void UpdateRuleLabel()
+    {
+        if (TxtCurrentRule != null)
+            TxtCurrentRule.Text = BuildRuleStringFromCheckboxes();
+    }
+
     private void SliderGameOfLifeEraBandedHueSpeed_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (TxtGameOfLifeEraBandedHueSpeed != null)
@@ -2638,6 +2742,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.GravityRestartOnTrackChange = CbGravityRestartOnTrackChange.IsChecked == true;
         _settings.GameOfLifeRulesEngine = Math.Max(0, CbGameOfLifeRulesEngine.SelectedIndex);
         _settings.GameOfLifeEraBandedHueSpeed = SliderGameOfLifeEraBandedHueSpeed.Value;
+        _settings.GameOfLifeCustomRule = BuildRuleStringFromCheckboxes();
         _settings.ReactiveBlobsPlayfield = CbReactiveBlobsPlayfield.IsChecked == true;
         _settings.ReactiveBlobsBackglass = CbReactiveBlobsBackglass.IsChecked == true;
         _settings.ReactiveBlobsTopper = CbReactiveBlobsTopper.IsChecked == true;
@@ -2733,6 +2838,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalGameOfLifeColorMode = _settings.GameOfLifeColorMode;
         _originalGameOfLifeRulesEngine = _settings.GameOfLifeRulesEngine;
         _originalGameOfLifeEraBandedHueSpeed = _settings.GameOfLifeEraBandedHueSpeed;
+        _originalGameOfLifeCustomRule = _settings.GameOfLifeCustomRule ?? "B3/S23";
         _originalProjectMPresetDuration = _settings.ProjectMPresetDuration;
         _originalProjectMSoftCut = _settings.ProjectMSoftCutDuration;
         _originalProjectMHardCut = _settings.ProjectMHardCutEnabled;

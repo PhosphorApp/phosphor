@@ -770,11 +770,8 @@ public partial class DmdWindow : JukeboxWindow
             1 => BitmapScalingMode.Fant,
             _ => BitmapScalingMode.NearestNeighbor,
         };
-        // Rules engine choice is temporarily forced to Conway — Brian's Brain
-        // and Star Wars don't work as long-running ambient visuals on a
-        // bounded grid (they either burn out in seconds or saturate the
-        // screen). See docs/GameOfLifeRules.md for details. The persisted
-        // GameOfLifeRulesEngine value is intentionally ignored.
+        // Apply custom B/S rule from settings.
+        GameOfLifePattern.ApplyRule(settings.GameOfLifeCustomRule ?? "B3/S23");
         GameOfLifePattern.Rules = GameOfLifePattern.RulesEngine.Conway;
         GameOfLifePattern.ColorMode = (GameOfLifePattern.ColorModeKind)Math.Clamp(settings.GameOfLifeColorMode, 0, 1);
         GameOfLifePattern.EraBandedHueSpeed = Math.Clamp(settings.GameOfLifeEraBandedHueSpeed, 0.1, 10.0);
@@ -2115,7 +2112,8 @@ public partial class DmdWindow : JukeboxWindow
         GameOfLifePattern.CameraOverscan = Math.Clamp(_appSettings.GameOfLifeCameraOverscan, 0, 100);
         GameOfLifePattern.CameraSpeed = Math.Clamp(_appSettings.GameOfLifeCameraSpeed, 0.1, 3.0);
         GameOfLifePattern.RestartOnTrackChange = _appSettings.GameOfLifeRestartOnTrackChange;
-        // See note above — rules engine is temporarily forced to Conway.
+        // Apply custom B/S rule from settings.
+        GameOfLifePattern.ApplyRule(_appSettings.GameOfLifeCustomRule ?? "B3/S23");
         GameOfLifePattern.Rules = GameOfLifePattern.RulesEngine.Conway;
         GameOfLifePattern.ColorMode = (GameOfLifePattern.ColorModeKind)Math.Clamp(_appSettings.GameOfLifeColorMode, 0, 1);
         GameOfLifePattern.EraBandedHueSpeed = Math.Clamp(_appSettings.GameOfLifeEraBandedHueSpeed, 0.1, 10.0);

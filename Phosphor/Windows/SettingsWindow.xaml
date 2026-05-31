@@ -586,15 +586,44 @@
                             <StackPanel x:Name="PanelGameOfLifeTuning" Visibility="Collapsed">
                                 <TextBlock Text="GAME OF LIFE TUNING" FontSize="12" FontWeight="Bold"
                                     Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
-                                <!-- Rules-engine selector temporarily hidden: Brian's Brain and Star Wars
-                                     don't work as long-running ambient visuals. See docs/GameOfLifeRules.md. -->
-                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center" Visibility="Collapsed">
-                                    <TextBlock Text="Rules:" Foreground="{StaticResource TextBrush}"
+                                <!-- B/S Rule preset and custom checkboxes -->
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Rule Preset:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Width="100"/>
-                                    <ComboBox x:Name="CbGameOfLifeRulesEngine" Width="220"
-                                              SelectionChanged="CbGameOfLifeRulesEngine_SelectionChanged"
-                                              ToolTip="Cellular-automaton rule engine. Conway = classic Life (B3/S23). Brian's Brain and Star Wars are EraBanded-only."/>
+                                    <ComboBox x:Name="CbGameOfLifeRulePreset" Width="220"
+                                              SelectionChanged="CbGameOfLifeRulePreset_SelectionChanged"
+                                              ToolTip="Preset B/S rule. Choose 'Custom' to define your own birth/survival rules."/>
                                 </StackPanel>
+                                <!-- Hidden: keep the old ComboBox for backwards compat with save/load -->
+                                <ComboBox x:Name="CbGameOfLifeRulesEngine" Visibility="Collapsed"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Birth (B):" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <CheckBox x:Name="CbBirth0" Content="0" Foreground="{StaticResource TextBrush}" Margin="0,0,6,0" Checked="BirthSurvivalCheckbox_Changed" Unchecked="BirthSurvivalCheckbox_Changed"/>
+                                    <CheckBox x:Name="CbBirth1" Content="1" Foreground="{StaticResource TextBrush}" Margin="0,0,6,0" Checked="BirthSurvivalCheckbox_Changed" Unchecked="BirthSurvivalCheckbox_Changed"/>
+                                    <CheckBox x:Name="CbBirth2" Content="2" Foreground="{StaticResource TextBrush}" Margin="0,0,6,0" Checked="BirthSurvivalCheckbox_Changed" Unchecked="BirthSurvivalCheckbox_Changed"/>
+                                    <CheckBox x:Name="CbBirth3" Content="3" Foreground="{StaticResource TextBrush}" Margin="0,0,6,0" Checked="BirthSurvivalCheckbox_Changed" Unchecked="BirthSurvivalCheckbox_Changed"/>
+                                    <CheckBox x:Name="CbBirth4" Content="4" Foreground="{StaticResource TextBrush}" Margin="0,0,6,0" Checked="BirthSurvivalCheckbox_Changed" Unchecked="BirthSurvivalCheckbox_Changed"/>
+                                    <CheckBox x:Name="CbBirth5" Content="5" Foreground="{StaticResource TextBrush}" Margin="0,0,6,0" Checked="BirthSurvivalCheckbox_Changed" Unchecked="BirthSurvivalCheckbox_Changed"/>
+                                    <CheckBox x:Name="CbBirth6" Content="6" Foreground="{StaticResource TextBrush}" Margin="0,0,6,0" Checked="BirthSurvivalCheckbox_Changed" Unchecked="BirthSurvivalCheckbox_Changed"/>
+                                    <CheckBox x:Name="CbBirth7" Content="7" Foreground="{StaticResource TextBrush}" Margin="0,0,6,0" Checked="BirthSurvivalCheckbox_Changed" Unchecked="BirthSurvivalCheckbox_Changed"/>
+                                    <CheckBox x:Name="CbBirth8" Content="8" Foreground="{StaticResource TextBrush}" Margin="0,0,6,0" Checked="BirthSurvivalCheckbox_Changed" Unchecked="BirthSurvivalCheckbox_Changed"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Survive (S):" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <CheckBox x:Name="CbSurvive0" Content="0" Foreground="{StaticResource TextBrush}" Margin="0,0,6,0" Checked="BirthSurvivalCheckbox_Changed" Unchecked="BirthSurvivalCheckbox_Changed"/>
+                                    <CheckBox x:Name="CbSurvive1" Content="1" Foreground="{StaticResource TextBrush}" Margin="0,0,6,0" Checked="BirthSurvivalCheckbox_Changed" Unchecked="BirthSurvivalCheckbox_Changed"/>
+                                    <CheckBox x:Name="CbSurvive2" Content="2" Foreground="{StaticResource TextBrush}" Margin="0,0,6,0" Checked="BirthSurvivalCheckbox_Changed" Unchecked="BirthSurvivalCheckbox_Changed"/>
+                                    <CheckBox x:Name="CbSurvive3" Content="3" Foreground="{StaticResource TextBrush}" Margin="0,0,6,0" Checked="BirthSurvivalCheckbox_Changed" Unchecked="BirthSurvivalCheckbox_Changed"/>
+                                    <CheckBox x:Name="CbSurvive4" Content="4" Foreground="{StaticResource TextBrush}" Margin="0,0,6,0" Checked="BirthSurvivalCheckbox_Changed" Unchecked="BirthSurvivalCheckbox_Changed"/>
+                                    <CheckBox x:Name="CbSurvive5" Content="5" Foreground="{StaticResource TextBrush}" Margin="0,0,6,0" Checked="BirthSurvivalCheckbox_Changed" Unchecked="BirthSurvivalCheckbox_Changed"/>
+                                    <CheckBox x:Name="CbSurvive6" Content="6" Foreground="{StaticResource TextBrush}" Margin="0,0,6,0" Checked="BirthSurvivalCheckbox_Changed" Unchecked="BirthSurvivalCheckbox_Changed"/>
+                                    <CheckBox x:Name="CbSurvive7" Content="7" Foreground="{StaticResource TextBrush}" Margin="0,0,6,0" Checked="BirthSurvivalCheckbox_Changed" Unchecked="BirthSurvivalCheckbox_Changed"/>
+                                    <CheckBox x:Name="CbSurvive8" Content="8" Foreground="{StaticResource TextBrush}" Margin="0,0,6,0" Checked="BirthSurvivalCheckbox_Changed" Unchecked="BirthSurvivalCheckbox_Changed"/>
+                                </StackPanel>
+                                <TextBlock x:Name="TxtCurrentRule" Text="B3/S23" Foreground="{StaticResource TextDimBrush}"
+                                           Margin="100,4,0,0" FontSize="11"/>
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Tick Interval:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Width="100"/>

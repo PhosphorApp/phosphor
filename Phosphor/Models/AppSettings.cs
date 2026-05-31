@@ -147,6 +147,11 @@ public class AppSettings
     /// <see cref="GameOfLifeAntiStagnation"/> is true.
     /// </summary>
     public int GameOfLifeAntiStagnationIntensity { get; set; } = 5;
+    /// <summary>
+    /// Custom B/S rule string, e.g. "B3/S23" for Conway, "B36/S23" for HighLife.
+    /// Parsed into birth/survival bitmasks at runtime. Default is Conway.
+    /// </summary>
+    public string GameOfLifeCustomRule { get; set; } = "B3/S23";
 
     // Gravity tuning
     /// <summary>Gravitational constant (100–800). Default 400.</summary>
