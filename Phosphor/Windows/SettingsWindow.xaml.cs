@@ -103,6 +103,7 @@ public partial class SettingsWindow : JukeboxWindow
     private double _originalGameOfLifeEraBandedHueSpeed;
     private string _originalGameOfLifeCustomRule = "B3/S23";
     private int _originalGameOfLifeSeedColorMask = 0x7F;
+    private int _originalGameOfLifeHueSpread = 60;
     private bool _suppressBsCheckboxSync;
 
     /// <summary>Named B/S rule presets for the dropdown.</summary>
@@ -254,7 +255,8 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.GameOfLifeRulesEngine != _originalGameOfLifeRulesEngine ||
         _settings.GameOfLifeEraBandedHueSpeed != _originalGameOfLifeEraBandedHueSpeed ||
         _settings.GameOfLifeCustomRule != _originalGameOfLifeCustomRule ||
-        _settings.GameOfLifeSeedColorMask != _originalGameOfLifeSeedColorMask;
+        _settings.GameOfLifeSeedColorMask != _originalGameOfLifeSeedColorMask ||
+        _settings.GameOfLifeHueSpread != _originalGameOfLifeHueSpread;
 
     public event Action? SettingsApplied;
 
@@ -584,6 +586,13 @@ public partial class SettingsWindow : JukeboxWindow
         CbGameOfLifeColorMode.Items.Add("Era-Banded (rotating hue)");
         CbGameOfLifeColorMode.SelectedIndex = Math.Clamp(settings.GameOfLifeColorMode, 0, 2);
         LoadSeedColorCheckboxes(settings.GameOfLifeSeedColorMask);
+        CbGameOfLifeHueSpread.Items.Clear();
+        foreach (int deg in new[] { 0, 15, 30, 45, 60 })
+            CbGameOfLifeHueSpread.Items.Add($"{deg}°");
+        CbGameOfLifeHueSpread.SelectedIndex = settings.GameOfLifeHueSpread switch
+        {
+            0 => 0, <= 15 => 1, <= 30 => 2, <= 45 => 3, _ => 4
+        };
         CbGameOfLifeRulesEngine.Items.Clear();
         CbGameOfLifeRulesEngine.Items.Add("Conway (B3/S23)");
         CbGameOfLifeRulesEngine.Items.Add("Brian's Brain (B2/S/refractory)");
@@ -848,6 +857,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalGameOfLifeEraBandedHueSpeed = settings.GameOfLifeEraBandedHueSpeed;
         _originalGameOfLifeCustomRule = settings.GameOfLifeCustomRule ?? "B3/S23";
         _originalGameOfLifeSeedColorMask = settings.GameOfLifeSeedColorMask;
+        _originalGameOfLifeHueSpread = settings.GameOfLifeHueSpread;
         _originalProjectMPresetDuration = settings.ProjectMPresetDuration;
         _originalProjectMHardCut = settings.ProjectMHardCutEnabled;
         _originalProjectMBeatSensitivity = settings.ProjectMBeatSensitivity;
@@ -2203,12 +2213,19 @@ public partial class SettingsWindow : JukeboxWindow
         // No-op; tracked via change-detection on save.
     }
 
+    private void CbGameOfLifeHueSpread_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        // No-op; tracked via change-detection on save.
+    }
+
     private void UpdateSeedColorVisibility()
     {
         if (PanelGameOfLifeSeedColors == null) return;
         // Seed color restriction only applies to Genetic modes (index 0 and 1), not EraBanded (2)
         bool genetic = CbGameOfLifeColorMode.SelectedIndex < 2;
         PanelGameOfLifeSeedColors.Visibility = genetic ? Visibility.Visible : Visibility.Collapsed;
+        if (PanelGameOfLifeHueSpread != null)
+            PanelGameOfLifeHueSpread.Visibility = genetic ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void LoadSeedColorCheckboxes(int mask)
@@ -2775,6 +2792,10 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.GameOfLifeScalingMode = CbGameOfLifeScalingMode.SelectedIndex;
         _settings.GameOfLifeColorMode = CbGameOfLifeColorMode.SelectedIndex;
         _settings.GameOfLifeSeedColorMask = BuildSeedColorMask();
+        _settings.GameOfLifeHueSpread = CbGameOfLifeHueSpread.SelectedIndex switch
+        {
+            0 => 0, 1 => 15, 2 => 30, 3 => 45, _ => 60
+        };
         _settings.GravityG = (int)SliderGravityG.Value;
         _settings.GravityOrbitRepulsion = SliderGravityOrbitRepulsion.Value;
         _settings.GravityCameraRoam = CbGravityCameraRoam.IsChecked == true;
@@ -2879,6 +2900,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalGameOfLifeEraBandedHueSpeed = _settings.GameOfLifeEraBandedHueSpeed;
         _originalGameOfLifeCustomRule = _settings.GameOfLifeCustomRule ?? "B3/S23";
         _originalGameOfLifeSeedColorMask = _settings.GameOfLifeSeedColorMask;
+        _originalGameOfLifeHueSpread = _settings.GameOfLifeHueSpread;
         _originalProjectMPresetDuration = _settings.ProjectMPresetDuration;
         _originalProjectMSoftCut = _settings.ProjectMSoftCutDuration;
         _originalProjectMHardCut = _settings.ProjectMHardCutEnabled;

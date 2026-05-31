@@ -158,6 +158,9 @@ public class AppSettings
     /// </summary>
     public int GameOfLifeSeedColorMask { get; set; } = 0x7F;
 
+    /// <summary>Hue spread within each seed color band (0 = exact center, 60 = full width). Default 60.</summary>
+    public int GameOfLifeHueSpread { get; set; } = 60;
+
     // Gravity tuning
     /// <summary>Gravitational constant (100–800). Default 400.</summary>
     public int GravityG { get; set; } = 400;

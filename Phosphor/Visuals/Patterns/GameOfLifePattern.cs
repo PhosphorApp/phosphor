@@ -178,16 +178,19 @@ public sealed class GameOfLifePattern : BlobPatternBase
     /// </summary>
     public static int SeedColorMask { get; set; } = 0x7F;
 
-    /// <summary>Hue range (start, length) for each ROYGBIV band, indexed by bit position.</summary>
-    private static readonly (double Start, double Length)[] s_bandRanges =
+    /// <summary>Maximum hue spread in degrees (0 = exact center of band, 60 = full band width).</summary>
+    public static int HueSpread { get; set; } = 60;
+
+    /// <summary>Hue range (center, half-width) for each ROYGBIV band, indexed by bit position.</summary>
+    private static readonly (double Center, double HalfWidth)[] s_bandRanges =
     [
-        (330, 60),  // Red:    330–390 (wraps to 30)
-        (30, 30),   // Orange: 30–60
-        (60, 30),   // Yellow: 60–90
-        (90, 90),   // Green:  90–180
-        (180, 30),  // Blue:   180–210
-        (210, 60),  // Indigo: 210–270
-        (270, 60),  // Violet: 270–330
+        (0,   30),  // Red:    330–30  (center 0/360)
+        (45,  15),  // Orange: 30–60
+        (75,  15),  // Yellow: 60–90
+        (135, 45),  // Green:  90–180
+        (195, 15),  // Blue:   180–210
+        (240, 30),  // Indigo: 210–270
+        (300, 30),  // Violet: 270–330
     ];
 
     /// <summary>
@@ -207,8 +210,17 @@ public sealed class GameOfLifePattern : BlobPatternBase
             if ((mask & (1 << i)) != 0) enabled[count++] = i;
 
         int band = enabled[_rng.Next(count)];
-        var (start, length) = s_bandRanges[band];
-        double hue = start + _rng.NextDouble() * length;
+        var (center, halfWidth) = s_bandRanges[band];
+
+        // Scale the band's half-width by the hue spread setting (0–60 maps to 0%–100%)
+        double spread = Math.Clamp(HueSpread, 0, 60) / 60.0;
+        double actualHalf = halfWidth * spread;
+
+        double hue = (actualHalf == 0)
+            ? center
+            : center + (_rng.NextDouble() * 2.0 - 1.0) * actualHalf;
+
+        if (hue < 0) hue += 360.0;
         if (hue >= 360.0) hue -= 360.0;
         return hue;
     }
