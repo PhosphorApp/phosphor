@@ -787,6 +787,13 @@
                                     <ComboBox x:Name="CbGameOfLifeHueSpread" Width="80"
                                               SelectionChanged="CbGameOfLifeHueSpread_SelectionChanged"/>
                                 </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Seed Spread:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <ComboBox x:Name="CbGameOfLifeSeedSpread" Width="120"
+                                              SelectionChanged="CbGameOfLifeSeedSpread_SelectionChanged"
+                                              ToolTip="How initial seeds are distributed. Clustered = small patches (Conway). Scattered = individual cells (Seeds). Full = random fill (Coral, Day &amp; Night)."/>
+                                </StackPanel>
                                 <StackPanel x:Name="PanelGameOfLifeEraBandedHueSpeed" Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Hue Speed:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Width="100"/>

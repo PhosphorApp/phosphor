@@ -32,6 +32,20 @@ public sealed class GameOfLifePattern : BlobPatternBase
     /// <summary>Injection density (1–10). 5 = default, lower = sparser, higher = more crowded.</summary>
     public static int Density { get; set; } = 5;
 
+    /// <summary>How initial seeds are spatially distributed.</summary>
+    public enum SeedSpreadKind
+    {
+        /// <summary>Small 3×3 clusters (original Conway-style). Good for B3 rules.</summary>
+        Clustered = 0,
+        /// <summary>Individual cells scattered across the canvas. Good for explosive rules like Seeds (B2/S).</summary>
+        Scattered = 1,
+        /// <summary>Random fill across the canvas at a density derived from blob count. Good for Coral, Day &amp; Night.</summary>
+        Full = 2,
+    }
+
+    /// <summary>Seed distribution mode. Default Clustered.</summary>
+    public static SeedSpreadKind SeedSpread { get; set; } = SeedSpreadKind.Clustered;
+
     /// <summary>Whether camera roam is enabled. Default true.</summary>
     public static bool CameraRoam { get; set; } = true;
 
@@ -560,24 +574,33 @@ public sealed class GameOfLifePattern : BlobPatternBase
                 count = Math.Max(1, count / 2); // moderate reduction for other custom rules
         }
 
+        switch (SeedSpread)
+        {
+            case SeedSpreadKind.Full:
+                SeedFull(count, marginX, marginY, useEraBanded);
+                break;
+            case SeedSpreadKind.Scattered:
+                SeedScattered(count, marginX, marginY, useEraBanded);
+                break;
+            default:
+                SeedClustered(count, marginX, marginY, useEraBanded);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Clustered seeding: small 3×3 patches (original behavior).
+    /// Great for Conway and most B3 rules.
+    /// </summary>
+    private void SeedClustered(int count, int marginX, int marginY, bool useEraBanded)
+    {
         for (int s = 0; s < count; s++)
         {
-            uint packed;
-            if (useEraBanded)
-            {
-                packed = _currentBirthColor;
-            }
-            else
-            {
-                double hue = PickConstrainedHue();
-                packed = PackColor(HslToColor(hue, 0.9, 0.6));
-            }
-
+            uint packed = MakeSeedColor(useEraBanded);
             int cx = _rng.Next(marginX, _gridW - marginX);
             int cy = _rng.Next(marginY, _gridH - marginY);
 
             // Explosive rules (B0/B1/B2) use a larger random-density patch
-            // that produces sustained chaotic activity.
             bool lowBirth = !IsConwayRule && (BirthMask & 0b111) != 0;
             if (lowBirth)
             {
@@ -591,15 +614,65 @@ public sealed class GameOfLifePattern : BlobPatternBase
                 if (_rng.NextDouble() < 0.5) continue;
                 int x = cx + dx, y = cy + dy;
                 if (x >= 0 && x < _gridW && y >= 0 && y < _gridH)
-                {
-                    int idx = y * _gridW + x;
-                    _colorCurrent[idx] = packed;
-                    _age[idx] = 1;
-                    // Keep bitboard in sync so the EraBanded step sees the seed.
-                    _aliveCurrent[y * _wordsPerRow + (x >> 6)] |= 1UL << (x & 63);
-                }
+                    PlantCell(x, y, packed);
             }
         }
+    }
+
+    /// <summary>
+    /// Scattered seeding: individual cells spread across the canvas.
+    /// Good for explosive rules like Seeds (B2/S) where isolated cells
+    /// expand into complex patterns.
+    /// </summary>
+    private void SeedScattered(int count, int marginX, int marginY, bool useEraBanded)
+    {
+        // Place individual cells (not clusters) — same total count
+        for (int s = 0; s < count; s++)
+        {
+            uint packed = MakeSeedColor(useEraBanded);
+            int x = _rng.Next(marginX, _gridW - marginX);
+            int y = _rng.Next(marginY, _gridH - marginY);
+            PlantCell(x, y, packed);
+        }
+    }
+
+    /// <summary>
+    /// Full seeding: random fill across the entire canvas.
+    /// The fill density is derived from blob count relative to grid size
+    /// (typically 5–25%). Good for rules that need critical mass like
+    /// Coral (B3/S45678) and Day &amp; Night (B3678/S34678).
+    /// </summary>
+    private void SeedFull(int count, int marginX, int marginY, bool useEraBanded)
+    {
+        // Target cell count: blob count × ~5 cells per cluster, clamped to 1–30% of grid
+        int totalCells = _gridW * _gridH;
+        int targetCells = Math.Clamp(count * 5, totalCells / 100, (int)(totalCells * 0.30));
+        double fillProb = (double)targetCells / Math.Max(1, totalCells);
+
+        for (int y = marginY; y < _gridH - marginY; y++)
+        for (int x = marginX; x < _gridW - marginX; x++)
+        {
+            if (_rng.NextDouble() >= fillProb) continue;
+            uint packed = MakeSeedColor(useEraBanded);
+            PlantCell(x, y, packed);
+        }
+    }
+
+    /// <summary>Generate a seed color (EraBanded uses global birth color, Genetic uses constrained hue).</summary>
+    private uint MakeSeedColor(bool useEraBanded)
+    {
+        if (useEraBanded) return _currentBirthColor;
+        double hue = PickConstrainedHue();
+        return PackColor(HslToColor(hue, 0.9, 0.6));
+    }
+
+    /// <summary>Place a single living cell at (x, y) with the given packed color.</summary>
+    private void PlantCell(int x, int y, uint packed)
+    {
+        int idx = y * _gridW + x;
+        _colorCurrent[idx] = packed;
+        _age[idx] = 1;
+        _aliveCurrent[y * _wordsPerRow + (x >> 6)] |= 1UL << (x & 63);
     }
 
     /// <summary>

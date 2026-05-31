@@ -104,6 +104,7 @@ public partial class SettingsWindow : JukeboxWindow
     private string _originalGameOfLifeCustomRule = "B3/S23";
     private int _originalGameOfLifeSeedColorMask = 0x7F;
     private int _originalGameOfLifeHueSpread = 60;
+    private int _originalGameOfLifeSeedSpread = 0;
     private bool _suppressBsCheckboxSync;
 
     /// <summary>Named B/S rule presets for the dropdown.</summary>
@@ -256,7 +257,8 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.GameOfLifeEraBandedHueSpeed != _originalGameOfLifeEraBandedHueSpeed ||
         _settings.GameOfLifeCustomRule != _originalGameOfLifeCustomRule ||
         _settings.GameOfLifeSeedColorMask != _originalGameOfLifeSeedColorMask ||
-        _settings.GameOfLifeHueSpread != _originalGameOfLifeHueSpread;
+        _settings.GameOfLifeHueSpread != _originalGameOfLifeHueSpread ||
+        _settings.GameOfLifeSeedSpread != _originalGameOfLifeSeedSpread;
 
     public event Action? SettingsApplied;
 
@@ -593,6 +595,11 @@ public partial class SettingsWindow : JukeboxWindow
         {
             0 => 0, <= 15 => 1, <= 30 => 2, <= 45 => 3, _ => 4
         };
+        CbGameOfLifeSeedSpread.Items.Clear();
+        CbGameOfLifeSeedSpread.Items.Add("Clustered");
+        CbGameOfLifeSeedSpread.Items.Add("Scattered");
+        CbGameOfLifeSeedSpread.Items.Add("Full");
+        CbGameOfLifeSeedSpread.SelectedIndex = Math.Clamp(settings.GameOfLifeSeedSpread, 0, 2);
         CbGameOfLifeRulesEngine.Items.Clear();
         CbGameOfLifeRulesEngine.Items.Add("Conway (B3/S23)");
         CbGameOfLifeRulesEngine.Items.Add("Brian's Brain (B2/S/refractory)");
@@ -858,6 +865,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalGameOfLifeCustomRule = settings.GameOfLifeCustomRule ?? "B3/S23";
         _originalGameOfLifeSeedColorMask = settings.GameOfLifeSeedColorMask;
         _originalGameOfLifeHueSpread = settings.GameOfLifeHueSpread;
+        _originalGameOfLifeSeedSpread = settings.GameOfLifeSeedSpread;
         _originalProjectMPresetDuration = settings.ProjectMPresetDuration;
         _originalProjectMHardCut = settings.ProjectMHardCutEnabled;
         _originalProjectMBeatSensitivity = settings.ProjectMBeatSensitivity;
@@ -2026,6 +2034,21 @@ public partial class SettingsWindow : JukeboxWindow
             _suppressBsCheckboxSync = true;
             SetBsCheckboxes(rule);
             _suppressBsCheckboxSync = false;
+
+            // Auto-select recommended seed spread for known presets
+            if (CbGameOfLifeSeedSpread != null)
+            {
+                CbGameOfLifeSeedSpread.SelectedIndex = rule.ToUpperInvariant() switch
+                {
+                    "B2/S" => 1,                  // Seeds: scattered
+                    "B1357/S1357" => 1,            // Replicator: scattered
+                    "B3/S45678" => 2,              // Coral: full
+                    "B3678/S34678" => 2,           // Day & Night: full
+                    "B35678/S5678" => 2,           // Diamoeba: full
+                    "B3/S012345678" => 0,          // Life Without Death: clustered
+                    _ => 0,                        // Conway, HighLife: clustered
+                };
+            }
         }
         UpdateRuleLabel();
     }
@@ -2202,6 +2225,8 @@ public partial class SettingsWindow : JukeboxWindow
     };
 
     private void CbGameOfLifeScalingMode_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) { }
+
+    private void CbGameOfLifeSeedSpread_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) { }
 
     private void CbGameOfLifeColorMode_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
@@ -2796,6 +2821,7 @@ public partial class SettingsWindow : JukeboxWindow
         {
             0 => 0, 1 => 15, 2 => 30, 3 => 45, _ => 60
         };
+        _settings.GameOfLifeSeedSpread = Math.Clamp(CbGameOfLifeSeedSpread.SelectedIndex, 0, 2);
         _settings.GravityG = (int)SliderGravityG.Value;
         _settings.GravityOrbitRepulsion = SliderGravityOrbitRepulsion.Value;
         _settings.GravityCameraRoam = CbGravityCameraRoam.IsChecked == true;
@@ -2901,6 +2927,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalGameOfLifeCustomRule = _settings.GameOfLifeCustomRule ?? "B3/S23";
         _originalGameOfLifeSeedColorMask = _settings.GameOfLifeSeedColorMask;
         _originalGameOfLifeHueSpread = _settings.GameOfLifeHueSpread;
+        _originalGameOfLifeSeedSpread = _settings.GameOfLifeSeedSpread;
         _originalProjectMPresetDuration = _settings.ProjectMPresetDuration;
         _originalProjectMSoftCut = _settings.ProjectMSoftCutDuration;
         _originalProjectMHardCut = _settings.ProjectMHardCutEnabled;
