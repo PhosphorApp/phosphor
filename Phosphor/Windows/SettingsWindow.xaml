@@ -625,6 +625,24 @@
                                 <TextBlock x:Name="TxtCurrentRule" Text="B3/S23" Foreground="{StaticResource TextDimBrush}"
                                            Margin="100,4,0,0" FontSize="11"/>
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Density:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <Slider x:Name="SliderGameOfLifeDensity" Minimum="1" Maximum="10"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="1"
+                                            ValueChanged="SliderGameOfLifeDensity_ValueChanged"
+                                            ToolTip="Controls how many cell clusters are injected. 1 = sparse, 5 = default, 10 = dense."/>
+                                    <TextBlock x:Name="TxtGameOfLifeDensity" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Seed Spread:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <ComboBox x:Name="CbGameOfLifeSeedSpread" Width="120"
+                                              SelectionChanged="CbGameOfLifeSeedSpread_SelectionChanged"
+                                              ToolTip="How initial seeds are distributed. Clustered = small patches (Conway). Scattered = individual cells (Seeds). Full = random fill (Coral, Day &amp; Night)."/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Tick Interval:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Width="100"/>
                                     <CheckBox x:Name="CbGameOfLifeUseScreenRate"
@@ -675,17 +693,6 @@
                                             ValueChanged="SliderGameOfLifeHeatBoost_ValueChanged"
                                             ToolTip="Brightness boost for newly born cells. Higher = brighter flash on birth. Default 60."/>
                                     <TextBlock x:Name="TxtGameOfLifeHeatBoost" Foreground="{StaticResource TextDimBrush}"
-                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
-                                    <TextBlock Text="Density:" Foreground="{StaticResource TextBrush}"
-                                               VerticalAlignment="Center" Width="100"/>
-                                    <Slider x:Name="SliderGameOfLifeDensity" Minimum="1" Maximum="10"
-                                            Width="150" VerticalAlignment="Center"
-                                            IsSnapToTickEnabled="True" TickFrequency="1"
-                                            ValueChanged="SliderGameOfLifeDensity_ValueChanged"
-                                            ToolTip="Controls how many cell clusters are injected. 1 = sparse, 5 = default, 10 = dense."/>
-                                    <TextBlock x:Name="TxtGameOfLifeDensity" Foreground="{StaticResource TextDimBrush}"
                                                VerticalAlignment="Center" Margin="8,0,0,0"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
@@ -786,13 +793,6 @@
                                                VerticalAlignment="Center" Width="100"/>
                                     <ComboBox x:Name="CbGameOfLifeHueSpread" Width="80"
                                               SelectionChanged="CbGameOfLifeHueSpread_SelectionChanged"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
-                                    <TextBlock Text="Seed Spread:" Foreground="{StaticResource TextBrush}"
-                                               VerticalAlignment="Center" Width="100"/>
-                                    <ComboBox x:Name="CbGameOfLifeSeedSpread" Width="120"
-                                              SelectionChanged="CbGameOfLifeSeedSpread_SelectionChanged"
-                                              ToolTip="How initial seeds are distributed. Clustered = small patches (Conway). Scattered = individual cells (Seeds). Full = random fill (Coral, Day &amp; Night)."/>
                                 </StackPanel>
                                 <StackPanel x:Name="PanelGameOfLifeEraBandedHueSpeed" Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Hue Speed:" Foreground="{StaticResource TextBrush}"
