@@ -55,6 +55,12 @@ public class BlobState
     public System.Windows.Media.ScaleTransform? CachedScaleTransform { get; set; }
     /// <summary>Bounce pattern: seconds remaining on collision flash (0 = no flash).</summary>
     public double FlashRemaining { get; set; }
+    /// <summary>Gravity pattern: seconds of immunity from merging after pierce/split.</summary>
+    public double MergeImmunity { get; set; }
+    /// <summary>Gravity pattern: target X to lerp toward after a merge (NaN = none).</summary>
+    public double MergeTargetX { get; set; } = double.NaN;
+    /// <summary>Gravity pattern: target Y to lerp toward after a merge (NaN = none).</summary>
+    public double MergeTargetY { get; set; } = double.NaN;
 }
 
 /// <summary>
@@ -379,7 +385,11 @@ public static class BlobMotion
             }
 
             case BlobPattern.Bounce:
-                // Bounce physics handled by BounceSimulator � no-op here
+                // Bounce physics handled by BounceSimulator — no-op here
+                return;
+
+            case BlobPattern.Gravity:
+                // Gravity physics handled by GravitySimulator — no-op here
                 return;
 
             case BlobPattern.LightCycle:
@@ -580,6 +590,36 @@ public static class BlobMotion
                 continue;
             }
 
+            if (pattern == BlobPattern.Gravity)
+            {
+                // Position angle from center (computed later in GetInitialPosition)
+                // but we need it now to bias velocity outward/orbital.
+                double posAngle = rng.NextDouble() * Math.PI * 2;
+                double speed = 30 + rng.NextDouble() * 50;
+
+                // Mix of tangential (orbital) + slight outward + random jitter.
+                // tangentialAngle is perpendicular to the radial direction;
+                // randomly CW or CCW for variety.
+                double tangentialAngle = posAngle + (rng.NextDouble() < 0.5 ? Math.PI / 2 : -Math.PI / 2);
+                double outwardFraction = 0.15 + rng.NextDouble() * 0.15; // 15-30% outward
+                double jitter = (rng.NextDouble() - 0.5) * 0.4;          // ±20% random twist
+
+                double vx = (Math.Cos(tangentialAngle) * (1.0 - outwardFraction)
+                           + Math.Cos(posAngle) * outwardFraction
+                           + jitter) * speed;
+                double vy = (Math.Sin(tangentialAngle) * (1.0 - outwardFraction)
+                           + Math.Sin(posAngle) * outwardFraction
+                           + jitter) * speed;
+
+                states.Add(new BlobState
+                {
+                    Angle = posAngle, // stash for GetInitialPosition
+                    VelocityX = vx * Math.Max(0.1, speedMultiplier),
+                    VelocityY = vy * Math.Max(0.1, speedMultiplier),
+                });
+                continue;
+            }
+
             if (pattern == BlobPattern.LightCycle)
             {
                 // Direction: 0=right, 1=down, 2=left, 3=up
@@ -689,6 +729,19 @@ public static class BlobMotion
         {
             return (rng.NextDouble() * (canvasWidth - blobSize),
                     rng.NextDouble() * (canvasHeight - blobSize));
+        }
+
+        if (pattern == BlobPattern.Gravity)
+        {
+            // Use the angle stashed during CreateStates so velocity direction
+            // is coherent with placement (orbital tangent makes sense).
+            double cx = canvasWidth / 2;
+            double cy = canvasHeight / 2;
+            double spread = Math.Min(canvasWidth, canvasHeight) * 0.75;
+            double angle = state.Angle; // set in CreateStates
+            double radius = rng.NextDouble() * spread;
+            return (cx + Math.Cos(angle) * radius - blobSize * 0.5,
+                    cy + Math.Sin(angle) * radius - blobSize * 0.5);
         }
 
         if (pattern == BlobPattern.LightCycle)

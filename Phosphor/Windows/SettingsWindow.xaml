@@ -754,6 +754,46 @@
                                 </StackPanel>
                             </StackPanel>
 
+                            <!-- ═══ SECTION: Gravity Tuning (visible only when any pattern is Gravity) ═══ -->
+                            <StackPanel x:Name="PanelGravityTuning" Visibility="Collapsed">
+                                <TextBlock Text="GRAVITY TUNING" FontSize="12" FontWeight="Bold"
+                                    Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Gravity:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="110"/>
+                                    <Slider x:Name="SliderGravityG" Minimum="100" Maximum="800"
+                                            Width="150" VerticalAlignment="Center"
+                                            TickFrequency="50" IsSnapToTickEnabled="True"
+                                            ValueChanged="SliderGravityG_ValueChanged"
+                                            ToolTip="Gravitational constant. Lower = gentler, higher = more intense."/>
+                                    <TextBlock x:Name="TxtGravityG" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Orbit Repulsion:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="110"/>
+                                    <Slider x:Name="SliderGravityOrbitRepulsion" Minimum="0" Maximum="6"
+                                            Width="150" VerticalAlignment="Center"
+                                            TickFrequency="0.5" IsSnapToTickEnabled="True"
+                                            ValueChanged="SliderGravityOrbitRepulsion_ValueChanged"
+                                            ToolTip="Close-range repulsive force that encourages orbits. 0 = off, 3 = default, 6 = strong."/>
+                                    <TextBlock x:Name="TxtGravityOrbitRepulsion" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <CheckBox x:Name="CbGravityCameraRoam"
+                                    Content="Camera Roam" Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
+                                    Checked="CbGravityCameraRoam_Changed" Unchecked="CbGravityCameraRoam_Changed"
+                                    ToolTip="Enable slow camera panning and zooming during the Gravity visualization."/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Reset on Track:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="110"/>
+                                    <CheckBox x:Name="CbGravityRestartOnTrackChange"
+                                              Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
+                                              Checked="CbGravityRestartOnTrackChange_Changed" Unchecked="CbGravityRestartOnTrackChange_Changed"
+                                              ToolTip="Restart the Gravity simulation with a fresh field whenever a new track starts."/>
+                                </StackPanel>
+                            </StackPanel>
+
                             <!-- ═══ SECTION: ProjectM Tuning (visible only when any pattern is ProjectM) ═══ -->
                             <StackPanel x:Name="PanelProjectMTuning" Visibility="Collapsed">
                                 <TextBlock Text="PROJECTM TUNING" FontSize="12" FontWeight="Bold"

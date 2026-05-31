@@ -575,6 +575,15 @@ public partial class SettingsWindow : JukeboxWindow
         UpdateGameOfLifeTuningVisibility();
         UpdateGameOfLifeRulesVisibility();
 
+        // Gravity tuning
+        SliderGravityG.Value = settings.GravityG;
+        TxtGravityG.Text = $"{settings.GravityG}";
+        CbGravityCameraRoam.IsChecked = settings.GravityCameraRoam;
+        SliderGravityOrbitRepulsion.Value = settings.GravityOrbitRepulsion;
+        TxtGravityOrbitRepulsion.Text = $"{settings.GravityOrbitRepulsion:F1}";
+        CbGravityRestartOnTrackChange.IsChecked = settings.GravityRestartOnTrackChange;
+        UpdateGravityTuningVisibility();
+
         CbReactiveBlobsPlayfield.IsChecked = settings.ReactiveBlobsPlayfield;
         CbReactiveBlobsBackglass.IsChecked = settings.ReactiveBlobsBackglass;
         CbReactiveBlobsTopper.IsChecked = settings.ReactiveBlobsTopper;
@@ -1795,6 +1804,7 @@ public partial class SettingsWindow : JukeboxWindow
         UpdateFerrofluidTuningVisibility();
         UpdateMatrixTuningVisibility();
         UpdateGameOfLifeTuningVisibility();
+        UpdateGravityTuningVisibility();
         UpdateBlobCountSliderStates();
     }
 
@@ -1905,6 +1915,45 @@ public partial class SettingsWindow : JukeboxWindow
         }
 
         PanelGameOfLifeTuning.Visibility = anyGameOfLife ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void UpdateGravityTuningVisibility()
+    {
+        if (PanelGravityTuning == null) return;
+
+        bool anyGravity = false;
+        foreach (var cb in new[] { CbBlobPatternPlayfield, CbBlobPatternBackglass, CbBlobPatternTopper, CbBlobPatternDmd })
+        {
+            if (cb?.SelectedItem is string name && name == "Gravity")
+            {
+                anyGravity = true;
+                break;
+            }
+        }
+
+        PanelGravityTuning.Visibility = anyGravity ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void SliderGravityG_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtGravityG != null)
+            TxtGravityG.Text = $"{(int)e.NewValue}";
+    }
+
+    private void CbGravityCameraRoam_Changed(object sender, RoutedEventArgs e)
+    {
+        // No-op; tracked via change-detection.
+    }
+
+    private void SliderGravityOrbitRepulsion_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtGravityOrbitRepulsion != null)
+            TxtGravityOrbitRepulsion.Text = $"{e.NewValue:F1}";
+    }
+
+    private void CbGravityRestartOnTrackChange_Changed(object sender, RoutedEventArgs e)
+    {
+        // No-op; tracked via change-detection.
     }
 
     /// <summary>
@@ -2583,6 +2632,10 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.GameOfLifeAntiStagnationIntensity = (int)SliderGameOfLifeAntiStagnationIntensity.Value;
         _settings.GameOfLifeScalingMode = CbGameOfLifeScalingMode.SelectedIndex;
         _settings.GameOfLifeColorMode = CbGameOfLifeColorMode.SelectedIndex;
+        _settings.GravityG = (int)SliderGravityG.Value;
+        _settings.GravityOrbitRepulsion = SliderGravityOrbitRepulsion.Value;
+        _settings.GravityCameraRoam = CbGravityCameraRoam.IsChecked == true;
+        _settings.GravityRestartOnTrackChange = CbGravityRestartOnTrackChange.IsChecked == true;
         _settings.GameOfLifeRulesEngine = Math.Max(0, CbGameOfLifeRulesEngine.SelectedIndex);
         _settings.GameOfLifeEraBandedHueSpeed = SliderGameOfLifeEraBandedHueSpeed.Value;
         _settings.ReactiveBlobsPlayfield = CbReactiveBlobsPlayfield.IsChecked == true;

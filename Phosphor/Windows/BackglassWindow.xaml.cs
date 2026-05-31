@@ -1241,6 +1241,15 @@ public partial class BackglassWindow : JukeboxWindow
             SetBlobPattern(_blobPatternSetting);
     }
 
+    /// <summary>
+    /// Restarts the current pattern if it is Gravity, so that a fresh simulation begins.
+    /// </summary>
+    public void RestartGravity()
+    {
+        if (_blobPattern == BlobPattern.Gravity)
+            SetBlobPattern(_blobPatternSetting);
+    }
+
     public void ApplyProjectMTuning()
     {
         if (_blobPattern == BlobPattern.ProjectM && _currentPattern is ProjectMPattern pm)

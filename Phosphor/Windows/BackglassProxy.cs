@@ -150,6 +150,9 @@ public sealed class BackglassProxy
     public void RestartGameOfLife() =>
         _dispatcher.BeginInvoke(() => _window.RestartGameOfLife());
 
+    public void RestartGravity() =>
+        _dispatcher.BeginInvoke(() => _window.RestartGravity());
+
     public void ApplyProjectMTuning() =>
         _dispatcher.BeginInvoke(() => _window.ApplyProjectMTuning());
 

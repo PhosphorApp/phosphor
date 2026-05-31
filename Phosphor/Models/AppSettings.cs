@@ -147,6 +147,17 @@ public class AppSettings
     /// <see cref="GameOfLifeAntiStagnation"/> is true.
     /// </summary>
     public int GameOfLifeAntiStagnationIntensity { get; set; } = 5;
+
+    // Gravity tuning
+    /// <summary>Gravitational constant (100–800). Default 400.</summary>
+    public int GravityG { get; set; } = 400;
+    /// <summary>Close-range orbit repulsion strength (0–6). 0 = off.</summary>
+    public double GravityOrbitRepulsion { get; set; } = 3.0;
+    /// <summary>Whether camera roam is enabled for the Gravity visualization.</summary>
+    public bool GravityCameraRoam { get; set; }
+    /// <summary>Whether to restart the Gravity simulation when a new track starts.</summary>
+    public bool GravityRestartOnTrackChange { get; set; }
+
     // Ferrofluid tuning
     public double FerrofluidCoreGravity { get; set; } = 280.0;
     public double FerrofluidMutualAttraction { get; set; } = 40.0;
@@ -408,6 +419,7 @@ public enum BlobPattern
     FerrofluidCluster,
     Matrix,
     GameOfLife,
+    Gravity,
     RandomPerSong
 }
 

@@ -24,6 +24,7 @@ public static class BlobTransition
         BlobPattern.FerrofluidCluster,
         BlobPattern.Matrix,
         BlobPattern.GameOfLife,
+        BlobPattern.Gravity,
     ];
 
     /// <summary>
@@ -82,6 +83,7 @@ public static class BlobTransition
         BlobPattern.LightCycle => new LightCycleBlobPattern(config),
         BlobPattern.Matrix => new MatrixBlobPattern(config),
         BlobPattern.GameOfLife => new GameOfLifePattern(config),
+        BlobPattern.Gravity => new GravityBlobPattern(config),
         _ => new RandomBlobPattern(config),
     };
 }

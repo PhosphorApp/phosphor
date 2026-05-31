@@ -780,6 +780,10 @@ public partial class DmdWindow : JukeboxWindow
         GameOfLifePattern.EraBandedHueSpeed = Math.Clamp(settings.GameOfLifeEraBandedHueSpeed, 0.1, 10.0);
         GameOfLifePattern.AntiStagnation = settings.GameOfLifeAntiStagnation;
         GameOfLifePattern.AntiStagnationIntensity = Math.Clamp(settings.GameOfLifeAntiStagnationIntensity, 1, 10);
+        GravityBlobPattern.GravityG = Math.Clamp(settings.GravityG, 100, 800);
+        GravityBlobPattern.OrbitRepulsion = Math.Clamp(settings.GravityOrbitRepulsion, 0, 6);
+        GravityBlobPattern.CameraRoam = settings.GravityCameraRoam;
+        GravityBlobPattern.RestartOnTrackChange = settings.GravityRestartOnTrackChange;
         FerrofluidSimulator.CoreGravity = settings.FerrofluidCoreGravity;
         FerrofluidSimulator.MutualAttraction = settings.FerrofluidMutualAttraction;
         FerrofluidSimulator.Damping = settings.FerrofluidDamping;
@@ -2124,6 +2128,10 @@ public partial class DmdWindow : JukeboxWindow
             _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.RestartGameOfLife());
             _ = Dispatcher.BeginInvoke(RestartGameOfLife);
         }
+        GravityBlobPattern.GravityG = Math.Clamp(_appSettings.GravityG, 100, 800);
+        GravityBlobPattern.OrbitRepulsion = Math.Clamp(_appSettings.GravityOrbitRepulsion, 0, 6);
+        GravityBlobPattern.CameraRoam = _appSettings.GravityCameraRoam;
+        GravityBlobPattern.RestartOnTrackChange = _appSettings.GravityRestartOnTrackChange;
         FerrofluidSimulator.CoreGravity = _appSettings.FerrofluidCoreGravity;
         FerrofluidSimulator.MutualAttraction = _appSettings.FerrofluidMutualAttraction;
         FerrofluidSimulator.Damping = _appSettings.FerrofluidDamping;
@@ -3482,6 +3490,15 @@ public partial class DmdWindow : JukeboxWindow
             SetBlobPattern(_ssBlobPatternSetting);
     }
 
+    /// <summary>
+    /// Restarts the current pattern if it is Gravity, so that a fresh simulation begins.
+    /// </summary>
+    private void RestartGravity()
+    {
+        if (_ssBlobPattern == BlobPattern.Gravity)
+            SetBlobPattern(_ssBlobPatternSetting);
+    }
+
     private void ApplyProjectMTuning()
     {
         if (_ssBlobPattern == BlobPattern.ProjectM && _ssCurrentPattern is ProjectMPattern pm)
@@ -3507,6 +3524,15 @@ public partial class DmdWindow : JukeboxWindow
             _backglassProxy?.RestartGameOfLife();
             _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.RestartGameOfLife());
             _ = Dispatcher.BeginInvoke(RestartGameOfLife);
+        }
+
+        // Restart Gravity simulation on track change if enabled
+        if (GravityBlobPattern.RestartOnTrackChange)
+        {
+            _playfieldProxy?.RestartGravity();
+            _backglassProxy?.RestartGravity();
+            _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.RestartGravity());
+            _ = Dispatcher.BeginInvoke(RestartGravity);
         }
 
         // Switch ProjectM preset on queue transition if enabled
