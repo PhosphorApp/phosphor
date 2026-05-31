@@ -770,6 +770,17 @@
                                               SelectionChanged="CbGameOfLifeColorMode_SelectionChanged"
                                               ToolTip="Genetic = births inherit a blend of parent colors (rich mixing). EraBanded = births take the current rotating hue (regions band by age)."/>
                                 </StackPanel>
+                                <StackPanel x:Name="PanelGameOfLifeSeedColors" Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Seed Colors:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <CheckBox x:Name="CbSeedRed" Content="R" Foreground="#FF6666" FontWeight="Bold" Margin="0,0,6,0" Checked="SeedColorCheckbox_Changed" Unchecked="SeedColorCheckbox_Changed"/>
+                                    <CheckBox x:Name="CbSeedOrange" Content="O" Foreground="#FF9933" FontWeight="Bold" Margin="0,0,6,0" Checked="SeedColorCheckbox_Changed" Unchecked="SeedColorCheckbox_Changed"/>
+                                    <CheckBox x:Name="CbSeedYellow" Content="Y" Foreground="#FFFF33" FontWeight="Bold" Margin="0,0,6,0" Checked="SeedColorCheckbox_Changed" Unchecked="SeedColorCheckbox_Changed"/>
+                                    <CheckBox x:Name="CbSeedGreen" Content="G" Foreground="#33FF66" FontWeight="Bold" Margin="0,0,6,0" Checked="SeedColorCheckbox_Changed" Unchecked="SeedColorCheckbox_Changed"/>
+                                    <CheckBox x:Name="CbSeedBlue" Content="B" Foreground="#3399FF" FontWeight="Bold" Margin="0,0,6,0" Checked="SeedColorCheckbox_Changed" Unchecked="SeedColorCheckbox_Changed"/>
+                                    <CheckBox x:Name="CbSeedIndigo" Content="I" Foreground="#9966FF" FontWeight="Bold" Margin="0,0,6,0" Checked="SeedColorCheckbox_Changed" Unchecked="SeedColorCheckbox_Changed"/>
+                                    <CheckBox x:Name="CbSeedViolet" Content="V" Foreground="#FF66FF" FontWeight="Bold" Margin="0,0,6,0" Checked="SeedColorCheckbox_Changed" Unchecked="SeedColorCheckbox_Changed"/>
+                                </StackPanel>
                                 <StackPanel x:Name="PanelGameOfLifeEraBandedHueSpeed" Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Hue Speed:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Width="100"/>

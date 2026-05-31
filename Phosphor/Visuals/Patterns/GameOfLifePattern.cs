@@ -172,6 +172,47 @@ public sealed class GameOfLifePattern : BlobPatternBase
     /// </summary>
     public static int AntiStagnationIntensity { get; set; } = 5;
 
+    /// <summary>
+    /// Bitmask of allowed ROYGBIV seed color bands (bits 0–6 = R,O,Y,G,B,I,V).
+    /// 0 or 0x7F = all colors. Used to constrain seed/injection hues in Genetic modes.
+    /// </summary>
+    public static int SeedColorMask { get; set; } = 0x7F;
+
+    /// <summary>Hue range (start, length) for each ROYGBIV band, indexed by bit position.</summary>
+    private static readonly (double Start, double Length)[] s_bandRanges =
+    [
+        (330, 60),  // Red:    330–390 (wraps to 30)
+        (30, 30),   // Orange: 30–60
+        (60, 30),   // Yellow: 60–90
+        (90, 90),   // Green:  90–180
+        (180, 30),  // Blue:   180–210
+        (210, 60),  // Indigo: 210–270
+        (270, 60),  // Violet: 270–330
+    ];
+
+    /// <summary>
+    /// Pick a random hue constrained to the enabled ROYGBIV bands.
+    /// If no bands are enabled (mask 0), acts as if all are enabled.
+    /// </summary>
+    private double PickConstrainedHue()
+    {
+        int mask = SeedColorMask;
+        if (mask == 0 || mask == 0x7F)
+            return _rng.NextDouble() * 360.0;
+
+        // Count enabled bands and pick one at random
+        Span<int> enabled = stackalloc int[7];
+        int count = 0;
+        for (int i = 0; i < 7; i++)
+            if ((mask & (1 << i)) != 0) enabled[count++] = i;
+
+        int band = enabled[_rng.Next(count)];
+        var (start, length) = s_bandRanges[band];
+        double hue = start + _rng.NextDouble() * length;
+        if (hue >= 360.0) hue -= 360.0;
+        return hue;
+    }
+
     /// <summary>Fraction of grid edge to keep clear when placing seed clusters (0.0–0.5).</summary>
     private const double PlacementMargin = 0.05;
 
@@ -516,7 +557,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
             }
             else
             {
-                double hue = _rng.NextDouble() * 360.0;
+                double hue = PickConstrainedHue();
                 packed = PackColor(HslToColor(hue, 0.9, 0.6));
             }
 
@@ -2121,8 +2162,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
             }
             else
             {
-                double hue = (baseHue + _rng.NextDouble() * 60.0 - 30.0) % 360.0;
-                if (hue < 0) hue += 360.0;
+                double hue = PickConstrainedHue();
                 var color = HslToColor(hue, 0.9, 0.6);
                 packed = PackColor(color);
             }

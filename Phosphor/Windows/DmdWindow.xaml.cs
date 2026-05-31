@@ -777,6 +777,7 @@ public partial class DmdWindow : JukeboxWindow
         GameOfLifePattern.EraBandedHueSpeed = Math.Clamp(settings.GameOfLifeEraBandedHueSpeed, 0.1, 10.0);
         GameOfLifePattern.AntiStagnation = settings.GameOfLifeAntiStagnation;
         GameOfLifePattern.AntiStagnationIntensity = Math.Clamp(settings.GameOfLifeAntiStagnationIntensity, 1, 10);
+        GameOfLifePattern.SeedColorMask = settings.GameOfLifeSeedColorMask;
         GravityBlobPattern.GravityG = Math.Clamp(settings.GravityG, 100, 800);
         GravityBlobPattern.OrbitRepulsion = Math.Clamp(settings.GravityOrbitRepulsion, 0, 6);
         GravityBlobPattern.CameraRoam = settings.GravityCameraRoam;
@@ -2119,6 +2120,7 @@ public partial class DmdWindow : JukeboxWindow
         GameOfLifePattern.EraBandedHueSpeed = Math.Clamp(_appSettings.GameOfLifeEraBandedHueSpeed, 0.1, 10.0);
         GameOfLifePattern.AntiStagnation = _appSettings.GameOfLifeAntiStagnation;
         GameOfLifePattern.AntiStagnationIntensity = Math.Clamp(_appSettings.GameOfLifeAntiStagnationIntensity, 1, 10);
+        GameOfLifePattern.SeedColorMask = _appSettings.GameOfLifeSeedColorMask;
         if (settingsWindow.GameOfLifeSettingsChanged)
         {
             _playfieldProxy?.RestartGameOfLife();

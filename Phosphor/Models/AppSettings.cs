@@ -152,6 +152,11 @@ public class AppSettings
     /// Parsed into birth/survival bitmasks at runtime. Default is Conway.
     /// </summary>
     public string GameOfLifeCustomRule { get; set; } = "B3/S23";
+    /// <summary>
+    /// Bitmask of allowed ROYGBIV seed color bands (bits 0–6 = R,O,Y,G,B,I,V).
+    /// 0 or 0x7F = all colors enabled. Used in Genetic color modes only.
+    /// </summary>
+    public int GameOfLifeSeedColorMask { get; set; } = 0x7F;
 
     // Gravity tuning
     /// <summary>Gravitational constant (100–800). Default 400.</summary>
