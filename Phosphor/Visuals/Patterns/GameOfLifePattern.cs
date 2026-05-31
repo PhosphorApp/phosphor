@@ -64,7 +64,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
     /// mode. Uses an integer-only hue extraction + precomputed lookup table for minimal overhead.</item>
     /// </list>
     /// </summary>
-    public enum ColorModeKind { Genetic = 0, EraBanded = 1, GeneticVivid = 2 }
+    public enum ColorModeKind { Genetic = 0, GeneticVivid = 1, EraBanded = 2 }
 
     /// <summary>Selected color model for births. Default <see cref="ColorModeKind.Genetic"/>.</summary>
     public static ColorModeKind ColorMode { get; set; } = ColorModeKind.Genetic;

@@ -577,9 +577,9 @@ public partial class SettingsWindow : JukeboxWindow
         CbGameOfLifeScalingMode.Items.Add("Smooth (Fant)");
         CbGameOfLifeScalingMode.SelectedIndex = Math.Clamp(settings.GameOfLifeScalingMode, 0, 1);
         CbGameOfLifeColorMode.Items.Clear();
-        CbGameOfLifeColorMode.Items.Add("Genetic (blend parents)");
-        CbGameOfLifeColorMode.Items.Add("Era-Banded (rotating hue)");
+        CbGameOfLifeColorMode.Items.Add("Genetic Blend (parents)");
         CbGameOfLifeColorMode.Items.Add("Genetic Vivid (re-saturated)");
+        CbGameOfLifeColorMode.Items.Add("Era-Banded (rotating hue)");
         CbGameOfLifeColorMode.SelectedIndex = Math.Clamp(settings.GameOfLifeColorMode, 0, 2);
         CbGameOfLifeRulesEngine.Items.Clear();
         CbGameOfLifeRulesEngine.Items.Add("Conway (B3/S23)");

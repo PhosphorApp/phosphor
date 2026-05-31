@@ -127,7 +127,7 @@ public class AppSettings
     public bool GameOfLifeRestartOnTrackChange { get; set; } = false;
     public int GameOfLifeScalingMode { get; set; } // 0 = NearestNeighbor, 1 = Fant
     /// <summary>Color model for births. 0 = Genetic (blend of parent colors), 1 = EraBanded (current global rotating hue).</summary>
-    public int GameOfLifeColorMode { get; set; } // 0 = Genetic, 1 = EraBanded
+    public int GameOfLifeColorMode { get; set; } // 0 = Genetic, 1 = GeneticVivid, 2 = EraBanded
     /// <summary>Cellular-automaton rule engine. 0 = Conway, 1 = Brian's Brain, 2 = Star Wars.</summary>
     public int GameOfLifeRulesEngine { get; set; } // 0 = Conway, 1 = BriansBrain, 2 = StarWars
     /// <summary>
