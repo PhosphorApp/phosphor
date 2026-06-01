@@ -879,6 +879,17 @@
                                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
                                                </StackPanel>
                                               <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                                   <TextBlock Text="Density:" Foreground="{StaticResource TextBrush}"
+                                                              VerticalAlignment="Center" Width="110"/>
+                                                   <Slider x:Name="SliderGravityDensity" Minimum="0" Maximum="2"
+                                                           Width="150" VerticalAlignment="Center"
+                                                           TickFrequency="1" IsSnapToTickEnabled="True"
+                                                           ValueChanged="SliderGravityDensity_ValueChanged"
+                                                           ToolTip="Universe density. Low = sparse, Medium = balanced, High = crowded."/>
+                                                   <TextBlock x:Name="TxtGravityDensity" Foreground="{StaticResource TextDimBrush}"
+                                                              VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                               </StackPanel>
+                                              <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                                    <CheckBox x:Name="CbGravityShowDiagnostics" Content="Show Diagnostics"
                                                               Foreground="{StaticResource TextBrush}"
                                                               ToolTip="Show diagnostic overlay (zoom level, body count) on the Gravity visualization."/>

@@ -108,6 +108,7 @@ public partial class SettingsWindow : JukeboxWindow
     private double _originalGravityBlobMultiplier = 1.0;
     private bool _originalGravityCameraRoam = false;
     private bool _originalGravityShowDiagnostics = false;
+    private int _originalGravityDensity = 1;
     private bool _suppressBsCheckboxSync;
 
     /// <summary>Named B/S rule presets for the dropdown.</summary>
@@ -270,7 +271,8 @@ public partial class SettingsWindow : JukeboxWindow
     public bool GravitySettingsChanged =>
         Math.Abs(_settings.GravityBlobMultiplier - _originalGravityBlobMultiplier) > 0.01 ||
         _settings.GravityCameraRoam != _originalGravityCameraRoam ||
-        _settings.GravityShowDiagnostics != _originalGravityShowDiagnostics;
+        _settings.GravityShowDiagnostics != _originalGravityShowDiagnostics ||
+        _settings.GravityDensity != _originalGravityDensity;
 
     public event Action? SettingsApplied;
 
@@ -646,6 +648,8 @@ public partial class SettingsWindow : JukeboxWindow
         CbGravityShowDiagnostics.IsChecked = settings.GravityShowDiagnostics;
         SliderGravitySupernovaMass.Value = settings.GravitySupernovaMass;
         TxtGravitySupernovaMass.Text = settings.GravitySupernovaMass < 10 ? "Off" : $"{(int)settings.GravitySupernovaMass}px";
+        SliderGravityDensity.Value = settings.GravityDensity;
+        TxtGravityDensity.Text = settings.GravityDensity switch { 0 => "Low", 2 => "High", _ => "Medium" };
         UpdateGravityTuningVisibility();
 
         CbReactiveBlobsPlayfield.IsChecked = settings.ReactiveBlobsPlayfield;
@@ -890,6 +894,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalGravityBlobMultiplier = settings.GravityBlobMultiplier;
         _originalGravityCameraRoam = settings.GravityCameraRoam;
         _originalGravityShowDiagnostics = settings.GravityShowDiagnostics;
+        _originalGravityDensity = settings.GravityDensity;
         _originalProjectMPresetDuration = settings.ProjectMPresetDuration;
         _originalProjectMHardCut = settings.ProjectMHardCutEnabled;
         _originalProjectMBeatSensitivity = settings.ProjectMBeatSensitivity;
@@ -2050,6 +2055,12 @@ public partial class SettingsWindow : JukeboxWindow
             TxtGravitySupernovaMass.Text = e.NewValue < 10 ? "Off" : $"{(int)e.NewValue}px";
     }
 
+    private void SliderGravityDensity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtGravityDensity != null)
+            TxtGravityDensity.Text = (int)e.NewValue switch { 0 => "Low", 2 => "High", _ => "Medium" };
+    }
+
     /// <summary>
     /// Toggle visibility of Conway-only controls (anti-stagnation, color mode
     /// chooser) based on the selected rules engine. Non-Conway rules force
@@ -2879,6 +2890,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.GravityBlobMultiplier = SliderGravityBlobMultiplier.Value;
         _settings.GravityShowDiagnostics = CbGravityShowDiagnostics.IsChecked == true;
         _settings.GravitySupernovaMass = SliderGravitySupernovaMass.Value;
+        _settings.GravityDensity = (int)SliderGravityDensity.Value;
         _settings.GameOfLifeRulesEngine = Math.Max(0, CbGameOfLifeRulesEngine.SelectedIndex);
         _settings.GameOfLifeEraBandedHueSpeed = SliderGameOfLifeEraBandedHueSpeed.Value;
         _settings.GameOfLifeCustomRule = BuildRuleStringFromCheckboxes();
@@ -2984,6 +2996,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalGravityBlobMultiplier = _settings.GravityBlobMultiplier;
         _originalGravityCameraRoam = _settings.GravityCameraRoam;
         _originalGravityShowDiagnostics = _settings.GravityShowDiagnostics;
+        _originalGravityDensity = _settings.GravityDensity;
         _originalProjectMPresetDuration = _settings.ProjectMPresetDuration;
         _originalProjectMSoftCut = _settings.ProjectMSoftCutDuration;
         _originalProjectMHardCut = _settings.ProjectMHardCutEnabled;

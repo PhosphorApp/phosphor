@@ -183,6 +183,8 @@ public class AppSettings
     public bool GravityShowDiagnostics { get; set; }
     /// <summary>Supernova mass threshold as diameter in pixels (60–400). When a merged body reaches this size it explodes. 0 = disabled. Default 150.</summary>
     public double GravitySupernovaMass { get; set; } = 150.0;
+    /// <summary>Universe density (0=Low, 1=Medium, 2=High). Controls how aggressively new bodies are injected. Default 1 (Medium).</summary>
+    public int GravityDensity { get; set; } = 1;
 
     // Ferrofluid tuning
     public double FerrofluidCoreGravity { get; set; } = 280.0;

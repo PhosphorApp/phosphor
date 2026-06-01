@@ -789,6 +789,7 @@ public partial class DmdWindow : JukeboxWindow
         GravityBlobPattern.BlobMultiplier = Math.Clamp(settings.GravityBlobMultiplier, 0.5, 10.0);
         GravityBlobPattern.ShowDiagnostics = settings.GravityShowDiagnostics;
         GravityBlobPattern.SupernovaMass = settings.GravitySupernovaMass;
+        GravityBlobPattern.Density = Math.Clamp(settings.GravityDensity, 0, 2);
         FerrofluidSimulator.CoreGravity = settings.FerrofluidCoreGravity;
         FerrofluidSimulator.MutualAttraction = settings.FerrofluidMutualAttraction;
         FerrofluidSimulator.Damping = settings.FerrofluidDamping;
@@ -2146,6 +2147,7 @@ public partial class DmdWindow : JukeboxWindow
         GravityBlobPattern.BlobMultiplier = Math.Clamp(_appSettings.GravityBlobMultiplier, 0.5, 10.0);
         GravityBlobPattern.ShowDiagnostics = _appSettings.GravityShowDiagnostics;
         GravityBlobPattern.SupernovaMass = _appSettings.GravitySupernovaMass;
+        GravityBlobPattern.Density = Math.Clamp(_appSettings.GravityDensity, 0, 2);
         if (settingsWindow.GravitySettingsChanged)
         {
             _playfieldProxy?.RestartGravity();

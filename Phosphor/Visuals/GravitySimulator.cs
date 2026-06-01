@@ -56,6 +56,7 @@ public sealed class GravitySimulator : IDisposable
     private double[] _posY = [];   // center Y of each body
     private double[] _radii = [];  // half-width of each body
     private double[] _masses = []; // mass (width²) of each body
+    private int _cachedCount;      // body count at time of cache (safe upper bound for array access)
     private readonly Stopwatch _stopwatch = new();
     private long _lastTickTicks;
     private bool _running;
@@ -94,7 +95,8 @@ public sealed class GravitySimulator : IDisposable
         _blobs = blobs;
         _states = states;
         _maxBodies = Math.Max(10, (int)(MaxBodiesDefault * GravityBlobPattern.BlobMultiplier));
-        _minBodies = Math.Max(5, blobs.Count / 3);
+        double densityFactor = GravityBlobPattern.Density switch { 0 => 1.0 / 3, 2 => 1.0 / 1.5, _ => 1.0 / 2 };
+        _minBodies = Math.Max(5, (int)(_maxBodies * densityFactor));
         _brushes = brushes;
         _gradBrushes = gradBrushes;
         _canvas = canvas;
@@ -219,6 +221,7 @@ public sealed class GravitySimulator : IDisposable
             _radii[i] = r;
             _masses[i] = _blobs[i].Width * _blobs[i].Width;
         }
+        _cachedCount = count;
 
         // --- Compute gravitational accelerations ---
         // Store accelerations in temporary arrays to avoid N² position reads
@@ -360,11 +363,17 @@ public sealed class GravitySimulator : IDisposable
         // --- Dust injection if population is low ---
         if (_blobs.Count < _minBodies && _dustCooldown <= 0)
         {
-            if (_rng.NextDouble() < CometTrailChance && _blobs.Count >= 3)
-                InjectCometTrail();
-            else
-                InjectDust(cw, ch);
-            _dustCooldown = 10;
+            // Scale injection burst with deficit: more missing = more injected per cycle
+            int deficit = _minBodies - _blobs.Count;
+            int toAdd = Math.Clamp(deficit / 10, 1, 5);
+            for (int d = 0; d < toAdd && _blobs.Count < _maxBodies; d++)
+            {
+                if (_rng.NextDouble() < CometTrailChance && _blobs.Count >= 3)
+                    InjectCometTrail();
+                else
+                    InjectDust(cw, ch);
+            }
+            _dustCooldown = 8;
         }
         else if (_dustCooldown > 0)
         {
@@ -393,7 +402,7 @@ public sealed class GravitySimulator : IDisposable
 
         // --- Compute bounding box of the innermost 80% of mass ---
         double totalMass = 0;
-        int count = Math.Min(_blobs.Count, _states.Count);
+        int count = _cachedCount;
         for (int i = 0; i < count; i++)
             totalMass += _masses[i];
 
@@ -504,7 +513,7 @@ public sealed class GravitySimulator : IDisposable
         double ch = Math.Max(1, _canvas.ActualHeight);
         double halfW = cw * 0.5;
         double halfH = ch * 0.5;
-        int count = Math.Min(_blobs.Count, _states.Count);
+        int count = _cachedCount;
 
         // Count bodies outside the current viewport
         int offScreen = 0;

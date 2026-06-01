@@ -43,6 +43,9 @@ public sealed class GravityBlobPattern : BlobPatternBase
     /// <summary>Supernova threshold as diameter in pixels (60–400). 0 = disabled.</summary>
     public static double SupernovaMass { get; set; } = 150.0;
 
+    /// <summary>Universe density (0=Low, 1=Medium, 2=High). Controls dust injection threshold.</summary>
+    public static int Density { get; set; } = 1;
+
     public override BlobPattern PatternType => BlobPattern.Gravity;
 
     public GravityBlobPattern(BlobPatternConfig config)
