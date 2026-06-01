@@ -814,7 +814,7 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Gravity:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Width="110"/>
-                                    <Slider x:Name="SliderGravityG" Minimum="100" Maximum="800"
+                                    <Slider x:Name="SliderGravityG" Minimum="100" Maximum="1000"
                                             Width="150" VerticalAlignment="Center"
                                             TickFrequency="50" IsSnapToTickEnabled="True"
                                             ValueChanged="SliderGravityG_ValueChanged"
@@ -836,9 +836,9 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Central Gravity:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Width="110"/>
-                                    <Slider x:Name="SliderGravityCentralGravity" Minimum="2" Maximum="50"
+                                    <Slider x:Name="SliderGravityCentralGravity" Minimum="2" Maximum="100"
                                             Width="150" VerticalAlignment="Center"
-                                            TickFrequency="1" IsSnapToTickEnabled="True"
+                                            TickFrequency="2" IsSnapToTickEnabled="True"
                                             ValueChanged="SliderGravityCentralGravity_ValueChanged"
                                             ToolTip="Pull strength toward canvas center. 2 = very loose, 6 = default, 30 = tight cluster."/>
                                     <TextBlock x:Name="TxtGravityCentralGravity" Foreground="{StaticResource TextDimBrush}"

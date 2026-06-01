@@ -57,6 +57,8 @@ public class BlobState
     public double FlashRemaining { get; set; }
     /// <summary>Gravity pattern: seconds of immunity from merging after pierce/split.</summary>
     public double MergeImmunity { get; set; }
+    /// <summary>Gravity pattern: reference to the parent body this particle is gravitationally immune from (comet trail). Null = normal gravity.</summary>
+    public System.Windows.FrameworkElement? GravityImmuneFrom { get; set; }
     /// <summary>Gravity pattern: target X to lerp toward after a merge (NaN = none).</summary>
     public double MergeTargetX { get; set; } = double.NaN;
     /// <summary>Gravity pattern: target Y to lerp toward after a merge (NaN = none).</summary>

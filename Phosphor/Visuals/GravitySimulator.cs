@@ -22,7 +22,7 @@ public sealed class GravitySimulator : IDisposable
     private const double BoundaryMargin = 40.0;    // px from edge where force kicks in
     private const double BoundaryStrength = 600.0; // force pushing bodies back on-screen
     private const double RepulsionRadiiFactor = 3.0;  // repulsion activates within this × combined radii
-    private const double PierceProbability = 0.25;  // chance a qualifying impact pierces instead of merging
+    private const double PierceProbability = 0.15;  // chance a qualifying impact pierces instead of merging
     private const double MergeAlignmentThreshold = 0.3;  // dot product threshold (>0 = same-ish direction)
     private const double SplitSpeedThreshold = 120.0;    // relative speed above which opposing collisions split
     private const double MassRatioMergeThreshold = 4.0;  // if larger/smaller mass ratio exceeds this, always merge
@@ -34,6 +34,10 @@ public sealed class GravitySimulator : IDisposable
     private const double SizeLerpSpeed = 4.0;        // how fast merge size animates (per second)
     private const double PostMergeMinSpeed = 30.0;    // minimum speed after a merge to prevent dead stops
     private const double PerturbationBase = 8.0;      // base tangential acceleration per unit of OrbitalPerturbation
+    private const double CometTrailChance = 1.0;       // probability that dust injection spawns a comet trail instead
+    private const double DiagDriftRadiusX = 25.0;       // horizontal drift radius for OLED burn-in prevention
+    private const double DiagDriftRadiusY = 20.0;       // vertical drift radius
+    private const double DiagDriftPeriodSec = 120.0;    // seconds for one full elliptical loop
 
     private readonly Canvas _canvas;
     private readonly List<FrameworkElement> _blobs;
@@ -44,6 +48,7 @@ public sealed class GravitySimulator : IDisposable
     private readonly double _speedMultiplier;
     private readonly int _minBodies;
     private readonly int _maxBodies;
+    private int _dustCooldown;
     private readonly Random _rng = new();
 
     // --- Cached per-frame arrays (avoid O(N²) dependency-property reads) ---
@@ -89,7 +94,7 @@ public sealed class GravitySimulator : IDisposable
         _blobs = blobs;
         _states = states;
         _maxBodies = Math.Max(10, (int)(MaxBodiesDefault * GravityBlobPattern.BlobMultiplier));
-        _minBodies = Math.Max(5, blobs.Count / 2);
+        _minBodies = Math.Max(5, blobs.Count / 3);
         _brushes = brushes;
         _gradBrushes = gradBrushes;
         _canvas = canvas;
@@ -129,7 +134,7 @@ public sealed class GravitySimulator : IDisposable
         _lastTickTicks = _stopwatch.ElapsedTicks;
         _running = true;
 
-        if (GravityBlobPattern.ShowDiagnostics && _cameraScale != null)
+        if (GravityBlobPattern.ShowDiagnostics)
         {
             _diagLabel = new System.Windows.Controls.TextBlock
             {
@@ -228,6 +233,10 @@ public sealed class GravitySimulator : IDisposable
 
             for (int j = i + 1; j < count; j++)
             {
+                // Skip gravitational interaction if either body is immune from the other (comet trail)
+                if (_states[i].GravityImmuneFrom == _blobs[j] || _states[j].GravityImmuneFrom == _blobs[i])
+                    continue;
+
                 double xj = _posX[j];
                 double yj = _posY[j];
                 double mj = _masses[j];
@@ -338,18 +347,28 @@ public sealed class GravitySimulator : IDisposable
 
             // Decay merge immunity
             if (s.MergeImmunity > 0)
+            {
                 s.MergeImmunity = Math.Max(0, s.MergeImmunity - dt);
+                if (s.MergeImmunity <= 0)
+                    s.GravityImmuneFrom = null;
+            }
         }
 
         // --- Collision detection: merge or split ---
         ProcessCollisions(cw, ch);
 
         // --- Dust injection if population is low ---
-        if (_blobs.Count < _minBodies)
+        if (_blobs.Count < _minBodies && _dustCooldown <= 0)
         {
-            int toAdd = Math.Min(3, _minBodies - _blobs.Count);
-            for (int d = 0; d < toAdd; d++)
+            if (_rng.NextDouble() < CometTrailChance && _blobs.Count >= 3)
+                InjectCometTrail();
+            else
                 InjectDust(cw, ch);
+            _dustCooldown = 10;
+        }
+        else if (_dustCooldown > 0)
+        {
+            _dustCooldown--;
         }
 
         // --- Collapse explosion: if only 1 body left, it explodes into many small bodies ---
@@ -358,6 +377,9 @@ public sealed class GravitySimulator : IDisposable
 
         // --- Camera roam ---
         UpdateCamera(dt);
+
+        // --- Diagnostic overlay (independent of camera roam) ---
+        UpdateDiagnostics();
     }
 
     private void UpdateCamera(double dt)
@@ -472,29 +494,43 @@ public sealed class GravitySimulator : IDisposable
         _cameraRotate.CenterY = halfH;
         _cameraTranslate.X = _cameraOffsetX;
         _cameraTranslate.Y = _cameraOffsetY;
+    }
 
-        // Diagnostic overlay
-        if (_diagLabel != null)
+    private void UpdateDiagnostics()
+    {
+        if (_diagLabel == null) return;
+
+        double cw = Math.Max(1, _canvas.ActualWidth);
+        double ch = Math.Max(1, _canvas.ActualHeight);
+        double halfW = cw * 0.5;
+        double halfH = ch * 0.5;
+        int count = Math.Min(_blobs.Count, _states.Count);
+
+        // Count bodies outside the current viewport
+        int offScreen = 0;
+        for (int i = 0; i < count; i++)
         {
-            // Count bodies outside the current viewport
-            int offScreen = 0;
-            for (int i = 0; i < count; i++)
-            {
-                // Transform body center through camera: scale around canvas center + translate
-                double bx = (_posX[i] - halfW) * _cameraZoom + halfW + _cameraOffsetX;
-                double by = (_posY[i] - halfH) * _cameraZoom + halfH + _cameraOffsetY;
-                if (bx < -_radii[i] || bx > cw + _radii[i] || by < -_radii[i] || by > ch + _radii[i])
-                    offScreen++;
-            }
-            _diagLabel.Text = $"Zoom: {_cameraZoom:F2}x  Bodies: {count}/{offScreen} off";
-
-            // Color diagnostic text with the current dominant hue from the brushes
-            if (_brushes.Count > 0)
-            {
-                var c = _brushes[0].Color;
-                _diagLabel.Foreground = new SolidColorBrush(Color.FromArgb(200, c.R, c.G, c.B));
-            }
+            // Transform body center through camera: scale around canvas center + translate
+            double bx = (_posX[i] - halfW) * _cameraZoom + halfW + _cameraOffsetX;
+            double by = (_posY[i] - halfH) * _cameraZoom + halfH + _cameraOffsetY;
+            if (bx < -_radii[i] || bx > cw + _radii[i] || by < -_radii[i] || by > ch + _radii[i])
+                offScreen++;
         }
+        _diagLabel.Text = $"Zoom: {_cameraZoom:F2}x  Bodies: {count}/{offScreen} off";
+
+        // Color diagnostic text with the current dominant hue from the brushes
+        if (_brushes.Count > 0)
+        {
+            var c = _brushes[0].Color;
+            _diagLabel.Foreground = new SolidColorBrush(Color.FromArgb(200, c.R, c.G, c.B));
+        }
+
+        // Slow elliptical drift to prevent OLED burn-in
+        double elapsed = _stopwatch.Elapsed.TotalSeconds;
+        double angle = elapsed * (2.0 * Math.PI / DiagDriftPeriodSec);
+        double driftX = DiagDriftRadiusX + Math.Cos(angle) * DiagDriftRadiusX;
+        double driftY = DiagDriftRadiusY + Math.Sin(angle) * DiagDriftRadiusY;
+        _diagLabel.Margin = new Thickness(12 + driftX, 0, 0, 12 + driftY);
     }
 
     private void PickDriftTarget()
@@ -795,20 +831,128 @@ public sealed class GravitySimulator : IDisposable
 
     private void InjectDust(double cw, double ch)
     {
-        // Inject at a random edge position
+        // When zoomed out, the visible area is larger than the canvas.
+        // Spawn dust just outside the visible viewport so it drifts in naturally.
+        double invZoom = _cameraZoom > 0.01 ? 1.0 / _cameraZoom : 1.0;
+        double halfW = cw * 0.5;
+        double halfH = ch * 0.5;
+        // Visible extents in canvas coordinates, centered on canvas center + camera offset
+        double visCx = halfW - _cameraOffsetX * invZoom;
+        double visCy = halfH - _cameraOffsetY * invZoom;
+        double visW = cw * invZoom;
+        double visH = ch * invZoom;
+        double left = visCx - visW * 0.5;
+        double top = visCy - visH * 0.5;
+        double right = visCx + visW * 0.5;
+        double bottom = visCy + visH * 0.5;
+
         double size = DustSize + _rng.NextDouble() * 4;
         double x, y, vx, vy;
         int edge = _rng.Next(4);
         double speed = 20 + _rng.NextDouble() * 40;
         switch (edge)
         {
-            case 0: x = _rng.NextDouble() * cw; y = 0; vx = (_rng.NextDouble() - 0.5) * speed; vy = speed; break;
-            case 1: x = _rng.NextDouble() * cw; y = ch; vx = (_rng.NextDouble() - 0.5) * speed; vy = -speed; break;
-            case 2: x = 0; y = _rng.NextDouble() * ch; vx = speed; vy = (_rng.NextDouble() - 0.5) * speed; break;
-            default: x = cw; y = _rng.NextDouble() * ch; vx = -speed; vy = (_rng.NextDouble() - 0.5) * speed; break;
+            case 0: x = left + _rng.NextDouble() * visW; y = top; vx = (_rng.NextDouble() - 0.5) * speed; vy = speed; break;
+            case 1: x = left + _rng.NextDouble() * visW; y = bottom; vx = (_rng.NextDouble() - 0.5) * speed; vy = -speed; break;
+            case 2: x = left; y = top + _rng.NextDouble() * visH; vx = speed; vy = (_rng.NextDouble() - 0.5) * speed; break;
+            default: x = right; y = top + _rng.NextDouble() * visH; vx = -speed; vy = (_rng.NextDouble() - 0.5) * speed; break;
         }
 
         CreateBody(x - size * 0.5, y - size * 0.5, size, vx, vy);
+    }
+
+    /// <summary>
+    /// Spawns 2-3 tiny dust particles behind one of the largest bodies,
+    /// moving in the same direction but slower — a comet trail effect.
+    /// </summary>
+    private void InjectCometTrail()
+    {
+        // Pick one of the top 20% largest bodies
+        int count = _blobs.Count;
+        if (count < 3) return;
+
+        int topN = Math.Max(1, count / 5);
+        // Find indices of the largest bodies by radius
+        Span<int> candidates = stackalloc int[Math.Min(topN, 20)];
+        Span<double> candidateRadii = stackalloc double[candidates.Length];
+        candidateRadii.Fill(0);
+
+        for (int i = 0; i < count; i++)
+        {
+            double r = _radii[i];
+            for (int c = 0; c < candidates.Length; c++)
+            {
+                if (r > candidateRadii[c])
+                {
+                    // Shift down
+                    for (int s = candidates.Length - 1; s > c; s--)
+                    {
+                        candidates[s] = candidates[s - 1];
+                        candidateRadii[s] = candidateRadii[s - 1];
+                    }
+                    candidates[c] = i;
+                    candidateRadii[c] = r;
+                    break;
+                }
+            }
+        }
+
+        int parentIdx = candidates[_rng.Next(Math.Min(topN, candidates.Length))];
+        var ps = _states[parentIdx];
+        // Read current position directly from canvas (cached values may be stale after collisions)
+        double px = Canvas.GetLeft(_blobs[parentIdx]) + _blobs[parentIdx].Width * 0.5;
+        double py = Canvas.GetTop(_blobs[parentIdx]) + _blobs[parentIdx].Height * 0.5;
+        double pr = _blobs[parentIdx].Width * 0.5;
+        Color parentColor = _brushes[parentIdx].Color;
+
+        // Velocity direction of the parent
+        double speed = Math.Sqrt(ps.VelocityX * ps.VelocityX + ps.VelocityY * ps.VelocityY);
+        if (speed < 1.0) return; // stationary body, skip
+
+        double dirX = ps.VelocityX / speed;
+        double dirY = ps.VelocityY / speed;
+        // Perpendicular vector (consistent handedness)
+        double perpX = -dirY;
+        double perpY = dirX;
+
+        int trailCount = 2 + _rng.Next(2); // 2-3 particles
+        for (int i = 0; i < trailCount && _blobs.Count < _maxBodies; i++)
+        {
+            double size = DustSize * (0.5 + _rng.NextDouble() * 0.5);
+            // Spawn behind the parent (opposite of velocity direction)
+            double dist = pr + 4 + _rng.NextDouble() * pr * 0.5 + i * (size + 2);
+            double perpJitter = (_rng.NextDouble() - 0.5) * pr * 0.3;
+            double fx = px - dirX * dist + perpX * perpJitter;
+            double fy = py - dirY * dist + perpY * perpJitter;
+
+            // Same direction as parent but 5-30% of the speed, with outward bias
+            double trailSpeed = speed * (0.05 + _rng.NextDouble() * 0.25);
+
+            // Bias trail velocity away from canvas center to prevent quick inward fall
+            double canvasCx = Math.Max(1, _canvas.ActualWidth) * 0.5;
+            double canvasCy = Math.Max(1, _canvas.ActualHeight) * 0.5;
+            double outX = fx - canvasCx;
+            double outY = fy - canvasCy;
+            double outLen = Math.Sqrt(outX * outX + outY * outY);
+            if (outLen > 1.0)
+            {
+                outX /= outLen;
+                outY /= outLen;
+            }
+            double outwardBias = trailSpeed * 4; // x% trail speed pushed outward
+
+            double tvx = dirX * trailSpeed + outX * outwardBias;
+            double tvy = dirY * trailSpeed + outY * outwardBias;
+
+            // Slightly dimmer version of parent color
+            byte dr = (byte)Math.Clamp(parentColor.R + _rng.Next(-20, 10), 0, 255);
+            byte dg = (byte)Math.Clamp(parentColor.G + _rng.Next(-20, 10), 0, 255);
+            byte db = (byte)Math.Clamp(parentColor.B + _rng.Next(-20, 10), 0, 255);
+
+            CreateBody(fx - size * 0.5, fy - size * 0.5, size, tvx, tvy, Color.FromRgb(dr, dg, db));
+            _states[^1].MergeImmunity = 4.0; // long immunity so trail particles visibly separate
+            _states[^1].GravityImmuneFrom = _blobs[parentIdx]; // ignore gravity from parent
+        }
     }
 
     /// <summary>

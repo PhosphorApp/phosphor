@@ -174,7 +174,7 @@ public class AppSettings
     /// <summary>Continuous orbital perturbation strength (0–10). Keeps bodies swirling after merges. 0 = off, 3 = default.</summary>
     public double GravityOrbitalPerturbation { get; set; } = 3.0;
     /// <summary>Whether camera roam is enabled for the Gravity visualization.</summary>
-    public bool GravityCameraRoam { get; set; }
+    public bool GravityCameraRoam { get; set; } = true;
     /// <summary>Whether to restart the Gravity simulation when a new track starts.</summary>
     public bool GravityRestartOnTrackChange { get; set; }
     /// <summary>Blob count multiplier for Gravity (0.5–10). Scales max body count. Default 1.0.</summary>

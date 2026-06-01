@@ -780,9 +780,9 @@ public partial class DmdWindow : JukeboxWindow
         GameOfLifePattern.SeedColorMask = settings.GameOfLifeSeedColorMask;
         GameOfLifePattern.HueSpread = Math.Clamp(settings.GameOfLifeHueSpread, 0, 60);
         GameOfLifePattern.SeedSpread = (GameOfLifePattern.SeedSpreadKind)Math.Clamp(settings.GameOfLifeSeedSpread, 0, 2);
-        GravityBlobPattern.GravityG = Math.Clamp(settings.GravityG, 100, 800);
+        GravityBlobPattern.GravityG = Math.Clamp(settings.GravityG, 100, 1000);
         GravityBlobPattern.OrbitRepulsion = Math.Clamp(settings.GravityOrbitRepulsion, 0, 6);
-        GravityBlobPattern.CentralGravity = Math.Clamp(settings.GravityCentralGravity, 2, 50);
+        GravityBlobPattern.CentralGravity = Math.Clamp(settings.GravityCentralGravity, 2, 100);
         GravityBlobPattern.OrbitalPerturbation = Math.Clamp(settings.GravityOrbitalPerturbation, 0, 10);
         GravityBlobPattern.CameraRoam = settings.GravityCameraRoam;
         GravityBlobPattern.RestartOnTrackChange = settings.GravityRestartOnTrackChange;
@@ -2137,9 +2137,9 @@ public partial class DmdWindow : JukeboxWindow
             _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.RestartGameOfLife());
             _ = Dispatcher.BeginInvoke(RestartGameOfLife);
         }
-        GravityBlobPattern.GravityG = Math.Clamp(_appSettings.GravityG, 100, 800);
+        GravityBlobPattern.GravityG = Math.Clamp(_appSettings.GravityG, 100, 1000);
         GravityBlobPattern.OrbitRepulsion = Math.Clamp(_appSettings.GravityOrbitRepulsion, 0, 6);
-        GravityBlobPattern.CentralGravity = Math.Clamp(_appSettings.GravityCentralGravity, 2, 50);
+        GravityBlobPattern.CentralGravity = Math.Clamp(_appSettings.GravityCentralGravity, 2, 100);
         GravityBlobPattern.OrbitalPerturbation = Math.Clamp(_appSettings.GravityOrbitalPerturbation, 0, 10);
         GravityBlobPattern.CameraRoam = _appSettings.GravityCameraRoam;
         GravityBlobPattern.RestartOnTrackChange = _appSettings.GravityRestartOnTrackChange;
