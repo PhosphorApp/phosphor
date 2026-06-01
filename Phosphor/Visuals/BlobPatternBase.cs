@@ -267,7 +267,7 @@ public abstract class BlobPatternBase : IBlobPattern
 
         int count = Math.Min(_blobs.Count, _states.Count);
         // Stagger per blob — shrink for large counts so fly-in stays under ~3 seconds total
-        double staggerPerBlob = count > 1 ? Math.Min(0.03, 2.5 / (count - 1)) : 0;
+        double staggerPerBlob = count > 1 ? Math.Min(0.03, 1.95 / (count - 1)) : 0;
         double maxStagger = (count - 1) * staggerPerBlob;
         const double durationSec = 0.8;
         double totalDuration = durationSec + maxStagger;
