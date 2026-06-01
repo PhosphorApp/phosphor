@@ -34,7 +34,7 @@ public sealed class GravitySimulator : IDisposable
     private const double SizeLerpSpeed = 4.0;        // how fast merge size animates (per second)
     private const double PostMergeMinSpeed = 30.0;    // minimum speed after a merge to prevent dead stops
     private const double PerturbationBase = 8.0;      // base tangential acceleration per unit of OrbitalPerturbation
-    private const double CometTrailChance = 1.0;       // probability that dust injection spawns a comet trail instead
+    private const double CometTrailChance = 0.75;       // probability that dust injection spawns a comet trail instead
     private const double DiagDriftRadiusX = 25.0;       // horizontal drift radius for OLED burn-in prevention
     private const double DiagDriftRadiusY = 20.0;       // vertical drift radius
     private const double DiagDriftPeriodSec = 120.0;    // seconds for one full elliptical loop
