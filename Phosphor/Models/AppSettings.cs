@@ -169,10 +169,20 @@ public class AppSettings
     public int GravityG { get; set; } = 400;
     /// <summary>Close-range orbit repulsion strength (0–6). 0 = off.</summary>
     public double GravityOrbitRepulsion { get; set; } = 3.0;
+    /// <summary>Central gravity pull toward canvas center (2–30). Default 6.</summary>
+    public double GravityCentralGravity { get; set; } = 6.0;
+    /// <summary>Continuous orbital perturbation strength (0–10). Keeps bodies swirling after merges. 0 = off, 3 = default.</summary>
+    public double GravityOrbitalPerturbation { get; set; } = 3.0;
     /// <summary>Whether camera roam is enabled for the Gravity visualization.</summary>
     public bool GravityCameraRoam { get; set; }
     /// <summary>Whether to restart the Gravity simulation when a new track starts.</summary>
     public bool GravityRestartOnTrackChange { get; set; }
+    /// <summary>Blob count multiplier for Gravity (0.5–10). Scales max body count. Default 1.0.</summary>
+    public double GravityBlobMultiplier { get; set; } = 1.0;
+    /// <summary>Whether to show diagnostic overlay (zoom, body count) on Gravity visualization.</summary>
+    public bool GravityShowDiagnostics { get; set; }
+    /// <summary>Supernova mass threshold as diameter in pixels (60–400). When a merged body reaches this size it explodes. 0 = disabled. Default 150.</summary>
+    public double GravitySupernovaMass { get; set; } = 150.0;
 
     // Ferrofluid tuning
     public double FerrofluidCoreGravity { get; set; } = 280.0;

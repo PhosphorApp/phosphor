@@ -782,8 +782,13 @@ public partial class DmdWindow : JukeboxWindow
         GameOfLifePattern.SeedSpread = (GameOfLifePattern.SeedSpreadKind)Math.Clamp(settings.GameOfLifeSeedSpread, 0, 2);
         GravityBlobPattern.GravityG = Math.Clamp(settings.GravityG, 100, 800);
         GravityBlobPattern.OrbitRepulsion = Math.Clamp(settings.GravityOrbitRepulsion, 0, 6);
+        GravityBlobPattern.CentralGravity = Math.Clamp(settings.GravityCentralGravity, 2, 50);
+        GravityBlobPattern.OrbitalPerturbation = Math.Clamp(settings.GravityOrbitalPerturbation, 0, 10);
         GravityBlobPattern.CameraRoam = settings.GravityCameraRoam;
         GravityBlobPattern.RestartOnTrackChange = settings.GravityRestartOnTrackChange;
+        GravityBlobPattern.BlobMultiplier = Math.Clamp(settings.GravityBlobMultiplier, 0.5, 10.0);
+        GravityBlobPattern.ShowDiagnostics = settings.GravityShowDiagnostics;
+        GravityBlobPattern.SupernovaMass = settings.GravitySupernovaMass;
         FerrofluidSimulator.CoreGravity = settings.FerrofluidCoreGravity;
         FerrofluidSimulator.MutualAttraction = settings.FerrofluidMutualAttraction;
         FerrofluidSimulator.Damping = settings.FerrofluidDamping;
@@ -2134,8 +2139,20 @@ public partial class DmdWindow : JukeboxWindow
         }
         GravityBlobPattern.GravityG = Math.Clamp(_appSettings.GravityG, 100, 800);
         GravityBlobPattern.OrbitRepulsion = Math.Clamp(_appSettings.GravityOrbitRepulsion, 0, 6);
+        GravityBlobPattern.CentralGravity = Math.Clamp(_appSettings.GravityCentralGravity, 2, 50);
+        GravityBlobPattern.OrbitalPerturbation = Math.Clamp(_appSettings.GravityOrbitalPerturbation, 0, 10);
         GravityBlobPattern.CameraRoam = _appSettings.GravityCameraRoam;
         GravityBlobPattern.RestartOnTrackChange = _appSettings.GravityRestartOnTrackChange;
+        GravityBlobPattern.BlobMultiplier = Math.Clamp(_appSettings.GravityBlobMultiplier, 0.5, 10.0);
+        GravityBlobPattern.ShowDiagnostics = _appSettings.GravityShowDiagnostics;
+        GravityBlobPattern.SupernovaMass = _appSettings.GravitySupernovaMass;
+        if (settingsWindow.GravitySettingsChanged)
+        {
+            _playfieldProxy?.RestartGravity();
+            _backglassProxy?.RestartGravity();
+            _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.RestartGravity());
+            _ = Dispatcher.BeginInvoke(RestartGravity);
+        }
         FerrofluidSimulator.CoreGravity = _appSettings.FerrofluidCoreGravity;
         FerrofluidSimulator.MutualAttraction = _appSettings.FerrofluidMutualAttraction;
         FerrofluidSimulator.Damping = _appSettings.FerrofluidDamping;

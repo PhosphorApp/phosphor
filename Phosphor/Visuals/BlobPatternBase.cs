@@ -266,7 +266,9 @@ public abstract class BlobPatternBase : IBlobPattern
         double maxDim = Math.Max(w, h);
 
         int count = Math.Min(_blobs.Count, _states.Count);
-        double maxStagger = (count - 1) * 0.03;
+        // Stagger per blob — shrink for large counts so fly-in stays under ~3 seconds total
+        double staggerPerBlob = count > 1 ? Math.Min(0.03, 2.5 / (count - 1)) : 0;
+        double maxStagger = (count - 1) * staggerPerBlob;
         const double durationSec = 0.8;
         double totalDuration = durationSec + maxStagger;
 
@@ -296,7 +298,7 @@ public abstract class BlobPatternBase : IBlobPattern
             Canvas.SetTop(blob, startY);
             blob.Opacity = 0.1;
 
-            double stagger = i * 0.03;
+            double stagger = i * staggerPerBlob;
 
             blob.BeginAnimation(Canvas.LeftProperty, new DoubleAnimation
             {

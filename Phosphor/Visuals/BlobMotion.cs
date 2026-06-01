@@ -61,6 +61,8 @@ public class BlobState
     public double MergeTargetX { get; set; } = double.NaN;
     /// <summary>Gravity pattern: target Y to lerp toward after a merge (NaN = none).</summary>
     public double MergeTargetY { get; set; } = double.NaN;
+    /// <summary>Gravity pattern: target size to lerp toward after a merge (NaN = none).</summary>
+    public double MergeTargetSize { get; set; } = double.NaN;
 }
 
 /// <summary>

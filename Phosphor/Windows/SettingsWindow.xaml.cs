@@ -105,6 +105,9 @@ public partial class SettingsWindow : JukeboxWindow
     private int _originalGameOfLifeSeedColorMask = 0x7F;
     private int _originalGameOfLifeHueSpread = 60;
     private int _originalGameOfLifeSeedSpread = 0;
+    private double _originalGravityBlobMultiplier = 1.0;
+    private bool _originalGravityCameraRoam = false;
+    private bool _originalGravityShowDiagnostics = false;
     private bool _suppressBsCheckboxSync;
 
     /// <summary>Named B/S rule presets for the dropdown.</summary>
@@ -259,6 +262,15 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.GameOfLifeSeedColorMask != _originalGameOfLifeSeedColorMask ||
         _settings.GameOfLifeHueSpread != _originalGameOfLifeHueSpread ||
         _settings.GameOfLifeSeedSpread != _originalGameOfLifeSeedSpread;
+
+    /// <summary>
+    /// True when gravity settings that require a simulation restart have changed
+    /// (blob multiplier or camera roam, which are baked into the constructor).
+    /// </summary>
+    public bool GravitySettingsChanged =>
+        Math.Abs(_settings.GravityBlobMultiplier - _originalGravityBlobMultiplier) > 0.01 ||
+        _settings.GravityCameraRoam != _originalGravityCameraRoam ||
+        _settings.GravityShowDiagnostics != _originalGravityShowDiagnostics;
 
     public event Action? SettingsApplied;
 
@@ -624,7 +636,16 @@ public partial class SettingsWindow : JukeboxWindow
         CbGravityCameraRoam.IsChecked = settings.GravityCameraRoam;
         SliderGravityOrbitRepulsion.Value = settings.GravityOrbitRepulsion;
         TxtGravityOrbitRepulsion.Text = $"{settings.GravityOrbitRepulsion:F1}";
+        SliderGravityCentralGravity.Value = settings.GravityCentralGravity;
+        TxtGravityCentralGravity.Text = $"{(int)settings.GravityCentralGravity}";
+        SliderGravityOrbitalPerturbation.Value = settings.GravityOrbitalPerturbation;
+        TxtGravityOrbitalPerturbation.Text = $"{settings.GravityOrbitalPerturbation:F1}";
         CbGravityRestartOnTrackChange.IsChecked = settings.GravityRestartOnTrackChange;
+        SliderGravityBlobMultiplier.Value = settings.GravityBlobMultiplier;
+        TxtGravityBlobMultiplier.Text = $"{settings.GravityBlobMultiplier:F1}x";
+        CbGravityShowDiagnostics.IsChecked = settings.GravityShowDiagnostics;
+        SliderGravitySupernovaMass.Value = settings.GravitySupernovaMass;
+        TxtGravitySupernovaMass.Text = settings.GravitySupernovaMass < 10 ? "Off" : $"{(int)settings.GravitySupernovaMass}px";
         UpdateGravityTuningVisibility();
 
         CbReactiveBlobsPlayfield.IsChecked = settings.ReactiveBlobsPlayfield;
@@ -866,6 +887,9 @@ public partial class SettingsWindow : JukeboxWindow
         _originalGameOfLifeSeedColorMask = settings.GameOfLifeSeedColorMask;
         _originalGameOfLifeHueSpread = settings.GameOfLifeHueSpread;
         _originalGameOfLifeSeedSpread = settings.GameOfLifeSeedSpread;
+        _originalGravityBlobMultiplier = settings.GravityBlobMultiplier;
+        _originalGravityCameraRoam = settings.GravityCameraRoam;
+        _originalGravityShowDiagnostics = settings.GravityShowDiagnostics;
         _originalProjectMPresetDuration = settings.ProjectMPresetDuration;
         _originalProjectMHardCut = settings.ProjectMHardCutEnabled;
         _originalProjectMBeatSensitivity = settings.ProjectMBeatSensitivity;
@@ -1997,9 +2021,33 @@ public partial class SettingsWindow : JukeboxWindow
             TxtGravityOrbitRepulsion.Text = $"{e.NewValue:F1}";
     }
 
+    private void SliderGravityCentralGravity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtGravityCentralGravity != null)
+            TxtGravityCentralGravity.Text = $"{(int)e.NewValue}";
+    }
+
+    private void SliderGravityOrbitalPerturbation_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtGravityOrbitalPerturbation != null)
+            TxtGravityOrbitalPerturbation.Text = $"{e.NewValue:F1}";
+    }
+
     private void CbGravityRestartOnTrackChange_Changed(object sender, RoutedEventArgs e)
     {
         // No-op; tracked via change-detection.
+    }
+
+    private void SliderGravityBlobMultiplier_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtGravityBlobMultiplier != null)
+            TxtGravityBlobMultiplier.Text = $"{e.NewValue:F1}x";
+    }
+
+    private void SliderGravitySupernovaMass_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtGravitySupernovaMass != null)
+            TxtGravitySupernovaMass.Text = e.NewValue < 10 ? "Off" : $"{(int)e.NewValue}px";
     }
 
     /// <summary>
@@ -2824,8 +2872,13 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.GameOfLifeSeedSpread = Math.Clamp(CbGameOfLifeSeedSpread.SelectedIndex, 0, 2);
         _settings.GravityG = (int)SliderGravityG.Value;
         _settings.GravityOrbitRepulsion = SliderGravityOrbitRepulsion.Value;
+        _settings.GravityCentralGravity = SliderGravityCentralGravity.Value;
+        _settings.GravityOrbitalPerturbation = SliderGravityOrbitalPerturbation.Value;
         _settings.GravityCameraRoam = CbGravityCameraRoam.IsChecked == true;
         _settings.GravityRestartOnTrackChange = CbGravityRestartOnTrackChange.IsChecked == true;
+        _settings.GravityBlobMultiplier = SliderGravityBlobMultiplier.Value;
+        _settings.GravityShowDiagnostics = CbGravityShowDiagnostics.IsChecked == true;
+        _settings.GravitySupernovaMass = SliderGravitySupernovaMass.Value;
         _settings.GameOfLifeRulesEngine = Math.Max(0, CbGameOfLifeRulesEngine.SelectedIndex);
         _settings.GameOfLifeEraBandedHueSpeed = SliderGameOfLifeEraBandedHueSpeed.Value;
         _settings.GameOfLifeCustomRule = BuildRuleStringFromCheckboxes();
@@ -2928,6 +2981,9 @@ public partial class SettingsWindow : JukeboxWindow
         _originalGameOfLifeSeedColorMask = _settings.GameOfLifeSeedColorMask;
         _originalGameOfLifeHueSpread = _settings.GameOfLifeHueSpread;
         _originalGameOfLifeSeedSpread = _settings.GameOfLifeSeedSpread;
+        _originalGravityBlobMultiplier = _settings.GravityBlobMultiplier;
+        _originalGravityCameraRoam = _settings.GravityCameraRoam;
+        _originalGravityShowDiagnostics = _settings.GravityShowDiagnostics;
         _originalProjectMPresetDuration = _settings.ProjectMPresetDuration;
         _originalProjectMSoftCut = _settings.ProjectMSoftCutDuration;
         _originalProjectMHardCut = _settings.ProjectMHardCutEnabled;

@@ -20,16 +20,20 @@ public sealed class GravitySimulator : IDisposable
     private const double Softening = 12.0;         // softening length to prevent singularities
     private const double SofteningSq = Softening * Softening;
     private const double BoundaryMargin = 40.0;    // px from edge where force kicks in
-    private const double BoundaryStrength = 200.0; // force pushing bodies back on-screen
-    private const double CentralGravity = 4.0;     // very gentle pull toward canvas center
+    private const double BoundaryStrength = 600.0; // force pushing bodies back on-screen
     private const double RepulsionRadiiFactor = 3.0;  // repulsion activates within this × combined radii
     private const double PierceProbability = 0.25;  // chance a qualifying impact pierces instead of merging
     private const double MergeAlignmentThreshold = 0.3;  // dot product threshold (>0 = same-ish direction)
     private const double SplitSpeedThreshold = 120.0;    // relative speed above which opposing collisions split
     private const double MassRatioMergeThreshold = 4.0;  // if larger/smaller mass ratio exceeds this, always merge
-    private const int MaxBodies = 100;
-    private const double DustSize = 6.0;           // px radius of injected dust particles
+    private const int MaxBodiesDefault = 100;
+    private const double DustSize = 6.0;
     private const double MaxDt = 0.033;            // clamp dt to ~30fps minimum
+    private const double MaxVelocity = 400.0;       // clamp velocity magnitude to prevent teleporting
+    private const double DampingPerSecond = 0.92;     // fraction of velocity retained per second (time-based, frame-rate independent)
+    private const double SizeLerpSpeed = 4.0;        // how fast merge size animates (per second)
+    private const double PostMergeMinSpeed = 30.0;    // minimum speed after a merge to prevent dead stops
+    private const double PerturbationBase = 8.0;      // base tangential acceleration per unit of OrbitalPerturbation
 
     private readonly Canvas _canvas;
     private readonly List<FrameworkElement> _blobs;
@@ -39,23 +43,39 @@ public sealed class GravitySimulator : IDisposable
     private readonly double _intensity;
     private readonly double _speedMultiplier;
     private readonly int _minBodies;
+    private readonly int _maxBodies;
     private readonly Random _rng = new();
+
+    // --- Cached per-frame arrays (avoid O(N²) dependency-property reads) ---
+    private double[] _posX = [];   // center X of each body
+    private double[] _posY = [];   // center Y of each body
+    private double[] _radii = [];  // half-width of each body
+    private double[] _masses = []; // mass (width²) of each body
     private readonly Stopwatch _stopwatch = new();
     private long _lastTickTicks;
     private bool _running;
 
+    // --- Diagnostics ---
+    private System.Windows.Controls.TextBlock? _diagLabel;
+    private System.Windows.Controls.Panel? _diagParent;
+
     // --- Camera roam state ---
     private ScaleTransform? _cameraScale;
     private RotateTransform? _cameraRotate;
+    private TranslateTransform? _cameraTranslate;
     private double _cameraZoom = 1.0;
     private double _cameraAngle = 0.0;
-    private double _cameraTargetZoom = 1.0;
+    private double _cameraOffsetX = 0.0;
+    private double _cameraOffsetY = 0.0;
     private double _cameraTargetAngle = 0.0;
-    private double _cameraRetargetTimer = 0.0;
-    private const double CameraMinZoom = 0.85;
-    private const double CameraMaxZoom = 1.15;
-    private const double CameraRetargetIntervalSec = 20.0; // pick new target every ~20s
-    private const double CameraLerpSpeed = 0.3; // very slow convergence
+    private double _cameraDriftTimer = 0.0;
+    private const double SimSpaceMultiplier = 3.0;    // sim space is 3× canvas dimensions
+    private const double CameraMinZoom = 1.0 / SimSpaceMultiplier;
+    private const double CameraMaxZoom = 1.3;
+    private const double CameraDriftIntervalSec = 20.0;
+    private const double CameraZoomLerpSpeed = 0.5;   // per-second convergence for zoom
+    private const double CameraDriftLerpSpeed = 0.3;   // per-second convergence for rotation/pan
+    private const double CameraMassFraction = 0.80;    // fraction of total mass to keep in frame
 
     public GravitySimulator(
         List<FrameworkElement> blobs,
@@ -68,7 +88,8 @@ public sealed class GravitySimulator : IDisposable
     {
         _blobs = blobs;
         _states = states;
-        _minBodies = Math.Max(10, blobs.Count / 2);
+        _maxBodies = Math.Max(10, (int)(MaxBodiesDefault * GravityBlobPattern.BlobMultiplier));
+        _minBodies = Math.Max(5, blobs.Count / 2);
         _brushes = brushes;
         _gradBrushes = gradBrushes;
         _canvas = canvas;
@@ -78,14 +99,18 @@ public sealed class GravitySimulator : IDisposable
         // Set up camera roam
         if (GravityBlobPattern.CameraRoam)
         {
+            // Disable clipping so the camera can zoom out to reveal the full sim space
+            canvas.ClipToBounds = false;
+            _cameraTranslate = new TranslateTransform(0, 0);
             _cameraScale = new ScaleTransform(1.0, 1.0, canvas.ActualWidth * 0.5, canvas.ActualHeight * 0.5);
             _cameraRotate = new RotateTransform(0.0, canvas.ActualWidth * 0.5, canvas.ActualHeight * 0.5);
             var group = new TransformGroup();
+            group.Children.Add(_cameraTranslate);
             group.Children.Add(_cameraScale);
             group.Children.Add(_cameraRotate);
             canvas.RenderTransform = group;
-            _cameraRetargetTimer = 0; // pick first target immediately
-            PickCameraTarget();
+            _cameraDriftTimer = 0;
+            PickDriftTarget();
         }
 
         // Clear any WPF animations so we can set positions directly
@@ -103,6 +128,34 @@ public sealed class GravitySimulator : IDisposable
         _stopwatch.Restart();
         _lastTickTicks = _stopwatch.ElapsedTicks;
         _running = true;
+
+        if (GravityBlobPattern.ShowDiagnostics && _cameraScale != null)
+        {
+            _diagLabel = new System.Windows.Controls.TextBlock
+            {
+                FontSize = 16,
+                Foreground = new SolidColorBrush(Color.FromArgb(180, 255, 255, 255)),
+                IsHitTestVisible = false,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+                Margin = new Thickness(12, 0, 0, 12),
+            };
+            // Add to parent panel (Grid) so it's not affected by camera transform
+            _diagParent = _canvas.Parent as System.Windows.Controls.Panel;
+            if (_diagParent != null)
+            {
+                System.Windows.Controls.Panel.SetZIndex(_diagLabel, 9999);
+                _diagParent.Children.Add(_diagLabel);
+            }
+            else
+            {
+                // Fallback: add to canvas (will move with camera)
+                Canvas.SetLeft(_diagLabel, 12);
+                Canvas.SetBottom(_diagLabel, 12);
+                _canvas.Children.Add(_diagLabel);
+            }
+        }
+
         CompositionTarget.Rendering += OnRendering;
     }
 
@@ -112,12 +165,24 @@ public sealed class GravitySimulator : IDisposable
         CompositionTarget.Rendering -= OnRendering;
         _stopwatch.Stop();
 
+        if (_diagLabel != null)
+        {
+            if (_diagParent != null)
+                _diagParent.Children.Remove(_diagLabel);
+            else
+                _canvas.Children.Remove(_diagLabel);
+            _diagLabel = null;
+            _diagParent = null;
+        }
+
         // Reset camera transform
         if (_cameraScale != null)
         {
             _canvas.RenderTransform = null;
+            _canvas.ClipToBounds = true;
             _cameraScale = null;
             _cameraRotate = null;
+            _cameraTranslate = null;
         }
     }
 
@@ -133,6 +198,23 @@ public sealed class GravitySimulator : IDisposable
         double cw = Math.Max(1, _canvas.ActualWidth);
         double ch = Math.Max(1, _canvas.ActualHeight);
 
+        // --- Cache positions, radii, masses from WPF elements (one read per body) ---
+        if (_posX.Length < count)
+        {
+            _posX = new double[count + 64];
+            _posY = new double[count + 64];
+            _radii = new double[count + 64];
+            _masses = new double[count + 64];
+        }
+        for (int i = 0; i < count; i++)
+        {
+            double r = _blobs[i].Width * 0.5;
+            _posX[i] = Canvas.GetLeft(_blobs[i]) + r;
+            _posY[i] = Canvas.GetTop(_blobs[i]) + r;
+            _radii[i] = r;
+            _masses[i] = _blobs[i].Width * _blobs[i].Width;
+        }
+
         // --- Compute gravitational accelerations ---
         // Store accelerations in temporary arrays to avoid N² position reads
         Span<double> ax = stackalloc double[count];
@@ -140,15 +222,15 @@ public sealed class GravitySimulator : IDisposable
 
         for (int i = 0; i < count; i++)
         {
-            double xi = Canvas.GetLeft(_blobs[i]) + _blobs[i].Width * 0.5;
-            double yi = Canvas.GetTop(_blobs[i]) + _blobs[i].Height * 0.5;
-            double mi = MassOf(_blobs[i]);
+            double xi = _posX[i];
+            double yi = _posY[i];
+            double mi = _masses[i];
 
             for (int j = i + 1; j < count; j++)
             {
-                double xj = Canvas.GetLeft(_blobs[j]) + _blobs[j].Width * 0.5;
-                double yj = Canvas.GetTop(_blobs[j]) + _blobs[j].Height * 0.5;
-                double mj = MassOf(_blobs[j]);
+                double xj = _posX[j];
+                double yj = _posY[j];
+                double mj = _masses[j];
 
                 double dx = xj - xi;
                 double dy = yj - yi;
@@ -157,8 +239,8 @@ public sealed class GravitySimulator : IDisposable
                 double force = GravityBlobPattern.GravityG * mi * mj / distSq;
 
                 // Close-range repulsion to encourage stable orbits
-                double ri = _blobs[i].Width * 0.5;
-                double rj = _blobs[j].Width * 0.5;
+                double ri = _radii[i];
+                double rj = _radii[j];
                 double repulsionDist = (ri + rj) * RepulsionRadiiFactor;
                 if (dist < repulsionDist)
                 {
@@ -184,8 +266,22 @@ public sealed class GravitySimulator : IDisposable
             double cdx = cw * 0.5 - xi;
             double cdy = ch * 0.5 - yi;
             double cdist = Math.Sqrt(cdx * cdx + cdy * cdy + 1.0);
-            ax[i] += CentralGravity * cdx / cdist;
-            ay[i] += CentralGravity * cdy / cdist;
+            ax[i] += GravityBlobPattern.CentralGravity * cdx / cdist;
+            ay[i] += GravityBlobPattern.CentralGravity * cdy / cdist;
+
+            // Continuous orbital perturbation: tangential nudge perpendicular to
+            // the center vector to keep bodies swirling instead of falling static.
+            double pertStr = GravityBlobPattern.OrbitalPerturbation;
+            if (pertStr > 0 && cdist > 1.0)
+            {
+                // Tangent direction (perpendicular to center vector)
+                double tx = -cdy / cdist;
+                double ty = cdx / cdist;
+                // Strength scales with distance from center and setting
+                double pertForce = PerturbationBase * pertStr * Math.Min(cdist / (cw * 0.3), 1.0);
+                ax[i] += tx * pertForce;
+                ay[i] += ty * pertForce;
+            }
         }
 
         // --- Integrate velocities and positions (Euler) ---
@@ -195,28 +291,48 @@ public sealed class GravitySimulator : IDisposable
             s.VelocityX += ax[i] * dt * _speedMultiplier;
             s.VelocityY += ay[i] * dt * _speedMultiplier;
 
-            double x = Canvas.GetLeft(_blobs[i]) + s.VelocityX * dt;
-            double y = Canvas.GetTop(_blobs[i]) + s.VelocityY * dt;
+            // Time-based drag (frame-rate independent): retain DampingPerSecond of velocity each second
+            double damping = Math.Pow(DampingPerSecond, dt);
+            s.VelocityX *= damping;
+            s.VelocityY *= damping;
+
+            // Clamp velocity magnitude
+            double speed = Math.Sqrt(s.VelocityX * s.VelocityX + s.VelocityY * s.VelocityY);
+            if (speed > MaxVelocity)
+            {
+                double scale = MaxVelocity / speed;
+                s.VelocityX *= scale;
+                s.VelocityY *= scale;
+            }
+
+            double x = _posX[i] - _radii[i] + s.VelocityX * dt;
+            double y = _posY[i] - _radii[i] + s.VelocityY * dt;
 
             Canvas.SetLeft(_blobs[i], x);
             Canvas.SetTop(_blobs[i], y);
 
-            // Smooth merge lerp: glide toward center-of-mass target
-            if (!double.IsNaN(s.MergeTargetX))
-            {
-                double curX = Canvas.GetLeft(_blobs[i]);
-                double curY = Canvas.GetTop(_blobs[i]);
-                double lerpFactor = Math.Min(1.0, 8.0 * dt); // ~8x/sec convergence
-                double newX = curX + (s.MergeTargetX - curX) * lerpFactor;
-                double newY = curY + (s.MergeTargetY - curY) * lerpFactor;
-                Canvas.SetLeft(_blobs[i], newX);
-                Canvas.SetTop(_blobs[i], newY);
+            // Update cache for collision detection
+            _posX[i] = x + _radii[i];
+            _posY[i] = y + _radii[i];
 
-                // Clear target once close enough
-                if (Math.Abs(s.MergeTargetX - newX) < 0.5 && Math.Abs(s.MergeTargetY - newY) < 0.5)
+            // Animated size growth after merge
+            if (!double.IsNaN(s.MergeTargetSize))
+            {
+                double curSize = _blobs[i].Width;
+                double lerpSize = Math.Min(1.0, SizeLerpSpeed * dt);
+                double newSize = curSize + (s.MergeTargetSize - curSize) * lerpSize;
+                _blobs[i].Width = newSize;
+                _blobs[i].Height = newSize;
+                _radii[i] = newSize * 0.5;
+                _masses[i] = newSize * newSize;
+
+                if (Math.Abs(s.MergeTargetSize - newSize) < 0.5)
                 {
-                    s.MergeTargetX = double.NaN;
-                    s.MergeTargetY = double.NaN;
+                    _blobs[i].Width = s.MergeTargetSize;
+                    _blobs[i].Height = s.MergeTargetSize;
+                    _radii[i] = s.MergeTargetSize * 0.5;
+                    _masses[i] = s.MergeTargetSize * s.MergeTargetSize;
+                    s.MergeTargetSize = double.NaN;
                 }
             }
 
@@ -246,48 +362,169 @@ public sealed class GravitySimulator : IDisposable
 
     private void UpdateCamera(double dt)
     {
-        if (_cameraScale == null || _cameraRotate == null) return;
+        if (_cameraScale == null || _cameraRotate == null || _cameraTranslate == null) return;
 
-        _cameraRetargetTimer -= dt;
-        if (_cameraRetargetTimer <= 0)
+        double cw = Math.Max(1, _canvas.ActualWidth);
+        double ch = Math.Max(1, _canvas.ActualHeight);
+        double halfW = cw * 0.5;
+        double halfH = ch * 0.5;
+
+        // --- Compute bounding box of the innermost 80% of mass ---
+        double totalMass = 0;
+        int count = Math.Min(_blobs.Count, _states.Count);
+        for (int i = 0; i < count; i++)
+            totalMass += _masses[i];
+
+        if (totalMass < 0.01 || count == 0) return;
+
+        // Center of mass
+        double massCx = 0, massCy = 0;
+        for (int i = 0; i < count; i++)
         {
-            PickCameraTarget();
-            _cameraRetargetTimer = CameraRetargetIntervalSec + _rng.NextDouble() * 10.0;
+            double m = _masses[i];
+            massCx += _posX[i] * m;
+            massCy += _posY[i] * m;
+        }
+        massCx /= totalMass;
+        massCy /= totalMass;
+
+        // Sort bodies by distance from center of mass, accumulate mass inward
+        // to find the bounding box that contains CameraMassFraction of total mass.
+        // Use a simple index sort to avoid allocations each frame.
+        Span<int> sortIdx = stackalloc int[count];
+        Span<double> distFromCm = stackalloc double[count];
+        for (int i = 0; i < count; i++)
+        {
+            sortIdx[i] = i;
+            double dx = _posX[i] - massCx;
+            double dy = _posY[i] - massCy;
+            distFromCm[i] = dx * dx + dy * dy;
+        }
+        // Simple insertion sort (fast for small N, no allocations)
+        for (int i = 1; i < count; i++)
+        {
+            int key = sortIdx[i];
+            double keyDist = distFromCm[key];
+            int j = i - 1;
+            while (j >= 0 && distFromCm[sortIdx[j]] > keyDist)
+            {
+                sortIdx[j + 1] = sortIdx[j];
+                j--;
+            }
+            sortIdx[j + 1] = key;
         }
 
-        // Very slow exponential lerp toward targets
-        double lerpFactor = 1.0 - Math.Pow(1.0 - CameraLerpSpeed, dt);
-        _cameraZoom += (_cameraTargetZoom - _cameraZoom) * lerpFactor;
-        _cameraAngle += (_cameraTargetAngle - _cameraAngle) * lerpFactor;
+        // Accumulate mass from nearest to farthest, build bounding box
+        double accMass = 0;
+        double massThreshold = totalMass * CameraMassFraction;
+        double minX = double.MaxValue, maxX = double.MinValue;
+        double minY = double.MaxValue, maxY = double.MinValue;
+        for (int k = 0; k < count; k++)
+        {
+            int idx = sortIdx[k];
+            double r = _radii[idx];
+            minX = Math.Min(minX, _posX[idx] - r);
+            maxX = Math.Max(maxX, _posX[idx] + r);
+            minY = Math.Min(minY, _posY[idx] - r);
+            maxY = Math.Max(maxY, _posY[idx] + r);
+            accMass += _masses[idx];
+            if (accMass >= massThreshold) break;
+        }
 
+        double extentX = Math.Max((maxX - minX) * 0.5, 50) * 1.1;
+        double extentY = Math.Max((maxY - minY) * 0.5, 50) * 1.1;
+        double frameCx = (minX + maxX) * 0.5;
+        double frameCy = (minY + maxY) * 0.5;
+
+        // Compute zoom to fit the extent in the viewport
+        double zoomX = halfW / extentX;
+        double zoomY = halfH / extentY;
+        double targetZoom = Math.Clamp(Math.Min(zoomX, zoomY), CameraMinZoom, CameraMaxZoom);
+
+        // Compute offset to center the framed region in the viewport
+        double targetOffsetX = (halfW - frameCx) * _cameraZoom;
+        double targetOffsetY = (halfH - frameCy) * _cameraZoom;
+
+        // --- Gentle random drift for rotation ---
+        _cameraDriftTimer -= dt;
+        if (_cameraDriftTimer <= 0)
+        {
+            PickDriftTarget();
+            _cameraDriftTimer = CameraDriftIntervalSec + _rng.NextDouble() * 10.0;
+        }
+
+        // --- Lerp toward targets ---
+        double zoomLerp = 1.0 - Math.Pow(1.0 - CameraZoomLerpSpeed, dt);
+        double driftLerp = 1.0 - Math.Pow(1.0 - CameraDriftLerpSpeed, dt);
+
+        _cameraZoom += (targetZoom - _cameraZoom) * zoomLerp;
+        _cameraAngle += (_cameraTargetAngle - _cameraAngle) * driftLerp;
+        _cameraOffsetX += (targetOffsetX - _cameraOffsetX) * zoomLerp;
+        _cameraOffsetY += (targetOffsetY - _cameraOffsetY) * zoomLerp;
+
+        // Apply
         _cameraScale.ScaleX = _cameraZoom;
         _cameraScale.ScaleY = _cameraZoom;
+        _cameraScale.CenterX = halfW;
+        _cameraScale.CenterY = halfH;
         _cameraRotate.Angle = _cameraAngle;
+        _cameraRotate.CenterX = halfW;
+        _cameraRotate.CenterY = halfH;
+        _cameraTranslate.X = _cameraOffsetX;
+        _cameraTranslate.Y = _cameraOffsetY;
+
+        // Diagnostic overlay
+        if (_diagLabel != null)
+        {
+            // Count bodies outside the current viewport
+            int offScreen = 0;
+            for (int i = 0; i < count; i++)
+            {
+                // Transform body center through camera: scale around canvas center + translate
+                double bx = (_posX[i] - halfW) * _cameraZoom + halfW + _cameraOffsetX;
+                double by = (_posY[i] - halfH) * _cameraZoom + halfH + _cameraOffsetY;
+                if (bx < -_radii[i] || bx > cw + _radii[i] || by < -_radii[i] || by > ch + _radii[i])
+                    offScreen++;
+            }
+            _diagLabel.Text = $"Zoom: {_cameraZoom:F2}x  Bodies: {count}/{offScreen} off";
+
+            // Color diagnostic text with the current dominant hue from the brushes
+            if (_brushes.Count > 0)
+            {
+                var c = _brushes[0].Color;
+                _diagLabel.Foreground = new SolidColorBrush(Color.FromArgb(200, c.R, c.G, c.B));
+            }
+        }
     }
 
-    private void PickCameraTarget()
+    private void PickDriftTarget()
     {
-        _cameraTargetZoom = CameraMinZoom + _rng.NextDouble() * (CameraMaxZoom - CameraMinZoom);
-        // Full 360° rotation range, but small increments from current angle
-        _cameraTargetAngle = _cameraAngle + (_rng.NextDouble() - 0.5) * 30.0;
+        // Small random rotation increments for subtle drift
+        _cameraTargetAngle = _cameraAngle + (_rng.NextDouble() - 0.5) * 8.0;
     }
 
     private void ProcessCollisions(double cw, double ch)
     {
+        // Track which bodies already participated in a collision this frame
+        // to prevent chain-merge cascades that cause popping/teleporting.
+        Span<bool> collided = stackalloc bool[_blobs.Count];
+
         // Iterate backwards so removals don't invalidate indices
         for (int i = _blobs.Count - 1; i >= 0 && i < _states.Count; i--)
         {
+            if (collided[i]) continue;
             for (int j = i - 1; j >= 0 && j < _states.Count; j--)
             {
+                if (collided[j]) continue;
                 if (i >= _blobs.Count || j >= _blobs.Count) continue;
 
-                double x1 = Canvas.GetLeft(_blobs[i]) + _blobs[i].Width * 0.5;
-                double y1 = Canvas.GetTop(_blobs[i]) + _blobs[i].Height * 0.5;
-                double x2 = Canvas.GetLeft(_blobs[j]) + _blobs[j].Width * 0.5;
-                double y2 = Canvas.GetTop(_blobs[j]) + _blobs[j].Height * 0.5;
+                double x1 = _posX[i];
+                double y1 = _posY[i];
+                double x2 = _posX[j];
+                double y2 = _posY[j];
 
-                double r1 = _blobs[i].Width * 0.5;
-                double r2 = _blobs[j].Width * 0.5;
+                double r1 = _radii[i];
+                double r2 = _radii[j];
                 double minDist = r1 + r2;
 
                 double dx = x2 - x1;
@@ -334,55 +571,39 @@ public sealed class GravitySimulator : IDisposable
                 bool shouldPierce = !eitherImmune
                                     && relSpeed > SplitSpeedThreshold
                                     && massRatio >= MassRatioMergeThreshold
-                                    && _blobs.Count + 1 <= MaxBodies
+                                    && _blobs.Count + 1 <= _maxBodies
                                     && _rng.NextDouble() < PierceProbability;
 
                 bool shouldSplit = !eitherImmune && !shouldPierce
                                    && relSpeed > SplitSpeedThreshold && dot < -MergeAlignmentThreshold
                                    && massRatio < MassRatioMergeThreshold
-                                   && _blobs.Count + 2 <= MaxBodies;
-                bool shouldMerge = !shouldSplit && !shouldPierce
-                                   && (dot > MergeAlignmentThreshold
-                                   || relSpeed < SplitSpeedThreshold * 0.5
-                                   || massRatio >= MassRatioMergeThreshold);
-
+                                   && _blobs.Count + 2 <= _maxBodies;
                 if (shouldPierce)
                 {
+                    collided[i] = true; collided[j] = true;
                     PierceBody(i, j, nx, ny, cw, ch);
-                    break;
-                }
-                else if (shouldMerge)
-                {
-                    MergeBodies(i, j);
                     break;
                 }
                 else if (shouldSplit)
                 {
+                    collided[i] = true; collided[j] = true;
                     SplitBody(i, j, nx, ny, cw, ch);
                     break;
                 }
                 else
                 {
-                    // Elastic bounce (like BounceSimulator)
-                    double m1 = MassOf(_blobs[i]);
-                    double m2 = MassOf(_blobs[j]);
-                    double dvn = dvx * nx + dvy * ny;
-                    if (dvn > 0)
-                    {
-                        double impulse = (2.0 * dvn) / (m1 + m2);
-                        s1.VelocityX -= impulse * m2 * nx;
-                        s1.VelocityY -= impulse * m2 * ny;
-                        s2.VelocityX += impulse * m1 * nx;
-                        s2.VelocityY += impulse * m1 * ny;
+                    // Default: always merge — no elastic bounce so collisions
+                    // look like galaxies merging rather than billiard balls.
+                    collided[i] = true; collided[j] = true;
+                    MergeBodies(i, j);
 
-                        // Separate overlap
-                        double overlap = minDist - dist;
-                        double sep = overlap * 0.5 + 0.5;
-                        Canvas.SetLeft(_blobs[i], Canvas.GetLeft(_blobs[i]) - nx * sep);
-                        Canvas.SetTop(_blobs[i], Canvas.GetTop(_blobs[i]) - ny * sep);
-                        Canvas.SetLeft(_blobs[j], Canvas.GetLeft(_blobs[j]) + nx * sep);
-                        Canvas.SetTop(_blobs[j], Canvas.GetTop(_blobs[j]) + ny * sep);
+                    // Check if the survivor exceeds the supernova threshold
+                    double supernovaThreshold = GravityBlobPattern.SupernovaMass;
+                    if (supernovaThreshold > 0 && j < _blobs.Count && _blobs[j].Width >= supernovaThreshold)
+                    {
+                        SupernovaExplode(j, cw, ch);
                     }
+                    break;
                 }
             }
         }
@@ -394,17 +615,17 @@ public sealed class GravitySimulator : IDisposable
     /// </summary>
     private void MergeBodies(int i, int j)
     {
-        double r1 = _blobs[i].Width * 0.5;
-        double r2 = _blobs[j].Width * 0.5;
-        double m1 = MassOf(_blobs[i]);
-        double m2 = MassOf(_blobs[j]);
+        double r1 = _radii[i];
+        double r2 = _radii[j];
+        double m1 = _masses[i];
+        double m2 = _masses[j];
         double totalMass = m1 + m2;
 
         // Reposition survivor to mass-weighted center to prevent visual jumping
-        double x1 = Canvas.GetLeft(_blobs[i]) + _blobs[i].Width * 0.5;
-        double y1 = Canvas.GetTop(_blobs[i]) + _blobs[i].Height * 0.5;
-        double x2 = Canvas.GetLeft(_blobs[j]) + _blobs[j].Width * 0.5;
-        double y2 = Canvas.GetTop(_blobs[j]) + _blobs[j].Height * 0.5;
+        double x1 = _posX[i];
+        double y1 = _posY[i];
+        double x2 = _posX[j];
+        double y2 = _posY[j];
         double cx = (x1 * m1 + x2 * m2) / totalMass;
         double cy = (y1 * m1 + y2 * m2) / totalMass;
 
@@ -412,17 +633,27 @@ public sealed class GravitySimulator : IDisposable
         _states[j].VelocityX = (m1 * _states[i].VelocityX + m2 * _states[j].VelocityX) / totalMass;
         _states[j].VelocityY = (m1 * _states[i].VelocityY + m2 * _states[j].VelocityY) / totalMass;
 
-        // Area-preserving new radius
+        // Ensure survivor doesn't go dead — apply minimum speed if momentum cancelled out
+        double postSpeed = Math.Sqrt(_states[j].VelocityX * _states[j].VelocityX + _states[j].VelocityY * _states[j].VelocityY);
+        if (postSpeed < PostMergeMinSpeed)
+        {
+            // Nudge in a random direction
+            double angle = _rng.NextDouble() * Math.PI * 2.0;
+            _states[j].VelocityX += Math.Cos(angle) * PostMergeMinSpeed;
+            _states[j].VelocityY += Math.Sin(angle) * PostMergeMinSpeed;
+        }
+
+        // Area-preserving new radius — animate toward target size instead of snapping
         double newRadius = Math.Sqrt(r1 * r1 + r2 * r2);
         double newSize = newRadius * 2.0;
-        _blobs[j].Width = newSize;
-        _blobs[j].Height = newSize;
+        _states[j].MergeTargetSize = newSize;
         _states[j].BaseSize = newSize;
 
-        // Smooth merge: lerp survivor toward center of mass over several frames
-        // instead of teleporting (prevents visual jumping).
-        _states[j].MergeTargetX = cx - newSize * 0.5;
-        _states[j].MergeTargetY = cy - newSize * 0.5;
+        // Position survivor at the center of mass immediately.
+        // (Both bodies were already overlapping at collision time, so the jump is minimal.
+        // The old lerp-toward-fixed-position approach acted as a brake, killing momentum.)
+        Canvas.SetLeft(_blobs[j], cx - _blobs[j].Width * 0.5);
+        Canvas.SetTop(_blobs[j], cy - _blobs[j].Height * 0.5);
 
         // Mass-weighted color blend
         BlendColor(i, j, m1, m2, totalMass);
@@ -474,7 +705,7 @@ public sealed class GravitySimulator : IDisposable
         ls.VelocityY = -ls.VelocityY * 0.8;
 
         // Create fragments with parent's color
-        for (int f = 0; f < fragments && _blobs.Count < MaxBodies; f++)
+        for (int f = 0; f < fragments && _blobs.Count < _maxBodies; f++)
         {
             double angle = baseAngle + (f - fragments / 2.0) * 0.8 + (_rng.NextDouble() - 0.5) * 0.4;
             double speed = 60 + _rng.NextDouble() * 80;
@@ -547,7 +778,7 @@ public sealed class GravitySimulator : IDisposable
         Color bigColor = _brushes[larger].Color;
         double sprayAngle = 15.0 * Math.PI / 180.0;
 
-        for (int f = 0; f < 2 && _blobs.Count < MaxBodies; f++)
+        for (int f = 0; f < 2 && _blobs.Count < _maxBodies; f++)
         {
             double angle = bulletAngle + (f == 0 ? sprayAngle : -sprayAngle);
             double spawnDist = newBigRadius + fragSizeEach + 4.0;
@@ -595,7 +826,7 @@ public sealed class GravitySimulator : IDisposable
         double cx = cw * 0.5;
         double cy = ch * 0.5;
 
-        for (int i = 0; i < spawnCount && _blobs.Count < MaxBodies; i++)
+        for (int i = 0; i < spawnCount && _blobs.Count < _maxBodies; i++)
         {
             double angle = _rng.NextDouble() * Math.PI * 2.0;
             double radius = _rng.NextDouble() * spread * 0.5;
@@ -606,6 +837,46 @@ public sealed class GravitySimulator : IDisposable
             double vAngle = _rng.NextDouble() * Math.PI * 2.0;
             CreateBody(x - size * 0.5, y - size * 0.5, size,
                 Math.Cos(vAngle) * speed, Math.Sin(vAngle) * speed);
+        }
+    }
+
+    /// <summary>
+    /// Supernova: a body that exceeds the supernova mass threshold explodes
+    /// into a burst of fragments expelled outward from its position.
+    /// </summary>
+    private void SupernovaExplode(int idx, double cw, double ch)
+    {
+        double bx = _posX[idx];
+        double by = _posY[idx];
+        double oldRadius = _radii[idx];
+        Color color = _brushes[idx].Color;
+
+        // Remove the supernova body
+        RemoveBody(idx);
+
+        // Number of fragments scales with original size, 12–30
+        int fragCount = Math.Clamp((int)(oldRadius * 0.6), 12, 30);
+        double baseFragRadius = Math.Max(DustSize * 0.5, oldRadius / Math.Sqrt(fragCount));
+
+        for (int i = 0; i < fragCount && _blobs.Count < _maxBodies; i++)
+        {
+            double angle = _rng.NextDouble() * Math.PI * 2.0;
+            double speed = 80 + _rng.NextDouble() * 200;
+            double sizeVariation = 0.5 + _rng.NextDouble();
+            double fragSize = Math.Max(DustSize, baseFragRadius * 2.0 * sizeVariation);
+            double spawnDist = oldRadius * 0.3 + _rng.NextDouble() * oldRadius * 0.4;
+            double fx = bx + Math.Cos(angle) * spawnDist;
+            double fy = by + Math.Sin(angle) * spawnDist;
+
+            // Slight hue variation from parent color
+            byte dr = (byte)Math.Clamp(color.R + _rng.Next(-30, 31), 0, 255);
+            byte dg = (byte)Math.Clamp(color.G + _rng.Next(-30, 31), 0, 255);
+            byte db = (byte)Math.Clamp(color.B + _rng.Next(-30, 31), 0, 255);
+            Color fragColor = Color.FromRgb(dr, dg, db);
+
+            CreateBody(fx - fragSize * 0.5, fy - fragSize * 0.5, fragSize,
+                Math.Cos(angle) * speed, Math.Sin(angle) * speed, fragColor);
+            _states[^1].MergeImmunity = 1.5; // longer immunity so fragments spread out
         }
     }
 
@@ -715,20 +986,31 @@ public sealed class GravitySimulator : IDisposable
 
     private static void ApplyBoundaryForce(double x, double y, double cw, double ch, ref double ax, ref double ay)
     {
-        // Boundary extends to 2× canvas dimensions. Force ramps up linearly
-        // starting at the canvas edge (0 at edge, full strength at 2× boundary).
-        double bw = cw; // boundary depth = full canvas width beyond each edge
-        double bh = ch;
+        // Simulation space is SimSpaceMultiplier × canvas, centered on the canvas center.
+        // Bodies can range from -cw to 2*cw (for 3× total width) and similarly for height.
+        double simHalfW = cw * SimSpaceMultiplier * 0.5;
+        double simHalfH = ch * SimSpaceMultiplier * 0.5;
+        double cx = cw * 0.5;
+        double cy = ch * 0.5;
 
-        if (x < 0) ax += BoundaryStrength * Math.Min(1.0, -x / bw);
-        else if (x > cw) ax -= BoundaryStrength * Math.Min(1.0, (x - cw) / bw);
-        else if (x < BoundaryMargin) ax += BoundaryStrength * 0.3 * (1.0 - x / BoundaryMargin);
-        else if (x > cw - BoundaryMargin) ax -= BoundaryStrength * 0.3 * (1.0 - (cw - x) / BoundaryMargin);
+        // Distance from center, relative to sim half-extent
+        double dx = x - cx;
+        double dy = y - cy;
+        double ratioX = Math.Abs(dx) / simHalfW;
+        double ratioY = Math.Abs(dy) / simHalfH;
 
-        if (y < 0) ay += BoundaryStrength * Math.Min(1.0, -y / bh);
-        else if (y > ch) ay -= BoundaryStrength * Math.Min(1.0, (y - ch) / bh);
-        else if (y < BoundaryMargin) ay += BoundaryStrength * 0.3 * (1.0 - y / BoundaryMargin);
-        else if (y > ch - BoundaryMargin) ay -= BoundaryStrength * 0.3 * (1.0 - (ch - y) / BoundaryMargin);
+        // Force ramps from 0 at 80% of sim edge to full at 100%
+        const double onset = 0.8;
+        if (ratioX > onset)
+        {
+            double t = Math.Min(1.0, (ratioX - onset) / (1.0 - onset));
+            ax -= Math.Sign(dx) * BoundaryStrength * t * t;
+        }
+        if (ratioY > onset)
+        {
+            double t = Math.Min(1.0, (ratioY - onset) / (1.0 - onset));
+            ay -= Math.Sign(dy) * BoundaryStrength * t * t;
+        }
     }
 
     private static double MassOf(FrameworkElement blob) => blob.Width * blob.Width;

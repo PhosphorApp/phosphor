@@ -833,18 +833,67 @@
                                     <TextBlock x:Name="TxtGravityOrbitRepulsion" Foreground="{StaticResource TextDimBrush}"
                                                VerticalAlignment="Center" Margin="8,0,0,0"/>
                                 </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Central Gravity:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="110"/>
+                                    <Slider x:Name="SliderGravityCentralGravity" Minimum="2" Maximum="50"
+                                            Width="150" VerticalAlignment="Center"
+                                            TickFrequency="1" IsSnapToTickEnabled="True"
+                                            ValueChanged="SliderGravityCentralGravity_ValueChanged"
+                                            ToolTip="Pull strength toward canvas center. 2 = very loose, 6 = default, 30 = tight cluster."/>
+                                    <TextBlock x:Name="TxtGravityCentralGravity" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
                                 <CheckBox x:Name="CbGravityCameraRoam"
                                     Content="Camera Roam" Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
                                     Checked="CbGravityCameraRoam_Changed" Unchecked="CbGravityCameraRoam_Changed"
                                     ToolTip="Enable slow camera panning and zooming during the Gravity visualization."/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Orbital Drift:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="110"/>
+                                    <Slider x:Name="SliderGravityOrbitalPerturbation" Minimum="0" Maximum="10"
+                                            Width="150" VerticalAlignment="Center"
+                                            TickFrequency="0.5" IsSnapToTickEnabled="True"
+                                            ValueChanged="SliderGravityOrbitalPerturbation_ValueChanged"
+                                            ToolTip="Continuous tangential nudge that keeps bodies swirling. 0 = off, 3 = default, 10 = strong."/>
+                                    <TextBlock x:Name="TxtGravityOrbitalPerturbation" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Reset on Track:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Width="110"/>
                                     <CheckBox x:Name="CbGravityRestartOnTrackChange"
                                               Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
                                               Checked="CbGravityRestartOnTrackChange_Changed" Unchecked="CbGravityRestartOnTrackChange_Changed"
-                                              ToolTip="Restart the Gravity simulation with a fresh field whenever a new track starts."/>
-                                </StackPanel>
+                                                                             ToolTip="Restart the Gravity simulation with a fresh field whenever a new track starts."/>
+                                                              </StackPanel>
+                                                             <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                                   <TextBlock Text="Supernova Mass:" Foreground="{StaticResource TextBrush}"
+                                                              VerticalAlignment="Center" Width="110"/>
+                                                   <Slider x:Name="SliderGravitySupernovaMass" Minimum="0" Maximum="400"
+                                                           Width="150" VerticalAlignment="Center"
+                                                           TickFrequency="10" IsSnapToTickEnabled="True"
+                                                           ValueChanged="SliderGravitySupernovaMass_ValueChanged"
+                                                           ToolTip="Body diameter at which a supernova explosion occurs. 0 = disabled."/>
+                                                   <TextBlock x:Name="TxtGravitySupernovaMass" Foreground="{StaticResource TextDimBrush}"
+                                                              VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                               </StackPanel>
+                                              <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                                   <CheckBox x:Name="CbGravityShowDiagnostics" Content="Show Diagnostics"
+                                                              Foreground="{StaticResource TextBrush}"
+                                                              ToolTip="Show diagnostic overlay (zoom level, body count) on the Gravity visualization."/>
+                                               </StackPanel>
+                                              <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                                   <TextBlock Text="Blob Multiplier:" Foreground="{StaticResource TextBrush}"
+                                                              VerticalAlignment="Center" Width="110"/>
+                                                  <Slider x:Name="SliderGravityBlobMultiplier" Minimum="0.5" Maximum="10"
+                                                          Width="150" VerticalAlignment="Center"
+                                                          TickFrequency="0.5" IsSnapToTickEnabled="True"
+                                                          ValueChanged="SliderGravityBlobMultiplier_ValueChanged"
+                                                          ToolTip="Multiplier for the maximum number of bodies. 1x = 100 bodies, 5x = 500, etc."/>
+                                                  <TextBlock x:Name="TxtGravityBlobMultiplier" Foreground="{StaticResource TextDimBrush}"
+                                                             VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                              </StackPanel>
                             </StackPanel>
 
                             <!-- ═══ SECTION: ProjectM Tuning (visible only when any pattern is ProjectM) ═══ -->

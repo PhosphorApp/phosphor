@@ -22,11 +22,26 @@ public sealed class GravityBlobPattern : BlobPatternBase
     /// <summary>Close-range orbit repulsion strength (0–6). 0 = off, 3 = default.</summary>
     public static double OrbitRepulsion { get; set; } = 3.0;
 
+    /// <summary>Central gravity pull toward canvas center (2–30). Default 6.</summary>
+    public static double CentralGravity { get; set; } = 6.0;
+
+    /// <summary>Continuous orbital perturbation strength (0–10). Adds tangential nudges to keep bodies moving. 0 = off, 3 = default.</summary>
+    public static double OrbitalPerturbation { get; set; } = 3.0;
+
     /// <summary>Whether camera roam is enabled for this visualization.</summary>
     public static bool CameraRoam { get; set; }
 
     /// <summary>Whether to restart the simulation when a new track starts.</summary>
     public static bool RestartOnTrackChange { get; set; }
+
+    /// <summary>Blob count multiplier (0.5–10). Scales the max body count for the simulation.</summary>
+    public static double BlobMultiplier { get; set; } = 1.0;
+
+    /// <summary>Whether to show diagnostic overlay (zoom, body count) on screen.</summary>
+    public static bool ShowDiagnostics { get; set; }
+
+    /// <summary>Supernova threshold as diameter in pixels (60–400). 0 = disabled.</summary>
+    public static double SupernovaMass { get; set; } = 150.0;
 
     public override BlobPattern PatternType => BlobPattern.Gravity;
 
@@ -38,10 +53,13 @@ public sealed class GravityBlobPattern : BlobPatternBase
         double w = Math.Max(200, _canvas.ActualWidth);
         double h = Math.Max(200, _canvas.ActualHeight);
 
-        _states = BlobMotion.CreateStates(_blobCount, PatternType, w, h, _rng,
+        // Scale initial blob count by the multiplier setting
+        int scaledCount = Math.Max(5, (int)(_blobCount * BlobMultiplier));
+
+        _states = BlobMotion.CreateStates(scaledCount, PatternType, w, h, _rng,
             _maxOrbitRadius, speedMultiplier: _speedMultiplier);
 
-        for (int i = 0; i < _blobCount; i++)
+        for (int i = 0; i < scaledCount; i++)
         {
             // Small circles, 10-20px, random size
             double size = (10 + _rng.NextDouble() * 10) * _sizeMultiplier;
