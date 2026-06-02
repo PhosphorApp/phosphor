@@ -177,6 +177,9 @@ public sealed class BackglassProxy
     public void SetLogoSpin(bool spin) =>
         _dispatcher.BeginInvoke(() => _window.SetLogoSpin(spin));
 
+    public void SetLogoShadow(bool enabled) =>
+        _dispatcher.BeginInvoke(() => _window.SetLogoShadow(enabled));
+
     public void SetLogoRings(LogoRingsMode mode) =>
         _dispatcher.BeginInvoke(() => _window.SetLogoRings(mode));
 

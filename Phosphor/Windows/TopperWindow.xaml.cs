@@ -30,7 +30,12 @@ public partial class TopperWindow : JukeboxWindow
     private int _blobCount = 4;
     private int _blobSizeOffset;
     private bool _morphColors;
+    private bool _logoShadow = true;
     private System.Windows.Controls.Canvas? _titleInnerCanvas;
+    private int _activeMorphs;
+    private WpfMedia.Effects.Effect? _savedTitleEffect;
+    private WpfMedia.CacheMode? _savedTitleCache;
+    private WpfMedia.CacheMode? _savedRecordCache;
 
     public TopperWindow()
     {
@@ -278,6 +283,14 @@ public partial class TopperWindow : JukeboxWindow
             DrawCircularTitle(TitleCanvas, _logoSpin);
     }
 
+    public void SetLogoShadow(bool enabled)
+    {
+        if (_logoShadow == enabled) return;
+        _logoShadow = enabled;
+        if (_animStarted)
+            DrawCircularTitle(TitleCanvas, _logoSpin);
+    }
+
     public void SetLogoRings(LogoRingsMode mode)
     {
         _logoRings = mode;
@@ -481,24 +494,40 @@ public partial class TopperWindow : JukeboxWindow
 
         double startAngle = spin ? -90.0 : -90.0 + 270.0;
 
-        // Inner canvas holds the text + shadow and gets bitmap-cached.
-        // The outer canvas only carries the rotation — a pure GPU transform
-        // on the cached texture, avoiding per-frame shadow re-rasterization.
+        // Inner canvas holds the text + shadow.  When the shadow is enabled we also
+        // bitmap-cache it so the per-frame spin is a pure GPU transform on the cached
+        // texture instead of re-rasterizing the blur kernel.  The canvas is sized to
+        // *just* the text ring (plus shadow padding) and centered — not the full
+        // window — to keep the cached surface (and the per-invalidation cost during
+        // morphs and resizes) as small as possible.
+        //
+        // When the shadow is disabled there is no benefit to caching: text glyphs
+        // composite trivially on the GPU each frame, and skipping the cache avoids
+        // a post-morph re-raster spike.
+        double innerSize = radius * 2 + (_logoShadow ? 32 : 8) + fontSize * 2;
         var inner = new System.Windows.Controls.Canvas
         {
-            Width = w,
-            Height = h,
-            Effect = new System.Windows.Media.Effects.DropShadowEffect
-            {
-                Color = WpfColor.FromRgb(0, 0, 0),
-                BlurRadius = 7,
-                ShadowDepth = 2,
-                Opacity = 0.9,
-                RenderingBias = RenderingBias.Performance,
-            },
-            CacheMode = new WpfMedia.BitmapCache(1.0),
+            Width = innerSize,
+            Height = innerSize,
+            Effect = _logoShadow
+                ? new System.Windows.Media.Effects.DropShadowEffect
+                {
+                    Color = WpfColor.FromRgb(0, 0, 0),
+                    BlurRadius = 7,
+                    ShadowDepth = 2,
+                    Opacity = 0.9,
+                    RenderingBias = RenderingBias.Performance,
+                }
+                : null,
+            CacheMode = _logoShadow ? new WpfMedia.BitmapCache(1.0) : null,
         };
+        System.Windows.Controls.Canvas.SetLeft(inner, cx - innerSize / 2);
+        System.Windows.Controls.Canvas.SetTop(inner, cy - innerSize / 2);
         _titleInnerCanvas = inner;
+
+        // Re-center the per-character math inside the smaller inner canvas.
+        double icx = innerSize / 2;
+        double icy = innerSize / 2;
 
         for (int i = 0; i < text.Length; i++)
         {
@@ -519,8 +548,8 @@ public partial class TopperWindow : JukeboxWindow
             double charW = tb.DesiredSize.Width;
             double charH = tb.DesiredSize.Height;
 
-            double x = cx + radius * Math.Cos(angleRad);
-            double y = cy + radius * Math.Sin(angleRad);
+            double x = icx + radius * Math.Cos(angleRad);
+            double y = icy + radius * Math.Sin(angleRad);
 
             tb.RenderTransform = new WpfMedia.RotateTransform(angleDeg + 90);
             System.Windows.Controls.Canvas.SetLeft(tb, x - charW / 2);
@@ -592,55 +621,9 @@ public partial class TopperWindow : JukeboxWindow
         var duration = TimeSpan.FromSeconds(1);
         var ease = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
 
-        var titleChildren = _titleInnerCanvas?.Children ?? TitleCanvas.Children;
-
-        foreach (var child in titleChildren)
-        {
-            if (child is System.Windows.Controls.TextBlock tb
-                && tb.Foreground is WpfMedia.SolidColorBrush brush
-                && !brush.IsFrozen)
-            {
-                var anim = new ColorAnimation
-                {
-                    To = WpfColor.FromArgb(180, titleColor.R, titleColor.G, titleColor.B),
-                    Duration = duration,
-                    EasingFunction = ease
-                };
-                brush.BeginAnimation(WpfMedia.SolidColorBrush.ColorProperty, anim);
-            }
-        }
-
-        foreach (var child in RecordOverlay.Children)
-        {
-            if (child is Ellipse ellipse)
-            {
-                if (ellipse.Fill is WpfMedia.SolidColorBrush fill && !fill.IsFrozen)
-                {
-                    byte alpha = fill.Color.A;
-                    if (alpha > 0)
-                    {
-                        var anim = new ColorAnimation
-                        {
-                            To = WpfColor.FromArgb(alpha, recordColor.R, recordColor.G, recordColor.B),
-                            Duration = duration,
-                            EasingFunction = ease
-                        };
-                        fill.BeginAnimation(WpfMedia.SolidColorBrush.ColorProperty, anim);
-                    }
-                }
-                if (ellipse.Stroke is WpfMedia.SolidColorBrush stroke && !stroke.IsFrozen)
-                {
-                    byte alpha = stroke.Color.A;
-                    var anim = new ColorAnimation
-                    {
-                        To = WpfColor.FromArgb(alpha, recordColor.R, recordColor.G, recordColor.B),
-                        Duration = duration,
-                        EasingFunction = ease
-                    };
-                    stroke.BeginAnimation(WpfMedia.SolidColorBrush.ColorProperty, anim);
-                }
-            }
-        }
+        RunMorph(duration, ease,
+            WpfColor.FromArgb(180, titleColor.R, titleColor.G, titleColor.B),
+            recordColor);
     }
 
     /// <summary>
@@ -653,40 +636,103 @@ public partial class TopperWindow : JukeboxWindow
         var duration = TimeSpan.FromSeconds(2);
         var ease = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
         var defaultTitle = WpfColor.FromArgb(180, 0x88, 0xCC, 0xFF);
-        var titleChildren = _titleInnerCanvas?.Children ?? TitleCanvas.Children;
 
+        RunMorph(duration, ease, defaultTitle, WpfColor.FromRgb(255, 255, 255));
+    }
+
+    /// <summary>
+    /// Runs a coordinated color morph over the title and record overlay.  While the
+    /// animation is active the <see cref="DropShadowEffect"/> and <see cref="BitmapCache"/>
+    /// on the title inner canvas are removed (and the record overlay cache too) so the
+    /// render thread doesn't have to re-rasterize a full-window cached surface — through
+    /// the blur kernel — every animation frame.  This is the main source of hitching
+    /// during morphs, especially in fullscreen on the topper.
+    /// </summary>
+    private void RunMorph(TimeSpan duration, IEasingFunction ease, WpfColor titleTo, WpfColor recordTo)
+    {
+        // Snapshot + strip the expensive composition state on the first concurrent morph.
+        if (_activeMorphs == 0)
+        {
+            if (_titleInnerCanvas != null)
+            {
+                _savedTitleEffect = _titleInnerCanvas.Effect;
+                _savedTitleCache = _titleInnerCanvas.CacheMode;
+                _titleInnerCanvas.Effect = null;
+                _titleInnerCanvas.CacheMode = null;
+            }
+            _savedRecordCache = RecordOverlay.CacheMode;
+            RecordOverlay.CacheMode = null;
+        }
+        _activeMorphs++;
+
+        // The title shares one brush across all glyphs (see RedrawCircularTitle), so
+        // one animation drives every character.  Grab the first non-frozen brush we see.
+        var titleChildren = _titleInnerCanvas?.Children ?? TitleCanvas.Children;
+        WpfMedia.SolidColorBrush? titleBrush = null;
         foreach (var child in titleChildren)
         {
             if (child is System.Windows.Controls.TextBlock tb
-                && tb.Foreground is WpfMedia.SolidColorBrush brush
-                && !brush.IsFrozen)
+                && tb.Foreground is WpfMedia.SolidColorBrush b
+                && !b.IsFrozen)
             {
-                var anim = new ColorAnimation { To = defaultTitle, Duration = duration, EasingFunction = ease };
-                brush.BeginAnimation(WpfMedia.SolidColorBrush.ColorProperty, anim);
+                titleBrush = b;
+                break;
             }
+        }
+
+        if (titleBrush != null)
+        {
+            var anim = new ColorAnimation { To = titleTo, Duration = duration, EasingFunction = ease };
+            titleBrush.BeginAnimation(WpfMedia.SolidColorBrush.ColorProperty, anim);
         }
 
         foreach (var child in RecordOverlay.Children)
         {
-            if (child is Ellipse ellipse)
+            if (child is not Ellipse ellipse) continue;
+
+            if (ellipse.Fill is WpfMedia.SolidColorBrush fill && !fill.IsFrozen && fill.Color.A > 0)
             {
-                if (ellipse.Fill is WpfMedia.SolidColorBrush fill && !fill.IsFrozen)
+                var anim = new ColorAnimation
                 {
-                    byte alpha = fill.Color.A;
-                    if (alpha > 0)
-                    {
-                        var anim = new ColorAnimation { To = WpfColor.FromArgb(alpha, 255, 255, 255), Duration = duration, EasingFunction = ease };
-                        fill.BeginAnimation(WpfMedia.SolidColorBrush.ColorProperty, anim);
-                    }
-                }
-                if (ellipse.Stroke is WpfMedia.SolidColorBrush stroke && !stroke.IsFrozen)
+                    To = WpfColor.FromArgb(fill.Color.A, recordTo.R, recordTo.G, recordTo.B),
+                    Duration = duration,
+                    EasingFunction = ease
+                };
+                fill.BeginAnimation(WpfMedia.SolidColorBrush.ColorProperty, anim);
+            }
+            if (ellipse.Stroke is WpfMedia.SolidColorBrush stroke && !stroke.IsFrozen)
+            {
+                var anim = new ColorAnimation
                 {
-                    byte alpha = stroke.Color.A;
-                    var anim = new ColorAnimation { To = WpfColor.FromArgb(alpha, 255, 255, 255), Duration = duration, EasingFunction = ease };
-                    stroke.BeginAnimation(WpfMedia.SolidColorBrush.ColorProperty, anim);
-                }
+                    To = WpfColor.FromArgb(stroke.Color.A, recordTo.R, recordTo.G, recordTo.B),
+                    Duration = duration,
+                    EasingFunction = ease
+                };
+                stroke.BeginAnimation(WpfMedia.SolidColorBrush.ColorProperty, anim);
             }
         }
+
+        // Schedule restore.  A new DispatcherTimer (one-shot) avoids relying on
+        // ColorAnimation.Completed, which fires per-brush and would restore too early
+        // if any single brush finished before the rest.  Ref-counted so overlapping
+        // morphs (rapid song changes) don't restore until the last one ends.
+        var restoreTimer = new DispatcherTimer { Interval = duration };
+        restoreTimer.Tick += (_, _) =>
+        {
+            restoreTimer.Stop();
+            if (--_activeMorphs > 0) return;
+
+            if (_titleInnerCanvas != null)
+            {
+                _titleInnerCanvas.Effect = _savedTitleEffect;
+                _titleInnerCanvas.CacheMode = _savedTitleCache;
+            }
+            RecordOverlay.CacheMode = _savedRecordCache;
+            _savedTitleEffect = null;
+            _savedTitleCache = null;
+            _savedRecordCache = null;
+        };
+        restoreTimer.Start();
     }
 
     private void ToggleExpand_Click(object sender, RoutedEventArgs e) => ToggleExpand();

@@ -721,12 +721,14 @@ public partial class DmdWindow : JukeboxWindow
         _backglassProxy.SetScreensaverSettings(settings.ScreensaverIntensity, settings.ScreensaverSpeed);
         _backglassProxy.SetLogoText(settings.LogoText);
         _backglassProxy.SetLogoSpin(settings.LogoSpin);
+        _backglassProxy.SetLogoShadow(settings.LogoShadow);
         _backglassProxy.SetLogoRings(settings.LogoRings);
         _backglassProxy.SetLogoRingsBrightness(settings.LogoRingsBrightness);
         _backglassProxy.SetLogoBrightness(settings.LogoBrightness);
         _playfieldProxy.SetOledSleepDefeat(settings.OledSleepDefeatSeconds, settings.OledSleepDefeatDurationSeconds, settings.OledSleepDefeatIntensity);
         _topperProxy.SetScreensaverSettings(settings.ScreensaverIntensity, settings.ScreensaverSpeed);
         _topperProxy.SetLogoSpin(settings.LogoSpin);
+        _topperProxy.SetLogoShadow(settings.LogoShadow);
         _topperProxy.SetLogoRings(settings.LogoRings);
         _topperProxy.SetLogoRingsBrightness(settings.LogoRingsBrightness);
         _topperProxy.SetLogoBrightness(settings.LogoBrightness);
@@ -2057,11 +2059,13 @@ public partial class DmdWindow : JukeboxWindow
         {
             _backglassProxy?.SetLogoText(_appSettings.LogoText);
             _backglassProxy?.SetLogoSpin(_appSettings.LogoSpin);
+            _backglassProxy?.SetLogoShadow(_appSettings.LogoShadow);
             _backglassProxy?.SetLogoRings(_appSettings.LogoRings);
             _backglassProxy?.SetLogoRingsBrightness(_appSettings.LogoRingsBrightness);
             _backglassProxy?.SetLogoBrightness(_appSettings.LogoBrightness);
             _topperProxy?.SetLogoText(_appSettings.LogoText);
             _topperProxy?.SetLogoSpin(_appSettings.LogoSpin);
+            _topperProxy?.SetLogoShadow(_appSettings.LogoShadow);
             _topperProxy?.SetLogoRings(_appSettings.LogoRings);
             _topperProxy?.SetLogoRingsBrightness(_appSettings.LogoRingsBrightness);
             _topperProxy?.SetLogoBrightness(_appSettings.LogoBrightness);

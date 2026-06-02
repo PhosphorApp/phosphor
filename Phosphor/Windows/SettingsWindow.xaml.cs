@@ -72,6 +72,7 @@ public partial class SettingsWindow : JukeboxWindow
     private string _originalTitleText;
     private string _originalLogoText;
     private bool _originalLogoSpin;
+    private bool _originalLogoShadow;
     private LogoRingsMode _originalLogoRings;
     private int _originalLogoRingsBrightness;
     private int _originalLogoBrightness = 100;
@@ -202,6 +203,7 @@ public partial class SettingsWindow : JukeboxWindow
     public bool LogoChanged =>
         _settings.LogoText != _originalLogoText ||
         _settings.LogoSpin != _originalLogoSpin ||
+        _settings.LogoShadow != _originalLogoShadow ||
         _settings.LogoRings != _originalLogoRings ||
         _settings.LogoRingsBrightness != _originalLogoRingsBrightness ||
         _settings.LogoBrightness != _originalLogoBrightness ||
@@ -447,6 +449,7 @@ public partial class SettingsWindow : JukeboxWindow
         TbTitleText.Text = settings.TitleText;
         TbLogoText.Text = settings.LogoText;
         CbLogoSpin.IsChecked = settings.LogoSpin;
+        CbLogoShadow.IsChecked = settings.LogoShadow;
 
         SliderLogoRings.Value = (int)settings.LogoRings;
         SliderRingBrightness.Value = settings.LogoRingsBrightness;
@@ -891,6 +894,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalTitleText = settings.TitleText;
         _originalLogoText = settings.LogoText;
         _originalLogoSpin = settings.LogoSpin;
+        _originalLogoShadow = settings.LogoShadow;
         _originalLogoRings = settings.LogoRings;
         _originalLogoRingsBrightness = settings.LogoRingsBrightness;
         _originalLogoBrightness = settings.LogoBrightness;
@@ -2891,6 +2895,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.TitleText = TbTitleText.Text;
         _settings.LogoText = TbLogoText.Text;
         _settings.LogoSpin = CbLogoSpin.IsChecked == true;
+        _settings.LogoShadow = CbLogoShadow.IsChecked == true;
         _settings.LogoRings = (LogoRingsMode)(int)SliderLogoRings.Value;
         _settings.LogoRingsBrightness = (int)SliderRingBrightness.Value;
         _settings.LogoBrightness = (int)SliderLogoBrightness.Value;
@@ -3069,6 +3074,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalTitleText = _settings.TitleText;
         _originalLogoText = _settings.LogoText;
         _originalLogoSpin = _settings.LogoSpin;
+        _originalLogoShadow = _settings.LogoShadow;
         _originalLogoRings = _settings.LogoRings;
         _originalLogoRingsBrightness = _settings.LogoRingsBrightness;
         _originalLogoBrightness = _settings.LogoBrightness;

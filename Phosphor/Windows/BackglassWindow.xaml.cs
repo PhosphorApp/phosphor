@@ -1176,6 +1176,14 @@ public partial class BackglassWindow : JukeboxWindow
         }
     }
 
+    public void SetLogoShadow(bool enabled)
+    {
+        if (_logoShadow == enabled) return;
+        _logoShadow = enabled;
+        if (_idleAnimStarted)
+            DrawCircularTitle(TitleCanvas, _logoSpin);
+    }
+
     public void SetLogoRings(LogoRingsMode mode)
     {
         _logoRings = mode;
@@ -1767,6 +1775,7 @@ public partial class BackglassWindow : JukeboxWindow
 
     private static bool _titleSpin = true;
     private static bool _morphColors;
+    private static bool _logoShadow = true;
     private static string _logoText = "\u2022 VPIN JUKEBOX \u2022 VPIN JUKEBOX ";
     private static System.Windows.Controls.Canvas? _titleInnerCanvas;
 
@@ -1824,24 +1833,40 @@ public partial class BackglassWindow : JukeboxWindow
         // so offset = 180 - (-90) = +270.
         double startAngle = _titleSpin ? -90.0 : -90.0 + 270.0;
 
-        // Inner canvas holds the text + shadow and gets bitmap-cached.
-        // The outer canvas only carries the rotation — a pure GPU transform
-        // on the cached texture, avoiding per-frame shadow re-rasterization.
+        // Inner canvas holds the text + shadow.  When the shadow is enabled we also
+        // bitmap-cache it so the per-frame spin is a pure GPU transform on the cached
+        // texture instead of re-rasterizing the blur kernel.  The canvas is sized to
+        // *just* the text ring (plus shadow padding) and centered — not the full
+        // window — to keep the cached surface (and the per-invalidation cost during
+        // morphs and resizes) as small as possible.
+        //
+        // When the shadow is disabled there is no benefit to caching: text glyphs
+        // composite trivially on the GPU each frame, and skipping the cache avoids
+        // a post-morph re-raster spike.
+        double innerSize = radius * 2 + (_logoShadow ? 32 : 8) + fontSize * 2;
         var inner = new System.Windows.Controls.Canvas
         {
-            Width = w,
-            Height = h,
-            Effect = new System.Windows.Media.Effects.DropShadowEffect
-            {
-                Color = WpfColor.FromRgb(0, 0, 0),
-                BlurRadius = 7,
-                ShadowDepth = 2,
-                Opacity = 0.9,
-                RenderingBias = RenderingBias.Performance,
-            },
-            CacheMode = new WpfMedia.BitmapCache(1.0),
+            Width = innerSize,
+            Height = innerSize,
+            Effect = _logoShadow
+                ? new System.Windows.Media.Effects.DropShadowEffect
+                {
+                    Color = WpfColor.FromRgb(0, 0, 0),
+                    BlurRadius = 7,
+                    ShadowDepth = 2,
+                    Opacity = 0.9,
+                    RenderingBias = RenderingBias.Performance,
+                }
+                : null,
+            CacheMode = _logoShadow ? new WpfMedia.BitmapCache(1.0) : null,
         };
+        System.Windows.Controls.Canvas.SetLeft(inner, cx - innerSize / 2);
+        System.Windows.Controls.Canvas.SetTop(inner, cy - innerSize / 2);
         _titleInnerCanvas = inner;
+
+        // Re-center the per-character math inside the smaller inner canvas.
+        double icx = innerSize / 2;
+        double icy = innerSize / 2;
 
         for (int i = 0; i < text.Length; i++)
         {
@@ -1863,8 +1888,8 @@ public partial class BackglassWindow : JukeboxWindow
             double charW = tb.DesiredSize.Width;
             double charH = tb.DesiredSize.Height;
 
-            double x = cx + radius * Math.Cos(angleRad);
-            double y = cy + radius * Math.Sin(angleRad);
+            double x = icx + radius * Math.Cos(angleRad);
+            double y = icy + radius * Math.Sin(angleRad);
 
             tb.RenderTransform = new WpfMedia.RotateTransform(angleDeg + 90);
             System.Windows.Controls.Canvas.SetLeft(tb, x - charW / 2);

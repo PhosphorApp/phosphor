@@ -59,6 +59,7 @@ public class AppSettings
     public LogoColorMode LogoColorMode { get; set; }
     public bool BackglassAudioOnly { get; set; }
     public bool LogoSpin { get; set; } = true;
+    public bool LogoShadow { get; set; } = true;
     public LogoRingsMode LogoRings { get; set; } = LogoRingsMode.Standard;
     public int LogoRingsBrightness { get; set; } = 25;
     public int LogoBrightness { get; set; } = 100;

@@ -373,6 +373,9 @@
                             </DockPanel>
                             <CheckBox x:Name="CbLogoSpin" Content="Spin logo on idle screens"
                                       Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"/>
+                            <CheckBox x:Name="CbLogoShadow" Content="Logo drop shadow"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,4,0,0"
+                                      ToolTip="Renders a soft drop shadow behind the spinning logo text on the backglass and topper. Disabling can reduce render-thread load on lower-end cabinets and eliminates a small composition cost during color morphs."/>
                             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                 <TextBlock Text="Logo brightness:" Foreground="{StaticResource TextBrush}"
                                            VerticalAlignment="Center" Width="100"/>
