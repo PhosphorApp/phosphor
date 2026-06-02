@@ -1423,7 +1423,9 @@ public partial class BackglassWindow : JukeboxWindow
         // means WPF re-rasterizes the subtree per frame during the ~2s animation,
         // which is negligible for the small logo subtree.
 
-        foreach (var child in TitleCanvas.Children)
+        var titleChildren = _titleInnerCanvas?.Children ?? TitleCanvas.Children;
+
+        foreach (var child in titleChildren)
         {
             if (child is System.Windows.Controls.TextBlock tb
                 && tb.Foreground is WpfMedia.SolidColorBrush brush
@@ -1500,7 +1502,9 @@ public partial class BackglassWindow : JukeboxWindow
         var ease = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
 
         // Animate title text brushes
-        foreach (var child in TitleCanvas.Children)
+        var titleChildren = _titleInnerCanvas?.Children ?? TitleCanvas.Children;
+
+        foreach (var child in titleChildren)
         {
             if (child is System.Windows.Controls.TextBlock tb
                 && tb.Foreground is WpfMedia.SolidColorBrush brush
@@ -1558,7 +1562,9 @@ public partial class BackglassWindow : JukeboxWindow
         var ease = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
         var defaultTitle = WpfColor.FromArgb(180, 0x88, 0xCC, 0xFF);
 
-        foreach (var child in TitleCanvas.Children)
+        var titleChildren = _titleInnerCanvas?.Children ?? TitleCanvas.Children;
+
+        foreach (var child in titleChildren)
         {
             if (child is System.Windows.Controls.TextBlock tb
                 && tb.Foreground is WpfMedia.SolidColorBrush brush
@@ -1734,6 +1740,7 @@ public partial class BackglassWindow : JukeboxWindow
     private static bool _titleSpin = true;
     private static bool _morphColors;
     private static string _logoText = "\u2022 VPIN JUKEBOX \u2022 VPIN JUKEBOX ";
+    private static System.Windows.Controls.Canvas? _titleInnerCanvas;
 
     public void SetLogoText(string text)
     {
@@ -1762,6 +1769,8 @@ public partial class BackglassWindow : JukeboxWindow
     {
         canvas.Children.Clear();
         canvas.RenderTransform = null;
+        canvas.Effect = null;
+        canvas.CacheMode = null;
         double w = canvas.ActualWidth;
         double h = canvas.ActualHeight;
         if (w <= 0 || h <= 0) return;
@@ -1786,6 +1795,25 @@ public partial class BackglassWindow : JukeboxWindow
         // bullet 14 is at -90 + 14*step. We want bullet 0 at 180� (9 o'clock)
         // so offset = 180 - (-90) = +270.
         double startAngle = _titleSpin ? -90.0 : -90.0 + 270.0;
+
+        // Inner canvas holds the text + shadow and gets bitmap-cached.
+        // The outer canvas only carries the rotation — a pure GPU transform
+        // on the cached texture, avoiding per-frame shadow re-rasterization.
+        var inner = new System.Windows.Controls.Canvas
+        {
+            Width = w,
+            Height = h,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = WpfColor.FromRgb(0, 0, 0),
+                BlurRadius = 7,
+                ShadowDepth = 2,
+                Opacity = 0.9,
+                RenderingBias = RenderingBias.Performance,
+            },
+            CacheMode = new WpfMedia.BitmapCache(1.0),
+        };
+        _titleInnerCanvas = inner;
 
         for (int i = 0; i < text.Length; i++)
         {
@@ -1813,18 +1841,10 @@ public partial class BackglassWindow : JukeboxWindow
             tb.RenderTransform = new WpfMedia.RotateTransform(angleDeg + 90);
             System.Windows.Controls.Canvas.SetLeft(tb, x - charW / 2);
             System.Windows.Controls.Canvas.SetTop(tb, y - charH / 2);
-            canvas.Children.Add(tb);
+            inner.Children.Add(tb);
         }
 
-        canvas.CacheMode = new WpfMedia.BitmapCache(1.0);
-        canvas.Effect = new System.Windows.Media.Effects.DropShadowEffect
-        {
-            Color = WpfColor.FromRgb(0, 0, 0),
-            BlurRadius = 7,
-            ShadowDepth = 2,
-            Opacity = 0.9,
-            RenderingBias = RenderingBias.Performance,
-        };
+        canvas.Children.Add(inner);
 
         if (_titleSpin)
         {

@@ -762,7 +762,10 @@ public static class BlobMotion
 
         if (pattern == BlobPattern.Rainfall)
         {
-            return (rng.NextDouble() * canvasWidth - blobSize * 0.3, -blobSize);
+            // Stagger blobs vertically so they don't all start at the top
+            // and cause expensive overlapping alpha-blend compositing.
+            double staggerY = -blobSize - rng.NextDouble() * canvasHeight;
+            return (rng.NextDouble() * canvasWidth - blobSize * 0.3, staggerY);
         }
 
         if (pattern == BlobPattern.LavaLamp)

@@ -876,8 +876,8 @@ public sealed class GravitySimulator : IDisposable
     /// </summary>
     private void InjectCometTrail()
     {
-        // Pick one of the top 20% largest bodies
-        int count = _blobs.Count;
+        // Pick one of the top 20% largest bodies (use _cachedCount — safe bound for cached arrays)
+        int count = _cachedCount;
         if (count < 3) return;
 
         int topN = Math.Max(1, count / 5);
@@ -907,6 +907,7 @@ public sealed class GravitySimulator : IDisposable
         }
 
         int parentIdx = candidates[_rng.Next(Math.Min(topN, candidates.Length))];
+        if (parentIdx >= _blobs.Count || parentIdx >= _states.Count) return;
         var ps = _states[parentIdx];
         // Read current position directly from canvas (cached values may be stale after collisions)
         double px = Canvas.GetLeft(_blobs[parentIdx]) + _blobs[parentIdx].Width * 0.5;

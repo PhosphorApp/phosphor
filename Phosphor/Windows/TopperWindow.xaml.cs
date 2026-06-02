@@ -30,6 +30,7 @@ public partial class TopperWindow : JukeboxWindow
     private int _blobCount = 4;
     private int _blobSizeOffset;
     private bool _morphColors;
+    private System.Windows.Controls.Canvas? _titleInnerCanvas;
 
     public TopperWindow()
     {
@@ -39,6 +40,21 @@ public partial class TopperWindow : JukeboxWindow
         InitializeComponent();
 
         ContentRendered += (_, _) => StartAnimation();
+        SizeChanged += OnSizeChanged;
+    }
+
+    private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (!_animStarted || BlobCanvas.ActualWidth <= 0)
+            return;
+
+        // Self-rendering patterns handle their own resize via canvas SizeChanged
+        if (_blobPattern is BlobPattern.ProjectM or BlobPattern.Mandelbrot)
+            return;
+
+        _currentPattern?.Dispose();
+        _currentPattern = BlobTransition.Create(_blobPattern, MakeConfig());
+        _currentPattern.Enter(() => { });
     }
 
     public void SetBlobCount(int count)
@@ -429,6 +445,8 @@ public partial class TopperWindow : JukeboxWindow
     {
         canvas.Children.Clear();
         canvas.RenderTransform = null;
+        canvas.Effect = null;
+        canvas.CacheMode = null;
         double w = canvas.ActualWidth;
         double h = canvas.ActualHeight;
         if (w <= 0 || h <= 0) return;
@@ -447,6 +465,25 @@ public partial class TopperWindow : JukeboxWindow
         var font = new WpfMedia.FontFamily("Segoe UI");
 
         double startAngle = spin ? -90.0 : -90.0 + 270.0;
+
+        // Inner canvas holds the text + shadow and gets bitmap-cached.
+        // The outer canvas only carries the rotation — a pure GPU transform
+        // on the cached texture, avoiding per-frame shadow re-rasterization.
+        var inner = new System.Windows.Controls.Canvas
+        {
+            Width = w,
+            Height = h,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = WpfColor.FromRgb(0, 0, 0),
+                BlurRadius = 7,
+                ShadowDepth = 2,
+                Opacity = 0.9,
+                RenderingBias = RenderingBias.Performance,
+            },
+            CacheMode = new WpfMedia.BitmapCache(1.0),
+        };
+        _titleInnerCanvas = inner;
 
         for (int i = 0; i < text.Length; i++)
         {
@@ -473,18 +510,10 @@ public partial class TopperWindow : JukeboxWindow
             tb.RenderTransform = new WpfMedia.RotateTransform(angleDeg + 90);
             System.Windows.Controls.Canvas.SetLeft(tb, x - charW / 2);
             System.Windows.Controls.Canvas.SetTop(tb, y - charH / 2);
-            canvas.Children.Add(tb);
+            inner.Children.Add(tb);
         }
 
-        canvas.CacheMode = new WpfMedia.BitmapCache(1.0);
-        canvas.Effect = new System.Windows.Media.Effects.DropShadowEffect
-        {
-            Color = WpfColor.FromRgb(0, 0, 0),
-            BlurRadius = 7,
-            ShadowDepth = 2,
-            Opacity = 0.9,
-            RenderingBias = RenderingBias.Performance,
-        };
+        canvas.Children.Add(inner);
 
         if (spin)
         {
@@ -548,10 +577,9 @@ public partial class TopperWindow : JukeboxWindow
         var duration = TimeSpan.FromSeconds(1);
         var ease = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
 
-        // CacheMode is intentionally left in place during the morph; toggling
-        // it caused visible hitches at the animation boundaries.
+        var titleChildren = _titleInnerCanvas?.Children ?? TitleCanvas.Children;
 
-        foreach (var child in TitleCanvas.Children)
+        foreach (var child in titleChildren)
         {
             if (child is System.Windows.Controls.TextBlock tb
                 && tb.Foreground is WpfMedia.SolidColorBrush brush
@@ -610,8 +638,9 @@ public partial class TopperWindow : JukeboxWindow
         var duration = TimeSpan.FromSeconds(2);
         var ease = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
         var defaultTitle = WpfColor.FromArgb(180, 0x88, 0xCC, 0xFF);
+        var titleChildren = _titleInnerCanvas?.Children ?? TitleCanvas.Children;
 
-        foreach (var child in TitleCanvas.Children)
+        foreach (var child in titleChildren)
         {
             if (child is System.Windows.Controls.TextBlock tb
                 && tb.Foreground is WpfMedia.SolidColorBrush brush
