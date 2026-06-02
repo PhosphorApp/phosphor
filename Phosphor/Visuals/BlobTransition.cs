@@ -84,6 +84,7 @@ public static class BlobTransition
         BlobPattern.Matrix => new MatrixBlobPattern(config),
         BlobPattern.GameOfLife => new GameOfLifePattern(config),
         BlobPattern.Gravity => new GravityBlobPattern(config),
+        BlobPattern.Clock => new ClockBlobPattern(config),
         _ => new RandomBlobPattern(config),
     };
 }

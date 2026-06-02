@@ -61,6 +61,7 @@ public class AppSettings
     public bool LogoSpin { get; set; } = true;
     public LogoRingsMode LogoRings { get; set; } = LogoRingsMode.Standard;
     public int LogoRingsBrightness { get; set; } = 25;
+    public int LogoBrightness { get; set; } = 100;
     public double TopperDistortion { get; set; }
     public bool ShowStatusText { get; set; } = true;
     public int HideCursorTimeoutSeconds { get; set; } = 15;
@@ -110,6 +111,16 @@ public class AppSettings
     public bool MatrixColorCycling { get; set; } = true;
     public bool MatrixInfiniteZoom { get; set; }
     public double MatrixZoomRate { get; set; } = 0.05;
+
+    // Clock tuning
+    /// <summary>0 = Analog, 1 = Digital dot-matrix.</summary>
+    public int ClockMode { get; set; }
+    /// <summary>Clock brightness override (0.05–1.0). Overrides global blob intensity for the clock visual.</summary>
+    public double ClockBrightness { get; set; } = 0.5;
+    /// <summary>Digital clock font size scale in 10% increments (1–20). 10 = 100% default.</summary>
+    public int ClockDigitalSize { get; set; } = 35;
+    public bool ClockUse24Hour { get; set; } = true;
+    public int ClockAnalogSize { get; set; } = 2;
 
     // Game of Life tuning
     public int GameOfLifeCellSize { get; set; } = 5;
@@ -448,6 +459,7 @@ public enum BlobPattern
     Matrix,
     GameOfLife,
     Gravity,
+    Clock,
     RandomPerSong
 }
 

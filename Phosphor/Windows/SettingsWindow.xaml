@@ -374,6 +374,16 @@
                             <CheckBox x:Name="CbLogoSpin" Content="Spin logo on idle screens"
                                       Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"/>
                             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <TextBlock Text="Logo brightness:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="100"/>
+                                <Slider x:Name="SliderLogoBrightness" Minimum="0" Maximum="100" Value="100"
+                                        Width="200" VerticalAlignment="Center" IsMoveToPointEnabled="True"
+                                        IsSnapToTickEnabled="True" TickFrequency="5"
+                                        ValueChanged="SliderLogoBrightness_ValueChanged"/>
+                                <TextBlock x:Name="LogoBrightnessValueText" Text="100%" Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" Margin="8,0,0,0"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                 <TextBlock Text="Logo rings:" Foreground="{StaticResource TextBrush}"
                                            VerticalAlignment="Center" Width="100"/>
                                 <Grid Width="200" VerticalAlignment="Center">
@@ -904,10 +914,69 @@
                                                           ToolTip="Multiplier for the maximum number of bodies. 1x = 100 bodies, 5x = 500, etc."/>
                                                   <TextBlock x:Name="TxtGravityBlobMultiplier" Foreground="{StaticResource TextDimBrush}"
                                                              VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                                                 </StackPanel>
                                               </StackPanel>
-                            </StackPanel>
 
-                            <!-- ═══ SECTION: ProjectM Tuning (visible only when any pattern is ProjectM) ═══ -->
+                                              <!-- ═══ SECTION: Clock Tuning (visible only when any pattern is Clock) ═══ -->
+                                              <StackPanel x:Name="PanelClockTuning" Visibility="Collapsed">
+                                                  <TextBlock Text="CLOCK TUNING" FontSize="12" FontWeight="Bold"
+                                                      Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
+                                                  <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                                      <TextBlock Text="Mode:" Foreground="{StaticResource TextBrush}"
+                                                                 VerticalAlignment="Center" Width="110"/>
+                                                      <ComboBox x:Name="CbClockMode" Width="150"
+                                                                SelectionChanged="CbClockMode_SelectionChanged"
+                                                                ToolTip="Analog: blob markers with orbiting hands. Digital: dot-matrix time display."/>
+                                                  </StackPanel>
+                                                  <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                                      <TextBlock Text="Brightness:" Foreground="{StaticResource TextBrush}"
+                                                                 VerticalAlignment="Center" Width="110"/>
+                                                      <Slider x:Name="SliderClockBrightness" Minimum="5" Maximum="100"
+                                                              Width="150" VerticalAlignment="Center"
+                                                              TickFrequency="5" IsSnapToTickEnabled="True"
+                                                              ValueChanged="SliderClockBrightness_ValueChanged"
+                                                              ToolTip="Clock brightness override (5%–100%). Overrides global blob intensity for the clock visual."/>
+                                                      <TextBlock x:Name="TxtClockBrightness" Foreground="{StaticResource TextDimBrush}"
+                                                                 VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                                  </StackPanel>
+                                                  <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                                      <TextBlock Text="Digital Size:" Foreground="{StaticResource TextBrush}"
+                                                                 VerticalAlignment="Center" Width="110"/>
+                                                      <Slider x:Name="SliderClockDigitalSize" Minimum="5" Maximum="100"
+                                                              Width="150" VerticalAlignment="Center"
+                                                              TickFrequency="5" IsSnapToTickEnabled="True"
+                                                              ValueChanged="SliderClockDigitalSize_ValueChanged"
+                                                              ToolTip="Digital clock dot size (5–100%)."/>
+                                                      <TextBlock x:Name="TxtClockDigitalSize" Foreground="{StaticResource TextDimBrush}"
+                                                                 VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                                  </StackPanel>
+                                                  <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                                      <TextBlock Text="Hour Format:" Foreground="{StaticResource TextBrush}"
+                                                                 VerticalAlignment="Center" Width="110"/>
+                                                      <Slider x:Name="SliderClockHourFormat" Minimum="0" Maximum="1" Value="1"
+                                                              Width="80" VerticalAlignment="Center"
+                                                              TickFrequency="1" IsSnapToTickEnabled="True"
+                                                              TickPlacement="BottomRight" IsMoveToPointEnabled="True"
+                                                              ValueChanged="SliderClockHourFormat_ValueChanged"
+                                                              ToolTip="Digital clock hour format."/>
+                                                      <TextBlock x:Name="TxtClockHourFormat" Text="24-hour" Foreground="{StaticResource TextDimBrush}"
+                                                                 VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                                  </StackPanel>
+                                                  <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                                      <TextBlock Text="Analog Size:" Foreground="{StaticResource TextBrush}"
+                                                                 VerticalAlignment="Center" Width="110"/>
+                                                      <Slider x:Name="SliderClockAnalogSize" Minimum="0" Maximum="4" Value="2"
+                                                              Width="150" VerticalAlignment="Center"
+                                                              TickFrequency="1" IsSnapToTickEnabled="True"
+                                                              TickPlacement="BottomRight" IsMoveToPointEnabled="True"
+                                                              ValueChanged="SliderClockAnalogSize_ValueChanged"
+                                                              ToolTip="Analog clock blob size."/>
+                                                      <TextBlock x:Name="TxtClockAnalogSize" Text="Medium" Foreground="{StaticResource TextDimBrush}"
+                                                                 VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                                  </StackPanel>
+                                              </StackPanel>
+
+                                              <!-- ═══ SECTION: ProjectM Tuning (visible only when any pattern is ProjectM) ═══ -->
                             <StackPanel x:Name="PanelProjectMTuning" Visibility="Collapsed">
                                 <TextBlock Text="PROJECTM TUNING" FontSize="12" FontWeight="Bold"
                                     Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>

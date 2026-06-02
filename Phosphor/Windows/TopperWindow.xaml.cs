@@ -186,6 +186,15 @@ public partial class TopperWindow : JukeboxWindow
             SetBlobPattern(_blobPatternSetting);
     }
 
+    /// <summary>
+    /// Restarts the current pattern if it is Clock, so that changed tuning takes effect.
+    /// </summary>
+    public void RestartClock()
+    {
+        if (_blobPattern == BlobPattern.Clock)
+            SetBlobPattern(_blobPatternSetting);
+    }
+
     public void ApplyProjectMTuning()
     {
         if (_blobPattern == BlobPattern.ProjectM && _currentPattern is ProjectMPattern pm)
@@ -281,6 +290,12 @@ public partial class TopperWindow : JukeboxWindow
         _recordRingsBrightness = Math.Clamp(percent / 100.0, 0.0, 1.0);
         if (_animStarted)
             DrawRecordOverlay(RecordOverlay, _logoRings);
+    }
+
+    public void SetLogoBrightness(int percent)
+    {
+        double opacity = Math.Clamp(percent / 100.0, 0.0, 1.0);
+        TitleCanvas.Opacity = opacity;
     }
 
     public void SetLogoText(string text)

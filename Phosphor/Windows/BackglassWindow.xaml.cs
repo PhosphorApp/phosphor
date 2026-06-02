@@ -41,6 +41,7 @@ public partial class BackglassWindow : JukeboxWindow
     private LibVLCSharp.WPF.VideoView? _videoView;
     private bool _logoDimEnabled;
     private double _logoDimOpacity;
+    private double _logoBrightness = 1.0;
     private bool _isLogoDimmed;
     private readonly DispatcherTimer _logoDimTimer = new();
     private bool _logoMorphEnabled;
@@ -1193,6 +1194,15 @@ public partial class BackglassWindow : JukeboxWindow
         }
     }
 
+    public void SetLogoBrightness(int percent)
+    {
+        _logoBrightness = Math.Clamp(percent / 100.0, 0.0, 1.0);
+        if (!_isLogoDimmed)
+        {
+            TitleCanvas.Opacity = _logoBrightness;
+        }
+    }
+
     public void SetBlobPattern(BlobPattern pattern)
     {
         _transitioning = false;
@@ -1247,6 +1257,15 @@ public partial class BackglassWindow : JukeboxWindow
     public void RestartGravity()
     {
         if (_blobPattern == BlobPattern.Gravity)
+            SetBlobPattern(_blobPatternSetting);
+    }
+
+    /// <summary>
+    /// Restarts the current pattern if it is Clock, so that changed tuning takes effect.
+    /// </summary>
+    public void RestartClock()
+    {
+        if (_blobPattern == BlobPattern.Clock)
             SetBlobPattern(_blobPatternSetting);
     }
 
@@ -1328,16 +1347,21 @@ public partial class BackglassWindow : JukeboxWindow
 
         _isLogoDimmed = true;
 
-        // Fade logo elements (record overlay + title canvas) to target opacity over 1 second
-        double targetOpacity = _logoDimOpacity;
-        var anim = new DoubleAnimation
+        // Fade logo elements to target opacity over 1 second
+        double textTarget = _logoBrightness * _logoDimOpacity;
+        double ringsTarget = _logoDimOpacity;
+        RecordOverlay.BeginAnimation(OpacityProperty, new DoubleAnimation
         {
-            To = targetOpacity,
+            To = ringsTarget,
             Duration = TimeSpan.FromSeconds(1),
             EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
-        };
-        RecordOverlay.BeginAnimation(OpacityProperty, anim);
-        TitleCanvas.BeginAnimation(OpacityProperty, anim);
+        });
+        TitleCanvas.BeginAnimation(OpacityProperty, new DoubleAnimation
+        {
+            To = textTarget,
+            Duration = TimeSpan.FromSeconds(1),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
+        });
     }
 
     private void ResetLogoDimIdle()
@@ -1355,14 +1379,18 @@ public partial class BackglassWindow : JukeboxWindow
     private void UndimLogo()
     {
         _isLogoDimmed = false;
-        var anim = new DoubleAnimation
+        RecordOverlay.BeginAnimation(OpacityProperty, new DoubleAnimation
         {
             To = 1.0,
             Duration = TimeSpan.FromSeconds(0.5),
             EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
-        };
-        RecordOverlay.BeginAnimation(OpacityProperty, anim);
-        TitleCanvas.BeginAnimation(OpacityProperty, anim);
+        });
+        TitleCanvas.BeginAnimation(OpacityProperty, new DoubleAnimation
+        {
+            To = _logoBrightness,
+            Duration = TimeSpan.FromSeconds(0.5),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
+        });
     }
 
     public void SetLogoMorphColor(LogoColorMode mode)

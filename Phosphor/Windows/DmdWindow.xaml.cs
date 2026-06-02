@@ -723,12 +723,13 @@ public partial class DmdWindow : JukeboxWindow
         _backglassProxy.SetLogoSpin(settings.LogoSpin);
         _backglassProxy.SetLogoRings(settings.LogoRings);
         _backglassProxy.SetLogoRingsBrightness(settings.LogoRingsBrightness);
-        _playfieldProxy.SetScreensaverSettings(settings.ScreensaverIntensity, settings.ScreensaverSpeed);
+        _backglassProxy.SetLogoBrightness(settings.LogoBrightness);
         _playfieldProxy.SetOledSleepDefeat(settings.OledSleepDefeatSeconds, settings.OledSleepDefeatDurationSeconds, settings.OledSleepDefeatIntensity);
         _topperProxy.SetScreensaverSettings(settings.ScreensaverIntensity, settings.ScreensaverSpeed);
         _topperProxy.SetLogoSpin(settings.LogoSpin);
         _topperProxy.SetLogoRings(settings.LogoRings);
         _topperProxy.SetLogoRingsBrightness(settings.LogoRingsBrightness);
+        _topperProxy.SetLogoBrightness(settings.LogoBrightness);
         _topperProxy.SetDistortion(settings.TopperDistortion);
         BlobTransition.ExcludeMandelbrotFromRandom = settings.ExcludeMandelbrotFromRandom;
         MandelbrotPattern.TickIntervalMs = settings.MandelbrotUseScreenRate
@@ -790,6 +791,11 @@ public partial class DmdWindow : JukeboxWindow
         GravityBlobPattern.ShowDiagnostics = settings.GravityShowDiagnostics;
         GravityBlobPattern.SupernovaMass = settings.GravitySupernovaMass;
         GravityBlobPattern.Density = Math.Clamp(settings.GravityDensity, 0, 2);
+        ClockBlobPattern.ClockMode = settings.ClockMode;
+        ClockBlobPattern.Brightness = Math.Clamp(settings.ClockBrightness, 0.05, 1.0);
+        ClockBlobPattern.DigitalSize = Math.Clamp(settings.ClockDigitalSize, 5, 100);
+        ClockBlobPattern.Use24Hour = settings.ClockUse24Hour;
+        ClockBlobPattern.AnalogSize = Math.Clamp(settings.ClockAnalogSize, 0, 4);
         FerrofluidSimulator.CoreGravity = settings.FerrofluidCoreGravity;
         FerrofluidSimulator.MutualAttraction = settings.FerrofluidMutualAttraction;
         FerrofluidSimulator.Damping = settings.FerrofluidDamping;
@@ -2053,10 +2059,12 @@ public partial class DmdWindow : JukeboxWindow
             _backglassProxy?.SetLogoSpin(_appSettings.LogoSpin);
             _backglassProxy?.SetLogoRings(_appSettings.LogoRings);
             _backglassProxy?.SetLogoRingsBrightness(_appSettings.LogoRingsBrightness);
+            _backglassProxy?.SetLogoBrightness(_appSettings.LogoBrightness);
             _topperProxy?.SetLogoText(_appSettings.LogoText);
             _topperProxy?.SetLogoSpin(_appSettings.LogoSpin);
             _topperProxy?.SetLogoRings(_appSettings.LogoRings);
             _topperProxy?.SetLogoRingsBrightness(_appSettings.LogoRingsBrightness);
+            _topperProxy?.SetLogoBrightness(_appSettings.LogoBrightness);
             _backglassProxy?.SetLogoMorphColor(_appSettings.LogoColorMode);
             _reactiveLogoEnabled = _appSettings.LogoColorMode == LogoColorMode.Reactive;
             if (_appSettings.ShowTopper)
@@ -2148,12 +2156,24 @@ public partial class DmdWindow : JukeboxWindow
         GravityBlobPattern.ShowDiagnostics = _appSettings.GravityShowDiagnostics;
         GravityBlobPattern.SupernovaMass = _appSettings.GravitySupernovaMass;
         GravityBlobPattern.Density = Math.Clamp(_appSettings.GravityDensity, 0, 2);
+        ClockBlobPattern.ClockMode = _appSettings.ClockMode;
+        ClockBlobPattern.Brightness = Math.Clamp(_appSettings.ClockBrightness, 0.05, 1.0);
+        ClockBlobPattern.DigitalSize = Math.Clamp(_appSettings.ClockDigitalSize, 5, 100);
+        ClockBlobPattern.Use24Hour = _appSettings.ClockUse24Hour;
+        ClockBlobPattern.AnalogSize = Math.Clamp(_appSettings.ClockAnalogSize, 0, 4);
         if (settingsWindow.GravitySettingsChanged)
         {
             _playfieldProxy?.RestartGravity();
             _backglassProxy?.RestartGravity();
             _topperProxy?.RestartGravity();
             _ = Dispatcher.BeginInvoke(RestartGravity);
+        }
+        if (settingsWindow.ClockSettingsChanged)
+        {
+            _playfieldProxy?.RestartClock();
+            _backglassProxy?.RestartClock();
+            _topperProxy?.RestartClock();
+            _ = Dispatcher.BeginInvoke(RestartClock);
         }
         FerrofluidSimulator.CoreGravity = _appSettings.FerrofluidCoreGravity;
         FerrofluidSimulator.MutualAttraction = _appSettings.FerrofluidMutualAttraction;
@@ -3519,6 +3539,15 @@ public partial class DmdWindow : JukeboxWindow
     private void RestartGravity()
     {
         if (_ssBlobPattern == BlobPattern.Gravity)
+            SetBlobPattern(_ssBlobPatternSetting);
+    }
+
+    /// <summary>
+    /// Restarts the current pattern if it is Clock, so that changed tuning takes effect.
+    /// </summary>
+    private void RestartClock()
+    {
+        if (_ssBlobPattern == BlobPattern.Clock)
             SetBlobPattern(_ssBlobPatternSetting);
     }
 

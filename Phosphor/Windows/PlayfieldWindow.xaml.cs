@@ -591,6 +591,15 @@ public partial class PlayfieldWindow : JukeboxWindow
             SetBlobPattern(_blobPatternSetting);
     }
 
+    /// <summary>
+    /// Restarts the current pattern if it is Clock, so that changed tuning takes effect.
+    /// </summary>
+    public void RestartClock()
+    {
+        if (_blobPattern == BlobPattern.Clock)
+            SetBlobPattern(_blobPatternSetting);
+    }
+
     public void ApplyProjectMTuning()
     {
         if (_blobPattern == BlobPattern.ProjectM && _currentPattern is ProjectMPattern pm)

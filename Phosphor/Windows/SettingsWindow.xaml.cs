@@ -74,6 +74,7 @@ public partial class SettingsWindow : JukeboxWindow
     private bool _originalLogoSpin;
     private LogoRingsMode _originalLogoRings;
     private int _originalLogoRingsBrightness;
+    private int _originalLogoBrightness = 100;
     private LogoColorMode _originalLogoColorMode;
     private int _originalMandelbrotUseGpu;
     private bool _originalMandelbrotAdaptiveIterations;
@@ -109,6 +110,11 @@ public partial class SettingsWindow : JukeboxWindow
     private bool _originalGravityCameraRoam = false;
     private bool _originalGravityShowDiagnostics = false;
     private int _originalGravityDensity = 1;
+    private int _originalClockMode;
+    private double _originalClockBrightness = 0.5;
+    private int _originalClockDigitalSize = 10;
+    private bool _originalClockUse24Hour = true;
+    private int _originalClockAnalogSize = 2;
     private bool _suppressBsCheckboxSync;
 
     /// <summary>Named B/S rule presets for the dropdown.</summary>
@@ -198,6 +204,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.LogoSpin != _originalLogoSpin ||
         _settings.LogoRings != _originalLogoRings ||
         _settings.LogoRingsBrightness != _originalLogoRingsBrightness ||
+        _settings.LogoBrightness != _originalLogoBrightness ||
         _settings.LogoColorMode != _originalLogoColorMode;
 
     public bool DofSettingsChanged =>
@@ -273,6 +280,16 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.GravityCameraRoam != _originalGravityCameraRoam ||
         _settings.GravityShowDiagnostics != _originalGravityShowDiagnostics ||
         _settings.GravityDensity != _originalGravityDensity;
+
+    /// <summary>
+    /// True when clock tuning settings have changed and require a pattern restart.
+    /// </summary>
+    public bool ClockSettingsChanged =>
+        _settings.ClockMode != _originalClockMode ||
+        Math.Abs(_settings.ClockBrightness - _originalClockBrightness) > 0.01 ||
+        _settings.ClockDigitalSize != _originalClockDigitalSize ||
+        _settings.ClockUse24Hour != _originalClockUse24Hour ||
+        _settings.ClockAnalogSize != _originalClockAnalogSize;
 
     public event Action? SettingsApplied;
 
@@ -433,6 +450,7 @@ public partial class SettingsWindow : JukeboxWindow
 
         SliderLogoRings.Value = (int)settings.LogoRings;
         SliderRingBrightness.Value = settings.LogoRingsBrightness;
+        SliderLogoBrightness.Value = settings.LogoBrightness;
 
         // Blob pattern per screen (alphabetized)
         var blobPatterns = Enum.GetValues<BlobPattern>()
@@ -451,6 +469,7 @@ public partial class SettingsWindow : JukeboxWindow
                 BlobPattern.Mandelbrot => "Mandelbrot",
                 BlobPattern.FerrofluidCluster => "Ferrofluid",
                 BlobPattern.GameOfLife => "Game of Life",
+                BlobPattern.Clock => "Clock",
                 BlobPattern.RandomPerSong => "Random Per Song",
                 _ => p.ToString()
             }))
@@ -651,6 +670,20 @@ public partial class SettingsWindow : JukeboxWindow
         SliderGravityDensity.Value = settings.GravityDensity;
         TxtGravityDensity.Text = settings.GravityDensity switch { 0 => "Low", 2 => "High", _ => "Medium" };
         UpdateGravityTuningVisibility();
+
+        // Clock tuning
+        CbClockMode.Items.Add("Analog");
+        CbClockMode.Items.Add("Digital");
+        CbClockMode.SelectedIndex = settings.ClockMode;
+        SliderClockBrightness.Value = settings.ClockBrightness * 100;
+        TxtClockBrightness.Text = $"{(int)(settings.ClockBrightness * 100)}%";
+        SliderClockDigitalSize.Value = settings.ClockDigitalSize;
+        TxtClockDigitalSize.Text = $"{settings.ClockDigitalSize}%";
+        SliderClockHourFormat.Value = settings.ClockUse24Hour ? 1 : 0;
+        TxtClockHourFormat.Text = settings.ClockUse24Hour ? "24-hour" : "12-hour";
+        SliderClockAnalogSize.Value = Math.Clamp(settings.ClockAnalogSize, 0, 4);
+        TxtClockAnalogSize.Text = AnalogSizeLabel(settings.ClockAnalogSize);
+        UpdateClockTuningVisibility();
 
         CbReactiveBlobsPlayfield.IsChecked = settings.ReactiveBlobsPlayfield;
         CbReactiveBlobsBackglass.IsChecked = settings.ReactiveBlobsBackglass;
@@ -860,6 +893,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalLogoSpin = settings.LogoSpin;
         _originalLogoRings = settings.LogoRings;
         _originalLogoRingsBrightness = settings.LogoRingsBrightness;
+        _originalLogoBrightness = settings.LogoBrightness;
         _originalLogoColorMode = settings.LogoColorMode;
         _originalMandelbrotUseGpu = settings.MandelbrotUseGpu;
         _originalMandelbrotAdaptiveIterations = settings.MandelbrotAdaptiveIterations;
@@ -895,6 +929,11 @@ public partial class SettingsWindow : JukeboxWindow
         _originalGravityCameraRoam = settings.GravityCameraRoam;
         _originalGravityShowDiagnostics = settings.GravityShowDiagnostics;
         _originalGravityDensity = settings.GravityDensity;
+        _originalClockMode = settings.ClockMode;
+        _originalClockBrightness = settings.ClockBrightness;
+        _originalClockDigitalSize = settings.ClockDigitalSize;
+        _originalClockUse24Hour = settings.ClockUse24Hour;
+        _originalClockAnalogSize = settings.ClockAnalogSize;
         _originalProjectMPresetDuration = settings.ProjectMPresetDuration;
         _originalProjectMHardCut = settings.ProjectMHardCutEnabled;
         _originalProjectMBeatSensitivity = settings.ProjectMBeatSensitivity;
@@ -1771,6 +1810,12 @@ public partial class SettingsWindow : JukeboxWindow
         // No live preview needed; value is read on save
     }
 
+    private void SliderLogoBrightness_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (LogoBrightnessValueText != null)
+            LogoBrightnessValueText.Text = $"{(int)e.NewValue}%";
+    }
+
     private void SliderRingBrightness_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (RingBrightnessValueText != null)
@@ -1880,6 +1925,7 @@ public partial class SettingsWindow : JukeboxWindow
         UpdateMatrixTuningVisibility();
         UpdateGameOfLifeTuningVisibility();
         UpdateGravityTuningVisibility();
+        UpdateClockTuningVisibility();
         UpdateBlobCountSliderStates();
     }
 
@@ -1898,7 +1944,8 @@ public partial class SettingsWindow : JukeboxWindow
         {
             if (cb == null || countSlider == null) return;
             var name = cb.SelectedItem as string ?? "";
-            bool hideAll = name == "ProjectM" || name == "Mandelbrot";
+            bool hideAll = name == "ProjectM" || name == "Mandelbrot"
+                || name == "Clock";
             bool hideSize = hideAll || name == "Game of Life";
             countSlider.Visibility = hideAll ? Visibility.Collapsed : Visibility.Visible;
             if (countLabel != null) countLabel.Visibility = hideAll ? Visibility.Collapsed : Visibility.Visible;
@@ -2008,6 +2055,61 @@ public partial class SettingsWindow : JukeboxWindow
 
         PanelGravityTuning.Visibility = anyGravity ? Visibility.Visible : Visibility.Collapsed;
     }
+
+    private void UpdateClockTuningVisibility()
+    {
+        if (PanelClockTuning == null) return;
+
+        bool anyClock = false;
+        foreach (var cb in new[] { CbBlobPatternPlayfield, CbBlobPatternBackglass, CbBlobPatternTopper, CbBlobPatternDmd })
+        {
+            if (cb?.SelectedItem is string name && name == "Clock")
+            {
+                anyClock = true;
+                break;
+            }
+        }
+
+        PanelClockTuning.Visibility = anyClock ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void CbClockMode_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        // No-op; tracked via change-detection.
+    }
+
+    private void SliderClockBrightness_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtClockBrightness != null)
+            TxtClockBrightness.Text = $"{(int)e.NewValue}%";
+    }
+
+    private void SliderClockDigitalSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtClockDigitalSize != null)
+            TxtClockDigitalSize.Text = $"{(int)e.NewValue}%";
+    }
+
+    private void SliderClockHourFormat_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtClockHourFormat != null)
+            TxtClockHourFormat.Text = e.NewValue >= 0.5 ? "24-hour" : "12-hour";
+    }
+
+    private void SliderClockAnalogSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtClockAnalogSize != null)
+            TxtClockAnalogSize.Text = AnalogSizeLabel((int)e.NewValue);
+    }
+
+    private static string AnalogSizeLabel(int v) => v switch
+    {
+        0 => "Smallest",
+        1 => "Small",
+        3 => "Large",
+        4 => "Largest",
+        _ => "Medium",
+    };
 
     private void SliderGravityG_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
@@ -2791,6 +2893,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.LogoSpin = CbLogoSpin.IsChecked == true;
         _settings.LogoRings = (LogoRingsMode)(int)SliderLogoRings.Value;
         _settings.LogoRingsBrightness = (int)SliderRingBrightness.Value;
+        _settings.LogoBrightness = (int)SliderLogoBrightness.Value;
         var blobPatternsSorted = Enum.GetValues<BlobPattern>()
             .OrderBy(p => p switch
             {
@@ -2807,6 +2910,7 @@ public partial class SettingsWindow : JukeboxWindow
                 BlobPattern.Mandelbrot => "Mandelbrot",
                 BlobPattern.FerrofluidCluster => "Ferrofluid",
                 BlobPattern.GameOfLife => "Game of Life",
+                BlobPattern.Clock => "Clock",
                 BlobPattern.RandomPerSong => "Random Per Song",
                 _ => p.ToString()
             })
@@ -2891,6 +2995,11 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.GravityShowDiagnostics = CbGravityShowDiagnostics.IsChecked == true;
         _settings.GravitySupernovaMass = SliderGravitySupernovaMass.Value;
         _settings.GravityDensity = (int)SliderGravityDensity.Value;
+        _settings.ClockMode = CbClockMode.SelectedIndex >= 0 ? CbClockMode.SelectedIndex : 0;
+        _settings.ClockBrightness = SliderClockBrightness.Value / 100.0;
+        _settings.ClockDigitalSize = (int)SliderClockDigitalSize.Value;
+        _settings.ClockUse24Hour = SliderClockHourFormat.Value >= 0.5;
+        _settings.ClockAnalogSize = (int)SliderClockAnalogSize.Value;
         _settings.GameOfLifeRulesEngine = Math.Max(0, CbGameOfLifeRulesEngine.SelectedIndex);
         _settings.GameOfLifeEraBandedHueSpeed = SliderGameOfLifeEraBandedHueSpeed.Value;
         _settings.GameOfLifeCustomRule = BuildRuleStringFromCheckboxes();
@@ -2962,6 +3071,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalLogoSpin = _settings.LogoSpin;
         _originalLogoRings = _settings.LogoRings;
         _originalLogoRingsBrightness = _settings.LogoRingsBrightness;
+        _originalLogoBrightness = _settings.LogoBrightness;
         _originalLogoColorMode = _settings.LogoColorMode;
         _originalMandelbrotUseGpu = _settings.MandelbrotUseGpu;
         _originalMandelbrotAdaptiveIterations = _settings.MandelbrotAdaptiveIterations;
@@ -2997,6 +3107,11 @@ public partial class SettingsWindow : JukeboxWindow
         _originalGravityCameraRoam = _settings.GravityCameraRoam;
         _originalGravityShowDiagnostics = _settings.GravityShowDiagnostics;
         _originalGravityDensity = _settings.GravityDensity;
+        _originalClockMode = _settings.ClockMode;
+        _originalClockBrightness = _settings.ClockBrightness;
+        _originalClockDigitalSize = _settings.ClockDigitalSize;
+        _originalClockUse24Hour = _settings.ClockUse24Hour;
+        _originalClockAnalogSize = _settings.ClockAnalogSize;
         _originalProjectMPresetDuration = _settings.ProjectMPresetDuration;
         _originalProjectMSoftCut = _settings.ProjectMSoftCutDuration;
         _originalProjectMHardCut = _settings.ProjectMHardCutEnabled;

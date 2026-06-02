@@ -153,6 +153,9 @@ public sealed class BackglassProxy
     public void RestartGravity() =>
         _dispatcher.BeginInvoke(() => _window.RestartGravity());
 
+    public void RestartClock() =>
+        _dispatcher.BeginInvoke(() => _window.RestartClock());
+
     public void ApplyProjectMTuning() =>
         _dispatcher.BeginInvoke(() => _window.ApplyProjectMTuning());
 
@@ -179,6 +182,9 @@ public sealed class BackglassProxy
 
     public void SetLogoRingsBrightness(int percent) =>
         _dispatcher.BeginInvoke(() => _window.SetLogoRingsBrightness(percent));
+
+    public void SetLogoBrightness(int percent) =>
+        _dispatcher.BeginInvoke(() => _window.SetLogoBrightness(percent));
 
     public void SetLogoDim(bool enabled, int opacityPercent, int timeoutSeconds) =>
         _dispatcher.BeginInvoke(() => _window.SetLogoDim(enabled, opacityPercent, timeoutSeconds));
