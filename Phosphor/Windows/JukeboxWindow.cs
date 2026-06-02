@@ -11,6 +11,13 @@ namespace Phosphor;
 /// </summary>
 public class JukeboxWindow : Window
 {
+    /// <summary>
+    /// Shared epoch for logo spin animations so all windows stay in phase
+    /// regardless of when their animation starts.
+    /// </summary>
+    protected static readonly DateTime SpinEpoch = DateTime.UtcNow;
+    protected const double SpinDurationSeconds = 60.0;
+
     private WindowLayout? _layout;
     private bool _isExpanded;
     private bool _resizable = true;

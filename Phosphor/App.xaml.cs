@@ -14,7 +14,8 @@ public partial class App : Application
     private Thread? _playfieldThread;
     private BackglassProxy? _backglassProxy;
     private Thread? _backglassThread;
-    private TopperWindow? _topperWindow;
+    private TopperProxy? _topperProxy;
+    private Thread? _topperThread;
     private DmdWindow _dmdWindow = null!;
     private LibVLC? _sharedVlc;
     private Task<LibVLC?>? _sharedVlcTask;
@@ -92,7 +93,7 @@ public partial class App : Application
             DebugLog.Log("App", "Deferred startup: begin");
             _backglassProxy = CreateBackglassOnOwnThread(viewModel);
             _playfieldProxy = CreatePlayfieldOnOwnThread();
-            _topperWindow = new TopperWindow { DataContext = viewModel };
+            _topperProxy = CreateTopperOnOwnThread(viewModel);
 
             // Wire up video playback
             _backglassProxy.AttachViewModel(viewModel);
@@ -100,10 +101,10 @@ public partial class App : Application
             // Give all windows access to settings for exit key handling
             _backglassProxy.SetAppSettings(_settings);
             _playfieldProxy.SetAppSettings(_settings);
-            _topperWindow.SetAppSettings(_settings);
+            _topperProxy.SetAppSettings(_settings);
 
             // Give DMD access to settings and other windows
-            _dmdWindow.SetAppContext(_settings, _playfieldProxy, _backglassProxy, _topperWindow);
+            _dmdWindow.SetAppContext(_settings, _playfieldProxy, _backglassProxy, _topperProxy);
 
             // Apply resizable AFTER SetAppContext so all window references are set
             _dmdWindow.ApplyResizable(_settings.ResizableWindows);
@@ -113,8 +114,8 @@ public partial class App : Application
             _backglassProxy.ApplyLayout(_settings.Backglass);
             _playfieldProxy.CheckWindowPositionOnStartup = _settings.CheckWindowsOnStartup;
             _playfieldProxy.ApplyLayout(_settings.Playfield);
-            _topperWindow.CheckWindowPositionOnStartup = _settings.CheckWindowsOnStartup;
-            _topperWindow.ApplyLayout(_settings.Topper);
+            _topperProxy.CheckWindowPositionOnStartup = _settings.CheckWindowsOnStartup;
+            _topperProxy.ApplyLayout(_settings.Topper);
 
             // Set playfield mode
             _playfieldProxy.SetStaticImage(_settings.PlayfieldStaticImagePath);
@@ -136,7 +137,7 @@ public partial class App : Application
                 _playfieldProxy.Show();
 
             if (_settings.ShowTopper)
-                _topperWindow.Show();
+                _topperProxy.Show();
 
             // All windows are now visible — fade out splash
             splash.Close(TimeSpan.FromMilliseconds(300));
@@ -267,6 +268,49 @@ public partial class App : Application
     }
 
     /// <summary>
+    /// Creates the <see cref="TopperWindow"/> on a dedicated STA thread so its
+    /// animations never block the main UI thread.
+    /// </summary>
+    private TopperProxy CreateTopperOnOwnThread(JukeboxViewModel viewModel)
+    {
+        TopperWindow? window = null;
+        var ready = new ManualResetEventSlim(false);
+
+        Exception? bgException = null;
+        _topperThread = new Thread(() =>
+        {
+            try
+            {
+                _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
+                window = new TopperWindow { DataContext = viewModel };
+            }
+            catch (Exception ex)
+            {
+                bgException = ex;
+            }
+            finally
+            {
+                ready.Set();
+            }
+            if (window != null)
+                Dispatcher.Run();
+        });
+
+        _topperThread.SetApartmentState(ApartmentState.STA);
+        _topperThread.IsBackground = true;
+        _topperThread.Name = "TopperUI";
+        _topperThread.Start();
+
+        WaitWithDispatcherPump(ready);
+        if (bgException != null)
+        {
+            DebugLog.LogException("TopperThread", bgException);
+            throw new InvalidOperationException("Failed to create TopperWindow on background thread.", bgException);
+        }
+        return new TopperProxy(window!);
+    }
+
+    /// <summary>
     /// Waits for the signal while pumping the main dispatcher, preventing deadlocks
     /// when background-thread window constructors need to access Application.Resources
     /// owned by the main thread.
@@ -294,7 +338,7 @@ public partial class App : Application
         _dmdWindow.SaveLayout(_settings.Dmd);
         _backglassProxy?.SaveLayout(_settings.Backglass);
         _playfieldProxy?.SaveLayout(_settings.Playfield);
-        _topperWindow?.SaveLayout(_settings.Topper);
+        _topperProxy?.SaveLayout(_settings.Topper);
         if (_dmdWindow.DataContext is JukeboxViewModel vmSettings)
         {
             _settings.RepeatEnabled = vmSettings.RepeatEnabled;
@@ -329,7 +373,9 @@ public partial class App : Application
         _playfieldProxy?.Close();
         _playfieldProxy?.ShutdownDispatcher();
         _playfieldThread?.Join(TimeSpan.FromSeconds(3));
-        _topperWindow?.Close();
+        _topperProxy?.Close();
+        _topperProxy?.ShutdownDispatcher();
+        _topperThread?.Join(TimeSpan.FromSeconds(3));
 
         // Dispose the shared LibVLC instance last, after all consumers are done
         try { _sharedVlc?.Dispose(); } catch { }

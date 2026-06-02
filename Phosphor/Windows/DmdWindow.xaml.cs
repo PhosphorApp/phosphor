@@ -26,7 +26,7 @@ public partial class DmdWindow : JukeboxWindow
     private AppSettings? _appSettings;
     private PlayfieldProxy? _playfieldProxy;
     private BackglassProxy? _backglassProxy;
-    private TopperWindow? _topperWindow;
+    private TopperProxy? _topperProxy;
     private DirectInputPoller? _dinputPoller;
     private int _resultColumns = 2;
     private int _resultFontSize = 20;
@@ -688,7 +688,7 @@ public partial class DmdWindow : JukeboxWindow
         TitleTextBlock.Text = string.Join("\u2009", elements.Skip(splitIndex).Select(e => e.Trim()));
     }
 
-    public void SetAppContext(AppSettings settings, PlayfieldProxy playfieldProxy, BackglassProxy backglassProxy, TopperWindow topperWindow)
+    public void SetAppContext(AppSettings settings, PlayfieldProxy playfieldProxy, BackglassProxy backglassProxy, TopperProxy topperProxy)
     {
         DebugLog.Log("DMD", "SetAppContext: begin");
         _appSettings = settings;
@@ -697,7 +697,7 @@ public partial class DmdWindow : JukeboxWindow
             Dispatcher.BeginInvoke(DispatcherPriority.Loaded, CenterCursorOnWindow);
         _playfieldProxy = playfieldProxy;
         _backglassProxy = backglassProxy;
-        _topperWindow = topperWindow;
+        _topperProxy = topperProxy;
 
         // Wire mouse/key events from other windows to reset DMD dim idle
         // Must dispatch to each window's owning thread to avoid cross-thread access
@@ -708,7 +708,7 @@ public partial class DmdWindow : JukeboxWindow
             WireDimIdleEvents(playfieldProxy.Window);
         });
         backglassProxy.Dispatcher.BeginInvoke(() => WireDimIdleEvents(backglassProxy.Window));
-        WireDimIdleEvents(topperWindow);
+        topperProxy.Dispatcher.BeginInvoke(() => WireDimIdleEvents(topperProxy.Window));
 
         _backglassProxy.PlaybackStarted += () => Dispatcher.BeginInvoke(() =>
         {
@@ -725,11 +725,11 @@ public partial class DmdWindow : JukeboxWindow
         _backglassProxy.SetLogoRingsBrightness(settings.LogoRingsBrightness);
         _playfieldProxy.SetScreensaverSettings(settings.ScreensaverIntensity, settings.ScreensaverSpeed);
         _playfieldProxy.SetOledSleepDefeat(settings.OledSleepDefeatSeconds, settings.OledSleepDefeatDurationSeconds, settings.OledSleepDefeatIntensity);
-        _topperWindow.SetScreensaverSettings(settings.ScreensaverIntensity, settings.ScreensaverSpeed);
-        _topperWindow.SetLogoSpin(settings.LogoSpin);
-        _topperWindow.SetLogoRings(settings.LogoRings);
-        _topperWindow.SetLogoRingsBrightness(settings.LogoRingsBrightness);
-        _topperWindow.SetDistortion(settings.TopperDistortion);
+        _topperProxy.SetScreensaverSettings(settings.ScreensaverIntensity, settings.ScreensaverSpeed);
+        _topperProxy.SetLogoSpin(settings.LogoSpin);
+        _topperProxy.SetLogoRings(settings.LogoRings);
+        _topperProxy.SetLogoRingsBrightness(settings.LogoRingsBrightness);
+        _topperProxy.SetDistortion(settings.TopperDistortion);
         BlobTransition.ExcludeMandelbrotFromRandom = settings.ExcludeMandelbrotFromRandom;
         MandelbrotPattern.TickIntervalMs = settings.MandelbrotUseScreenRate
             ? ComputeScreenRateTickMs()
@@ -831,24 +831,24 @@ public partial class DmdWindow : JukeboxWindow
         _backglassProxy.SetLogoMorphColor(settings.LogoColorMode);
         _backglassProxy.SetAudioOnly(settings.BackglassAudioOnly);
         if (settings.ShowTopper)
-            _topperWindow.SetLogoMorphColor(settings.LogoColorMode);
+            _topperProxy.SetLogoMorphColor(settings.LogoColorMode);
         _backglassProxy.LogoColorsMorphed += (titleColor, recordColor) =>
         {
             if (_appSettings?.ShowTopper == true)
-                _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.ApplyMorphColors(titleColor, recordColor));
+                _topperProxy?.ApplyMorphColors(titleColor, recordColor);
         };
         _backglassProxy.LogoColorsReset += () =>
         {
-            _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.ApplyResetColors());
+            _topperProxy?.ApplyResetColors();
         };
         _playfieldProxy.SetBlobCount(settings.PlayfieldBlobCount);
         _playfieldProxy.SetBlobSizeOffset(settings.PlayfieldBlobSizeOffset);
         _playfieldProxy.SetBlobPattern(settings.PlayfieldBlobPattern);
         _playfieldProxy.SetPulseDominantBlobs(settings.PlayfieldPulseDominantBlobs);
         _playfieldProxy.SetRotation(settings.PlayfieldRotation);
-        _topperWindow.SetBlobCount(settings.TopperBlobCount);
-        _topperWindow.SetBlobSizeOffset(settings.TopperBlobSizeOffset);
-        _topperWindow.SetBlobPattern(settings.TopperBlobPattern);
+        _topperProxy.SetBlobCount(settings.TopperBlobCount);
+        _topperProxy.SetBlobSizeOffset(settings.TopperBlobSizeOffset);
+        _topperProxy.SetBlobPattern(settings.TopperBlobPattern);
         // Configure blob state before creating anything to avoid triple-creation and brightness pop
         _ssBlobIntensity = Math.Clamp(settings.ScreensaverIntensity, 0.05, 0.8);
         _ssBlobSpeedMultiplier = Math.Clamp(settings.ScreensaverSpeed, 0.1, 5.0);
@@ -1028,7 +1028,7 @@ public partial class DmdWindow : JukeboxWindow
         {
             _backglassProxy?.ForceHideExpandButton();
             _playfieldProxy?.ForceHideExpandButton();
-            _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.ForceHideExpandButton());
+            _topperProxy?.ForceHideExpandButton();
         }
     }
 
@@ -1777,13 +1777,13 @@ public partial class DmdWindow : JukeboxWindow
             _audioReactive.Overdrive = (float)_appSettings.ReactiveOverdrive;
             _playfieldProxy?.SetReactiveAudio(playfield ? _audioReactive : null);
             _backglassProxy?.SetReactiveAudio(backglass ? _audioReactive : null);
-            _topperWindow?.SetReactiveAudio(topper ? _audioReactive : null);
+            _topperProxy?.SetReactiveAudio(topper ? _audioReactive : null);
         }
         else
         {
             _playfieldProxy?.SetReactiveAudio(null);
             _backglassProxy?.SetReactiveAudio(null);
-            _topperWindow?.SetReactiveAudio(null);
+            _topperProxy?.SetReactiveAudio(null);
             _audioReactive?.Dispose();
             _audioReactive = null;
         }
@@ -1945,7 +1945,7 @@ public partial class DmdWindow : JukeboxWindow
         settingsWindow.Owner = this;
         settingsWindow.SetBackglassProxy(_backglassProxy);
         settingsWindow.SetPlayfieldProxy(_playfieldProxy);
-        settingsWindow.SetTopperWindow(_topperWindow);
+        settingsWindow.SetTopperProxy(_topperProxy);
         settingsWindow.SetDofClient(_dofClient);
         if (DataContext is JukeboxViewModel vm2)
         {
@@ -2042,7 +2042,7 @@ public partial class DmdWindow : JukeboxWindow
         {
             _backglassProxy?.SetScreensaverSettings(_appSettings.ScreensaverIntensity, _appSettings.ScreensaverSpeed);
             _playfieldProxy?.SetScreensaverSettings(_appSettings.ScreensaverIntensity, _appSettings.ScreensaverSpeed);
-            _topperWindow?.SetScreensaverSettings(_appSettings.ScreensaverIntensity, _appSettings.ScreensaverSpeed);
+            _topperProxy?.SetScreensaverSettings(_appSettings.ScreensaverIntensity, _appSettings.ScreensaverSpeed);
             SetScreensaverSettings(_appSettings.ScreensaverIntensity, _appSettings.ScreensaverSpeed);
             LogStep("ScreensaverSettings (changed)");
         }
@@ -2053,21 +2053,21 @@ public partial class DmdWindow : JukeboxWindow
             _backglassProxy?.SetLogoSpin(_appSettings.LogoSpin);
             _backglassProxy?.SetLogoRings(_appSettings.LogoRings);
             _backglassProxy?.SetLogoRingsBrightness(_appSettings.LogoRingsBrightness);
-            _topperWindow?.SetLogoText(_appSettings.LogoText);
-            _topperWindow?.SetLogoSpin(_appSettings.LogoSpin);
-            _topperWindow?.SetLogoRings(_appSettings.LogoRings);
-            _topperWindow?.SetLogoRingsBrightness(_appSettings.LogoRingsBrightness);
+            _topperProxy?.SetLogoText(_appSettings.LogoText);
+            _topperProxy?.SetLogoSpin(_appSettings.LogoSpin);
+            _topperProxy?.SetLogoRings(_appSettings.LogoRings);
+            _topperProxy?.SetLogoRingsBrightness(_appSettings.LogoRingsBrightness);
             _backglassProxy?.SetLogoMorphColor(_appSettings.LogoColorMode);
             _reactiveLogoEnabled = _appSettings.LogoColorMode == LogoColorMode.Reactive;
             if (_appSettings.ShowTopper)
-                _topperWindow?.SetLogoMorphColor(_appSettings.LogoColorMode);
+                _topperProxy?.SetLogoMorphColor(_appSettings.LogoColorMode);
             else
-                _topperWindow?.SetLogoMorphColor(LogoColorMode.Off);
+                _topperProxy?.SetLogoMorphColor(LogoColorMode.Off);
             LogStep("Logo (changed)");
         }
 
         _playfieldProxy?.SetOledSleepDefeat(_appSettings.OledSleepDefeatSeconds, _appSettings.OledSleepDefeatDurationSeconds, _appSettings.OledSleepDefeatIntensity);
-        _topperWindow?.SetDistortion(_appSettings.TopperDistortion);
+        _topperProxy?.SetDistortion(_appSettings.TopperDistortion);
         _backglassProxy?.SetLogoDim(_appSettings.BackglassLogoDimEnabled, _appSettings.BackglassLogoDimOpacity, _appSettings.BackglassLogoDimTimeoutSeconds);
         _backglassProxy?.SetAudioOnly(_appSettings.BackglassAudioOnly);
         LogStep("BackglassDim/AudioOnly/OLED");
@@ -2102,7 +2102,7 @@ public partial class DmdWindow : JukeboxWindow
         {
             _playfieldProxy?.RestartMandelbrot();
             _backglassProxy?.RestartMandelbrot();
-            _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.RestartMandelbrot());
+            _topperProxy?.RestartMandelbrot();
             LogStep("Mandelbrot restart dispatched (changed)");
         }
         BlobTransition.ExcludeProjectMFromRandom = _appSettings.ExcludeProjectMFromRandom;
@@ -2135,7 +2135,7 @@ public partial class DmdWindow : JukeboxWindow
         {
             _playfieldProxy?.RestartGameOfLife();
             _backglassProxy?.RestartGameOfLife();
-            _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.RestartGameOfLife());
+            _topperProxy?.RestartGameOfLife();
             _ = Dispatcher.BeginInvoke(RestartGameOfLife);
         }
         GravityBlobPattern.GravityG = Math.Clamp(_appSettings.GravityG, 100, 1000);
@@ -2152,7 +2152,7 @@ public partial class DmdWindow : JukeboxWindow
         {
             _playfieldProxy?.RestartGravity();
             _backglassProxy?.RestartGravity();
-            _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.RestartGravity());
+            _topperProxy?.RestartGravity();
             _ = Dispatcher.BeginInvoke(RestartGravity);
         }
         FerrofluidSimulator.CoreGravity = _appSettings.FerrofluidCoreGravity;
@@ -2186,14 +2186,14 @@ public partial class DmdWindow : JukeboxWindow
         {
             _playfieldProxy?.RestartProjectM();
             _backglassProxy?.RestartProjectM();
-            _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.RestartProjectM());
+            _topperProxy?.RestartProjectM();
             LogStep("ProjectM restart dispatched (structural change)");
         }
         else if (settingsWindow.ProjectMTuningChanged)
         {
             _playfieldProxy?.ApplyProjectMTuning();
             _backglassProxy?.ApplyProjectMTuning();
-            _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.ApplyProjectMTuning());
+            _topperProxy?.ApplyProjectMTuning();
             LogStep("ProjectM tuning applied in-place");
         }
         LogStep("Mandelbrot/ProjectM statics");
@@ -2208,9 +2208,9 @@ public partial class DmdWindow : JukeboxWindow
             _playfieldProxy?.SetRotation(_appSettings.PlayfieldRotation);
         if (settingsWindow.TopperBlobsChanged)
         {
-            _topperWindow?.SetBlobCount(_appSettings.TopperBlobCount);
-            _topperWindow?.SetBlobSizeOffset(_appSettings.TopperBlobSizeOffset);
-            _topperWindow?.SetBlobPattern(_appSettings.TopperBlobPattern);
+            _topperProxy?.SetBlobCount(_appSettings.TopperBlobCount);
+            _topperProxy?.SetBlobSizeOffset(_appSettings.TopperBlobSizeOffset);
+            _topperProxy?.SetBlobPattern(_appSettings.TopperBlobPattern);
         }
         if (settingsWindow.DmdBlobsChanged)
         {
@@ -2248,9 +2248,9 @@ public partial class DmdWindow : JukeboxWindow
 
         // Show/hide topper window
         if (_appSettings.ShowTopper)
-            _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.Show());
+            _topperProxy?.Show();
         else
-            _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.Hide());
+            _topperProxy?.Hide();
         LogStep("Show/Hide windows");
 
         // Update cache settings
@@ -2474,7 +2474,7 @@ public partial class DmdWindow : JukeboxWindow
 
         _backglassProxy?.MorphLogoToColor(analysis.Color);
         if (_appSettings?.ShowTopper == true)
-            _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.MorphLogoToColor(analysis.Color));
+            _topperProxy?.MorphLogoToColor(analysis.Color);
     }
 
     public void SetPlayButtonSize(int modifier)
@@ -3538,14 +3538,14 @@ public partial class DmdWindow : JukeboxWindow
 
         _playfieldProxy?.OnSongChanged();
         _backglassProxy?.OnSongChanged();
-        _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.OnSongChanged());
+        _topperProxy?.OnSongChanged();
 
         // Restart Game of Life simulation on track change if enabled
         if (GameOfLifePattern.RestartOnTrackChange)
         {
             _playfieldProxy?.RestartGameOfLife();
             _backglassProxy?.RestartGameOfLife();
-            _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.RestartGameOfLife());
+            _topperProxy?.RestartGameOfLife();
             _ = Dispatcher.BeginInvoke(RestartGameOfLife);
         }
 
@@ -3554,7 +3554,7 @@ public partial class DmdWindow : JukeboxWindow
         {
             _playfieldProxy?.RestartGravity();
             _backglassProxy?.RestartGravity();
-            _topperWindow?.Dispatcher.BeginInvoke(() => _topperWindow.RestartGravity());
+            _topperProxy?.RestartGravity();
             _ = Dispatcher.BeginInvoke(RestartGravity);
         }
 
@@ -3595,8 +3595,7 @@ public partial class DmdWindow : JukeboxWindow
         Mouse.OverrideCursor = System.Windows.Input.Cursors.None;
         _playfieldProxy?.HideCursor();
         _backglassProxy?.HideCursor();
-        _topperWindow?.Dispatcher.BeginInvoke(() =>
-            System.Windows.Input.Mouse.OverrideCursor = System.Windows.Input.Cursors.None);
+        _topperProxy?.HideCursor();
         SetTitleBarButtonsVisibility(Visibility.Hidden);
     }
 
@@ -3606,8 +3605,7 @@ public partial class DmdWindow : JukeboxWindow
         Mouse.OverrideCursor = null;
         _playfieldProxy?.ShowCursor();
         _backglassProxy?.ShowCursor();
-        _topperWindow?.Dispatcher.BeginInvoke(() =>
-            System.Windows.Input.Mouse.OverrideCursor = null);
+        _topperProxy?.ShowCursor();
         _cursorIdleTimer.Stop();
         if (_appSettings != null && MouseHideState.EnableMouseHide && _appSettings.HideCursorTimeoutSeconds == 0)
             HideMouseCursor();
@@ -3665,7 +3663,7 @@ public partial class DmdWindow : JukeboxWindow
         SetResizable(resizable);
         _playfieldProxy?.SetResizable(resizable);
         _backglassProxy?.SetResizable(resizable);
-        _topperWindow?.SetResizable(resizable);
+        _topperProxy?.SetResizable(resizable);
     }
 
     private void ResetAllWindows()
@@ -3673,7 +3671,7 @@ public partial class DmdWindow : JukeboxWindow
         ResetPosition(1440, 0, 800, 600);
         _backglassProxy?.ResetPosition(620, 0, 800, 600);
         _playfieldProxy?.ResetPosition(0, 0, 600, 800);
-        _topperWindow?.ResetPosition(0, 0, 800, 300);
+        _topperProxy?.ResetPosition(0, 0, 800, 300);
     }
 
     internal static readonly string[] PlaylistIconChoices =
@@ -4258,8 +4256,8 @@ public partial class DmdWindow : JukeboxWindow
             maxHz = Math.Max(maxHz, _playfieldProxy.Window.RefreshRateHz);
         if (_backglassProxy != null)
             maxHz = Math.Max(maxHz, _backglassProxy.Window.RefreshRateHz);
-        if (_topperWindow != null)
-            maxHz = Math.Max(maxHz, _topperWindow.RefreshRateHz);
+        if (_topperProxy != null)
+            maxHz = Math.Max(maxHz, _topperProxy.Window.RefreshRateHz);
 
         if (maxHz <= 0) return 16;
         return Math.Max(1, (int)Math.Round(1000.0 / maxHz));

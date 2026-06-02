@@ -43,7 +43,7 @@ public partial class SettingsWindow : JukeboxWindow
     private DirectInputPoller? _dinputPoller;
     private BackglassProxy? _backglassProxy;
     private PlayfieldProxy? _playfieldProxy;
-    private TopperWindow? _topperWindow;
+    private TopperProxy? _topperProxy;
     private double _originalIntensity;
     private double _originalSpeed;
     private double _originalDistortion;
@@ -1054,9 +1054,9 @@ public partial class SettingsWindow : JukeboxWindow
         return null;
     }
 
-    public void SetTopperWindow(TopperWindow? topper)
+    public void SetTopperProxy(TopperProxy? topper)
     {
-        _topperWindow = topper;
+        _topperProxy = topper;
     }
 
     public void SetDofClient(DofClient? dofClient)
@@ -1706,7 +1706,7 @@ public partial class SettingsWindow : JukeboxWindow
 
     private void ResetTopperWindow_Click(object sender, RoutedEventArgs e)
     {
-        _topperWindow?.ResetPosition(1, 1, 800, 300);
+        _topperProxy?.ResetPosition(1, 1, 800, 300);
     }
 
     private void SliderIntensity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -1716,7 +1716,7 @@ public partial class SettingsWindow : JukeboxWindow
         if (SliderSpeed == null) return;
         _backglassProxy?.SetScreensaverSettings(e.NewValue / 100.0, SliderSpeed.Value / 10.0);
         _playfieldProxy?.SetScreensaverSettings(e.NewValue / 100.0, SliderSpeed.Value / 10.0);
-        _topperWindow?.SetScreensaverSettings(e.NewValue / 100.0, SliderSpeed.Value / 10.0);
+        _topperProxy?.SetScreensaverSettings(e.NewValue / 100.0, SliderSpeed.Value / 10.0);
     }
 
     private void SliderSpeed_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -1739,7 +1739,7 @@ public partial class SettingsWindow : JukeboxWindow
     {
         if (DistortionValueText != null)
             DistortionValueText.Text = $"{e.NewValue / 100.0:F2}";
-        _topperWindow?.SetDistortion(e.NewValue / 100.0);
+        _topperProxy?.SetDistortion(e.NewValue / 100.0);
     }
 
     private void SliderMatrixZoomRate_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -3152,7 +3152,7 @@ public partial class SettingsWindow : JukeboxWindow
         _testDofClient = null;
         _backglassProxy?.SetScreensaverSettings(_originalIntensity, _originalSpeed);
         _playfieldProxy?.SetScreensaverSettings(_originalIntensity, _originalSpeed);
-        _topperWindow?.SetDistortion(_originalDistortion);
+        _topperProxy?.SetDistortion(_originalDistortion);
         Close();
     }
 
@@ -3471,13 +3471,8 @@ public partial class SettingsWindow : JukeboxWindow
                 return (new System.Windows.Interop.WindowInteropHelper(w).Handle, w.ActualWidth, w.ActualHeight);
             }));
 
-        if (_topperWindow != null)
-            MapWindow("Topper", () =>
-            {
-                if (!_topperWindow.IsVisible) return null;
-                var hwnd = new System.Windows.Interop.WindowInteropHelper(_topperWindow).Handle;
-                return (hwnd, _topperWindow.ActualWidth, _topperWindow.ActualHeight);
-            });
+        if (_topperProxy != null)
+            MapWindow("Topper", () => _topperProxy.GetWindowInfo());
 
         if (Application.Current.MainWindow is JukeboxWindow dmd && dmd.IsVisible)
             MapWindow("DMD", () =>

@@ -38,7 +38,7 @@ public partial class TopperWindow : JukeboxWindow
 
         InitializeComponent();
 
-        Loaded += (_, _) => StartAnimation();
+        ContentRendered += (_, _) => StartAnimation();
     }
 
     public void SetBlobCount(int count)
@@ -99,6 +99,14 @@ public partial class TopperWindow : JukeboxWindow
 
     private void OnAudioUpdated(AudioReactiveData data)
     {
+        // The Updated event fires on the DMD thread, but our UI elements
+        // live on the topper's own STA thread — marshal the work there.
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(() => OnAudioUpdated(data));
+            return;
+        }
+
         if (_currentPattern == null) return;
 
         _currentPattern.ApplyAudioReactive(data, _blobIntensity, _audioReactive?.ReactiveSpeedMs ?? 120);
@@ -480,9 +488,10 @@ public partial class TopperWindow : JukeboxWindow
 
         if (spin)
         {
-            var rotate = new WpfMedia.RotateTransform(0, cx, cy);
+            double spinAngle = (DateTime.UtcNow - SpinEpoch).TotalSeconds / SpinDurationSeconds * 360.0 % 360.0;
+            var rotate = new WpfMedia.RotateTransform(spinAngle, cx, cy);
             canvas.RenderTransform = rotate;
-            var spinAnim = new DoubleAnimation(0, 360, TimeSpan.FromSeconds(60))
+            var spinAnim = new DoubleAnimation(spinAngle, spinAngle + 360, TimeSpan.FromSeconds(SpinDurationSeconds))
             {
                 RepeatBehavior = RepeatBehavior.Forever,
             };

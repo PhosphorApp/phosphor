@@ -1828,9 +1828,10 @@ public partial class BackglassWindow : JukeboxWindow
 
         if (_titleSpin)
         {
-            var rotate = new WpfMedia.RotateTransform(0, cx, cy);
+            double spinAngle = (DateTime.UtcNow - SpinEpoch).TotalSeconds / SpinDurationSeconds * 360.0 % 360.0;
+            var rotate = new WpfMedia.RotateTransform(spinAngle, cx, cy);
             canvas.RenderTransform = rotate;
-            var spin = new DoubleAnimation(0, 360, TimeSpan.FromSeconds(60))
+            var spin = new DoubleAnimation(spinAngle, spinAngle + 360, TimeSpan.FromSeconds(SpinDurationSeconds))
             {
                 RepeatBehavior = RepeatBehavior.Forever,
             };
