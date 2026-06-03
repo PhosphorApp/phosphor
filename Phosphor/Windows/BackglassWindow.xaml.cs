@@ -214,6 +214,19 @@ public partial class BackglassWindow : JukeboxWindow
         {
             StartIdleAnimation();
 
+            // PROFILING: monitor backglass dispatcher stalls.
+            // Hooks CompositionTarget.Rendering on the backglass thread and
+            // logs any gap larger than the threshold below. Normal vsync at
+            // 72 FPS produces ~14 ms gaps; anything materially larger means
+            // the dispatcher was blocked, which can freeze animation values
+            // and produce the visible "hitch + catch-up" symptom on slow
+            // morphs even when PresentMon shows healthy frame times.
+            // Debug-only: the Rendering hook fires every vsync on the UI
+            // thread, so we keep it out of Release builds.
+#if DEBUG
+            StartBackglassStallMonitor();
+#endif
+
             // Initialize LibVLC on a background thread so the window
             // appears immediately without the ~17% startup cost.
             // If the user hits play before this completes,
@@ -1434,6 +1447,18 @@ public partial class BackglassWindow : JukeboxWindow
     {
         if (!_morphColors) return;
 
+        // PROFILING: capture UI-thread time and GC pressure for the morph call.
+        // Hypothesis under test: visible logo hitching is caused by a brief
+        // UI-thread stall (per-brush ColorAnimation construction + 50+ brush
+        // BeginAnimation calls + transient allocations) rather than dropped
+        // presents. Remove once investigation is complete.
+#if DEBUG
+        var __sw = System.Diagnostics.Stopwatch.StartNew();
+        int __gc0Before = GC.CollectionCount(0);
+        int __gc1Before = GC.CollectionCount(1);
+        int __gc2Before = GC.CollectionCount(2);
+#endif
+
         double hue = color switch
         {
             RoygbivColor.Red => 0,
@@ -1510,7 +1535,56 @@ public partial class BackglassWindow : JukeboxWindow
         }
 
         LogoColorsMorphed?.Invoke(titleColor, recordColor);
+
+        // PROFILING
+#if DEBUG
+        __sw.Stop();
+        int __gc0 = GC.CollectionCount(0) - __gc0Before;
+        int __gc1 = GC.CollectionCount(1) - __gc1Before;
+        int __gc2 = GC.CollectionCount(2) - __gc2Before;
+        DebugLog.Log("PERF.LogoMorph",
+            $"MorphLogoToColor color={color} elapsedMs={__sw.Elapsed.TotalMilliseconds:F2} " +
+            $"gc0={__gc0} gc1={__gc1} gc2={__gc2}");
+#endif
     }
+
+    // ── PROFILING: Backglass dispatcher stall monitor ───────────────────
+    //
+    // Hooks CompositionTarget.Rendering on the backglass UI thread. Each
+    // render tick (~14 ms at 72 FPS on a 144 Hz display) we measure the
+    // gap since the previous tick. A gap materially larger than the vsync
+    // interval indicates the backglass dispatcher was blocked — either by
+    // a long handler on the dispatcher itself, a blocking proxy call from
+    // the main thread, VLC interop, or a layout/measure storm. While
+    // blocked, animation values stop interpolating, which manifests as
+    // the visible "freeze, then catch up" symptom on slow morphs.
+    //
+    // Debug-only: CompositionTarget.Rendering fires every vsync on the UI
+    // thread, so we exclude this entire block from Release builds.
+#if DEBUG
+    private DateTime _lastRenderTick = DateTime.MinValue;
+    private const double StallThresholdMs = 30.0;
+
+    private void StartBackglassStallMonitor()
+    {
+        WpfMedia.CompositionTarget.Rendering += OnBackglassRenderTick;
+    }
+
+    private void OnBackglassRenderTick(object? sender, EventArgs e)
+    {
+        var now = DateTime.UtcNow;
+        if (_lastRenderTick != DateTime.MinValue)
+        {
+            double gapMs = (now - _lastRenderTick).TotalMilliseconds;
+            if (gapMs > StallThresholdMs)
+            {
+                DebugLog.Log("PERF.BackglassStall",
+                    $"render gap {gapMs:F1}ms (threshold {StallThresholdMs:F0}ms)");
+            }
+        }
+        _lastRenderTick = now;
+    }
+#endif
 
     private void ScheduleNextMorph()
     {

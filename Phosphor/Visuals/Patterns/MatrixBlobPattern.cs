@@ -126,6 +126,7 @@ public sealed class MatrixBlobPattern : BlobPatternBase
         public double MaxLifetime;
         public double CharChangeAccum;
         public ZoomLayer? Layer; // layer this trail lives on
+        public MatrixColumn? Column; // column that spawned this trail (for column-wise pulse)
     }
 
     public MatrixBlobPattern(BlobPatternConfig config) : base(config) { }
@@ -590,6 +591,7 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             MaxLifetime = lifetime,
             CharChangeAccum = _rng.NextDouble() * 0.3,
             Layer = layer,
+            Column = col,
         };
         layer.TrailCount++;
         _trails.Add(trail);
@@ -698,31 +700,61 @@ public sealed class MatrixBlobPattern : BlobPatternBase
         const int flashMs = 100;
         const int settleMs = 1500;
 
+        // Strategy: flash a SMALL NUMBER OF FULL COLUMNS rather than scattering
+        // the flash across many columns. Flashing 100 trails spread across 30+
+        // columns produces a visually weak "sparkle" of 2-3 chars per column;
+        // flashing every trail in 2-3 columns produces a clear vertical lightning
+        // bolt that reads instantly. Same render cost, far better signal.
+        //
+        // Also keeps render-thread pressure bounded: capped total trails pulsed
+        // and staggered start times across a small window so WPF sees a smooth
+        // ramp of new animation clocks instead of a single tick spike.
+        const int maxColumns = 3;
+        const int maxTrailsHardCap = 150; // safety net if columns are huge
+        const int staggerMs = 120;
+
+        // NOTE: no per-trail hue/band match check. The pulse fires only on
+        // dominant-band changes, but at that moment all currently-live trails
+        // are still painted in the *previous* band's color (they captured
+        // their color at spawn). Filtering by current trail hue here would
+        // reject every visible trail and the flash would be invisible.
+
+        // Group visible animatable trails by column and rank columns by total
+        // visible "weight" (sum of opacity) so we pick the most-on-screen ones.
+        var columnGroups = _trails
+            .Where(t => t.Column != null
+                        && t.Element.Foreground is SolidColorBrush b
+                        && !b.IsFrozen
+                        && t.Element.Opacity > 0.1)
+            .GroupBy(t => t.Column!)
+            .Select(g => new { Column = g.Key, Trails = g.ToList(), Weight = g.Sum(x => x.Element.Opacity) })
+            .OrderByDescending(g => g.Weight)
+            .Take(maxColumns)
+            .ToList();
+
+        // Flatten to ordered trail list, top column first.
+        var candidates = columnGroups.SelectMany(g => g.Trails).Take(maxTrailsHardCap).ToList();
+
         int pulsed = 0;
-        const int maxPulse = 400;
-
-        foreach (var trail in _trails)
+        for (int i = 0; i < candidates.Count; i++)
         {
-            if (pulsed >= maxPulse) break;
-            if (trail.Element.Foreground is not SolidColorBrush brush) continue;
-            if (brush.IsFrozen) continue;
-            if (trail.Element.Opacity <= 0.1) continue;
-
+            var trail = candidates[i];
+            var brush = (SolidColorBrush)trail.Element.Foreground;
             var c = brush.Color;
-            // NOTE: no per-trail hue/band match check. The pulse fires only on
-            // dominant-band changes, but at that moment all currently-live trails
-            // are still painted in the *previous* band's color (they captured
-            // their color at spawn). Filtering by current trail hue here would
-            // reject every visible trail and the flash would be invisible. In
-            // Matrix all trails share the same dominant hue family by design,
-            // so flashing every visible trail is the intended behavior.
 
             // Brighten toward white using the trail's actual current hue so the
             // peak color reads as a brightened version of what's on screen.
             double hue = ColorToHue(c.R, c.G, c.B);
             var bright = HslToRgb(hue, 1.0, 0.85);
 
-            var flash = new ColorAnimationUsingKeyFrames();
+            double startOffset = candidates.Count > 1
+                ? (double)i / (candidates.Count - 1) * staggerMs
+                : 0;
+
+            var flash = new ColorAnimationUsingKeyFrames
+            {
+                BeginTime = TimeSpan.FromMilliseconds(startOffset),
+            };
             flash.KeyFrames.Add(new EasingColorKeyFrame(bright,
                 KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(flashMs)),
                 new QuadraticEase { EasingMode = EasingMode.EaseOut }));
@@ -741,7 +773,7 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             pulsed++;
         }
 
-        DebugLog.Log("Matrix", $"PulseDominantColor: pulsed {pulsed} trails");
+        DebugLog.Log("Matrix", $"PulseDominantColor: pulsed {pulsed} trails across {columnGroups.Count} columns (max {maxColumns} cols, staggered {staggerMs}ms)");
     }
 
     /// <summary>
