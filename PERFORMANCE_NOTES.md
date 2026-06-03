@@ -806,7 +806,11 @@ Only switch when LOH avoidance outweighs the async overhead (50+ MB).
 
 ---
 
-## How to Measure WPF Performance
+## How to Measure WPF Performance (.NET 8)
+
+> **Note:** The classic WPF Performance Suite (`Perforator.exe` / `WpfPerf.exe`)
+> is obsolete and does **not** work with .NET 8 WPF apps. The tools below are
+> the current recommended alternatives.
 
 ### Quick Diagnostics
 
@@ -817,40 +821,96 @@ int tier = System.Windows.Media.RenderCapability.Tier >> 16;
 ```
 Confirm tier 2 on the target cabinet.
 
-### Visual Studio Performance Profiler
+### 1. Visual Studio Performance Profiler (Best Starting Point)
 1. **Debug → Performance Profiler** (Alt+F2).
 2. Select **CPU Usage** + **.NET Async** tools.
-3. Run the app, trigger the scenario (morph, fullscreen toggle, pattern change).
-4. Look for hot paths in `System.Windows.Media.*` and
+3. Check **"Enable native code debugging"** for mixed-mode profiling — this is
+   critical because the WPF render thread lives in native code.
+4. Run the app, trigger the scenario (morph, fullscreen toggle, pattern change).
+5. Look for hot paths in `System.Windows.Media.*` and
    `System.Windows.Threading.*`.
-5. The render thread shows up as `wpfgfx_*.dll` in native call stacks — enable
-   **mixed-mode profiling** to see it.
+6. The render thread shows up as `wpfgfx_cor3.dll` in native call stacks.
+   Key symbols to watch:
+   - `CPartitionThread::RenderPartition` — render thread work per frame.
+   - `CDrawingContext` — per-element drawing calls.
 
-### PerfView (Deep WPF / ETW Analysis)
+### 2. DIY Frame-Rate Monitor (Code-Based)
+Add to any window to measure actual composition frame rate. No tools needed.
+```csharp
+#if DEBUG
+private int _frameCount;
+private DateTime _lastFpsCheck = DateTime.UtcNow;
+
+private void OnRendering(object? sender, EventArgs e)
+{
+    _frameCount++;
+    var now = DateTime.UtcNow;
+    if ((now - _lastFpsCheck).TotalSeconds >= 1.0)
+    {
+        Title = $"Topper — {_frameCount} fps";
+        _frameCount = 0;
+        _lastFpsCheck = now;
+    }
+}
+
+// Hook in constructor or StartAnimation:
+System.Windows.Media.CompositionTarget.Rendering += OnRendering;
+#endif
+```
+
+### 3. DIY Cache Invalidation Detector
+No dirty-region overlay exists for .NET 8. Use conditional coloring to visually
+confirm when a `BitmapCache`d surface is being re-rasterized:
+```csharp
+#if DEBUG
+// Add to the cached inner canvas — flickers color on every invalidation
+inner.LayoutUpdated += (_, _) =>
+    inner.Background = new SolidColorBrush(Color.FromArgb(30,
+        (byte)Random.Shared.Next(256),
+        (byte)Random.Shared.Next(256),
+        (byte)Random.Shared.Next(256)));
+#endif
+```
+If the tint flickers, the cache is being invalidated — the exact problem to
+look for with `DropShadowEffect` + `BitmapCache`.
+
+### 4. Visual Studio Live Visual Tree
+- **Debug → Windows → Live Visual Tree** (Ctrl+Alt+B while debugging).
+- Shows real-time element tree, layout dimensions, render bounds.
+- Hover elements in the tree to highlight them in the running app.
+- Good for verifying element dimensions (e.g., confirming the inner canvas is
+  ~250 px, not full-window).
+- **Limitation:** no dirty-region overlay or FPS counter.
+
+### 5. ETW Tracing via `dotnet-trace`
+```powershell
+dotnet-trace collect --process-id <PID> --providers Microsoft-Windows-WPF
+```
+Captures WPF-specific ETW events including render thread timing. Open the
+`.nettrace` file in VS or PerfView.
+
+### 6. `dotnet-counters` (GC / Thread Pool Monitoring)
+```powershell
+dotnet-counters monitor --process-id <PID> --counters System.Runtime
+```
+Not WPF-specific but catches GC stalls that cause hitches. Watch for
+`gc-pause-time-ratio` and `gen-2-gc-count`.
+
+### 7. PerfView (Deep WPF / ETW Analysis)
 1. Download [PerfView](https://github.com/microsoft/perfview/releases).
 2. Collect: `PerfView.exe /GCCollectOnly /ThreadTime collect`
 3. Look for:
-   - `wpfgfx!CPartitionThread::RenderPartition` — render thread work per frame.
-   - `wpfgfx!CMilChannel::ProcessCommandBatch` — command batching from UI to
-     render thread.
-   - `milcore!CDrawingContext` — per-element drawing calls.
+   - `wpfgfx_cor3!CPartitionThread::RenderPartition` — render thread work.
+   - `wpfgfx_cor3!CMilChannel::ProcessCommandBatch` — UI→render thread
+     command batching.
 4. Filter to the process and examine render thread utilization vs. wall clock.
 
-### WPF Performance Suite (Perforator)
-- Part of the Windows SDK: `WpfPerf.exe` / `Perforator.exe`.
-- **Perforator overlays:**
-  - "Show dirty region update overlay" — see which areas WPF re-renders each
-    frame. Very useful for spotting unnecessary cache invalidations.
-  - "Show software rendering with purple tint" — catch elements falling off
-    the GPU.
-  - Frame rate display.
-
-### GPU Profiling
+### 8. GPU Profiling
 - **Task Manager → Performance → GPU:** check per-engine utilization. If "3D"
-  is pegged, GPU contention is the issue, not WPF render thread.
+  is pegged, GPU contention is the issue, not the WPF render thread.
 - **GPUView** (Windows SDK): shows present queues per window, cross-adapter
   copies, and DWM composition timing. Best tool for diagnosing multi-monitor
-  DWM stalls.
+  DWM stalls. Works regardless of .NET version (it's a driver/DWM tool).
 - **NVIDIA Nsight / AMD Radeon GPU Profiler:** for ProjectM shader-level
   profiling if GPU contention is suspected.
 
@@ -858,12 +918,13 @@ Confirm tier 2 on the target cabinet.
 
 | Symptom | Likely cause | Tool |
 |---|---|---|
-| One window hitches, others smooth | Cross-adapter copy or cache invalidation | GPUView, Perforator dirty regions |
-| All windows hitch together | Render thread saturated | PerfView (`wpfgfx` thread), VS Profiler |
-| Hitch during color morph | DropShadowEffect re-raster on invalidation | Perforator dirty regions |
-| Hitch when window goes fullscreen | Large BitmapCache surface allocation | Perforator, check cache dimensions |
+| One window hitches, others smooth | Cross-adapter copy or cache invalidation | GPUView, DIY cache detector |
+| All windows hitch together | Render thread saturated | PerfView (`wpfgfx_cor3` thread), VS Profiler |
+| Hitch during color morph | DropShadowEffect re-raster on invalidation | DIY cache detector |
+| Hitch when window goes fullscreen | Large BitmapCache surface allocation | Live Visual Tree (check dimensions) |
 | Smooth at 60 Hz, periodic stutter | DWM refresh-rate arbitration | GPUView present timing |
 | ProjectM causes all windows to stutter | GPU contention (shader-bound) | Task Manager GPU, reduce MeshSize/RenderScale |
+| Periodic pauses, not frame-rate related | GC stalls | `dotnet-counters`, PerfView GC analysis |
 
 ---
 
