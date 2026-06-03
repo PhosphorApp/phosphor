@@ -931,11 +931,416 @@ Not WPF-specific but catches GC stalls that cause hitches. Watch for
 ## Future Optimization Candidates (If Needed)
 
 - **Separate process for playfield:** gives it its own WPF render thread. Same
-  pattern as `DofBridge`. Communicate via named pipe / shared memory.
+  pattern as `DofBridge`. Communicate via named pipe / shared memory. See
+  detailed analysis in [External Playfield Process](#external-playfield-process)
+  below.
 - **Stop blob patterns during video playback:** dispose pattern + stop timers
   when `IdleOverlay` is collapsed to save CPU on the UI thread.
 - **RenderAtScale < 1.0:** `BitmapCache { RenderAtScale = 0.75 }` reduces
   cache texture size with minimal visible quality loss on blurred elements.
 - **Pre-rendered shadow layer:** replace `DropShadowEffect` with offset black
   TextBlocks as a static shadow — never invalidates, zero shader cost.
+
+---
+
+## External Playfield Process
+
+Architecture notes for running the playfield window as a separate OS process,
+toggled by a `UseExternalPlayfield` setting in `AppSettings`.
+
+### How it would work
+
+A new project — e.g. `Phosphor.Playfield` — launches as a standalone WPF
+.NET 8 EXE. The main `Phosphor` app spawns it (same pattern as `DofBridge`)
+and communicates over a named pipe (`PhosphorPlayfield`). The setting
+`UseExternalPlayfield` in `AppSettings` toggles between in-process (current)
+and external.
+
+### Code sharing: extract a library
+
+The visualization code cannot stay in the main app — the external EXE needs
+it. The cleanest approach:
+
+1. **New class library: `Phosphor.Visuals`** (.NET 8) containing:
+   - `IBlobPattern`, `BlobPatternBase`, all pattern implementations
+     (`Visuals/Patterns/*`)
+   - `AudioReactiveService` (WASAPI capture)
+   - `BlobMotion`, `BlobTransition`, `BounceSimulator`, etc.
+   - `RoygbivColor`, `ColorAnalysis`, `FrameColorAnalyzer`
+   - The `BlobPattern` enum and pattern factory
+
+2. **`Phosphor.Playfield` EXE** references `Phosphor.Visuals`. Contains only:
+   - A stripped-down `PlayfieldWindow` (canvas, blob rendering, OLED defeat)
+   - Named pipe server/client for receiving commands
+   - Audio capture (runs its own `AudioReactiveService` instance — it captures
+     system audio via WASAPI loopback, so it works from any process)
+
+3. **Main `Phosphor` app** also references `Phosphor.Visuals` (for Backglass,
+   Topper, DMD patterns — those stay in-process).
+
+### Named pipe protocol (sketch)
+
+Pipe name: `PhosphorPlayfield`
+
+| Direction | Command | Payload |
+|-----------|---------|---------|
+| Main → Playfield | `SetPattern` | `BlobPattern` enum value, blob count, intensity, speed |
+| Main → Playfield | `SetLayout` | left, top, width, height, monitor |
+| Main → Playfield | `SetColorCycling` | bool + hue offset |
+| Main → Playfield | `SetOledDefeat` | interval, intensity |
+| Main → Playfield | `Shutdown` | — |
+| Playfield → Main | `ColorBand` | `ColorAnalysis` (dominant color, brightness, selfRendering flag) |
+| Playfield → Main | `Heartbeat` | alive signal |
+
+Binary protocol similar to DofBridge's — `BinaryWriter`/`BinaryReader` with a
+command char prefix.
+
+### Dominant color & DOF
+
+The playfield process computes `ColorAnalysis` locally (it already does this
+in `PlayfieldWindow` via `BlobColorBandChanged`) and sends it back over the
+pipe. The main app's `DmdWindow.OnPlayfieldColorBandChanged` receives it and
+fires DOF triggers as it does today. The only change is the event source
+switches from a cross-thread dispatcher invoke to a pipe message.
+
+### Visualization compatibility
+
+| Visualization | External process? | Notes |
+|---------------|-------------------|-------|
+| All blob patterns | ✅ Yes | Render on a WPF `Canvas` — fully self-contained once `Phosphor.Visuals` is extracted |
+| ProjectM | ✅ Yes | Self-contained P/Invoke to `projectM-4.dll`, owns its OpenGL context. `AudioReactiveService.ConsumeRawPcm()` works locally |
+| Mandelbrot (GPU) | ✅ Yes | `MandelbrotGpuRenderer` uses SharpDX/Direct2D — process-local GPU resources |
+| Mandelbrot (CPU) | ✅ Yes | Pure computation, no shared state |
+
+All visualizations would work. They're already designed to be self-contained
+per-window — each window creates its own pattern instance, owns its own
+canvas, and runs its own render tick. The only cross-process dependency is
+settings/commands inbound and color analysis outbound.
+
+### Drawbacks & risks
+
+1. **Significant refactoring scope.** Extracting `Phosphor.Visuals` means
+   moving ~25 files, updating namespaces, and ensuring no remaining
+   dependencies on `JukeboxViewModel` or window-specific types. The patterns
+   currently reference WPF types (`Canvas`, `FrameworkElement`,
+   `SolidColorBrush`) which is fine for a .NET 8 WPF class library, but any
+   accidental coupling to `PlayfieldWindow`-specific logic would need
+   untangling.
+
+2. **Two code paths.** The `UseExternalPlayfield` toggle means maintaining
+   both in-process and external modes. `PlayfieldProxy` would need an
+   alternative implementation (`ExternalPlayfieldProxy`?) that talks over the
+   pipe instead of dispatching to a local window. Testing both paths doubles
+   QA surface.
+
+3. **Settings synchronization.** Today, changing blob intensity or pattern in
+   the settings UI immediately dispatches to the playfield thread. With an
+   external process, every setting change needs a pipe message, and you need
+   to handle the process not being ready yet, crashing mid-session, etc. The
+   DofBridge pattern handles this (reconnect logic in `DofClient`), but it's
+   more code.
+
+4. **Startup latency.** Spawning a second WPF process adds ~1-2s to startup.
+   DofBridge is lightweight (console app); a full WPF window with GPU
+   resources is heavier.
+
+5. **Debugging complexity.** Two WPF processes rendering simultaneously —
+   harder to attach debuggers, harder to correlate logs, harder to reproduce
+   issues.
+
+6. **Marginal perf gain if the GPU is the bottleneck.** The playfield already
+   runs on its own thread/dispatcher. A separate process gives it its own WPF
+   render thread (composition thread), which helps if the WPF compositor is
+   the bottleneck. But if the GPU is saturated (e.g., ProjectM + Mandelbrot),
+   a separate process doesn't help — same GPU.
+
+### Verdict
+
+The architecture is feasible and clean — the DofBridge pattern is well-proven,
+all visualizations are self-contained, and the library extraction is
+mechanical. The main question is whether the perf gain justifies the
+complexity. The win is specifically: **a dedicated WPF render/composition
+thread** that can't be starved by the main app's UI work. If the playfield
+stutters because the main thread's composition pass takes too long, this fixes
+it. If the bottleneck is GPU shader time, it won't help.
+
+**Recommendation:** Before committing to this, profile with PresentMon to
+confirm the playfield's stalls correlate with main-thread compositor
+contention rather than GPU saturation. If confirmed, the extraction is worth
+it.
+
+### Profiling with PresentMon
+
+PresentMon captures ETW present events and produces structured frame timing
+CSVs — ideal for answering the compositor-vs-GPU question.
+
+#### Capture
+
+```powershell
+PresentMon.exe --output_file phosphor_frames.csv --terminate_on_proc_loss --process_name Phosphor.exe
+```
+
+Run playfield patterns for 30-60 seconds, then stop. To capture all processes
+(useful for correlating with other apps), omit `--process_name`.
+
+#### Key columns in the CSV
+
+| Column | What it tells you |
+|--------|-------------------|
+| `MsBetweenPresents` | Frame-to-frame interval. Consistent = healthy; spikes = stutter |
+| `MsInPresentAPI` | Time spent in the Present call. High = CPU/compositor bottleneck |
+| `MsUntilDisplayed` | End-to-end latency to screen. High + low `MsInPresentAPI` = GPU-bound |
+| `MsBetweenDisplayChange` | Actual display refresh intervals — shows dropped frames |
+
+#### Decision matrix
+
+1. **Spikes in `MsBetweenPresents` + high `MsInPresentAPI`** → WPF
+   compositor/CPU submission is the bottleneck. External process gives the
+   playfield its own render thread → **would help**.
+
+2. **Spikes in `MsBetweenPresents` + low `MsInPresentAPI` + high
+   `MsUntilDisplayed`** → GPU-bound. GPU can't finish frames fast enough.
+   External process **won't help** — same GPU.
+
+3. **Consistent `MsBetweenPresents` ~16.7 ms** → No problem to solve yet.
+
+#### v2 metrics (`--v2_metrics`)
+
+With `--v2_metrics`, column names change. These are the relevant ones:
+
+| v2 Column | Meaning | What to watch |
+|-----------|---------|---------------|
+| `FrameTime` | Total frame-to-frame interval (ms) | Spikes = stutter |
+| `CPUBusy` | CPU time actively working on the frame | Spikes here = CPU/compositor stall |
+| `CPUWait` | CPU idle waiting (for GPU or vsync) | High = GPU-bound or vsync-limited |
+| `GPUBusy` | Time the GPU spent rendering | Consistently high = GPU-bound |
+| `GPUWait` | GPU idle waiting for work | High = CPU can't feed GPU fast enough |
+| `GPUTime` | Total GPU pipeline time | Overall GPU load |
+| `DisplayLatency` | Full pipeline latency to screen | Overall health metric |
+| `DisplayedTime` | When the frame actually appeared | Gaps = dropped frames |
+| `AllowsTearing` | Whether tearing is permitted | Confirms vsync mode |
+
+**v2 decision matrix:**
+
+1. **`FrameTime` spikes + `CPUBusy` high + `GPUBusy` low** →
+   Compositor/CPU-bound. External process **would help**.
+
+2. **`FrameTime` spikes + `GPUBusy` high + `CPUWait` high** → GPU-bound.
+   External process **won't help**.
+
+3. **Gaps in `DisplayedTime` correlating with high `CPUBusy`** → Smoking gun
+   for compositor contention.
+
+4. **`GPUWait` high + `CPUBusy` low** → GPU starved for work, possible
+   driver/scheduling issue.
+
+**Quick analysis (PowerShell):**
+
+```powershell
+# Capture
+PresentMon.exe --v2_metrics --output_file phosphor_v2.csv --process_name Phosphor.exe
+
+# Find stutter frames (>20ms = missed 60Hz vsync)
+Import-Csv phosphor_v2.csv |
+    Where-Object { [double]$_.FrameTime -gt 20 } |
+    Select-Object FrameTime, CPUBusy, CPUWait, GPUBusy, GPUWait, DisplayLatency |
+    Format-Table
+```
+
+If stuttery frames consistently show `CPUBusy` >> `GPUBusy`, the external
+process is worth building.
+
+#### Note on WPF process architecture
+
+Since Phosphor's playfield and backglass run on separate threads but in the
+same process, they share one WPF compositor — PresentMon shows one stream of
+presents. With the external process, PresentMon would show two separate
+process rows, which itself confirms independent composition.
+
+### Empirical Profiling Results (June 2025)
+
+Three PresentMon v2 captures were taken to isolate the bottleneck:
+
+| Dataset | Configuration | Steady-state `FrameTime` | `CPUBusy` | `GPUBusy` | Verdict |
+|---------|---------------|--------------------------|-----------|-----------|---------|
+| 1 | Everything (all windows, all visuals) | ~27 ms | ~27 ms (≈ FrameTime) | Low / idle | CPU/compositor-bound |
+| 2 | No playfield, no topper; backglass blobs near zero; only backglass + DMD | ~27 ms | ~27 ms (≈ FrameTime) | Low / idle | **Still** CPU/compositor-bound |
+| 3 | Same as 2, but reactive audio + morphing logo color cycling disabled | Single row captured | — | — | Outlier (too few samples) |
+
+#### Key takeaway
+
+**Window count and blob complexity are not the dominant factor.** Dataset 2
+removed the playfield, the topper, and nearly all backglass blobs — yet the
+steady-state profile was essentially identical to dataset 1. The CPU was
+still pegged at ~27 ms per frame with the GPU mostly idle.
+
+Dataset 3 produced only a single PresentMon row (essentially one frame
+captured before the tool stopped), so it cannot be treated as a steady-state
+measurement. However, the fact that it captured so few presents — when
+reactive audio and morphing logo color cycling were disabled — is itself
+suggestive: with those features off, the compositor had almost nothing to
+re-render, meaning far fewer presents were issued.
+
+**Primary suspects: reactive audio visualization and/or morphing logo color
+cycling.** These features likely drive frequent render invalidation (e.g.,
+per-tick property changes, brush updates, or layout passes) that keep the
+WPF compositor busy even when the visual tree is small.
+
+#### Revised assessment of external playfield process
+
+Given that removing the playfield window entirely (dataset 2) did not
+improve the profile, launching the playfield as a separate process is
+**unlikely to help on its own**. The bottleneck appears to be in features
+that run on the backglass/DMD windows, not compositor contention from
+multiple windows sharing a process.
+
+The external-process architecture remains a valid option for other reasons
+(crash isolation, independent scaling), but the immediate performance win is
+more likely to come from optimizing reactive audio and/or logo color cycling
+invalidation patterns.
+
+### Isolation Test Results (June 2025)
+
+Each test ran for 1 minute with PresentMon `--v2_metrics`. Configuration:
+backglass + DMD only (no playfield, no topper), minimal blobs.
+
+#### Test matrix
+
+| Test | Reactive Audio | Logo Color Cycling | Purpose |
+|------|---------------|-------------------|---------|
+| A | ✅ ON | ❌ OFF | Isolate reactive audio impact |
+| B | ❌ OFF | ✅ ON | Isolate logo color cycling impact |
+| C | ✅ ON | ✅ ON | Baseline (both on) |
+
+#### Raw results
+
+**Test A — Reactive audio ON, logo color cycling OFF** (9 frames in 60 s)
+
+| FrameTime | CPUBusy | CPUWait | GPUBusy | GPUWait | DisplayLatency |
+|-----------|---------|---------|---------|---------|----------------|
+| 29.11 | 28.99 | 0.12 | 0.00 | 0.00 | 47.45 |
+| 29.10 | 28.93 | 0.18 | 2.12 | 0.78 | 47.57 |
+| 22.34 | 22.14 | 0.20 | 1.71 | 0.00 | 40.41 |
+| 20.65 | 20.46 | 0.19 | 1.34 | 5.97 | 40.37 |
+| 31.94 | 31.80 | 0.14 | 0.00 | 0.00 | 47.49 |
+| 30.50 | 30.39 | 0.11 | 0.01 | 0.00 | 47.06 |
+| 29.03 | 28.91 | 0.13 | 0.00 | 0.00 | 46.92 |
+| 22.56 | 22.24 | 0.32 | 1.67 | 0.38 | 40.28 |
+| 23.05 | 22.88 | 0.17 | 1.25 | 0.00 | 40.93 |
+
+**Test B — Reactive audio OFF, logo color cycling ON** (12 frames in 60 s)
+
+| FrameTime | CPUBusy | CPUWait | GPUBusy | GPUWait | DisplayLatency |
+|-----------|---------|---------|---------|---------|----------------|
+| 23.40 | 23.26 | 0.14 | 0.00 | 0.00 | 33.36 |
+| 23.37 | 23.18 | 0.19 | 4.37 | 15.05 | 33.48 |
+| 20.05 | 19.93 | 0.12 | 0.09 | 0.00 | 45.35 |
+| 20.05 | 19.86 | 0.19 | 4.75 | 12.81 | 31.61 |
+| 21.60 | 21.49 | 0.12 | 0.00 | 0.00 | 33.37 |
+| 21.66 | 21.47 | 0.19 | 1.63 | 0.00 | 33.55 |
+| 22.64 | 22.46 | 0.18 | 3.56 | 0.00 | 33.41 |
+| 20.43 | 20.31 | 0.12 | 0.00 | 0.00 | 27.46 |
+| 23.68 | 23.55 | 0.13 | 0.06 | 0.00 | 40.98 |
+| 23.67 | 23.50 | 0.16 | 2.48 | 14.32 | 34.14 |
+| 41.89 | 41.77 | 0.12 | 0.00 | 0.00 | 52.56 |
+| 41.88 | 41.67 | 0.21 | 5.90 | 13.89 | 52.67 |
+
+**Test C — Both ON** (25 frames in 60 s)
+
+| FrameTime | CPUBusy | CPUWait | GPUBusy | GPUWait | DisplayLatency |
+|-----------|---------|---------|---------|---------|----------------|
+| 36.58 | 36.47 | 0.11 | 0.07 | 0.00 | 54.48 |
+| 36.58 | 36.39 | 0.19 | 2.07 | 1.11 | 54.59 |
+| 24.54 | 24.41 | 0.14 | 0.00 | 0.00 | 33.58 |
+| 24.52 | 24.29 | 0.23 | 5.82 | 0.00 | 33.70 |
+| 23.80 | 23.55 | 0.25 | 1.21 | 13.96 | 36.61 |
+| 27.86 | 27.72 | 0.14 | 0.00 | 0.00 | 43.38 |
+| 42.81 | 42.62 | 0.20 | 1.43 | 0.00 | 61.04 |
+| 24.39 | 24.26 | 0.13 | 0.00 | 0.00 | 33.58 |
+| 24.37 | 24.13 | 0.24 | 4.39 | 16.03 | 33.70 |
+| 20.10 | 19.96 | 0.14 | 3.12 | 0.00 | 40.53 |
+| 37.82 | 37.67 | 0.15 | 0.00 | 0.00 | 48.94 |
+| 37.81 | 37.57 | 0.24 | 1.78 | 14.78 | 49.09 |
+| 38.57 | 38.38 | 0.19 | 0.01 | 0.00 | 49.75 |
+| 38.52 | 38.27 | 0.25 | 1.98 | 14.65 | 49.90 |
+| 30.32 | 30.19 | 0.14 | 0.00 | 0.00 | 42.20 |
+| 30.30 | 30.08 | 0.22 | 1.66 | 14.16 | 42.32 |
+| 23.15 | 22.97 | 0.19 | 6.51 | 14.81 | 33.50 |
+| 23.17 | 23.03 | 0.15 | 0.00 | 0.00 | 33.37 |
+| 38.87 | 38.75 | 0.12 | 0.00 | 0.00 | 50.88 |
+| 38.87 | 38.67 | 0.20 | 1.76 | 14.02 | 51.00 |
+| 22.72 | 22.60 | 0.12 | 0.04 | 0.00 | 40.24 |
+| 22.69 | 22.46 | 0.23 | 2.03 | 1.12 | 40.34 |
+| 21.63 | 21.48 | 0.15 | 0.02 | 0.00 | 40.88 |
+| 27.78 | 27.64 | 0.14 | 0.02 | 0.00 | 47.63 |
+
+#### Summary statistics
+
+| Test | Frames | Avg FrameTime | Avg CPUBusy | Avg DisplayLatency | Max FrameTime |
+|------|--------|---------------|-------------|--------------------|----|
+| A (audio only) | 9 | 26.5 ms | 26.3 ms | 44.3 ms | 31.9 ms |
+| B (color cycling only) | 12 | 25.3 ms | 25.1 ms | 37.6 ms | 41.9 ms |
+| C (both) | 25 | 29.9 ms | 29.7 ms | 43.5 ms | 42.8 ms |
+
+#### Analysis
+
+**Both features contribute, but they behave differently:**
+
+1. **Reactive audio (test A)** produces fewer presents (9 in 60 s) but each
+   frame is expensive (~26.5 ms avg). The CPU is nearly 100% utilized per
+   frame. It creates fewer but heavier render passes.
+
+2. **Logo color cycling (test B)** produces more presents (12 in 60 s) and
+   has a wider variance — most frames are ~20-23 ms but with periodic
+   spikes to ~42 ms. It drives more frequent invalidation with occasional
+   heavy frames.
+
+3. **Both together (test C)** compounds the problem significantly: 25
+   frames in 60 s with an average of ~30 ms and peaks above 42 ms. The
+   frame count nearly triples versus either feature alone, confirming
+   that the two features trigger independent invalidation cycles that
+   stack.
+
+**The compounding effect is the real problem.** Neither feature alone is
+catastrophic, but together they create a cascading invalidation pattern
+where each feature's property changes trigger re-renders that overlap with
+the other's, roughly tripling the compositor workload.
+
+**Logo color cycling has slightly more impact on peak latency** (42 ms
+spikes in test B vs 32 ms max in test A) and drives higher invalidation
+frequency, making it the higher-priority optimization target. However,
+reactive audio's per-frame cost is also substantial.
+
+### Next Steps — Optimization
+
+Both features need optimization, prioritized by impact:
+
+#### Priority 1: Logo color cycling
+
+- **Investigate the brush/color update path.** Each color cycle step likely
+  creates new `SolidColorBrush` instances or triggers layout — find the
+  update code and check for unnecessary allocations.
+- **Throttle update frequency.** If colors are cycling on every tick or
+  timer callback, gate updates to 15-20 Hz max.
+- **Use WPF `ColorAnimation` or `Storyboard`** instead of manual property
+  sets — these run on the composition thread and avoid re-rendering the
+  visual tree.
+
+#### Priority 2: Reactive audio
+
+- **Batch property changes.** If multiple visual properties update per
+  audio callback (scale, opacity, color), batch them into a single
+  dispatcher call to avoid multiple render passes.
+- **Throttle the audio callback.** Audio data often arrives at 44.1 kHz
+  sample rate — the visual update should be gated to at most 30 Hz.
+- **Use `CompositionTarget.Rendering`** as the update driver instead of
+  audio-event-driven updates, to align with the compositor's natural
+  cadence.
+
+#### Priority 3: Investigate invalidation overlap
+
+- When both features are on, determine if they share any visual elements
+  that get double-invalidated. If the logo visuals respond to both color
+  cycling AND reactive audio, a single coordinated update path could
+  eliminate the compounding effect.
 
