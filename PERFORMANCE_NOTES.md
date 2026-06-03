@@ -710,3 +710,171 @@ if cached chapter data or result caches grow significantly.
 **Conclusion:** at current file sizes the synchronous path is faster and simpler.
 Only switch when LOH avoidance outweighs the async overhead (50+ MB).
 
+---
+
+## WPF Multi-Window Rendering Architecture
+
+> Key insights from a performance investigation of topper window hitching when
+> running 4 STA windows simultaneously.
+
+### WPF Has ONE Render Thread Per Process
+- Each `Window` on its own STA thread only parallelizes **input, layout, and
+  data binding**.
+- All visual composition for every window funnels through a **single MIL render
+  thread** managed by `MediaContext`.
+- Adding more STA threads does **not** scale rendering — the render thread is
+  the shared bottleneck across all four windows.
+- Any per-frame work on any window (blur effects, cache invalidation, brush
+  animation) steals budget from every other window's composition.
+
+### Visibility States and Render Cost
+| State | Layout | Render | Animations |
+|---|---|---|---|
+| `Visible` | yes | yes | tick + paint |
+| `Hidden` | yes | **skipped** | storyboards/timers still tick |
+| `Collapsed` | **skipped** | **skipped** | storyboards/timers still tick if alive |
+
+- Backglass `IdleOverlay` is set to `Collapsed` during video playback — render
+  cost is essentially zero.
+- Topper always shows the logo/blobs — it always pays the render cost, making
+  it the most visible victim of render-thread contention.
+- Even when `Collapsed`, `DispatcherTimer` callbacks and
+  `CompositionTarget.Rendering` handlers still fire. Dispose patterns or stop
+  timers explicitly to reclaim CPU.
+
+---
+
+## ✅ Done — Logo / Topper Composition Optimizations
+
+### DropShadowEffect + BitmapCache Invalidation Fix
+- A `DropShadowEffect` on a `BitmapCache`d element is cheap in steady state
+  (cache hit = one textured quad).
+- **But** any change to a child (brush color animation, layout) **invalidates
+  the entire cache**, forcing a full re-rasterization through the blur kernel
+  on the render thread.
+- Cost scales with cache surface area × blur radius. A full-window cache at
+  1920×1080 with BlurRadius=7 is extremely expensive per invalidation.
+- **Fix:** Strip `Effect` + `CacheMode` during color morph animations; restore
+  after completion via ref-counted `DispatcherTimer`. Applied to both
+  `TopperWindow` and `BackglassWindow`.
+
+### Shared Brush Animation
+- Title text shares one `SolidColorBrush` across all glyphs, but
+  `ApplyMorphColors` was calling `BeginAnimation` once per character (~20×),
+  each replacing the previous.
+- **Fix:** Animate the shared brush exactly once.
+
+### Shrunk Cached Surfaces
+- Inner title canvas was sized to the full window (`Width = canvas.ActualWidth,
+  Height = canvas.ActualHeight`). In fullscreen that's a huge texture.
+- **Fix:** Sized to `radius * 2 + padding + fontSize * 2` (≈ 250 px), centered
+  at the window center. Dramatically reduces the per-invalidation cost.
+
+### LogoShadow Toggle
+- New `AppSettings.LogoShadow` (default `true`) with a Visual-tab checkbox.
+- When off: skip both `DropShadowEffect` and `BitmapCache` entirely on topper
+  and backglass. Zero shadow/cache cost, no post-morph re-raster spike.
+- When on: cache works on the now-small surface; morph stripping handles the
+  animation window.
+
+---
+
+## Common Multi-Monitor / Cabinet Issues
+
+### Multi-GPU Composition
+- Cabinets often have monitors on different GPUs (e.g., topper on iGPU,
+  playfield on dGPU).
+- WPF allocates D3D surfaces on the primary adapter; DWM copies each window's
+  swap chain across adapters.
+- Cross-adapter copies stall the render thread.
+- **Check:** Windows Settings → Display → Advanced display → verify all
+  monitors are on the same GPU.
+
+### Refresh Rate Mismatch
+- WPF's render loop presents at the primary monitor's refresh rate.
+- If the topper is 60 Hz and the playfield is 120/144 Hz (or vice versa),
+  uneven frame timing causes periodic hitches.
+- Matching refresh rates helps but isn't always practical on a cab.
+
+### ProjectM (OpenGL) GPU Contention
+- ProjectM runs on a dedicated background thread with its own OpenGL context —
+  **no WPF render thread cost** when using the D3DImage fast path.
+- However, heavy presets at high `MeshSize` / `RenderScale` can saturate the
+  GPU, starving WPF composition for all windows.
+- The fallback `WriteableBitmap` + `glReadPixels` path *does* hit the WPF UI
+  thread. Verify the log shows `PBO ASYNC READBACK (D3DImage)` not `FALLBACK`.
+
+---
+
+## How to Measure WPF Performance
+
+### Quick Diagnostics
+
+**Rendering Tier:**
+```csharp
+int tier = System.Windows.Media.RenderCapability.Tier >> 16;
+// 0 = software, 1 = partial HW, 2 = full HW acceleration
+```
+Confirm tier 2 on the target cabinet.
+
+### Visual Studio Performance Profiler
+1. **Debug → Performance Profiler** (Alt+F2).
+2. Select **CPU Usage** + **.NET Async** tools.
+3. Run the app, trigger the scenario (morph, fullscreen toggle, pattern change).
+4. Look for hot paths in `System.Windows.Media.*` and
+   `System.Windows.Threading.*`.
+5. The render thread shows up as `wpfgfx_*.dll` in native call stacks — enable
+   **mixed-mode profiling** to see it.
+
+### PerfView (Deep WPF / ETW Analysis)
+1. Download [PerfView](https://github.com/microsoft/perfview/releases).
+2. Collect: `PerfView.exe /GCCollectOnly /ThreadTime collect`
+3. Look for:
+   - `wpfgfx!CPartitionThread::RenderPartition` — render thread work per frame.
+   - `wpfgfx!CMilChannel::ProcessCommandBatch` — command batching from UI to
+     render thread.
+   - `milcore!CDrawingContext` — per-element drawing calls.
+4. Filter to the process and examine render thread utilization vs. wall clock.
+
+### WPF Performance Suite (Perforator)
+- Part of the Windows SDK: `WpfPerf.exe` / `Perforator.exe`.
+- **Perforator overlays:**
+  - "Show dirty region update overlay" — see which areas WPF re-renders each
+    frame. Very useful for spotting unnecessary cache invalidations.
+  - "Show software rendering with purple tint" — catch elements falling off
+    the GPU.
+  - Frame rate display.
+
+### GPU Profiling
+- **Task Manager → Performance → GPU:** check per-engine utilization. If "3D"
+  is pegged, GPU contention is the issue, not WPF render thread.
+- **GPUView** (Windows SDK): shows present queues per window, cross-adapter
+  copies, and DWM composition timing. Best tool for diagnosing multi-monitor
+  DWM stalls.
+- **NVIDIA Nsight / AMD Radeon GPU Profiler:** for ProjectM shader-level
+  profiling if GPU contention is suspected.
+
+### Symptom → Tool Guide
+
+| Symptom | Likely cause | Tool |
+|---|---|---|
+| One window hitches, others smooth | Cross-adapter copy or cache invalidation | GPUView, Perforator dirty regions |
+| All windows hitch together | Render thread saturated | PerfView (`wpfgfx` thread), VS Profiler |
+| Hitch during color morph | DropShadowEffect re-raster on invalidation | Perforator dirty regions |
+| Hitch when window goes fullscreen | Large BitmapCache surface allocation | Perforator, check cache dimensions |
+| Smooth at 60 Hz, periodic stutter | DWM refresh-rate arbitration | GPUView present timing |
+| ProjectM causes all windows to stutter | GPU contention (shader-bound) | Task Manager GPU, reduce MeshSize/RenderScale |
+
+---
+
+## Future Optimization Candidates (If Needed)
+
+- **Separate process for playfield:** gives it its own WPF render thread. Same
+  pattern as `DofBridge`. Communicate via named pipe / shared memory.
+- **Stop blob patterns during video playback:** dispose pattern + stop timers
+  when `IdleOverlay` is collapsed to save CPU on the UI thread.
+- **RenderAtScale < 1.0:** `BitmapCache { RenderAtScale = 0.75 }` reduces
+  cache texture size with minimal visible quality loss on blurred elements.
+- **Pre-rendered shadow layer:** replace `DropShadowEffect` with offset black
+  TextBlocks as a static shadow — never invalidates, zero shader cost.
+
