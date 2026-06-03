@@ -12,13 +12,13 @@
                 Width="28" Height="28" FontSize="13" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Margin="4"
                 Opacity="0.5" Panel.ZIndex="10"/>
 
-        <!-- Animated glow blobs -->
-        <Canvas x:Name="BlobCanvas"/>
-
-        <!-- Distortion wrapper — ScaleTransform here stays axis-aligned
-             while the inner TitleCanvas spins independently -->
+        <!-- Aspect-correction wrapper — ScaleTransform here compensates for
+             ultra-wide topper displays so circles stay round across all content -->
         <Grid x:Name="DistortionContainer" IsHitTestVisible="False"
               RenderTransformOrigin="0.5,0.5">
+            <!-- Animated glow blobs -->
+            <Canvas x:Name="BlobCanvas"/>
+
             <!-- Vinyl record overlay -->
             <Canvas x:Name="RecordOverlay" ClipToBounds="True"/>
 
