@@ -122,6 +122,8 @@ public class AppSettings
     public int ClockDigitalSize { get; set; } = 35;
     public bool ClockUse24Hour { get; set; } = true;
     public int ClockAnalogSize { get; set; } = 2;
+    /// <summary>0 = Modern, 1 = Traditional (with hand trail blobs).</summary>
+    public int ClockAnalogStyle { get; set; }
 
     // Game of Life tuning
     public int GameOfLifeCellSize { get; set; } = 5;

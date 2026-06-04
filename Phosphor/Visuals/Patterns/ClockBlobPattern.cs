@@ -38,6 +38,9 @@ public sealed class ClockBlobPattern : IBlobPattern
     /// <summary>Analog blob size index: 0=Smallest, 1=Small, 2=Medium, 3=Large, 4=Largest.</summary>
     public static int AnalogSize { get; set; } = 2;
 
+    /// <summary>0 = Modern (clean), 1 = Traditional (hand trail blobs).</summary>
+    public static int AnalogStyle { get; set; }
+
     // ─── Instance fields ─────────────────────────────────────────────
 
     private readonly Canvas _canvas;
@@ -59,6 +62,8 @@ public sealed class ClockBlobPattern : IBlobPattern
     private Ellipse? _minuteBlob;
     private Ellipse? _hourBlob;
     private readonly List<Ellipse> _markerBlobs = new();
+    private readonly List<Ellipse> _hourTrailBlobs = new();
+    private readonly List<Ellipse> _minuteTrailBlobs = new();
 
     // Digital-specific
     private readonly List<Ellipse> _dotBlobs = new();
@@ -228,17 +233,37 @@ public sealed class ClockBlobPattern : IBlobPattern
             _markerBlobs.Add(marker);
         }
 
-        // Hour hand (inner ring)
+        // Hour hand (inner ring — 65% radius)
         _hourBlob = CreateBlob(handSize * 1.3, _brightness);
         _canvas.Children.Add(_hourBlob);
 
-        // Minute hand (marker ring)
+        // Minute hand (halfway between hour and second — 82.5% radius)
         _minuteBlob = CreateBlob(handSize, _brightness);
         _canvas.Children.Add(_minuteBlob);
 
-        // Second hand (outer ring)
+        // Second hand (marker ring — 100% radius)
         _secondBlob = CreateBlob(handSize * 0.8, _brightness);
         _canvas.Children.Add(_secondBlob);
+
+        // Traditional style: add trail blobs sharing the parent hand's brush
+        if (AnalogStyle == 1)
+        {
+            int hrIdx = _blobs.IndexOf(_hourBlob);
+            for (int i = 0; i < 3; i++)
+            {
+                var trail = CreateTrailBlob(handSize * 1.0, _brightness * 0.5, hrIdx);
+                _canvas.Children.Add(trail);
+                _hourTrailBlobs.Add(trail);
+            }
+
+            int minIdx = _blobs.IndexOf(_minuteBlob);
+            for (int i = 0; i < 5; i++)
+            {
+                var trail = CreateTrailBlob(handSize * 0.8, _brightness * 0.5, minIdx);
+                _canvas.Children.Add(trail);
+                _minuteTrailBlobs.Add(trail);
+            }
+        }
 
         UpdateAnalogPositions();
     }
@@ -257,32 +282,67 @@ public sealed class ClockBlobPattern : IBlobPattern
         double totalMinutes = now.Minute + totalSeconds / 60.0;
         double totalHours = (now.Hour % 12) + totalMinutes / 60.0;
 
-        // Second — outer ring (110% of radius)
+        // Second — marker ring (100% of radius)
         if (_secondBlob != null)
         {
             double secAngle = totalSeconds / 60.0 * 2 * Math.PI - Math.PI / 2;
-            double secR = radius * 1.10 + (AnalogSize >= 3 ? 8.0 : 0.0);
+            double secR = radius + (AnalogSize >= 3 ? 8.0 : 0.0);
             Canvas.SetLeft(_secondBlob, cx + Math.Cos(secAngle) * secR - _secondBlob.Width / 2);
             Canvas.SetTop(_secondBlob, cy + Math.Sin(secAngle) * secR - _secondBlob.Height / 2);
         }
 
-        // Minute — marker ring (100% of radius)
+        // Minute — halfway between hour and second (82.5% of radius)
+        double minR = radius * 0.825;
         if (_minuteBlob != null)
         {
             double minAngle = totalMinutes / 60.0 * 2 * Math.PI - Math.PI / 2;
-            Canvas.SetLeft(_minuteBlob, cx + Math.Cos(minAngle) * radius - _minuteBlob.Width / 2);
-            Canvas.SetTop(_minuteBlob, cy + Math.Sin(minAngle) * radius - _minuteBlob.Height / 2);
+            Canvas.SetLeft(_minuteBlob, cx + Math.Cos(minAngle) * minR - _minuteBlob.Width / 2);
+            Canvas.SetTop(_minuteBlob, cy + Math.Sin(minAngle) * minR - _minuteBlob.Height / 2);
         }
 
         // Hour — inner ring (65% of radius)
+        double hrR = radius * 0.65;
         if (_hourBlob != null)
         {
             double hrAngle = totalHours / 12.0 * 2 * Math.PI - Math.PI / 2;
-            double hrR = radius * 0.65;
             Canvas.SetLeft(_hourBlob, cx + Math.Cos(hrAngle) * hrR - _hourBlob.Width / 2);
             Canvas.SetTop(_hourBlob, cy + Math.Sin(hrAngle) * hrR - _hourBlob.Height / 2);
         }
-    }
+
+        // Traditional trail blobs
+        if (_hourTrailBlobs.Count > 0)
+        {
+            double hrAngle = totalHours / 12.0 * 2 * Math.PI - Math.PI / 2;
+            double innerRing = radius * 0.15;
+            int n = _hourTrailBlobs.Count;
+            double hrEnd = hrR - 5.0;
+            double step = (hrEnd - innerRing) / (n + 1);
+            for (int i = 0; i < n; i++)
+            {
+                var t = _hourTrailBlobs[i];
+                double r = innerRing + step * (i + 1);
+                Canvas.SetLeft(t, cx + Math.Cos(hrAngle) * r - t.Width / 2);
+                Canvas.SetTop(t, cy + Math.Sin(hrAngle) * r - t.Height / 2);
+            }
+        }
+
+        if (_minuteTrailBlobs.Count > 0)
+        {
+            double minAngle = totalMinutes / 60.0 * 2 * Math.PI - Math.PI / 2;
+            double innerRing = radius * 0.15;
+            int n = _minuteTrailBlobs.Count;
+            double minEnd = minR - 5.0;
+            double step = (minEnd - innerRing) / (n + 1);
+            for (int i = 0; i < n; i++)
+            {
+                var t = _minuteTrailBlobs[i];
+                double r = innerRing + step * (i + 1);
+                Canvas.SetLeft(t, cx + Math.Cos(minAngle) * r - t.Width / 2);
+                Canvas.SetTop(t, cy + Math.Sin(minAngle) * r - t.Height / 2);
+            }
+        }
+
+        }
 
     // ─── Digital (dot-matrix) ────────────────────────────────────────
 
@@ -407,6 +467,31 @@ public sealed class ClockBlobPattern : IBlobPattern
 
     // ─── Helpers ─────────────────────────────────────────────────────
 
+    /// <summary>Creates a trail blob that shares the brush/gradient of an existing parent blob,
+    /// so external color cycling updates both atomically.</summary>
+    private Ellipse CreateTrailBlob(double size, double opacity, int parentBlobIndex)
+    {
+        var brush = _brushes[parentBlobIndex];
+        var gradBrush = _gradBrushes[parentBlobIndex];
+
+        // Add the same brush references so the lists stay in sync with _blobs
+        _brushes.Add(brush);
+        _gradBrushes.Add(gradBrush);
+
+        var blob = new Ellipse
+        {
+            Width = size,
+            Height = size,
+            Fill = gradBrush,
+            Opacity = opacity,
+            RenderTransformOrigin = new Point(0.5, 0.5),
+            CacheMode = new BitmapCache(0.5),
+        };
+
+        _blobs.Add(blob);
+        return blob;
+    }
+
     private Ellipse CreateBlob(double size, double opacity)
     {
         var brush = new SolidColorBrush(Colors.Black);
@@ -453,6 +538,8 @@ public sealed class ClockBlobPattern : IBlobPattern
         _brushes.Clear();
         _gradBrushes.Clear();
         _markerBlobs.Clear();
+        _hourTrailBlobs.Clear();
+        _minuteTrailBlobs.Clear();
         _dotBlobs.Clear();
         _secondBlob = null;
         _minuteBlob = null;

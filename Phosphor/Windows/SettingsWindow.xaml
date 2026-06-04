@@ -977,6 +977,16 @@
                                                       <TextBlock x:Name="TxtClockAnalogSize" Text="Medium" Foreground="{StaticResource TextDimBrush}"
                                                                  VerticalAlignment="Center" Margin="8,0,0,0"/>
                                                   </StackPanel>
+                                                  <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                                      <TextBlock Text="Analog Style:" Foreground="{StaticResource TextBrush}"
+                                                                 VerticalAlignment="Center" Width="110"/>
+                                                      <ComboBox x:Name="CbClockAnalogStyle" Width="150"
+                                                                SelectionChanged="CbClockAnalogStyle_SelectionChanged"
+                                                                ToolTip="Modern: clean hands only. Traditional: hands with trail blobs.">
+                                                          <ComboBoxItem Content="Modern"/>
+                                                          <ComboBoxItem Content="Traditional"/>
+                                                      </ComboBox>
+                                                  </StackPanel>
                                               </StackPanel>
 
                                               <!-- ═══ SECTION: ProjectM Tuning (visible only when any pattern is ProjectM) ═══ -->
@@ -2194,6 +2204,23 @@
                         <TextBlock Text="MONITORS" FontSize="12" FontWeight="Bold"
                                     Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
                         <StackPanel x:Name="PanelMonitorInfo"/>
+
+                        <TextBlock Text="PERFORMANCE TIPS" FontSize="12" FontWeight="Bold"
+                                    Foreground="{StaticResource AccentBrush}" Margin="0,16,0,6"/>
+                        <TextBlock FontSize="11" Foreground="{StaticResource TextDimBrush}" TextWrapping="Wrap" Margin="0,0,0,4"
+                                   Text="• Reduce the blob count — every blob is rendered per window, so fewer blobs means less work across all screens."/>
+                        <TextBlock FontSize="11" Foreground="{StaticResource TextDimBrush}" TextWrapping="Wrap" Margin="0,0,0,4"
+                                   Text="• Disable audio-reactive scaling on secondary windows (Backglass, Topper, DMD) to cut per-tick transform updates."/>
+                        <TextBlock FontSize="11" Foreground="{StaticResource TextDimBrush}" TextWrapping="Wrap" Margin="0,0,0,4"
+                                   Text="• Turn off the spinning logo or disable the logo entirely to save a composited overlay per window."/>
+                        <TextBlock FontSize="11" Foreground="{StaticResource TextDimBrush}" TextWrapping="Wrap" Margin="0,0,0,4"
+                                   Text="• The most GPU/CPU-intensive visuals are Game of Life, Matrix, and Light Cycle. Prefer lighter patterns like Lava Lamp or Orbital when performance is tight."/>
+                        <TextBlock FontSize="11" Foreground="{StaticResource TextDimBrush}" TextWrapping="Wrap" Margin="0,0,0,4"
+                                   Text="• Fewer active windows means less rendering — disable any screen output you don't need."/>
+                        <TextBlock FontSize="11" Foreground="{StaticResource TextDimBrush}" TextWrapping="Wrap" Margin="0,0,0,4"
+                                   Text="• FractalBox blur effects and Matrix color pulses can stack up during rapid pattern changes — letting each pattern run longer before switching reduces overlapping animations."/>
+                        <TextBlock FontSize="11" Foreground="{StaticResource TextDimBrush}" TextWrapping="Wrap" Margin="0,0,0,4"
+                                   Text="• ProjectM renders on its own OpenGL thread, so it bypasses WPF rendering overhead. On systems with a capable GPU it may perform better than WPF-based visuals, but on lower-end hardware the extra OpenGL context adds load."/>
                     </StackPanel>
                 </Border>
             </TabItem>

@@ -116,6 +116,7 @@ public partial class SettingsWindow : JukeboxWindow
     private int _originalClockDigitalSize = 10;
     private bool _originalClockUse24Hour = true;
     private int _originalClockAnalogSize = 2;
+    private int _originalClockAnalogStyle;
     private bool _suppressBsCheckboxSync;
 
     /// <summary>Named B/S rule presets for the dropdown.</summary>
@@ -291,7 +292,8 @@ public partial class SettingsWindow : JukeboxWindow
         Math.Abs(_settings.ClockBrightness - _originalClockBrightness) > 0.01 ||
         _settings.ClockDigitalSize != _originalClockDigitalSize ||
         _settings.ClockUse24Hour != _originalClockUse24Hour ||
-        _settings.ClockAnalogSize != _originalClockAnalogSize;
+        _settings.ClockAnalogSize != _originalClockAnalogSize ||
+        _settings.ClockAnalogStyle != _originalClockAnalogStyle;
 
     public event Action? SettingsApplied;
 
@@ -686,6 +688,7 @@ public partial class SettingsWindow : JukeboxWindow
         TxtClockHourFormat.Text = settings.ClockUse24Hour ? "24-hour" : "12-hour";
         SliderClockAnalogSize.Value = Math.Clamp(settings.ClockAnalogSize, 0, 4);
         TxtClockAnalogSize.Text = AnalogSizeLabel(settings.ClockAnalogSize);
+        CbClockAnalogStyle.SelectedIndex = Math.Clamp(settings.ClockAnalogStyle, 0, 1);
         UpdateClockTuningVisibility();
 
         CbReactiveBlobsPlayfield.IsChecked = settings.ReactiveBlobsPlayfield;
@@ -938,6 +941,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalClockDigitalSize = settings.ClockDigitalSize;
         _originalClockUse24Hour = settings.ClockUse24Hour;
         _originalClockAnalogSize = settings.ClockAnalogSize;
+        _originalClockAnalogStyle = settings.ClockAnalogStyle;
         _originalProjectMPresetDuration = settings.ProjectMPresetDuration;
         _originalProjectMHardCut = settings.ProjectMHardCutEnabled;
         _originalProjectMBeatSensitivity = settings.ProjectMBeatSensitivity;
@@ -2100,6 +2104,11 @@ public partial class SettingsWindow : JukeboxWindow
             TxtClockHourFormat.Text = e.NewValue >= 0.5 ? "24-hour" : "12-hour";
     }
 
+    private void CbClockAnalogStyle_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        // No-op; tracked via change-detection.
+    }
+
     private void SliderClockAnalogSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (TxtClockAnalogSize != null)
@@ -3005,6 +3014,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.ClockDigitalSize = (int)SliderClockDigitalSize.Value;
         _settings.ClockUse24Hour = SliderClockHourFormat.Value >= 0.5;
         _settings.ClockAnalogSize = (int)SliderClockAnalogSize.Value;
+        _settings.ClockAnalogStyle = CbClockAnalogStyle.SelectedIndex >= 0 ? CbClockAnalogStyle.SelectedIndex : 0;
         _settings.GameOfLifeRulesEngine = Math.Max(0, CbGameOfLifeRulesEngine.SelectedIndex);
         _settings.GameOfLifeEraBandedHueSpeed = SliderGameOfLifeEraBandedHueSpeed.Value;
         _settings.GameOfLifeCustomRule = BuildRuleStringFromCheckboxes();
@@ -3118,6 +3128,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalClockDigitalSize = _settings.ClockDigitalSize;
         _originalClockUse24Hour = _settings.ClockUse24Hour;
         _originalClockAnalogSize = _settings.ClockAnalogSize;
+        _originalClockAnalogStyle = _settings.ClockAnalogStyle;
         _originalProjectMPresetDuration = _settings.ProjectMPresetDuration;
         _originalProjectMSoftCut = _settings.ProjectMSoftCutDuration;
         _originalProjectMHardCut = _settings.ProjectMHardCutEnabled;

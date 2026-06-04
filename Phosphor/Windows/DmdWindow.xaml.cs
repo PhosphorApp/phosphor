@@ -798,6 +798,7 @@ public partial class DmdWindow : JukeboxWindow
         ClockBlobPattern.DigitalSize = Math.Clamp(settings.ClockDigitalSize, 5, 100);
         ClockBlobPattern.Use24Hour = settings.ClockUse24Hour;
         ClockBlobPattern.AnalogSize = Math.Clamp(settings.ClockAnalogSize, 0, 4);
+        ClockBlobPattern.AnalogStyle = Math.Clamp(settings.ClockAnalogStyle, 0, 1);
         FerrofluidSimulator.CoreGravity = settings.FerrofluidCoreGravity;
         FerrofluidSimulator.MutualAttraction = settings.FerrofluidMutualAttraction;
         FerrofluidSimulator.Damping = settings.FerrofluidDamping;
@@ -2165,6 +2166,7 @@ public partial class DmdWindow : JukeboxWindow
         ClockBlobPattern.DigitalSize = Math.Clamp(_appSettings.ClockDigitalSize, 5, 100);
         ClockBlobPattern.Use24Hour = _appSettings.ClockUse24Hour;
         ClockBlobPattern.AnalogSize = Math.Clamp(_appSettings.ClockAnalogSize, 0, 4);
+        ClockBlobPattern.AnalogStyle = Math.Clamp(_appSettings.ClockAnalogStyle, 0, 1);
         if (settingsWindow.GravitySettingsChanged)
         {
             _playfieldProxy?.RestartGravity();
