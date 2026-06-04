@@ -77,6 +77,12 @@ public partial class SettingsWindow : JukeboxWindow
     private int _originalLogoRingsBrightness;
     private int _originalLogoBrightness = 100;
     private LogoColorMode _originalLogoColorMode;
+    private bool _originalTopperLogoSpin;
+    private bool _originalTopperLogoShadow;
+    private LogoRingsMode _originalTopperLogoRings;
+    private int _originalTopperLogoRingsBrightness;
+    private int _originalTopperLogoBrightness = 100;
+    private LogoColorMode _originalTopperLogoColorMode;
     private int _originalMandelbrotUseGpu;
     private bool _originalMandelbrotAdaptiveIterations;
     private int _originalMandelbrotMaxIterations;
@@ -208,7 +214,13 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.LogoRings != _originalLogoRings ||
         _settings.LogoRingsBrightness != _originalLogoRingsBrightness ||
         _settings.LogoBrightness != _originalLogoBrightness ||
-        _settings.LogoColorMode != _originalLogoColorMode;
+        _settings.LogoColorMode != _originalLogoColorMode ||
+        _settings.TopperLogoSpin != _originalTopperLogoSpin ||
+        _settings.TopperLogoShadow != _originalTopperLogoShadow ||
+        _settings.TopperLogoRings != _originalTopperLogoRings ||
+        _settings.TopperLogoRingsBrightness != _originalTopperLogoRingsBrightness ||
+        _settings.TopperLogoBrightness != _originalTopperLogoBrightness ||
+        _settings.TopperLogoColorMode != _originalTopperLogoColorMode;
 
     public bool DofSettingsChanged =>
         _settings.DofEnabled != _originalDofEnabled ||
@@ -456,6 +468,20 @@ public partial class SettingsWindow : JukeboxWindow
         SliderLogoRings.Value = (int)settings.LogoRings;
         SliderRingBrightness.Value = settings.LogoRingsBrightness;
         SliderLogoBrightness.Value = settings.LogoBrightness;
+
+        // Topper logo settings
+        CbTopperLogoSpin.IsChecked = settings.TopperLogoSpin;
+        CbTopperLogoShadow.IsChecked = settings.TopperLogoShadow;
+        SliderTopperLogoRings.Value = (int)settings.TopperLogoRings;
+        SliderTopperRingBrightness.Value = settings.TopperLogoRingsBrightness;
+        SliderTopperLogoBrightness.Value = settings.TopperLogoBrightness;
+
+        switch (settings.TopperLogoColorMode)
+        {
+            case LogoColorMode.SlowMorph: RbTopperLogoColorMorph.IsChecked = true; break;
+            case LogoColorMode.Reactive: RbTopperLogoColorReactive.IsChecked = true; break;
+            default: RbTopperLogoColorOff.IsChecked = true; break;
+        }
 
         // Blob pattern per screen (alphabetized)
         var blobPatterns = Enum.GetValues<BlobPattern>()
@@ -902,6 +928,12 @@ public partial class SettingsWindow : JukeboxWindow
         _originalLogoRingsBrightness = settings.LogoRingsBrightness;
         _originalLogoBrightness = settings.LogoBrightness;
         _originalLogoColorMode = settings.LogoColorMode;
+        _originalTopperLogoSpin = settings.TopperLogoSpin;
+        _originalTopperLogoShadow = settings.TopperLogoShadow;
+        _originalTopperLogoRings = settings.TopperLogoRings;
+        _originalTopperLogoRingsBrightness = settings.TopperLogoRingsBrightness;
+        _originalTopperLogoBrightness = settings.TopperLogoBrightness;
+        _originalTopperLogoColorMode = settings.TopperLogoColorMode;
         _originalMandelbrotUseGpu = settings.MandelbrotUseGpu;
         _originalMandelbrotAdaptiveIterations = settings.MandelbrotAdaptiveIterations;
         _originalMandelbrotMaxIterations = settings.MandelbrotMaxIterations;
@@ -1828,6 +1860,23 @@ public partial class SettingsWindow : JukeboxWindow
     {
         if (RingBrightnessValueText != null)
             RingBrightnessValueText.Text = $"{(int)e.NewValue}%";
+    }
+
+    private void SliderTopperLogoBrightness_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TopperLogoBrightnessValueText != null)
+            TopperLogoBrightnessValueText.Text = $"{(int)e.NewValue}%";
+    }
+
+    private void SliderTopperLogoRings_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        // No live preview needed; value is read on save
+    }
+
+    private void SliderTopperRingBrightness_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TopperRingBrightnessValueText != null)
+            TopperRingBrightnessValueText.Text = $"{(int)e.NewValue}%";
     }
 
     private void SliderOledIntensity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -3027,6 +3076,14 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.ReactiveSpeedMs = (int)SliderReactiveSpeed.Value;
         _settings.ReactiveOverdrive = SliderReactiveOverdrive.Value / 10.0;
         _settings.TopperDistortion = SliderDistortion.Value / 100.0;
+        _settings.TopperLogoSpin = CbTopperLogoSpin.IsChecked == true;
+        _settings.TopperLogoShadow = CbTopperLogoShadow.IsChecked == true;
+        _settings.TopperLogoRings = (LogoRingsMode)(int)SliderTopperLogoRings.Value;
+        _settings.TopperLogoRingsBrightness = (int)SliderTopperRingBrightness.Value;
+        _settings.TopperLogoBrightness = (int)SliderTopperLogoBrightness.Value;
+        _settings.TopperLogoColorMode = RbTopperLogoColorReactive.IsChecked == true ? LogoColorMode.Reactive
+            : RbTopperLogoColorMorph.IsChecked == true ? LogoColorMode.SlowMorph
+            : LogoColorMode.Off;
         _settings.VideoQuality = (VideoQualityPreference)CbVideoQuality.SelectedIndex;
         _settings.StereoAudio = CbStereoAudio.IsChecked == true;
         _settings.NetworkCachingMs = (int)SliderNetworkCaching.Value;
@@ -3089,6 +3146,12 @@ public partial class SettingsWindow : JukeboxWindow
         _originalLogoRingsBrightness = _settings.LogoRingsBrightness;
         _originalLogoBrightness = _settings.LogoBrightness;
         _originalLogoColorMode = _settings.LogoColorMode;
+        _originalTopperLogoSpin = _settings.TopperLogoSpin;
+        _originalTopperLogoShadow = _settings.TopperLogoShadow;
+        _originalTopperLogoRings = _settings.TopperLogoRings;
+        _originalTopperLogoRingsBrightness = _settings.TopperLogoRingsBrightness;
+        _originalTopperLogoBrightness = _settings.TopperLogoBrightness;
+        _originalTopperLogoColorMode = _settings.TopperLogoColorMode;
         _originalMandelbrotUseGpu = _settings.MandelbrotUseGpu;
         _originalMandelbrotAdaptiveIterations = _settings.MandelbrotAdaptiveIterations;
         _originalMandelbrotMaxIterations = _settings.MandelbrotMaxIterations;

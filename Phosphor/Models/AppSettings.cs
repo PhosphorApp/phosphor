@@ -64,6 +64,12 @@ public class AppSettings
     public int LogoRingsBrightness { get; set; } = 25;
     public int LogoBrightness { get; set; } = 100;
     public double TopperDistortion { get; set; }
+    public bool TopperLogoSpin { get; set; } = true;
+    public bool TopperLogoShadow { get; set; } = true;
+    public LogoRingsMode TopperLogoRings { get; set; } = LogoRingsMode.Standard;
+    public int TopperLogoRingsBrightness { get; set; } = 25;
+    public int TopperLogoBrightness { get; set; } = 100;
+    public LogoColorMode TopperLogoColorMode { get; set; }
     public bool ShowStatusText { get; set; } = true;
     public int HideCursorTimeoutSeconds { get; set; } = 15;
     public int OledSleepDefeatSeconds { get; set; }
