@@ -44,13 +44,13 @@ public class AppSettings
     public KeyBindings KeyBindings { get; set; } = new();
     public int ResultColumns { get; set; } = 2;
     public int ResultFontSizeModifier { get; set; }
-    public double PlayfieldIntensity { get; set; } = 0.25;
+    public double PlayfieldIntensity { get; set; } = 0.50;
     public double PlayfieldSpeed { get; set; } = 1.0;
-    public double BackglassIntensity { get; set; } = 0.25;
+    public double BackglassIntensity { get; set; } = 0.50;
     public double BackglassSpeed { get; set; } = 1.0;
-    public double TopperIntensity { get; set; } = 0.25;
+    public double TopperIntensity { get; set; } = 0.50;
     public double TopperSpeed { get; set; } = 1.0;
-    public double DmdIntensity { get; set; } = 0.25;
+    public double DmdIntensity { get; set; } = 0.50;
     public double DmdSpeed { get; set; } = 1.0;
     public bool DmdScreensaver { get; set; }
     public bool DmdScreensaverDimEnabled { get; set; }
@@ -84,15 +84,15 @@ public class AppSettings
     public int OledSleepDefeatDurationSeconds { get; set; } = 5;
     public int OledSleepDefeatIntensity { get; set; } = 80;
     public bool PlayfieldPulseDominantBlobs { get; set; }
-    public BlobPattern PlayfieldBlobPattern { get; set; } = BlobPattern.Random;
-    public int PlayfieldBlobCount { get; set; } = 10;
+    public BlobPattern PlayfieldBlobPattern { get; set; } = BlobPattern.PerfectMixed;
+    public int PlayfieldBlobCount { get; set; } = 12;
     public int PlayfieldBlobSizeOffset { get; set; } = 10;
     public int PlayfieldRotation { get; set; } = 270;
-    public BlobPattern BackglassBlobPattern { get; set; } = BlobPattern.RoughClockwise;
-    public int BackglassBlobCount { get; set; } = 6;
+    public BlobPattern BackglassBlobPattern { get; set; } = BlobPattern.PerfectMixed;
+    public int BackglassBlobCount { get; set; } = 8;
     public int BackglassBlobSizeOffset { get; set; } = 10;
-    public BlobPattern TopperBlobPattern { get; set; } = BlobPattern.Random;
-    public int TopperBlobCount { get; set; } = 4;
+    public BlobPattern TopperBlobPattern { get; set; } = BlobPattern.PerfectMixed;
+    public int TopperBlobCount { get; set; } = 8;
     public int TopperBlobSizeOffset { get; set; } = 10;
     public bool ReactiveBlobsPlayfield { get; set; }
     public bool ReactiveBlobsBackglass { get; set; }
@@ -102,8 +102,8 @@ public class AppSettings
     public double ReactivityThreshold { get; set; } = 0.10;
     public int ReactiveSpeedMs { get; set; } = 120;
     public double ReactiveOverdrive { get; set; } = 1.0;
-    public BlobPattern DmdBlobPattern { get; set; } = BlobPattern.Random;
-    public int DmdBlobCount { get; set; } = 6;
+    public BlobPattern DmdBlobPattern { get; set; } = BlobPattern.PerfectMixed;
+    public int DmdBlobCount { get; set; } = 10;
     public int DmdBlobSizeOffset { get; set; } = 10;
     public bool ExcludeMandelbrotFromRandom { get; set; } = true;
     public int MandelbrotTickIntervalMs { get; set; }
