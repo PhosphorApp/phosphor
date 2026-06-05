@@ -79,7 +79,7 @@ public sealed class ClockBlobPattern : IBlobPattern
     {
         _canvas = config.Canvas;
         _rng = config.Rng;
-        _brightness = Math.Clamp(Brightness, 0.05, 1.0);
+        _brightness = Math.Clamp(Brightness * 1.15, 0.05, 1.0);
         _sizeMultiplier = Math.Clamp(config.BlobSizeOffset, 1, 20) / 10.0;
         _digitalSizeMultiplier = 0.55 + (Math.Clamp(DigitalSize, 5, 100) - 5) * 0.50 / 95.0;
         _isDigital = ClockMode == 1;

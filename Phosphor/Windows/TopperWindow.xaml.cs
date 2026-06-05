@@ -21,6 +21,7 @@ public partial class TopperWindow : JukeboxWindow
     private LogoRingsMode _logoRings = LogoRingsMode.Standard;
     private string _logoText = "\u2022 PHOSPHOR \u2022 PHOSPHOR ";
     private double _distortion;
+    private double _screenScaling;
     private BlobPattern _blobPattern = BlobPattern.Random;
     private BlobPattern _blobPatternSetting = BlobPattern.Random;
     private bool _transitioning;
@@ -263,15 +264,26 @@ public partial class TopperWindow : JukeboxWindow
     public void SetDistortion(double distortion)
     {
         _distortion = Math.Clamp(distortion, -1.0, 1.0);
-        ApplyDistortion();
+        ApplyTransform();
     }
 
-    private void ApplyDistortion()
+    public void SetScreenScaling(double scaling)
+    {
+        _screenScaling = Math.Clamp(scaling, -1.0, 1.0);
+        ApplyTransform();
+    }
+
+    private void ApplyTransform()
     {
         double scaleX = _distortion > 0 ? 1.0 + _distortion : 1.0;
         double scaleY = _distortion < 0 ? 1.0 - _distortion : 1.0;
 
-        // Apply scale to the non-rotating wrapper so it stays axis-aligned
+        // Uniform screen scaling: slider range -1..1 maps to 0.7..1.3
+        double uniform = 1.0 + _screenScaling * 0.3;
+        scaleX *= uniform;
+        scaleY *= uniform;
+
+        // Apply combined scale to the non-rotating wrapper so it stays axis-aligned
         // with the monitor while the title canvas spins inside it.
         DistortionContainer.RenderTransform = new WpfMedia.ScaleTransform(scaleX, scaleY);
     }

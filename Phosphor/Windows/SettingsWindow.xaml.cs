@@ -47,6 +47,7 @@ public partial class SettingsWindow : JukeboxWindow
     private double _originalIntensity;
     private double _originalSpeed;
     private double _originalDistortion;
+    private double _originalScreenScaling;
     private BlobPattern _originalPlayfieldBlobPattern;
     private int _originalPlayfieldBlobCount;
     private int _originalPlayfieldBlobSizeOffset;
@@ -396,6 +397,7 @@ public partial class SettingsWindow : JukeboxWindow
             };
         }
         SliderDistortion.Value = settings.TopperDistortion * 100;
+        SliderScreenScaling.Value = settings.TopperScreenScaling * 100;
         CbDmdScreensaver.IsChecked = settings.DmdScreensaver;
         // Backglass logo dim
         CbBackglassLogoDim.IsChecked = settings.BackglassLogoDimEnabled;
@@ -898,6 +900,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalIntensity = settings.ScreensaverIntensity;
         _originalSpeed = settings.ScreensaverSpeed;
         _originalDistortion = settings.TopperDistortion;
+        _originalScreenScaling = settings.TopperScreenScaling;
         _originalPlayfieldBlobPattern = settings.PlayfieldBlobPattern;
         _originalPlayfieldBlobCount = settings.PlayfieldBlobCount;
         _originalPlayfieldBlobSizeOffset = settings.PlayfieldBlobSizeOffset;
@@ -1819,6 +1822,13 @@ public partial class SettingsWindow : JukeboxWindow
         if (DistortionValueText != null)
             DistortionValueText.Text = $"{e.NewValue / 100.0:F2}";
         _topperProxy?.SetDistortion(e.NewValue / 100.0);
+    }
+
+    private void SliderScreenScaling_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (ScreenScalingValueText != null)
+            ScreenScalingValueText.Text = $"{e.NewValue / 100.0:F2}";
+        _topperProxy?.SetScreenScaling(e.NewValue / 100.0);
     }
 
     private void SliderMatrixZoomRate_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -3076,6 +3086,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.ReactiveSpeedMs = (int)SliderReactiveSpeed.Value;
         _settings.ReactiveOverdrive = SliderReactiveOverdrive.Value / 10.0;
         _settings.TopperDistortion = SliderDistortion.Value / 100.0;
+        _settings.TopperScreenScaling = SliderScreenScaling.Value / 100.0;
         _settings.TopperLogoSpin = CbTopperLogoSpin.IsChecked == true;
         _settings.TopperLogoShadow = CbTopperLogoShadow.IsChecked == true;
         _settings.TopperLogoRings = (LogoRingsMode)(int)SliderTopperLogoRings.Value;
@@ -3116,6 +3127,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalIntensity = _settings.ScreensaverIntensity;
         _originalSpeed = _settings.ScreensaverSpeed;
         _originalDistortion = _settings.TopperDistortion;
+        _originalScreenScaling = _settings.TopperScreenScaling;
         _originalPlayfieldBlobPattern = _settings.PlayfieldBlobPattern;
         _originalPlayfieldBlobCount = _settings.PlayfieldBlobCount;
         _originalPlayfieldBlobSizeOffset = _settings.PlayfieldBlobSizeOffset;
@@ -3348,6 +3360,7 @@ public partial class SettingsWindow : JukeboxWindow
         _backglassProxy?.SetScreensaverSettings(_originalIntensity, _originalSpeed);
         _playfieldProxy?.SetScreensaverSettings(_originalIntensity, _originalSpeed);
         _topperProxy?.SetDistortion(_originalDistortion);
+        _topperProxy?.SetScreenScaling(_originalScreenScaling);
         Close();
     }
 

@@ -76,6 +76,9 @@ public sealed class TopperProxy
     public void SetDistortion(double distortion) =>
         _dispatcher.BeginInvoke(() => _window.SetDistortion(distortion));
 
+    public void SetScreenScaling(double scaling) =>
+        _dispatcher.BeginInvoke(() => _window.SetScreenScaling(scaling));
+
     // ── Logo ───────────────────────────────────────────────────────────
 
     public void SetLogoSpin(bool spin) =>

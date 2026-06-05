@@ -734,6 +734,7 @@ public partial class DmdWindow : JukeboxWindow
         _topperProxy.SetLogoRingsBrightness(settings.TopperLogoRingsBrightness);
         _topperProxy.SetLogoBrightness(settings.TopperLogoBrightness);
         _topperProxy.SetDistortion(settings.TopperDistortion);
+        _topperProxy.SetScreenScaling(settings.TopperScreenScaling);
         BlobTransition.ExcludeMandelbrotFromRandom = settings.ExcludeMandelbrotFromRandom;
         MandelbrotPattern.TickIntervalMs = settings.MandelbrotUseScreenRate
             ? ComputeScreenRateTickMs()
@@ -2085,6 +2086,7 @@ public partial class DmdWindow : JukeboxWindow
 
         _playfieldProxy?.SetOledSleepDefeat(_appSettings.OledSleepDefeatSeconds, _appSettings.OledSleepDefeatDurationSeconds, _appSettings.OledSleepDefeatIntensity);
         _topperProxy?.SetDistortion(_appSettings.TopperDistortion);
+        _topperProxy?.SetScreenScaling(_appSettings.TopperScreenScaling);
         _backglassProxy?.SetLogoDim(_appSettings.BackglassLogoDimEnabled, _appSettings.BackglassLogoDimOpacity, _appSettings.BackglassLogoDimTimeoutSeconds);
         _backglassProxy?.SetAudioOnly(_appSettings.BackglassAudioOnly);
         LogStep("BackglassDim/AudioOnly/OLED");

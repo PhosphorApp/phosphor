@@ -64,6 +64,7 @@ public class AppSettings
     public int LogoRingsBrightness { get; set; } = 25;
     public int LogoBrightness { get; set; } = 100;
     public double TopperDistortion { get; set; }
+    public double TopperScreenScaling { get; set; }
     public bool TopperLogoSpin { get; set; } = true;
     public bool TopperLogoShadow { get; set; } = true;
     public LogoRingsMode TopperLogoRings { get; set; } = LogoRingsMode.Standard;

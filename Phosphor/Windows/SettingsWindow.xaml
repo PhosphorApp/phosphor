@@ -1682,7 +1682,7 @@
                             <TextBlock Text="The main video screen options (typically the backglass screen)"
                                        FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
                                        TextWrapping="Wrap"/>
-                            <CheckBox x:Name="CbLogoSpin" Content="Spin logo on idle screens"
+                            <CheckBox x:Name="CbLogoSpin" Content="Spin logo"
                                       Foreground="{StaticResource TextBrush}" Margin="0,0,0,0"/>
                             <CheckBox x:Name="CbLogoShadow" Content="Logo drop shadow"
                                       Foreground="{StaticResource TextBrush}" Margin="0,4,0,0"
@@ -1863,6 +1863,19 @@
                                        FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
                                        TextWrapping="Wrap"/>
 
+                            <!-- Screen Scaling -->
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Screen Scaling:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="100"/>
+                                <TextBlock x:Name="ScreenScalingValueText" Text="0" Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" DockPanel.Dock="Right" Width="40"
+                                           TextAlignment="Right"/>
+                                <Slider x:Name="SliderScreenScaling" Minimum="-100" Maximum="100" Value="0"
+                                        VerticalAlignment="Center" IsMoveToPointEnabled="True"
+                                        ValueChanged="SliderScreenScaling_ValueChanged"
+                                        ToolTip="Uniformly scale all topper elements. Negative = smaller, Positive = larger."/>
+                            </DockPanel>
+
                             <!-- Logo Shape -->
                             <DockPanel Margin="0,0,0,8">
                                 <TextBlock Text="Logo Shape:" Foreground="{StaticResource TextBrush}"
@@ -1877,7 +1890,7 @@
                             </DockPanel>
 
                             <!-- Logo Controls -->
-                            <CheckBox x:Name="CbTopperLogoSpin" Content="Spin logo on idle screens"
+                            <CheckBox x:Name="CbTopperLogoSpin" Content="Spin logo"
                                       Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"/>
                             <CheckBox x:Name="CbTopperLogoShadow" Content="Logo drop shadow"
                                       Foreground="{StaticResource TextBrush}" Margin="0,4,0,0"
