@@ -44,8 +44,14 @@ public class AppSettings
     public KeyBindings KeyBindings { get; set; } = new();
     public int ResultColumns { get; set; } = 2;
     public int ResultFontSizeModifier { get; set; }
-    public double ScreensaverIntensity { get; set; } = 0.50;
-    public double ScreensaverSpeed { get; set; } = 1.0;
+    public double PlayfieldIntensity { get; set; } = 0.25;
+    public double PlayfieldSpeed { get; set; } = 1.0;
+    public double BackglassIntensity { get; set; } = 0.25;
+    public double BackglassSpeed { get; set; } = 1.0;
+    public double TopperIntensity { get; set; } = 0.25;
+    public double TopperSpeed { get; set; } = 1.0;
+    public double DmdIntensity { get; set; } = 0.25;
+    public double DmdSpeed { get; set; } = 1.0;
     public bool DmdScreensaver { get; set; }
     public bool DmdScreensaverDimEnabled { get; set; }
     public int DmdScreensaverDimOpacity { get; set; } = 80;
@@ -63,6 +69,7 @@ public class AppSettings
     public LogoRingsMode LogoRings { get; set; } = LogoRingsMode.Standard;
     public int LogoRingsBrightness { get; set; } = 25;
     public int LogoBrightness { get; set; } = 100;
+    public bool LogoBehindVisuals { get; set; }
     public double TopperDistortion { get; set; }
     public double TopperScreenScaling { get; set; }
     public bool TopperLogoSpin { get; set; } = true;

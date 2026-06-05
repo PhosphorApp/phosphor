@@ -226,7 +226,7 @@ public sealed class ClockBlobPattern : IBlobPattern
             double mx = cx + Math.Cos(angle) * radius - markerSize / 2;
             double my = cy + Math.Sin(angle) * radius - markerSize / 2;
 
-            var marker = CreateBlob(markerSize, _brightness * 0.25);
+            var marker = CreateBlob(markerSize, _brightness * 0.50);
             Canvas.SetLeft(marker, mx);
             Canvas.SetTop(marker, my);
             _canvas.Children.Add(marker);

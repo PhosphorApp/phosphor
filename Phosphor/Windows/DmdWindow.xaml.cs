@@ -719,20 +719,22 @@ public partial class DmdWindow : JukeboxWindow
         _backglassProxy.SetShowVideoInfo(settings.ShowVideoInfo);
         _backglassProxy.VideoInfoChanged += OnVideoInfoChanged;
         _showVideoInfo = settings.ShowVideoInfo;
-        _backglassProxy.SetScreensaverSettings(settings.ScreensaverIntensity, settings.ScreensaverSpeed);
+        _backglassProxy.SetScreensaverSettings(settings.BackglassIntensity, settings.BackglassSpeed);
         _backglassProxy.SetLogoText(settings.LogoText);
         _backglassProxy.SetLogoSpin(settings.LogoSpin);
         _backglassProxy.SetLogoShadow(settings.LogoShadow);
         _backglassProxy.SetLogoRings(settings.LogoRings);
         _backglassProxy.SetLogoRingsBrightness(settings.LogoRingsBrightness);
         _backglassProxy.SetLogoBrightness(settings.LogoBrightness);
+        _backglassProxy.SetLogoBehindVisuals(settings.LogoBehindVisuals);
         _playfieldProxy.SetOledSleepDefeat(settings.OledSleepDefeatSeconds, settings.OledSleepDefeatDurationSeconds, settings.OledSleepDefeatIntensity);
-        _topperProxy.SetScreensaverSettings(settings.ScreensaverIntensity, settings.ScreensaverSpeed);
+        _topperProxy.SetScreensaverSettings(settings.TopperIntensity, settings.TopperSpeed);
         _topperProxy.SetLogoSpin(settings.TopperLogoSpin);
         _topperProxy.SetLogoShadow(settings.TopperLogoShadow);
         _topperProxy.SetLogoRings(settings.TopperLogoRings);
         _topperProxy.SetLogoRingsBrightness(settings.TopperLogoRingsBrightness);
         _topperProxy.SetLogoBrightness(settings.TopperLogoBrightness);
+        _topperProxy.SetLogoBehindVisuals(settings.LogoBehindVisuals);
         _topperProxy.SetDistortion(settings.TopperDistortion);
         _topperProxy.SetScreenScaling(settings.TopperScreenScaling);
         BlobTransition.ExcludeMandelbrotFromRandom = settings.ExcludeMandelbrotFromRandom;
@@ -862,8 +864,8 @@ public partial class DmdWindow : JukeboxWindow
         _topperProxy.SetBlobSizeOffset(settings.TopperBlobSizeOffset);
         _topperProxy.SetBlobPattern(settings.TopperBlobPattern);
         // Configure blob state before creating anything to avoid triple-creation and brightness pop
-        _ssBlobIntensity = Math.Clamp(settings.ScreensaverIntensity, 0.05, 0.8);
-        _ssBlobSpeedMultiplier = Math.Clamp(settings.ScreensaverSpeed, 0.1, 5.0);
+        _ssBlobIntensity = Math.Clamp(settings.DmdIntensity, 0.05, 0.8);
+        _ssBlobSpeedMultiplier = Math.Clamp(settings.DmdSpeed, 0.1, 5.0);
         _ssBlobCount = Math.Clamp(settings.DmdBlobCount, 0, 100);
         _ssBlobSizeOffset = Math.Clamp(settings.DmdBlobSizeOffset, 1, 20);
         _ssBlobPatternSetting = settings.DmdBlobPattern;
@@ -2053,10 +2055,10 @@ public partial class DmdWindow : JukeboxWindow
 
         if (settingsWindow.SpeedChanged)
         {
-            _backglassProxy?.SetScreensaverSettings(_appSettings.ScreensaverIntensity, _appSettings.ScreensaverSpeed);
-            _playfieldProxy?.SetScreensaverSettings(_appSettings.ScreensaverIntensity, _appSettings.ScreensaverSpeed);
-            _topperProxy?.SetScreensaverSettings(_appSettings.ScreensaverIntensity, _appSettings.ScreensaverSpeed);
-            SetScreensaverSettings(_appSettings.ScreensaverIntensity, _appSettings.ScreensaverSpeed);
+            _backglassProxy?.SetScreensaverSettings(_appSettings.BackglassIntensity, _appSettings.BackglassSpeed);
+            _playfieldProxy?.SetScreensaverSettings(_appSettings.PlayfieldIntensity, _appSettings.PlayfieldSpeed);
+            _topperProxy?.SetScreensaverSettings(_appSettings.TopperIntensity, _appSettings.TopperSpeed);
+            SetScreensaverSettings(_appSettings.DmdIntensity, _appSettings.DmdSpeed);
             LogStep("ScreensaverSettings (changed)");
         }
 
@@ -2068,12 +2070,14 @@ public partial class DmdWindow : JukeboxWindow
             _backglassProxy?.SetLogoRings(_appSettings.LogoRings);
             _backglassProxy?.SetLogoRingsBrightness(_appSettings.LogoRingsBrightness);
             _backglassProxy?.SetLogoBrightness(_appSettings.LogoBrightness);
+            _backglassProxy?.SetLogoBehindVisuals(_appSettings.LogoBehindVisuals);
             _topperProxy?.SetLogoText(_appSettings.LogoText);
             _topperProxy?.SetLogoSpin(_appSettings.TopperLogoSpin);
             _topperProxy?.SetLogoShadow(_appSettings.TopperLogoShadow);
             _topperProxy?.SetLogoRings(_appSettings.TopperLogoRings);
             _topperProxy?.SetLogoRingsBrightness(_appSettings.TopperLogoRingsBrightness);
             _topperProxy?.SetLogoBrightness(_appSettings.TopperLogoBrightness);
+            _topperProxy?.SetLogoBehindVisuals(_appSettings.LogoBehindVisuals);
             _backglassProxy?.SetLogoMorphColor(_appSettings.LogoColorMode);
             _reactiveLogoBackglass = _appSettings.LogoColorMode == LogoColorMode.Reactive;
             if (_appSettings.ShowTopper)
@@ -2260,7 +2264,7 @@ public partial class DmdWindow : JukeboxWindow
             SetDmdScreensaver(_appSettings.DmdScreensaver);
         SetDmdScreensaverDim(_appSettings.DmdScreensaverDimEnabled, _appSettings.DmdScreensaverDimOpacity, _appSettings.DmdScreensaverDimTimeoutSeconds, _appSettings.DmdScreensaverDimDarkBlobs, _appSettings.DmdSwapTarget, _appSettings.ApplyDefaultDmdOnSwap);
         if (!settingsWindow.SpeedChanged)
-            SetScreensaverSettings(_appSettings.ScreensaverIntensity, _appSettings.ScreensaverSpeed);
+            SetScreensaverSettings(_appSettings.DmdIntensity, _appSettings.DmdSpeed);
         if (settingsWindow.ReactiveBlobsChanged)
             ApplyReactiveBlobs(_appSettings.ReactiveBlobsPlayfield, _appSettings.ReactiveBlobsBackglass, _appSettings.ReactiveBlobsTopper, _appSettings.ReactiveBlobsDmd);
         ApplyResizable(_appSettings.ResizableWindows);

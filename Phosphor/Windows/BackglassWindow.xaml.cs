@@ -1224,6 +1224,16 @@ public partial class BackglassWindow : JukeboxWindow
         }
     }
 
+    public void SetLogoBehindVisuals(bool behind)
+    {
+        int blobZ = behind ? 2 : 0;
+        int recordZ = behind ? 0 : 1;
+        int titleZ = behind ? 1 : 2;
+        System.Windows.Controls.Panel.SetZIndex(IdleCanvas, blobZ);
+        System.Windows.Controls.Panel.SetZIndex(RecordOverlay, recordZ);
+        System.Windows.Controls.Panel.SetZIndex(TitleCanvas, titleZ);
+    }
+
     public void SetBlobPattern(BlobPattern pattern)
     {
         _transitioning = false;

@@ -44,8 +44,14 @@ public partial class SettingsWindow : JukeboxWindow
     private BackglassProxy? _backglassProxy;
     private PlayfieldProxy? _playfieldProxy;
     private TopperProxy? _topperProxy;
-    private double _originalIntensity;
-    private double _originalSpeed;
+    private double _originalPlayfieldIntensity;
+    private double _originalPlayfieldSpeed;
+    private double _originalBackglassIntensity;
+    private double _originalBackglassSpeed;
+    private double _originalTopperIntensity;
+    private double _originalTopperSpeed;
+    private double _originalDmdIntensity;
+    private double _originalDmdSpeed;
     private double _originalDistortion;
     private double _originalScreenScaling;
     private BlobPattern _originalPlayfieldBlobPattern;
@@ -72,6 +78,7 @@ public partial class SettingsWindow : JukeboxWindow
     private double _originalReactiveOverdrive;
     private string _originalTitleText;
     private string _originalLogoText;
+    private bool _originalLogoBehindVisuals;
     private bool _originalLogoSpin;
     private bool _originalLogoShadow;
     private LogoRingsMode _originalLogoRings;
@@ -166,10 +173,18 @@ public partial class SettingsWindow : JukeboxWindow
     public bool WindowsReset { get; private set; }
 
     public bool SpeedChanged =>
-        Math.Abs(_settings.ScreensaverSpeed - _originalSpeed) > 0.001;
+        Math.Abs(_settings.PlayfieldSpeed - _originalPlayfieldSpeed) > 0.001 ||
+        Math.Abs(_settings.BackglassSpeed - _originalBackglassSpeed) > 0.001 ||
+        Math.Abs(_settings.TopperSpeed - _originalTopperSpeed) > 0.001 ||
+        Math.Abs(_settings.DmdSpeed - _originalDmdSpeed) > 0.001 ||
+        Math.Abs(_settings.PlayfieldIntensity - _originalPlayfieldIntensity) > 0.001 ||
+        Math.Abs(_settings.BackglassIntensity - _originalBackglassIntensity) > 0.001 ||
+        Math.Abs(_settings.TopperIntensity - _originalTopperIntensity) > 0.001 ||
+        Math.Abs(_settings.DmdIntensity - _originalDmdIntensity) > 0.001;
 
     public bool PlayfieldBlobsChanged =>
-        SpeedChanged ||
+        Math.Abs(_settings.PlayfieldIntensity - _originalPlayfieldIntensity) > 0.001 ||
+        Math.Abs(_settings.PlayfieldSpeed - _originalPlayfieldSpeed) > 0.001 ||
         _settings.PlayfieldBlobPattern != _originalPlayfieldBlobPattern ||
         _settings.PlayfieldBlobCount != _originalPlayfieldBlobCount ||
         _settings.PlayfieldBlobSizeOffset != _originalPlayfieldBlobSizeOffset;
@@ -178,19 +193,22 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.PlayfieldRotation != _originalPlayfieldRotation;
 
     public bool BackglassBlobsChanged =>
-        SpeedChanged ||
+        Math.Abs(_settings.BackglassIntensity - _originalBackglassIntensity) > 0.001 ||
+        Math.Abs(_settings.BackglassSpeed - _originalBackglassSpeed) > 0.001 ||
         _settings.BackglassBlobPattern != _originalBackglassBlobPattern ||
         _settings.BackglassBlobCount != _originalBackglassBlobCount ||
         _settings.BackglassBlobSizeOffset != _originalBackglassBlobSizeOffset;
 
     public bool TopperBlobsChanged =>
-        SpeedChanged ||
+        Math.Abs(_settings.TopperIntensity - _originalTopperIntensity) > 0.001 ||
+        Math.Abs(_settings.TopperSpeed - _originalTopperSpeed) > 0.001 ||
         _settings.TopperBlobPattern != _originalTopperBlobPattern ||
         _settings.TopperBlobCount != _originalTopperBlobCount ||
         _settings.TopperBlobSizeOffset != _originalTopperBlobSizeOffset;
 
     public bool DmdBlobsChanged =>
-        SpeedChanged ||
+        Math.Abs(_settings.DmdIntensity - _originalDmdIntensity) > 0.001 ||
+        Math.Abs(_settings.DmdSpeed - _originalDmdSpeed) > 0.001 ||
         _settings.DmdBlobPattern != _originalDmdBlobPattern ||
         _settings.DmdBlobCount != _originalDmdBlobCount ||
         _settings.DmdBlobSizeOffset != _originalDmdBlobSizeOffset;
@@ -210,6 +228,7 @@ public partial class SettingsWindow : JukeboxWindow
 
     public bool LogoChanged =>
         _settings.LogoText != _originalLogoText ||
+        _settings.LogoBehindVisuals != _originalLogoBehindVisuals ||
         _settings.LogoSpin != _originalLogoSpin ||
         _settings.LogoShadow != _originalLogoShadow ||
         _settings.LogoRings != _originalLogoRings ||
@@ -464,6 +483,7 @@ public partial class SettingsWindow : JukeboxWindow
 
         TbTitleText.Text = settings.TitleText;
         TbLogoText.Text = settings.LogoText;
+        SliderLogoBehind.Value = settings.LogoBehindVisuals ? 0 : 1;
         CbLogoSpin.IsChecked = settings.LogoSpin;
         CbLogoShadow.IsChecked = settings.LogoShadow;
 
@@ -890,15 +910,33 @@ public partial class SettingsWindow : JukeboxWindow
 
         SliderResultFontSize.Value = settings.ResultFontSizeModifier;
 
-        // Screensaver settings (slider values: intensity 5-80 maps to 0.05-0.80, speed 1-50 maps to 0.1-5.0)
-        SliderIntensity.Value = settings.ScreensaverIntensity * 100;
-        SliderSpeed.Value = settings.ScreensaverSpeed * 10;
-        IntensityValueText.Text = $"{(int)(settings.ScreensaverIntensity * 100)}%";
-        SpeedValueText.Text = $"{settings.ScreensaverSpeed:F1}×";
+        // Per-screen intensity/speed settings (slider values match AppSettings directly: intensity 5-80 as %, speed 0.2-5.0)
+        SliderIntensityPlayfield.Value = settings.PlayfieldIntensity * 100;
+        TxtIntensityPlayfield.Text = $"{(int)(settings.PlayfieldIntensity * 100)}%";
+        SliderSpeedPlayfield.Value = settings.PlayfieldSpeed;
+        TxtSpeedPlayfield.Text = $"{settings.PlayfieldSpeed:F1}×";
+        SliderIntensityBackglass.Value = settings.BackglassIntensity * 100;
+        TxtIntensityBackglass.Text = $"{(int)(settings.BackglassIntensity * 100)}%";
+        SliderSpeedBackglass.Value = settings.BackglassSpeed;
+        TxtSpeedBackglass.Text = $"{settings.BackglassSpeed:F1}×";
+        SliderIntensityTopper.Value = settings.TopperIntensity * 100;
+        TxtIntensityTopper.Text = $"{(int)(settings.TopperIntensity * 100)}%";
+        SliderSpeedTopper.Value = settings.TopperSpeed;
+        TxtSpeedTopper.Text = $"{settings.TopperSpeed:F1}×";
+        SliderIntensityDmd.Value = settings.DmdIntensity * 100;
+        TxtIntensityDmd.Text = $"{(int)(settings.DmdIntensity * 100)}%";
+        SliderSpeedDmd.Value = settings.DmdSpeed;
+        TxtSpeedDmd.Text = $"{settings.DmdSpeed:F1}×";
 
         // Store original values for cancel revert
-        _originalIntensity = settings.ScreensaverIntensity;
-        _originalSpeed = settings.ScreensaverSpeed;
+        _originalPlayfieldIntensity = settings.PlayfieldIntensity;
+        _originalPlayfieldSpeed = settings.PlayfieldSpeed;
+        _originalBackglassIntensity = settings.BackglassIntensity;
+        _originalBackglassSpeed = settings.BackglassSpeed;
+        _originalTopperIntensity = settings.TopperIntensity;
+        _originalTopperSpeed = settings.TopperSpeed;
+        _originalDmdIntensity = settings.DmdIntensity;
+        _originalDmdSpeed = settings.DmdSpeed;
         _originalDistortion = settings.TopperDistortion;
         _originalScreenScaling = settings.TopperScreenScaling;
         _originalPlayfieldBlobPattern = settings.PlayfieldBlobPattern;
@@ -925,6 +963,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalReactiveOverdrive = settings.ReactiveOverdrive;
         _originalTitleText = settings.TitleText;
         _originalLogoText = settings.LogoText;
+        _originalLogoBehindVisuals = settings.LogoBehindVisuals;
         _originalLogoSpin = settings.LogoSpin;
         _originalLogoShadow = settings.LogoShadow;
         _originalLogoRings = settings.LogoRings;
@@ -1274,6 +1313,16 @@ public partial class SettingsWindow : JukeboxWindow
         }
         if (dlg.ShowDialog(this) == true)
             TbVideoPath.Text = dlg.FileName;
+    }
+
+    private void ClearStaticImage_Click(object sender, RoutedEventArgs e)
+    {
+        TbStaticImagePath.Text = "";
+    }
+
+    private void ClearVideo_Click(object sender, RoutedEventArgs e)
+    {
+        TbVideoPath.Text = "";
     }
 
     public void SetHistoryCount(int count)
@@ -1791,22 +1840,6 @@ public partial class SettingsWindow : JukeboxWindow
         _topperProxy?.ResetPosition(1, 1, 800, 300);
     }
 
-    private void SliderIntensity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (IntensityValueText != null)
-            IntensityValueText.Text = $"{(int)e.NewValue}%";
-        if (SliderSpeed == null) return;
-        _backglassProxy?.SetScreensaverSettings(e.NewValue / 100.0, SliderSpeed.Value / 10.0);
-        _playfieldProxy?.SetScreensaverSettings(e.NewValue / 100.0, SliderSpeed.Value / 10.0);
-        _topperProxy?.SetScreensaverSettings(e.NewValue / 100.0, SliderSpeed.Value / 10.0);
-    }
-
-    private void SliderSpeed_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (SpeedValueText != null)
-            SpeedValueText.Text = $"{e.NewValue / 10.0:F1}×";
-    }
-
     private void BtnTitleTextDefault_Click(object sender, RoutedEventArgs e)
     {
         TbTitleText.Text = "\uD83C\uDFB5 PHOSPHOR";
@@ -1994,6 +2027,7 @@ public partial class SettingsWindow : JukeboxWindow
         UpdateGravityTuningVisibility();
         UpdateClockTuningVisibility();
         UpdateBlobCountSliderStates();
+        UpdateRandomTuningVisibility();
     }
 
     /// <summary>
@@ -2001,24 +2035,98 @@ public partial class SettingsWindow : JukeboxWindow
     /// </summary>
     private void UpdateBlobCountSliderStates()
     {
-        SetSlidersForPattern(CbBlobPatternPlayfield, SliderBlobCountPlayfield, TxtBlobCountPlayfield, SliderBlobSizePlayfield, TxtBlobSizePlayfield);
-        SetSlidersForPattern(CbBlobPatternBackglass, SliderBlobCountBackglass, TxtBlobCountBackglass, SliderBlobSizeBackglass, TxtBlobSizeBackglass);
-        SetSlidersForPattern(CbBlobPatternTopper, SliderBlobCountTopper, TxtBlobCountTopper, SliderBlobSizeTopper, TxtBlobSizeTopper);
-        SetSlidersForPattern(CbBlobPatternDmd, SliderBlobCountDmd, TxtBlobCountDmd, SliderBlobSizeDmd, TxtBlobSizeDmd);
+        SetSlidersForPattern(CbBlobPatternPlayfield, PanelBlobCountPlayfield, PanelBlobSizePlayfield, PanelSpeedPlayfield);
+        SetSlidersForPattern(CbBlobPatternBackglass, PanelBlobCountBackglass, PanelBlobSizeBackglass, PanelSpeedBackglass);
+        SetSlidersForPattern(CbBlobPatternTopper, PanelBlobCountTopper, PanelBlobSizeTopper, PanelSpeedTopper);
+        SetSlidersForPattern(CbBlobPatternDmd, PanelBlobCountDmd, PanelBlobSizeDmd, PanelSpeedDmd);
 
-        static void SetSlidersForPattern(System.Windows.Controls.ComboBox? cb, System.Windows.Controls.Slider? countSlider, System.Windows.Controls.TextBlock? countLabel,
-            System.Windows.Controls.Slider? sizeSlider, System.Windows.Controls.TextBlock? sizeLabel)
+        static void SetSlidersForPattern(System.Windows.Controls.ComboBox? cb,
+            FrameworkElement? countPanel, FrameworkElement? sizePanel, FrameworkElement? speedPanel)
         {
-            if (cb == null || countSlider == null) return;
+            if (cb == null) return;
             var name = cb.SelectedItem as string ?? "";
             bool hideAll = name == "ProjectM" || name == "Mandelbrot"
                 || name == "Clock";
             bool hideSize = hideAll || name == "Game of Life";
-            countSlider.Visibility = hideAll ? Visibility.Collapsed : Visibility.Visible;
-            if (countLabel != null) countLabel.Visibility = hideAll ? Visibility.Collapsed : Visibility.Visible;
-            if (sizeSlider != null) sizeSlider.Visibility = hideSize ? Visibility.Collapsed : Visibility.Visible;
-            if (sizeLabel != null) sizeLabel.Visibility = hideSize ? Visibility.Collapsed : Visibility.Visible;
+            bool hideSpeed = name == "Game of Life" || name == "Clock"
+                || name == "Ferrofluid" || name == "ProjectM";
+            if (countPanel != null) countPanel.Visibility = hideAll ? Visibility.Hidden : Visibility.Visible;
+            if (sizePanel != null) sizePanel.Visibility = hideSize ? Visibility.Hidden : Visibility.Visible;
+            if (speedPanel != null) speedPanel.Visibility = hideSpeed ? Visibility.Hidden : Visibility.Visible;
         }
+    }
+
+    private void SliderPerScreenIntensity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (sender is not System.Windows.Controls.Slider slider) return;
+        var label = slider.Name switch
+        {
+            nameof(SliderIntensityPlayfield) => TxtIntensityPlayfield,
+            nameof(SliderIntensityBackglass) => TxtIntensityBackglass,
+            nameof(SliderIntensityTopper) => TxtIntensityTopper,
+            nameof(SliderIntensityDmd) => TxtIntensityDmd,
+            _ => null
+        };
+        if (label != null) label.Text = $"{(int)e.NewValue}%";
+
+        double intensity = e.NewValue / 100.0;
+        switch (slider.Name)
+        {
+            case nameof(SliderIntensityPlayfield):
+                _playfieldProxy?.SetScreensaverSettings(intensity, SliderSpeedPlayfield.Value);
+                break;
+            case nameof(SliderIntensityBackglass):
+                _backglassProxy?.SetScreensaverSettings(intensity, SliderSpeedBackglass.Value);
+                break;
+            case nameof(SliderIntensityTopper):
+                _topperProxy?.SetScreensaverSettings(intensity, SliderSpeedTopper.Value);
+                break;
+        }
+    }
+
+    private void SliderPerScreenSpeed_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (sender is not System.Windows.Controls.Slider slider) return;
+        var label = slider.Name switch
+        {
+            nameof(SliderSpeedPlayfield) => TxtSpeedPlayfield,
+            nameof(SliderSpeedBackglass) => TxtSpeedBackglass,
+            nameof(SliderSpeedTopper) => TxtSpeedTopper,
+            nameof(SliderSpeedDmd) => TxtSpeedDmd,
+            _ => null
+        };
+        if (label != null) label.Text = $"{e.NewValue:F1}×";
+
+        double speed = e.NewValue;
+        switch (slider.Name)
+        {
+            case nameof(SliderSpeedPlayfield):
+                _playfieldProxy?.SetScreensaverSettings(SliderIntensityPlayfield.Value / 100.0, speed);
+                break;
+            case nameof(SliderSpeedBackglass):
+                _backglassProxy?.SetScreensaverSettings(SliderIntensityBackglass.Value / 100.0, speed);
+                break;
+            case nameof(SliderSpeedTopper):
+                _topperProxy?.SetScreensaverSettings(SliderIntensityTopper.Value / 100.0, speed);
+                break;
+        }
+    }
+
+    private void UpdateRandomTuningVisibility()
+    {
+        if (PanelRandomTuning == null) return;
+
+        bool anyRandom = false;
+        foreach (var cb in new[] { CbBlobPatternPlayfield, CbBlobPatternBackglass, CbBlobPatternTopper, CbBlobPatternDmd })
+        {
+            if (cb?.SelectedItem is string name && (name == "Random" || name == "Random Per Song"))
+            {
+                anyRandom = true;
+                break;
+            }
+        }
+
+        PanelRandomTuning.Visibility = anyRandom ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void UpdateMandelbrotTuningVisibility()
@@ -2958,10 +3066,17 @@ public partial class SettingsWindow : JukeboxWindow
         if (CbResultColumns.SelectedItem is int cols)
             _settings.ResultColumns = cols;
         _settings.ResultFontSizeModifier = Math.Clamp((int)SliderResultFontSize.Value, -12, 12);
-        _settings.ScreensaverIntensity = SliderIntensity.Value / 100.0;
-        _settings.ScreensaverSpeed = SliderSpeed.Value / 10.0;
+        _settings.PlayfieldIntensity = SliderIntensityPlayfield.Value / 100.0;
+        _settings.PlayfieldSpeed = SliderSpeedPlayfield.Value;
+        _settings.BackglassIntensity = SliderIntensityBackglass.Value / 100.0;
+        _settings.BackglassSpeed = SliderSpeedBackglass.Value;
+        _settings.TopperIntensity = SliderIntensityTopper.Value / 100.0;
+        _settings.TopperSpeed = SliderSpeedTopper.Value;
+        _settings.DmdIntensity = SliderIntensityDmd.Value / 100.0;
+        _settings.DmdSpeed = SliderSpeedDmd.Value;
         _settings.TitleText = TbTitleText.Text;
         _settings.LogoText = TbLogoText.Text;
+        _settings.LogoBehindVisuals = SliderLogoBehind.Value == 0;
         _settings.LogoSpin = CbLogoSpin.IsChecked == true;
         _settings.LogoShadow = CbLogoShadow.IsChecked == true;
         _settings.LogoRings = (LogoRingsMode)(int)SliderLogoRings.Value;
@@ -3124,8 +3239,14 @@ public partial class SettingsWindow : JukeboxWindow
         }
 
         // Update originals so Cancel won't revert applied changes
-        _originalIntensity = _settings.ScreensaverIntensity;
-        _originalSpeed = _settings.ScreensaverSpeed;
+        _originalPlayfieldIntensity = _settings.PlayfieldIntensity;
+        _originalPlayfieldSpeed = _settings.PlayfieldSpeed;
+        _originalBackglassIntensity = _settings.BackglassIntensity;
+        _originalBackglassSpeed = _settings.BackglassSpeed;
+        _originalTopperIntensity = _settings.TopperIntensity;
+        _originalTopperSpeed = _settings.TopperSpeed;
+        _originalDmdIntensity = _settings.DmdIntensity;
+        _originalDmdSpeed = _settings.DmdSpeed;
         _originalDistortion = _settings.TopperDistortion;
         _originalScreenScaling = _settings.TopperScreenScaling;
         _originalPlayfieldBlobPattern = _settings.PlayfieldBlobPattern;
@@ -3152,6 +3273,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalReactiveOverdrive = _settings.ReactiveOverdrive;
         _originalTitleText = _settings.TitleText;
         _originalLogoText = _settings.LogoText;
+        _originalLogoBehindVisuals = _settings.LogoBehindVisuals;
         _originalLogoSpin = _settings.LogoSpin;
         _originalLogoShadow = _settings.LogoShadow;
         _originalLogoRings = _settings.LogoRings;
@@ -3357,8 +3479,9 @@ public partial class SettingsWindow : JukeboxWindow
         if (_testDofClient != null && _testDofClient != _sharedDofClient)
             _testDofClient.Dispose();
         _testDofClient = null;
-        _backglassProxy?.SetScreensaverSettings(_originalIntensity, _originalSpeed);
-        _playfieldProxy?.SetScreensaverSettings(_originalIntensity, _originalSpeed);
+        _backglassProxy?.SetScreensaverSettings(_originalBackglassIntensity, _originalBackglassSpeed);
+        _playfieldProxy?.SetScreensaverSettings(_originalPlayfieldIntensity, _originalPlayfieldSpeed);
+        _topperProxy?.SetScreensaverSettings(_originalTopperIntensity, _originalTopperSpeed);
         _topperProxy?.SetDistortion(_originalDistortion);
         _topperProxy?.SetScreenScaling(_originalScreenScaling);
         Close();

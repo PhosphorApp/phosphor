@@ -319,32 +319,12 @@
                     <Border Background="{StaticResource SurfaceBrush}" CornerRadius="6"
                             Padding="12" Margin="0,8,0,0">
                         <StackPanel>
-                            <TextBlock Text="SCREENSAVER AND VISUAL EFFECTS" FontSize="12" FontWeight="Bold"
+                            <TextBlock Text="TITLE AND LOGO" FontSize="12" FontWeight="Bold"
                                 Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
-                            <TextBlock Text="Screensaver &amp; effect options that apply to all windows"
+                            <TextBlock Text="Customize the text and logo"
                                        FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
                                        TextWrapping="Wrap"/>
-                            <DockPanel Margin="0,0,0,8">
-                                <TextBlock Text="Intensity:" Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Width="70"/>
-                                <TextBlock x:Name="IntensityValueText" Text="25%"
-                                           VerticalAlignment="Center" DockPanel.Dock="Right" Width="40"
-                                           TextAlignment="Right"/>
-                                <Slider x:Name="SliderIntensity" Minimum="5" Maximum="80" Value="25"
-                                        VerticalAlignment="Center" IsMoveToPointEnabled="True"
-                                        ValueChanged="SliderIntensity_ValueChanged"/>
-                            </DockPanel>
-                            <DockPanel>
-                                <TextBlock Text="Speed:" Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Width="70"/>
-                                <TextBlock x:Name="SpeedValueText" Text="1.0×" Foreground="{StaticResource TextDimBrush}"
-                                           VerticalAlignment="Center" DockPanel.Dock="Right" Width="40"
-                                           TextAlignment="Right"/>
-                                <Slider x:Name="SliderSpeed" Minimum="1" Maximum="50" Value="10"
-                                        VerticalAlignment="Center" IsMoveToPointEnabled="True"
-                                        ValueChanged="SliderSpeed_ValueChanged"/>
-                            </DockPanel>
-                            <DockPanel Margin="0,8,0,0">
+                            <DockPanel Margin="0,0,0,0">
                                 <TextBlock Text="Title text:" Foreground="{StaticResource TextBrush}"
                                            VerticalAlignment="Center" Width="70"/>
                                 <Button DockPanel.Dock="Right" x:Name="BtnTitleTextDefault" Content="Default" Width="100" Margin="6,0,0,0"
@@ -360,82 +340,244 @@
                                 <TextBox x:Name="TbLogoText" Foreground="{StaticResource TextBrush}"
                                          Background="{StaticResource SurfaceBrush}" VerticalAlignment="Center"/>
                             </DockPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <TextBlock Text="Logo layer:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="70"/>
+                                <TextBlock Text="Behind" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <Slider x:Name="SliderLogoBehind" Minimum="0" Maximum="1" Value="1"
+                                        Width="40" VerticalAlignment="Center"
+                                        IsSnapToTickEnabled="True" TickFrequency="1" IsMoveToPointEnabled="True"
+                                        ToolTip="Render logo behind or in front of visualizations"/>
+                                <TextBlock Text="In front" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                            </StackPanel>
                             <TextBlock Text="SCREENSAVER PATTERN" FontSize="12" FontWeight="Bold"
                                 Foreground="{StaticResource AccentBrush}" Margin="0,12,0,12"/>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
-                                <TextBlock Text="Playfield:" Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Width="70"/>
-                                <ComboBox x:Name="CbBlobPatternPlayfield" Width="180" HorizontalAlignment="Left" SelectionChanged="CbBlobPattern_SelectionChanged"/>
-                                <TextBlock x:Name="TxtBlobCountPlayfield" Text="10" Foreground="{StaticResource TextDimBrush}"
-                                           VerticalAlignment="Center" Width="25" TextAlignment="Right" Margin="12,0,4,0"/>
-                                <Slider x:Name="SliderBlobCountPlayfield" Minimum="0" Maximum="100" Value="10"
-                                        Width="100" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
-                                        ToolTip="Number of blobs"
-                                        ValueChanged="SliderBlobCountPlayfield_ValueChanged"/>
-                                <TextBlock x:Name="TxtBlobSizePlayfield" Text="Default" Foreground="{StaticResource TextDimBrush}"
-                                           VerticalAlignment="Center" Width="45" TextAlignment="Right" Margin="12,0,4,0"/>
-                                <Slider x:Name="SliderBlobSizePlayfield" Minimum="1" Maximum="20" Value="10"
-                                        Width="100" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
-                                        ToolTip="Size of blobs"
-                                        ValueChanged="SliderBlobSize_ValueChanged"/>
+                            <TextBlock Text="Adjust per-window visuals; set number of blobs, size, brightness, and speed"
+                                FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
+                                TextWrapping="Wrap"/>
+                            <StackPanel Margin="0,0,0,8">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="Playfield:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="70"/>
+                                    <ComboBox x:Name="CbBlobPatternPlayfield" Width="180" HorizontalAlignment="Left"
+                                              SelectionChanged="CbBlobPattern_SelectionChanged"/>
+                                </StackPanel>
+                                <Grid Margin="70,4,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="117"/>
+                                        <ColumnDefinition Width="132"/>
+                                        <ColumnDefinition Width="122"/>
+                                        <ColumnDefinition Width="122"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" Grid.Column="0" VerticalAlignment="Center"
+                                                x:Name="PanelBlobCountPlayfield">
+                                        <TextBlock x:Name="TxtBlobCountPlayfield" Text="10" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="25" TextAlignment="Right" Margin="0,0,2,0"/>
+                                        <Slider x:Name="SliderBlobCountPlayfield" Minimum="0" Maximum="100" Value="10"
+                                                Width="90" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
+                                                ToolTip="Number of blobs"
+                                                ValueChanged="SliderBlobCountPlayfield_ValueChanged"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Grid.Column="1" VerticalAlignment="Center"
+                                                x:Name="PanelBlobSizePlayfield">
+                                        <TextBlock x:Name="TxtBlobSizePlayfield" Text="Default" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="40" TextAlignment="Right" Margin="0,0,2,0"/>
+                                        <Slider x:Name="SliderBlobSizePlayfield" Minimum="1" Maximum="20" Value="10"
+                                                Width="90" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
+                                                ToolTip="Size of blobs"
+                                                ValueChanged="SliderBlobSize_ValueChanged"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Grid.Column="2" VerticalAlignment="Center">
+                                        <TextBlock x:Name="TxtIntensityPlayfield" Text="25%" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="30" TextAlignment="Right" Margin="5,0,2,0"/>
+                                        <Slider x:Name="SliderIntensityPlayfield" Minimum="5" Maximum="80"
+                                                Value="25" IsSnapToTickEnabled="True" TickFrequency="5"
+                                                Width="90" VerticalAlignment="Center"
+                                                ToolTip="Intensity"
+                                                ValueChanged="SliderPerScreenIntensity_ValueChanged"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Grid.Column="3" VerticalAlignment="Center"
+                                                x:Name="PanelSpeedPlayfield">
+                                        <TextBlock x:Name="TxtSpeedPlayfield" Text="1.0×" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="30" TextAlignment="Right" Margin="5,0,2,0"/>
+                                        <Slider x:Name="SliderSpeedPlayfield" Minimum="0.2" Maximum="5.0"
+                                                Value="1.0" IsSnapToTickEnabled="True" TickFrequency="0.2"
+                                                Width="90" VerticalAlignment="Center"
+                                                ToolTip="Speed"
+                                                ValueChanged="SliderPerScreenSpeed_ValueChanged"/>
+                                    </StackPanel>
+                                </Grid>
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
-                                <TextBlock Text="Backglass:" Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Width="70"/>
-                                <ComboBox x:Name="CbBlobPatternBackglass" Width="180" HorizontalAlignment="Left" SelectionChanged="CbBlobPattern_SelectionChanged"/>
-                                <TextBlock x:Name="TxtBlobCountBackglass" Text="10" Foreground="{StaticResource TextDimBrush}"
-                                           VerticalAlignment="Center" Width="25" TextAlignment="Right" Margin="12,0,4,0"/>
-                                <Slider x:Name="SliderBlobCountBackglass" Minimum="0" Maximum="100" Value="10"
-                                        Width="100" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
-                                        ToolTip="Number of blobs"
-                                        ValueChanged="SliderBlobCountBackglass_ValueChanged"/>
-                                <TextBlock x:Name="TxtBlobSizeBackglass" Text="Default" Foreground="{StaticResource TextDimBrush}"
-                                           VerticalAlignment="Center" Width="45" TextAlignment="Right" Margin="12,0,4,0"/>
-                                <Slider x:Name="SliderBlobSizeBackglass" Minimum="1" Maximum="20" Value="10"
-                                        Width="100" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
-                                        ToolTip="Size of blobs"
-                                        ValueChanged="SliderBlobSize_ValueChanged"/>
+                            <StackPanel Margin="0,5,0,8">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="Backglass:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="70"/>
+                                    <ComboBox x:Name="CbBlobPatternBackglass" Width="180" HorizontalAlignment="Left"
+                                              SelectionChanged="CbBlobPattern_SelectionChanged"/>
+                                </StackPanel>
+                                <Grid Margin="70,4,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="117"/>
+                                        <ColumnDefinition Width="132"/>
+                                        <ColumnDefinition Width="122"/>
+                                        <ColumnDefinition Width="122"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" Grid.Column="0" VerticalAlignment="Center"
+                                                x:Name="PanelBlobCountBackglass">
+                                        <TextBlock x:Name="TxtBlobCountBackglass" Text="10" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="25" TextAlignment="Right" Margin="0,0,2,0"/>
+                                        <Slider x:Name="SliderBlobCountBackglass" Minimum="0" Maximum="100" Value="10"
+                                                Width="90" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
+                                                ToolTip="Number of blobs"
+                                                ValueChanged="SliderBlobCountBackglass_ValueChanged"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Grid.Column="1" VerticalAlignment="Center"
+                                                x:Name="PanelBlobSizeBackglass">
+                                        <TextBlock x:Name="TxtBlobSizeBackglass" Text="Default" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="40" TextAlignment="Right" Margin="0,0,2,0"/>
+                                        <Slider x:Name="SliderBlobSizeBackglass" Minimum="1" Maximum="20" Value="10"
+                                                Width="90" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
+                                                ToolTip="Size of blobs"
+                                                ValueChanged="SliderBlobSize_ValueChanged"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Grid.Column="2" VerticalAlignment="Center">
+                                        <TextBlock x:Name="TxtIntensityBackglass" Text="25%" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="30" TextAlignment="Right" Margin="5,0,2,0"/>
+                                        <Slider x:Name="SliderIntensityBackglass" Minimum="5" Maximum="80"
+                                                Value="25" IsSnapToTickEnabled="True" TickFrequency="5"
+                                                Width="90" VerticalAlignment="Center"
+                                                ToolTip="Intensity"
+                                                ValueChanged="SliderPerScreenIntensity_ValueChanged"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Grid.Column="3" VerticalAlignment="Center"
+                                                x:Name="PanelSpeedBackglass">
+                                        <TextBlock x:Name="TxtSpeedBackglass" Text="1.0×" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="30" TextAlignment="Right" Margin="5,0,2,0"/>
+                                        <Slider x:Name="SliderSpeedBackglass" Minimum="0.2" Maximum="5.0"
+                                                Value="1.0" IsSnapToTickEnabled="True" TickFrequency="0.2"
+                                                Width="90" VerticalAlignment="Center"
+                                                ToolTip="Speed"
+                                                ValueChanged="SliderPerScreenSpeed_ValueChanged"/>
+                                    </StackPanel>
+                                </Grid>
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
-                                <TextBlock Text="Topper:" Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Width="70"/>
-                                <ComboBox x:Name="CbBlobPatternTopper" Width="180" HorizontalAlignment="Left" SelectionChanged="CbBlobPattern_SelectionChanged"/>
-                                <TextBlock x:Name="TxtBlobCountTopper" Text="10" Foreground="{StaticResource TextDimBrush}"
-                                           VerticalAlignment="Center" Width="25" TextAlignment="Right" Margin="12,0,4,0"/>
-                                <Slider x:Name="SliderBlobCountTopper" Minimum="0" Maximum="100" Value="10"
-                                        Width="100" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
-                                        ToolTip="Number of blobs"
-                                        ValueChanged="SliderBlobCountTopper_ValueChanged"/>
-                                <TextBlock x:Name="TxtBlobSizeTopper" Text="Default" Foreground="{StaticResource TextDimBrush}"
-                                           VerticalAlignment="Center" Width="45" TextAlignment="Right" Margin="12,0,4,0"/>
-                                <Slider x:Name="SliderBlobSizeTopper" Minimum="1" Maximum="20" Value="10"
-                                        Width="100" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
-                                        ToolTip="Size of blobs"
-                                        ValueChanged="SliderBlobSize_ValueChanged"/>
+                            <StackPanel Margin="0,5,0,8">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="Topper:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="70"/>
+                                    <ComboBox x:Name="CbBlobPatternTopper" Width="180" HorizontalAlignment="Left"
+                                              SelectionChanged="CbBlobPattern_SelectionChanged"/>
+                                </StackPanel>
+                                <Grid Margin="70,4,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="117"/>
+                                        <ColumnDefinition Width="132"/>
+                                        <ColumnDefinition Width="122"/>
+                                        <ColumnDefinition Width="122"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" Grid.Column="0" VerticalAlignment="Center"
+                                                x:Name="PanelBlobCountTopper">
+                                        <TextBlock x:Name="TxtBlobCountTopper" Text="10" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="25" TextAlignment="Right" Margin="0,0,2,0"/>
+                                        <Slider x:Name="SliderBlobCountTopper" Minimum="0" Maximum="100" Value="10"
+                                                Width="90" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
+                                                ToolTip="Number of blobs"
+                                                ValueChanged="SliderBlobCountTopper_ValueChanged"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Grid.Column="1" VerticalAlignment="Center"
+                                                x:Name="PanelBlobSizeTopper">
+                                        <TextBlock x:Name="TxtBlobSizeTopper" Text="Default" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="40" TextAlignment="Right" Margin="0,0,2,0"/>
+                                        <Slider x:Name="SliderBlobSizeTopper" Minimum="1" Maximum="20" Value="10"
+                                                Width="90" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
+                                                ToolTip="Size of blobs"
+                                                ValueChanged="SliderBlobSize_ValueChanged"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Grid.Column="2" VerticalAlignment="Center">
+                                        <TextBlock x:Name="TxtIntensityTopper" Text="25%" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="30" TextAlignment="Right" Margin="5,0,2,0"/>
+                                        <Slider x:Name="SliderIntensityTopper" Minimum="5" Maximum="80"
+                                                Value="25" IsSnapToTickEnabled="True" TickFrequency="5"
+                                                Width="90" VerticalAlignment="Center"
+                                                ToolTip="Intensity"
+                                                ValueChanged="SliderPerScreenIntensity_ValueChanged"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Grid.Column="3" VerticalAlignment="Center"
+                                                x:Name="PanelSpeedTopper">
+                                        <TextBlock x:Name="TxtSpeedTopper" Text="1.0×" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="30" TextAlignment="Right" Margin="5,0,2,0"/>
+                                        <Slider x:Name="SliderSpeedTopper" Minimum="0.2" Maximum="5.0"
+                                                Value="1.0" IsSnapToTickEnabled="True" TickFrequency="0.2"
+                                                Width="90" VerticalAlignment="Center"
+                                                ToolTip="Speed"
+                                                ValueChanged="SliderPerScreenSpeed_ValueChanged"/>
+                                    </StackPanel>
+                                </Grid>
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
-                                <TextBlock Text="DMD:" Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Width="70"/>
-                                <ComboBox x:Name="CbBlobPatternDmd" Width="180" HorizontalAlignment="Left" SelectionChanged="CbBlobPattern_SelectionChanged"/>
-                                <TextBlock x:Name="TxtBlobCountDmd" Text="10" Foreground="{StaticResource TextDimBrush}"
-                                           VerticalAlignment="Center" Width="25" TextAlignment="Right" Margin="12,0,4,0"/>
-                                <Slider x:Name="SliderBlobCountDmd" Minimum="0" Maximum="100" Value="10"
-                                        Width="100" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
-                                        ToolTip="Number of blobs"
-                                        ValueChanged="SliderBlobCountDmd_ValueChanged"/>
-                                <TextBlock x:Name="TxtBlobSizeDmd" Text="Default" Foreground="{StaticResource TextDimBrush}"
-                                           VerticalAlignment="Center" Width="45" TextAlignment="Right" Margin="12,0,4,0"/>
-                                <Slider x:Name="SliderBlobSizeDmd" Minimum="1" Maximum="20" Value="10"
-                                        Width="100" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
-                                        ToolTip="Size of blobs"
-                                        ValueChanged="SliderBlobSize_ValueChanged"/>
+                            <StackPanel Margin="0,5,0,8">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="DMD:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="70"/>
+                                    <ComboBox x:Name="CbBlobPatternDmd" Width="180" HorizontalAlignment="Left"
+                                              SelectionChanged="CbBlobPattern_SelectionChanged"/>
+                                </StackPanel>
+                                <Grid Margin="70,4,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="117"/>
+                                        <ColumnDefinition Width="132"/>
+                                        <ColumnDefinition Width="122"/>
+                                        <ColumnDefinition Width="122"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" Grid.Column="0" VerticalAlignment="Center"
+                                                x:Name="PanelBlobCountDmd">
+                                        <TextBlock x:Name="TxtBlobCountDmd" Text="10" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="25" TextAlignment="Right" Margin="0,0,2,0"/>
+                                        <Slider x:Name="SliderBlobCountDmd" Minimum="0" Maximum="100" Value="10"
+                                                Width="90" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
+                                                ToolTip="Number of blobs"
+                                                ValueChanged="SliderBlobCountDmd_ValueChanged"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Grid.Column="1" VerticalAlignment="Center"
+                                                x:Name="PanelBlobSizeDmd">
+                                        <TextBlock x:Name="TxtBlobSizeDmd" Text="Default" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="40" TextAlignment="Right" Margin="0,0,2,0"/>
+                                        <Slider x:Name="SliderBlobSizeDmd" Minimum="1" Maximum="20" Value="10"
+                                                Width="90" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
+                                                ToolTip="Size of blobs"
+                                                ValueChanged="SliderBlobSize_ValueChanged"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Grid.Column="2" VerticalAlignment="Center">
+                                        <TextBlock x:Name="TxtIntensityDmd" Text="25%" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="30" TextAlignment="Right" Margin="5,0,2,0"/>
+                                        <Slider x:Name="SliderIntensityDmd" Minimum="5" Maximum="80"
+                                                Value="25" IsSnapToTickEnabled="True" TickFrequency="5"
+                                                Width="90" VerticalAlignment="Center"
+                                                ToolTip="Intensity"
+                                                ValueChanged="SliderPerScreenIntensity_ValueChanged"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Grid.Column="3" VerticalAlignment="Center"
+                                                x:Name="PanelSpeedDmd">
+                                        <TextBlock x:Name="TxtSpeedDmd" Text="1.0×" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="30" TextAlignment="Right" Margin="5,0,2,0"/>
+                                        <Slider x:Name="SliderSpeedDmd" Minimum="0.2" Maximum="5.0"
+                                                Value="1.0" IsSnapToTickEnabled="True" TickFrequency="0.2"
+                                                Width="90" VerticalAlignment="Center"
+                                                ToolTip="Speed"
+                                                ValueChanged="SliderPerScreenSpeed_ValueChanged"/>
+                                    </StackPanel>
+                                </Grid>
                             </StackPanel>
-                            <CheckBox x:Name="CbExcludeMandelbrot" Content="Exclude Mandelbrot from random choices"
-                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
-                                      ToolTip="Mandelbrot rendering can be CPU/GPU intensive and may impact performance on some systems."/>
-                            <CheckBox x:Name="CbExcludeProjectM" Content="Exclude ProjectM from random choices"
-                                      Foreground="{StaticResource TextBrush}" Margin="0,4,0,0"
-                                      ToolTip="ProjectM rendering can be CPU/GPU intensive and may impact performance on some systems."/>
+                            <!-- ═══ SECTION: Random Tuning (visible only when any pattern is Random or Random Per Song) ═══ -->
+                            <StackPanel x:Name="PanelRandomTuning" Visibility="Collapsed">
+                                <TextBlock Text="RANDOM TUNING" FontSize="12" FontWeight="Bold"
+                                    Foreground="{StaticResource AccentBrush}" Margin="0,4,0,6"/>
+                                <CheckBox x:Name="CbExcludeMandelbrot" Content="Exclude Mandelbrot from random choices"
+                                          Foreground="{StaticResource TextBrush}" Margin="0,4,0,0"
+                                          ToolTip="Mandelbrot rendering can be CPU/GPU intensive and may impact performance on some systems."/>
+                                <CheckBox x:Name="CbExcludeProjectM" Content="Exclude ProjectM from random choices"
+                                          Foreground="{StaticResource TextBrush}" Margin="0,4,0,0"
+                                          ToolTip="ProjectM rendering can be CPU/GPU intensive and may impact performance on some systems."/>
+                            </StackPanel>
 
                             <!-- ═══ SECTION: Mandelbrot Tuning (visible only when any pattern is Mandelbrot) ═══ -->
                             <StackPanel x:Name="PanelMandelbrotTuning" Visibility="Collapsed">
@@ -1800,6 +1942,8 @@
                                            VerticalAlignment="Center" Width="70"/>
                                 <Button DockPanel.Dock="Right" Content="Browse…" Padding="8,4" Margin="6,0,0,0"
                                         Click="BrowseStaticImage_Click"/>
+                                <Button DockPanel.Dock="Right" Content="Clear" Padding="8,4" Margin="6,0,0,0"
+                                        Click="ClearStaticImage_Click"/>
                                 <TextBox x:Name="TbStaticImagePath" Foreground="{StaticResource TextBrush}"
                                          Background="{StaticResource SurfaceBrush}" VerticalAlignment="Center"
                                          IsReadOnly="True"/>
@@ -1809,6 +1953,8 @@
                                            VerticalAlignment="Center" Width="70"/>
                                 <Button DockPanel.Dock="Right" Content="Browse…" Padding="8,4" Margin="6,0,0,0"
                                         Click="BrowseVideo_Click"/>
+                                <Button DockPanel.Dock="Right" Content="Clear" Padding="8,4" Margin="6,0,0,0"
+                                        Click="ClearVideo_Click"/>
                                 <TextBox x:Name="TbVideoPath" Foreground="{StaticResource TextBrush}"
                                          Background="{StaticResource SurfaceBrush}" VerticalAlignment="Center"
                                          IsReadOnly="True"/>

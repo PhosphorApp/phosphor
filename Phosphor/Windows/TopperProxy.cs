@@ -96,6 +96,9 @@ public sealed class TopperProxy
     public void SetLogoBrightness(int percent) =>
         _dispatcher.BeginInvoke(() => _window.SetLogoBrightness(percent));
 
+    public void SetLogoBehindVisuals(bool behind) =>
+        _dispatcher.BeginInvoke(() => _window.SetLogoBehindVisuals(behind));
+
     public void SetLogoText(string text) =>
         _dispatcher.BeginInvoke(() => _window.SetLogoText(text));
 

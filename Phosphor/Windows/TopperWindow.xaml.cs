@@ -323,6 +323,16 @@ public partial class TopperWindow : JukeboxWindow
         TitleCanvas.Opacity = opacity;
     }
 
+    public void SetLogoBehindVisuals(bool behind)
+    {
+        int blobZ = behind ? 2 : 0;
+        int recordZ = behind ? 0 : 1;
+        int titleZ = behind ? 1 : 2;
+        System.Windows.Controls.Panel.SetZIndex(BlobCanvas, blobZ);
+        System.Windows.Controls.Panel.SetZIndex(RecordOverlay, recordZ);
+        System.Windows.Controls.Panel.SetZIndex(TitleCanvas, titleZ);
+    }
+
     public void SetLogoText(string text)
     {
         _logoText = text;

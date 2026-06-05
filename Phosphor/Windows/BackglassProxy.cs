@@ -189,6 +189,9 @@ public sealed class BackglassProxy
     public void SetLogoBrightness(int percent) =>
         _dispatcher.BeginInvoke(() => _window.SetLogoBrightness(percent));
 
+    public void SetLogoBehindVisuals(bool behind) =>
+        _dispatcher.BeginInvoke(() => _window.SetLogoBehindVisuals(behind));
+
     public void SetLogoDim(bool enabled, int opacityPercent, int timeoutSeconds) =>
         _dispatcher.BeginInvoke(() => _window.SetLogoDim(enabled, opacityPercent, timeoutSeconds));
 
