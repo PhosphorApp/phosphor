@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Net.Http;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -12,7 +13,7 @@ namespace Phosphor;
 
 public partial class JukeboxViewModel : ObservableObject
 {
-    private readonly YoutubeClient _youtube = new();
+    private YoutubeClient _youtube = new();
     private readonly PlayHistory _history;
     private readonly PlaylistManager _playlists;
     private readonly SearchHistory _searchHistory;
@@ -544,6 +545,19 @@ public partial class JukeboxViewModel : ObservableObject
     public int LiveCachingMs { get; set; } = 1000;
     public int FileCachingMs { get; set; } = 300;
     public bool HttpReconnect { get; set; } = true;
+
+    // ── YouTube timeout ──
+    public int YouTubeTimeoutSeconds { get; private set; } = 30;
+
+    public void SetYouTubeTimeout(int seconds)
+    {
+        seconds = Math.Clamp(seconds, 5, 120);
+        if (seconds == YouTubeTimeoutSeconds) return;
+        YouTubeTimeoutSeconds = seconds;
+        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(seconds) };
+        _youtube = new YoutubeClient(http);
+        DebugLog.Log("YouTube", $"Timeout set to {seconds}s");
+    }
 
     // ── Gapless playback ──
     public bool GaplessPlayback { get; set; }

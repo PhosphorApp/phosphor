@@ -170,10 +170,23 @@
                                         <TextBlock Text="NETWORK" FontSize="12" FontWeight="Bold"
                                                    Foreground="{StaticResource AccentBrush}" Margin="0,16,0,6"/>
                                         <TextBlock Text="Buffering settings for streaming playback. Higher values improve reliability on slower connections but increase startup delay."
-                                                   FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,8"
-                                                   TextWrapping="Wrap"/>
+                                                    FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,8"
+                                                    TextWrapping="Wrap"/>
 
                                         <DockPanel Margin="0,4,0,0">
+                                            <TextBlock Text="YouTube Timeout (s):" Foreground="{StaticResource TextBrush}"
+                                                       VerticalAlignment="Center" Width="160"/>
+                                            <TextBlock x:Name="YouTubeTimeoutValueText" Text="30" Foreground="{StaticResource TextDimBrush}"
+                                                       VerticalAlignment="Center" DockPanel.Dock="Right" Width="50"
+                                                       TextAlignment="Right"/>
+                                            <Slider x:Name="SliderYouTubeTimeout" Minimum="5" Maximum="120"
+                                                    Value="30" TickFrequency="5" IsSnapToTickEnabled="True"
+                                                    VerticalAlignment="Center" IsMoveToPointEnabled="True"
+                                                    ValueChanged="SliderYouTubeTimeout_ValueChanged"
+                                                    ToolTip="Maximum time to wait for YouTube search and playlist responses. Increase on slow connections."/>
+                                        </DockPanel>
+
+                                        <DockPanel Margin="0,8,0,0">
                                             <TextBlock Text="Network Caching (ms):" Foreground="{StaticResource TextBrush}"
                                                        VerticalAlignment="Center" Width="160"/>
                                             <TextBlock x:Name="NetworkCachingValueText" Text="2000" Foreground="{StaticResource TextDimBrush}"
@@ -213,8 +226,8 @@
                                         </DockPanel>
 
                                         <CheckBox x:Name="CbHttpReconnect" Content="Auto-reconnect on dropped connections"
-                                                  Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
-                                                  ToolTip="Automatically attempt to reconnect when the HTTP connection is lost during streaming."/>
+                                                   Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
+                                                   ToolTip="Automatically attempt to reconnect when the HTTP connection is lost during streaming."/>
                                     </StackPanel>
                                 </Border>
                             </ScrollViewer>

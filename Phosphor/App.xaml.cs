@@ -70,6 +70,7 @@ public partial class App : Application
         viewModel.Volume = _settings.Volume;
         viewModel.RepeatEnabled = _settings.RepeatEnabled;
         viewModel.AutoDjEnabled = _settings.AutoDjEnabled;
+        viewModel.SetYouTubeTimeout(_settings.YouTubeTimeoutSeconds);
         if (!string.IsNullOrWhiteSpace(_settings.PlexServerUrl) && !string.IsNullOrWhiteSpace(_settings.PlexToken))
             viewModel.ConfigurePlex(_settings.PlexServerUrl, _settings.PlexToken, _settings.PlexLibraries, _settings.PlexStereoAudio);
 

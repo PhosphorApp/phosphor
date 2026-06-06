@@ -447,7 +447,9 @@ public partial class DmdWindow : JukeboxWindow
     {
         PlaylistPicker.SelectionChanged += (_, _) =>
         {
-            if (PlaylistPicker.SelectedValue is string name
+            // Only react to user-initiated selection (dropdown open), not programmatic binding updates
+            if (PlaylistPicker.IsDropDownOpen
+                && PlaylistPicker.SelectedValue is string name
                 && DataContext is JukeboxViewModel vm
                 && !string.IsNullOrEmpty(name))
             {
@@ -1076,6 +1078,7 @@ public partial class DmdWindow : JukeboxWindow
         if (_isFilteringDropdown) return;
         if (sender is System.Windows.Controls.ComboBox cb
             && cb.SelectedItem is string selected
+            && cb.IsDropDownOpen
             && DataContext is JukeboxViewModel vm)
         {
             var trimmed = selected.Trim();
@@ -2312,6 +2315,7 @@ public partial class DmdWindow : JukeboxWindow
             vm.LiveCachingMs = _appSettings.LiveCachingMs;
             vm.FileCachingMs = _appSettings.FileCachingMs;
             vm.HttpReconnect = _appSettings.HttpReconnect;
+            vm.SetYouTubeTimeout(_appSettings.YouTubeTimeoutSeconds);
             vm.CacheMode = _appSettings.CacheMode;
             vm.GaplessPlayback = _appSettings.PlexGaplessPlayback;
             LogStep("VmProperties");

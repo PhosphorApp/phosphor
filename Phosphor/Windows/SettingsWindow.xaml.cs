@@ -1042,9 +1042,11 @@ public partial class SettingsWindow : JukeboxWindow
         SliderLiveCaching.Value = settings.LiveCachingMs;
         SliderFileCaching.Value = settings.FileCachingMs;
         CbHttpReconnect.IsChecked = settings.HttpReconnect;
+        SliderYouTubeTimeout.Value = settings.YouTubeTimeoutSeconds;
         NetworkCachingValueText.Text = settings.NetworkCachingMs.ToString();
         LiveCachingValueText.Text = settings.LiveCachingMs.ToString();
         FileCachingValueText.Text = settings.FileCachingMs.ToString();
+        YouTubeTimeoutValueText.Text = settings.YouTubeTimeoutSeconds.ToString();
 
         // Plex
         TbPlexUrl.Text = settings.PlexServerUrl;
@@ -3216,6 +3218,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.LiveCachingMs = (int)SliderLiveCaching.Value;
         _settings.FileCachingMs = (int)SliderFileCaching.Value;
         _settings.HttpReconnect = CbHttpReconnect.IsChecked == true;
+        _settings.YouTubeTimeoutSeconds = (int)SliderYouTubeTimeout.Value;
         _settings.PlexServerUrl = TbPlexUrl.Text.Trim();
         _settings.PlexToken = TbPlexToken.Text.Trim();
         _settings.PlexStereoAudio = CbPlexStereo.IsChecked == true;
@@ -3390,6 +3393,12 @@ public partial class SettingsWindow : JukeboxWindow
     {
         if (FileCachingValueText != null)
             FileCachingValueText.Text = ((int)e.NewValue).ToString();
+    }
+
+    private void SliderYouTubeTimeout_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (YouTubeTimeoutValueText != null)
+            YouTubeTimeoutValueText.Text = ((int)e.NewValue).ToString();
     }
 
     private async void PlexTest_Click(object sender, RoutedEventArgs e)

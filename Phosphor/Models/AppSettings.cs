@@ -287,6 +287,7 @@ public class AppSettings
     public int LiveCachingMs { get; set; } = 1000;
     public int FileCachingMs { get; set; } = 300;
     public bool HttpReconnect { get; set; } = true;
+    public int YouTubeTimeoutSeconds { get; set; } = 30;
 
     // Plex integration
     public string PlexServerUrl { get; set; } = "";
