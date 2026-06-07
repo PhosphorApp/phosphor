@@ -48,6 +48,7 @@ public sealed class GravitySimulator : IDisposable
     private readonly double _speedMultiplier;
     private readonly int _minBodies;
     private readonly int _maxBodies;
+    private readonly bool _useBitmapCache;
     private int _dustCooldown;
     private readonly Random _rng = new();
 
@@ -90,7 +91,8 @@ public sealed class GravitySimulator : IDisposable
         List<RadialGradientBrush> gradBrushes,
         Canvas canvas,
         double intensity,
-        double speedMultiplier)
+        double speedMultiplier,
+        bool useBitmapCache = true)
     {
         _blobs = blobs;
         _states = states;
@@ -102,6 +104,7 @@ public sealed class GravitySimulator : IDisposable
         _canvas = canvas;
         _intensity = intensity;
         _speedMultiplier = Math.Max(0.1, speedMultiplier);
+        _useBitmapCache = useBitmapCache;
 
         // Set up camera roam
         if (GravityBlobPattern.CameraRoam)
@@ -1049,7 +1052,7 @@ public sealed class GravitySimulator : IDisposable
             Fill = gradBrush,
             Opacity = opacity,
             RenderTransformOrigin = new Point(0.5, 0.5),
-            CacheMode = new BitmapCache(1.0),
+            CacheMode = _useBitmapCache ? new BitmapCache(1.0) : null,
         };
 
         Canvas.SetLeft(blob, x);

@@ -126,7 +126,7 @@ public sealed class GravityBlobPattern : BlobPatternBase
     {
         _simulator = new GravitySimulator(
             _blobs, _states, _brushes, _gradBrushes,
-            _canvas, _intensity, _speedMultiplier);
+            _canvas, _intensity, _speedMultiplier, _useBitmapCache);
         _simulator.Start();
     }
 

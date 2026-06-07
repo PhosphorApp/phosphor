@@ -255,7 +255,7 @@ public sealed class MatrixBlobPattern : BlobPatternBase
         else
             col.FadeOutY = double.MaxValue;
 
-        col.Leader.Opacity = 1.0;
+        col.Leader.Opacity = _intensity;
         col.Leader.Text = RandomChar().ToString();
         // Lock the trail color for this column's entire life
         if (ColorCycling && col.Index < _brushes.Count)
@@ -453,13 +453,13 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             }
 
             if (col.FadingOut)
-            {
-                col.Leader.Opacity = Math.Max(0, col.Leader.Opacity - dt * 2.0);
-                if (col.Leader.Opacity <= 0)
                 {
-                    SpawnColumn(col);
+                    col.Leader.Opacity = Math.Max(0, col.Leader.Opacity - dt * 2.0);
+                    if (col.Leader.Opacity <= 0)
+                    {
+                        SpawnColumn(col);
+                    }
                 }
-            }
             else
             {
                 // Visible bottom in layer-local coords: center + half-height/scale
@@ -489,9 +489,9 @@ public sealed class MatrixBlobPattern : BlobPatternBase
                 continue;
             }
 
-            // Fade based on remaining lifetime
+            // Fade based on remaining lifetime, scaled by intensity setting
             double frac = Math.Clamp(trail.Lifetime / trail.MaxLifetime, 0, 1);
-            trail.Element.Opacity = frac;
+            trail.Element.Opacity = frac * _intensity;
 
             // Trail characters change infrequently
             trail.CharChangeAccum += dt;
@@ -554,7 +554,7 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             FontFamily = new FontFamily("Consolas"),
             FontWeight = FontWeights.Bold,
             Foreground = brush,
-            Opacity = 1.0,
+            Opacity = _intensity,
             // No CacheMode: trail Text + Opacity change every tick, which invalidates
             // the bitmap cache each frame and is more expensive than not caching.
         };
