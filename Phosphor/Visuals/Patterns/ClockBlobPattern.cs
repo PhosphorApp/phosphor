@@ -50,6 +50,7 @@ public sealed class ClockBlobPattern : IBlobPattern
     private readonly double _digitalSizeMultiplier;
     private readonly bool _isDigital;
 
+    private readonly double _maxOrbitRadius;
     private readonly List<FrameworkElement> _blobs = new();
     private readonly List<SolidColorBrush> _brushes = new();
     private readonly List<RadialGradientBrush> _gradBrushes = new();
@@ -83,6 +84,7 @@ public sealed class ClockBlobPattern : IBlobPattern
         _sizeMultiplier = Math.Clamp(config.BlobSizeOffset, 1, 20) / 10.0;
         _digitalSizeMultiplier = 0.55 + (Math.Clamp(DigitalSize, 5, 100) - 5) * 0.50 / 95.0;
         _isDigital = ClockMode == 1;
+        _maxOrbitRadius = config.MaxOrbitRadius;
     }
 
     // ─── IBlobPattern lifecycle ───────────────────────────────────────
@@ -204,8 +206,9 @@ public sealed class ClockBlobPattern : IBlobPattern
         double cx = w / 2;
         double cy = h / 2;
 
-        // Match the logo ring radius used by the topper/backglass record overlay
-        double radius = Math.Min(w, h) * 0.40;
+        // Use the record-overlay radius when supplied (backglass = 0.45×dim),
+        // otherwise fall back to the topper default (0.40×dim).
+        double radius = _maxOrbitRadius > 0 ? _maxOrbitRadius : Math.Min(w, h) * 0.40;
 
         // Larger blobs so they're clearly visible at this scale
         double analogScale = AnalogSize switch
@@ -275,7 +278,7 @@ public sealed class ClockBlobPattern : IBlobPattern
         double h = Math.Max(200, _canvas.ActualHeight);
         double cx = w / 2;
         double cy = h / 2;
-        double radius = Math.Min(w, h) * 0.40;
+        double radius = _maxOrbitRadius > 0 ? _maxOrbitRadius : Math.Min(w, h) * 0.40;
 
         var now = DateTime.Now;
         double totalSeconds = now.Second + now.Millisecond / 1000.0;
