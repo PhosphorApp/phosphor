@@ -663,7 +663,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
     {
         if (useEraBanded) return _currentBirthColor;
         double hue = PickConstrainedHue();
-        return PackColor(HslToColor(hue, 0.9, 0.6));
+        return PackColor(ColorHelper.HsvToColor(hue, 0.9, 0.9));
     }
 
     /// <summary>Place a single living cell at (x, y) with the given packed color.</summary>
@@ -772,7 +772,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
             else
             {
                 double hue = _rng.NextDouble() * 360.0;
-                packed = PackColor(HslToColor(hue, 0.9, 0.6));
+                packed = PackColor(ColorHelper.HsvToColor(hue, 0.9, 0.9));
             }
             int cx = _rng.Next(marginX, _gridW - marginX);
             int cy = _rng.Next(marginY, _gridH - marginY);
@@ -907,7 +907,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
         double periodMs = HueRotationPeriodMs / speed;
         double phase = (Environment.TickCount64 % (long)periodMs) / periodMs;
         double hue = phase * 360.0;
-        _currentBirthColor = PackColor(HslToColor(hue, 0.9, 0.6));
+        _currentBirthColor = PackColor(ColorHelper.HsvToColor(hue, 0.9, 0.9));
     }
 
     private void StepSimulation()
@@ -2248,7 +2248,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
             else
             {
                 double hue = PickConstrainedHue();
-                var color = HslToColor(hue, 0.9, 0.6);
+                var color = ColorHelper.HsvToColor(hue, 0.9, 0.9);
                 packed = PackColor(color);
             }
 
@@ -2660,7 +2660,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
         {
             // Genetic mode: pick a distinct hue so the sweeper is visually traceable
             double hue = _rng.NextDouble() * 360.0;
-            birthColor = PackColor(HslToColor(hue, 0.9, 0.65));
+            birthColor = PackColor(ColorHelper.HsvToColor(hue, 0.85, 0.95));
         }
 
         rotation &= 3;
@@ -2855,23 +2855,4 @@ public sealed class GameOfLifePattern : BlobPatternBase
         return cellBand == band;
     }
 
-    private static Color HslToColor(double h, double s, double l)
-    {
-        double c = (1.0 - Math.Abs(2.0 * l - 1.0)) * s;
-        double x = c * (1.0 - Math.Abs((h / 60.0) % 2.0 - 1.0));
-        double m = l - c / 2.0;
-
-        double r, g, b;
-        if (h < 60) { r = c; g = x; b = 0; }
-        else if (h < 120) { r = x; g = c; b = 0; }
-        else if (h < 180) { r = 0; g = c; b = x; }
-        else if (h < 240) { r = 0; g = x; b = c; }
-        else if (h < 300) { r = x; g = 0; b = c; }
-        else { r = c; g = 0; b = x; }
-
-        return Color.FromRgb(
-            (byte)Math.Clamp((r + m) * 255, 0, 255),
-            (byte)Math.Clamp((g + m) * 255, 0, 255),
-            (byte)Math.Clamp((b + m) * 255, 0, 255));
     }
-}

@@ -403,7 +403,7 @@
                                     <StackPanel Orientation="Horizontal" Grid.Column="2" VerticalAlignment="Center">
                                         <TextBlock x:Name="TxtIntensityPlayfield" Text="50%" Foreground="{StaticResource TextDimBrush}"
                                                    VerticalAlignment="Center" Width="30" TextAlignment="Right" Margin="5,0,2,0"/>
-                                        <Slider x:Name="SliderIntensityPlayfield" Minimum="5" Maximum="80"
+                                        <Slider x:Name="SliderIntensityPlayfield" Minimum="5" Maximum="100"
                                                 Value="50" IsSnapToTickEnabled="True" TickFrequency="5"
                                                 Width="90" VerticalAlignment="Center"
                                                 ToolTip="Intensity"
@@ -456,7 +456,7 @@
                                     <StackPanel Orientation="Horizontal" Grid.Column="2" VerticalAlignment="Center">
                                         <TextBlock x:Name="TxtIntensityBackglass" Text="50%" Foreground="{StaticResource TextDimBrush}"
                                                    VerticalAlignment="Center" Width="30" TextAlignment="Right" Margin="5,0,2,0"/>
-                                        <Slider x:Name="SliderIntensityBackglass" Minimum="5" Maximum="80"
+                                        <Slider x:Name="SliderIntensityBackglass" Minimum="5" Maximum="100"
                                                 Value="50" IsSnapToTickEnabled="True" TickFrequency="5"
                                                 Width="90" VerticalAlignment="Center"
                                                 ToolTip="Intensity"
@@ -509,7 +509,7 @@
                                     <StackPanel Orientation="Horizontal" Grid.Column="2" VerticalAlignment="Center">
                                         <TextBlock x:Name="TxtIntensityTopper" Text="50%" Foreground="{StaticResource TextDimBrush}"
                                                    VerticalAlignment="Center" Width="30" TextAlignment="Right" Margin="5,0,2,0"/>
-                                        <Slider x:Name="SliderIntensityTopper" Minimum="5" Maximum="80"
+                                        <Slider x:Name="SliderIntensityTopper" Minimum="5" Maximum="100"
                                                 Value="50" IsSnapToTickEnabled="True" TickFrequency="5"
                                                 Width="90" VerticalAlignment="Center"
                                                 ToolTip="Intensity"
@@ -562,7 +562,7 @@
                                     <StackPanel Orientation="Horizontal" Grid.Column="2" VerticalAlignment="Center">
                                         <TextBlock x:Name="TxtIntensityDmd" Text="50%" Foreground="{StaticResource TextDimBrush}"
                                                    VerticalAlignment="Center" Width="30" TextAlignment="Right" Margin="5,0,2,0"/>
-                                        <Slider x:Name="SliderIntensityDmd" Minimum="5" Maximum="80"
+                                        <Slider x:Name="SliderIntensityDmd" Minimum="5" Maximum="100"
                                                 Value="50" IsSnapToTickEnabled="True" TickFrequency="5"
                                                 Width="90" VerticalAlignment="Center"
                                                 ToolTip="Intensity"

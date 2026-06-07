@@ -317,24 +317,6 @@ public sealed class MatrixBlobPattern : BlobPatternBase
 
     private char RandomChar() => MatrixChars[_rng.Next(MatrixChars.Length)];
 
-    private static Color HslToRgb(double h, double s, double l)
-    {
-        double c = (1.0 - Math.Abs(2.0 * l - 1.0)) * s;
-        double x = c * (1.0 - Math.Abs((h / 60.0) % 2.0 - 1.0));
-        double m = l - c / 2.0;
-        double r, g, b;
-        if (h < 60) { r = c; g = x; b = 0; }
-        else if (h < 120) { r = x; g = c; b = 0; }
-        else if (h < 180) { r = 0; g = c; b = x; }
-        else if (h < 240) { r = 0; g = x; b = c; }
-        else if (h < 300) { r = x; g = 0; b = c; }
-        else { r = c; g = 0; b = x; }
-        return Color.FromRgb(
-            (byte)((r + m) * 255),
-            (byte)((g + m) * 255),
-            (byte)((b + m) * 255));
-    }
-
     protected override void StartMotion()
     {
         _timer = new DispatcherTimer(DispatcherPriority.Render)
@@ -433,7 +415,7 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             for (int i = 0; i < _brushes.Count; i++)
             {
                 double hue = (_dominantHue + i * 3.0) % 360.0;
-                _brushes[i].Color = HslToRgb(hue, 0.8, 0.45);
+                _brushes[i].Color = ColorHelper.HsvToColor(hue, 0.9, 0.8);
             }
         }
 
@@ -745,7 +727,7 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             // Brighten toward white using the trail's actual current hue so the
             // peak color reads as a brightened version of what's on screen.
             double hue = ColorToHue(c.R, c.G, c.B);
-            var bright = HslToRgb(hue, 1.0, 0.85);
+            var bright = ColorHelper.HsvToColor(hue, 0.2, 1.0);
 
             double startOffset = candidates.Count > 1
                 ? (double)i / (candidates.Count - 1) * staggerMs

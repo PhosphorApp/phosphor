@@ -218,8 +218,8 @@ public partial class PlayfieldWindow : JukeboxWindow
             else
             {
                 double hue = (_hueOffset + _reactiveHueBoost + _blobHueOffsets[i]) % 360.0;
-                double lightness = Math.Clamp((0.15 + _blobIntensity * 0.7) * _brightnessBoost, 0.0, 1.0);
-                var color = HslToColor(hue, 0.7, lightness);
+                double value = Math.Clamp((0.15 + _blobIntensity * 0.85) * _brightnessBoost, 0.0, 1.0);
+                var color = ColorHelper.HsvToColor(hue, 0.9, value);
                 brushes[i].Color = color;
                 if (gradBrushes != null && i < gradBrushes.Count)
                 {
@@ -230,7 +230,7 @@ public partial class PlayfieldWindow : JukeboxWindow
                         stops[1].Color = Color.FromArgb(120, color.R, color.G, color.B);
                     }
                 }
-                var analysis = RoygbivHelper.Analyze(hue, 0.7, lightness);
+                var analysis = RoygbivHelper.Analyze(hue, 0.9, value);
                 bandCounts[(int)analysis.Color]++;
                 totalBrightness += analysis.Brightness;
             }
@@ -366,26 +366,6 @@ public partial class PlayfieldWindow : JukeboxWindow
         }
     }
 
-    private static Color HslToColor(double h, double s, double l)
-    {
-        double c = (1.0 - Math.Abs(2.0 * l - 1.0)) * s;
-        double x = c * (1.0 - Math.Abs((h / 60.0) % 2.0 - 1.0));
-        double m = l - c / 2.0;
-
-        double r, g, b;
-        if (h < 60) { r = c; g = x; b = 0; }
-        else if (h < 120) { r = x; g = c; b = 0; }
-        else if (h < 180) { r = 0; g = c; b = x; }
-        else if (h < 240) { r = 0; g = x; b = c; }
-        else if (h < 300) { r = x; g = 0; b = c; }
-        else { r = c; g = 0; b = x; }
-
-        return Color.FromRgb(
-            (byte)((r + m) * 255),
-            (byte)((g + m) * 255),
-            (byte)((b + m) * 255));
-    }
-
     private static double ColorToHue(byte r, byte g, byte b)
     {
         double rd = r / 255.0, gd = g / 255.0, bd = b / 255.0;
@@ -411,7 +391,7 @@ public partial class PlayfieldWindow : JukeboxWindow
 
     public void SetScreensaverSettings(double intensity, double speed)
     {
-        double newIntensity = Math.Clamp(intensity, 0.05, 0.8);
+        double newIntensity = Math.Clamp(intensity, 0.05, 1.0);
         bool intensityChanged = Math.Abs(newIntensity - _blobIntensity) > 0.001;
         _blobIntensity = newIntensity;
         _blobSpeedMultiplier = Math.Clamp(speed, 0.1, 5.0);
@@ -419,7 +399,7 @@ public partial class PlayfieldWindow : JukeboxWindow
         if (intensityChanged && _currentPattern != null)
         {
             foreach (var blob in _currentPattern.Blobs)
-                blob.Opacity = _blobIntensity + _rng.NextDouble() * 0.1;
+                blob.Opacity = Math.Min(1.0, _blobIntensity + _rng.NextDouble() * 0.1);
         }
     }
 
