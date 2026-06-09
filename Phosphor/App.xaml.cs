@@ -426,6 +426,10 @@ public partial class App : Application
             // Show in Now Playing
             viewModel.CurrentlyPlaying = new VideoItem { Title = "Startup Ditti", VideoId = "ditti:startup" };
 
+            // Track volume changes from the slider
+            void onVolumeChanged(int v) { if (_dittiPlayer != null) _dittiPlayer.Volume = v / 100.0; }
+            viewModel.VolumeChanged += onVolumeChanged;
+
             // Stop ditti when real playback starts or user presses stop
             void clearDitti()
             {
@@ -436,7 +440,7 @@ public partial class App : Application
             }
             void onPlay(string _) => clearDitti();
             void onStop() => clearDitti();
-            void cleanupDittiEvents() { viewModel.PlayRequested -= onPlay; viewModel.StopRequested -= onStop; }
+            void cleanupDittiEvents() { viewModel.PlayRequested -= onPlay; viewModel.StopRequested -= onStop; viewModel.VolumeChanged -= onVolumeChanged; }
             viewModel.PlayRequested += onPlay;
             viewModel.StopRequested += onStop;
 

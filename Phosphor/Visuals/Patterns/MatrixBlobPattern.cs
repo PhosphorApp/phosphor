@@ -117,6 +117,7 @@ public sealed class MatrixBlobPattern : BlobPatternBase
         public int Index;                   // index into _brushes for trail color
         public ZoomLayer? Layer;            // layer this leader currently lives on
         public Color TrailColor;            // color locked at column spawn for all trails in this life
+        public double StartDelay;           // seconds to wait before column begins falling
     }
 
     private sealed class TrailChar
@@ -191,6 +192,10 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             _activeLayer.LeaderCount++;
             _columns.Add(col);
             SpawnColumn(col);
+
+            // Stagger initial starts over n seconds so columns cascade in
+            col.StartDelay = _rng.NextDouble() * 3 + (i/10);
+            col.Leader.Opacity = 0;
 
             if (i < _states.Count)
             {
@@ -422,6 +427,17 @@ public sealed class MatrixBlobPattern : BlobPatternBase
         // Update columns (leaders)
         foreach (var col in _columns)
         {
+            // Wait out initial stagger delay before the column begins falling
+            if (col.StartDelay > 0)
+            {
+                col.StartDelay -= dt;
+                if (col.StartDelay > 0)
+                    continue;
+                // Delay just expired — make leader visible
+                col.Leader.Opacity = _intensity;
+                col.StartDelay = 0;
+            }
+
             double prevY = col.Y;
             col.Y += col.Speed * dt;
             Canvas.SetTop(col.Leader, col.Y);
