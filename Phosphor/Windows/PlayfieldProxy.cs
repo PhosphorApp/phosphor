@@ -100,6 +100,9 @@ public sealed class PlayfieldProxy
     public void RestartGameOfLife() =>
         _dispatcher.BeginInvoke(() => _window.RestartGameOfLife());
 
+    public void RestartGameOfLifeWithBlurTransition() =>
+        _dispatcher.BeginInvoke(() => _window.RestartGameOfLifeWithBlurTransition());
+
     public void RestartGravity() =>
         _dispatcher.BeginInvoke(() => _window.RestartGravity());
 

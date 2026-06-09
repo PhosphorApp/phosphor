@@ -563,6 +563,18 @@ public partial class PlayfieldWindow : JukeboxWindow
     }
 
     /// <summary>
+    /// Soft-resets the Game of Life simulation in place with a blur-out / blur-in
+    /// transition. Used for track-change resets, where the visible cell size and
+    /// bitmap dimensions haven't changed and we just want a fresh seed under a
+    /// smooth crossfade instead of tearing down and rebuilding the pattern.
+    /// </summary>
+    public void RestartGameOfLifeWithBlurTransition()
+    {
+        if (_blobPattern == BlobPattern.GameOfLife && _currentPattern is GameOfLifePattern gol)
+            gol.RestartWithBlurTransition();
+    }
+
+    /// <summary>
     /// Restarts the current pattern if it is Gravity, so that a fresh simulation begins.
     /// </summary>
     public void RestartGravity()

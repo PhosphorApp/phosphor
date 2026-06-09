@@ -436,6 +436,13 @@ public partial class BackglassWindow : JukeboxWindow
                 {
                     vm.AdvanceQueueGapless();
                     DebugLog.Log("GaplessPCM", "Track advanced via PCM queue");
+
+                    // Notify listeners (DmdWindow.OnPlaybackStartedTransition) so
+                    // per-track-change features (RandomPerSong transitions, Game of
+                    // Life "Reset on Track", Gravity restart, etc.) fire on gapless
+                    // PCM transitions too — the non-gapless playback paths above
+                    // already raise PlaybackStarted at track start.
+                    PlaybackStarted?.Invoke();
                 }
             });
         };
@@ -1280,6 +1287,18 @@ public partial class BackglassWindow : JukeboxWindow
     {
         if (_blobPattern == BlobPattern.GameOfLife)
             SetBlobPattern(_blobPatternSetting);
+    }
+
+    /// <summary>
+    /// Soft-resets the Game of Life simulation in place with a blur-out / blur-in
+    /// transition. Used for track-change resets, where the visible cell size and
+    /// bitmap dimensions haven't changed and we just want a fresh seed under a
+    /// smooth crossfade instead of tearing down and rebuilding the pattern.
+    /// </summary>
+    public void RestartGameOfLifeWithBlurTransition()
+    {
+        if (_blobPattern == BlobPattern.GameOfLife && _currentPattern is GameOfLifePattern gol)
+            gol.RestartWithBlurTransition();
     }
 
     /// <summary>

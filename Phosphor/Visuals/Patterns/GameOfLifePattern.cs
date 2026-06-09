@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Color = System.Windows.Media.Color;
@@ -431,6 +432,114 @@ public sealed class GameOfLifePattern : BlobPatternBase
             onComplete();
         };
         _image.BeginAnimation(UIElement.OpacityProperty, fadeIn);
+    }
+
+    // Blur transition tuning for track-change resets. Half a second out,
+    // a brief settling pause for the new seed, then half a second back in.
+    private const double TrackResetBlurOutSec = 0.5;
+    private const double TrackResetBlurInSec = 0.5;
+    private const double TrackResetBlurRadius = 40.0;
+
+    /// <summary>
+    /// Soft-resets the simulation in place with a blur-out / blur-in transition.
+    /// Used by the "Reset on Track" feature so a track change visually rolls into a
+    /// fresh seed instead of hard-cutting. Cheaper than a full pattern recreate —
+    /// the bitmap, camera transforms, and timers are reused; only the simulation
+    /// state arrays are cleared and reseeded.
+    /// </summary>
+    public void RestartWithBlurTransition()
+    {
+        if (_disposed || _image == null)
+        {
+            return;
+        }
+
+        // Ensure a BlurEffect is attached so we can animate it. The Image is also
+        // used by the audio-reactive code which only touches Opacity, so adding
+        // an Effect here is safe and harmless when no transition is in flight
+        // (Radius=0 is a no-op render).
+        if (_image.Effect is not BlurEffect blur)
+        {
+            blur = new BlurEffect { Radius = 0, RenderingBias = RenderingBias.Performance };
+            _image.Effect = blur;
+        }
+
+        // Cancel any in-progress blur animation so this transition starts clean.
+        blur.BeginAnimation(BlurEffect.RadiusProperty, null);
+
+        var blurOut = new DoubleAnimation
+        {
+            From = blur.Radius,
+            To = TrackResetBlurRadius,
+            Duration = TimeSpan.FromSeconds(TrackResetBlurOutSec),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn },
+        };
+
+        blurOut.Completed += (_, _) =>
+        {
+            if (_disposed || _image == null) return;
+
+            // Reseed under the blur so the swap isn't visible. Stop the tick so
+            // a partial step doesn't race with the array clears below.
+            StopMotion();
+            ResetSimulationState();
+            SeedGrid();
+            RenderFrame();
+            StartMotion();
+
+            // Pin to the peak radius so there's no jump when we kick off the
+            // blur-in (BeginAnimation(..., null) reverts to the base value).
+            blur.BeginAnimation(BlurEffect.RadiusProperty, null);
+            blur.Radius = TrackResetBlurRadius;
+
+            var blurIn = new DoubleAnimation
+            {
+                From = TrackResetBlurRadius,
+                To = 0,
+                Duration = TimeSpan.FromSeconds(TrackResetBlurInSec),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            };
+            blurIn.Completed += (_, _) =>
+            {
+                if (_disposed || _image == null) return;
+                blur.BeginAnimation(BlurEffect.RadiusProperty, null);
+                blur.Radius = 0;
+                // Drop the Effect once we're sharp again so we don't pay the
+                // off-screen-render cost a BlurEffect imposes even at Radius=0.
+                _image.Effect = null;
+            };
+            blur.BeginAnimation(BlurEffect.RadiusProperty, blurIn);
+        };
+
+        blur.BeginAnimation(BlurEffect.RadiusProperty, blurOut);
+    }
+
+    /// <summary>
+    /// Clears all per-cell simulation state (alive bitboards, color buffers, fade
+    /// trails, generation counter, snapshots, anti-stagnation history) without
+    /// touching the bitmap, image element, camera transforms, or timer. Called
+    /// before <see cref="SeedGrid"/> for an in-place reset.
+    /// </summary>
+    private void ResetSimulationState()
+    {
+        Array.Clear(_colorCurrent);
+        Array.Clear(_colorNext);
+        Array.Clear(_age);
+        Array.Clear(_fade);
+        Array.Clear(_fadeColor);
+        Array.Clear(_aliveCurrent);
+        Array.Clear(_aliveNext);
+        if (_snapshotA.Length > 0) Array.Clear(_snapshotA);
+        if (_snapshotB.Length > 0) Array.Clear(_snapshotB);
+        if (_aliveHist0.Length > 0) Array.Clear(_aliveHist0);
+        if (_aliveHist1.Length > 0) Array.Clear(_aliveHist1);
+        _snapshotGen = 0;
+        _snapshotReady = false;
+        _antiStagHistFilled = 0;
+        _generationCount = 0;
+        _pendingBeat = false;
+        _bassAccumulator = 0f;
+        _pulseFramesRemaining = 0;
     }
 
     protected override void CreateBlobs()

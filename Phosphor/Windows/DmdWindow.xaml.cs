@@ -3559,6 +3559,17 @@ public partial class DmdWindow : JukeboxWindow
     }
 
     /// <summary>
+    /// Soft-resets the DMD's Game of Life simulation in place with a blur-out /
+    /// blur-in transition. Used for track-change resets so the visual rolls into
+    /// a fresh seed instead of hard-cutting the pattern.
+    /// </summary>
+    private void RestartGameOfLifeWithBlurTransition()
+    {
+        if (_ssBlobPattern == BlobPattern.GameOfLife && _ssCurrentPattern is GameOfLifePattern gol)
+            gol.RestartWithBlurTransition();
+    }
+
+    /// <summary>
     /// Restarts the current pattern if it is Gravity, so that a fresh simulation begins.
     /// </summary>
     private void RestartGravity()
@@ -3594,13 +3605,17 @@ public partial class DmdWindow : JukeboxWindow
         _backglassProxy?.OnSongChanged();
         _topperProxy?.OnSongChanged();
 
-        // Restart Game of Life simulation on track change if enabled
+        // Restart Game of Life simulation on track change if enabled. Uses an
+        // in-place blur-out / blur-in transition so the new seed appears under a
+        // smooth crossfade instead of a hard cut. Settings-driven restarts (see
+        // SettingsButton_Click path) still do a full rebuild because cell size /
+        // overscan / camera state may have changed.
         if (GameOfLifePattern.RestartOnTrackChange)
         {
-            _playfieldProxy?.RestartGameOfLife();
-            _backglassProxy?.RestartGameOfLife();
-            _topperProxy?.RestartGameOfLife();
-            _ = Dispatcher.BeginInvoke(RestartGameOfLife);
+            _playfieldProxy?.RestartGameOfLifeWithBlurTransition();
+            _backglassProxy?.RestartGameOfLifeWithBlurTransition();
+            _topperProxy?.RestartGameOfLifeWithBlurTransition();
+            _ = Dispatcher.BeginInvoke(RestartGameOfLifeWithBlurTransition);
         }
 
         // Restart Gravity simulation on track change if enabled
