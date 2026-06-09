@@ -35,6 +35,20 @@ public sealed class MatrixBlobPattern : BlobPatternBase
     /// <summary>Zoom growth rate per second (default 5%). Set from <see cref="AppSettings.MatrixZoomRate"/>.</summary>
     public static double ZoomRate { get; set; } = 0.05;
 
+    /// <summary>
+    /// Maximum trail TextBlocks on the canvas to prevent GPU resource exhaustion.
+    /// Tunable via <see cref="AppSettings.MatrixMaxTrails"/> for per-hardware tuning.
+    /// Default 1500.
+    /// </summary>
+    public static int MaxTrails { get; set; } = 1500;
+
+    /// <summary>
+    /// When true, the per-layer <see cref="BlurEffect"/> is skipped at layer creation.
+    /// Trades the soft halo for a significant GPU cost reduction on lower-end hardware.
+    /// Tunable via <see cref="AppSettings.MatrixDisableBlur"/>. Default false.
+    /// </summary>
+    public static bool DisableBlur { get; set; }
+
     /// <summary>When the active layer's scale exceeds this, a new layer is promoted.</summary>
     private const double LayerRotateThreshold = 2.0;
 
@@ -49,10 +63,12 @@ public sealed class MatrixBlobPattern : BlobPatternBase
         public Canvas Canvas = null!;
         public ScaleTransform Transform = null!;
         public double Scale = 1.0;
-        public BlurEffect Blur = null!;
+        public BlurEffect? Blur;
         /// <summary>Count of trail elements parented to this layer's canvas.</summary>
         public int TrailCount;
         public int LeaderCount; // number of leaders currently on this layer
+        /// <summary>Per-tick cached visible-bottom in layer-local coords; populated by OnTick.</summary>
+        public double CachedVisBottom;
     }
 
     private readonly List<ZoomLayer> _layers = new();
@@ -70,6 +86,9 @@ public sealed class MatrixBlobPattern : BlobPatternBase
 
     // Half-width Katakana U+FF66–U+FF9F and Arabic numerals U+0030–U+0039
     private static readonly char[] MatrixChars = BuildCharSet();
+    // Pre-built single-character strings, parallel to MatrixChars, so per-tick
+    // text changes don't allocate a new string from char.ToString().
+    private static readonly string[] MatrixCharStrings = BuildCharStringSet();
 
     private static char[] BuildCharSet()
     {
@@ -82,6 +101,18 @@ public sealed class MatrixBlobPattern : BlobPatternBase
         return chars;
     }
 
+    private static string[] BuildCharStringSet()
+    {
+        var arr = new string[MatrixChars.Length];
+        for (int i = 0; i < MatrixChars.Length; i++)
+            arr[i] = MatrixChars[i].ToString();
+        return arr;
+    }
+
+    // Single shared FontFamily — constructing "Consolas" per element is surprisingly
+    // expensive due to font-collection resolution and shows up under hot spawn churn.
+    private static readonly FontFamily ConsolasFamily = new("Consolas");
+
     private DispatcherTimer? _timer;
     private readonly List<MatrixColumn> _columns = new();
     // Live trails. Index 0 is oldest (for capacity eviction); expired trails are
@@ -93,8 +124,15 @@ public sealed class MatrixBlobPattern : BlobPatternBase
     private static readonly SolidColorBrush WhiteBrush = CreateFrozen(Colors.White);
     private static readonly SolidColorBrush ClassicGreenBrush = CreateFrozen(Color.FromRgb(0, 255, 70));
 
-    /// <summary>Maximum trail TextBlocks on the canvas to prevent GPU resource exhaustion.</summary>
-    private const int MaxTrails = 1500;
+    // Pools to avoid GC churn at the trail/brush spawn rate.
+    // Trail TextBlocks: reset and re-parented instead of allocated each spawn.
+    private readonly Stack<TextBlock> _trailElementPool = new();
+    // Per-trail non-frozen brushes: needed so PulseDominantColor can animate
+    // individual trails (the lightning-bolt stagger). Pool them so we don't
+    // allocate ~1500 SolidColorBrush instances per refresh cycle.
+    private readonly Stack<SolidColorBrush> _trailBrushPool = new();
+    // Reusable buffer for PickNonOverlappingX — avoids allocating per respawn.
+    private readonly List<double> _occupiedScratch = new();
 
     private static SolidColorBrush CreateFrozen(Color c)
     {
@@ -134,17 +172,23 @@ public sealed class MatrixBlobPattern : BlobPatternBase
 
     private ZoomLayer CreateZoomLayer()
     {
+        var canvas = new Canvas
+        {
+            Width = _canvasW,
+            Height = _canvasH,
+        };
+        BlurEffect? blur = null;
+        if (!DisableBlur)
+        {
+            blur = new BlurEffect { Radius = 1.3 };
+            canvas.Effect = blur;
+        }
         var layer = new ZoomLayer
         {
-            Canvas = new Canvas
-            {
-                Width = _canvasW,
-                Height = _canvasH,
-                Effect = new BlurEffect { Radius = 1.3 },
-            },
+            Canvas = canvas,
             Transform = new ScaleTransform(1.0, 1.0, _canvasW / 2, _canvasH / 2),
         };
-        layer.Blur = (BlurEffect)layer.Canvas.Effect;
+        layer.Blur = blur;
         layer.Canvas.RenderTransform = layer.Transform;
         // Insert new layers at the back (index 0) so older, more-zoomed
         // layers render in front — matching the "camera into the rain" depth.
@@ -207,14 +251,21 @@ public sealed class MatrixBlobPattern : BlobPatternBase
 
     private TextBlock CreateLeader(double fontSize)
     {
+        // Consolas is monospace; pre-sizing the TextBlock lets WPF skip
+        // measure/arrange on every per-tick Text change.
+        double w = fontSize * 0.62;
+        double h = fontSize * 1.25;
         var tb = new TextBlock
         {
-            Text = RandomChar().ToString(),
+            Text = RandomCharString(),
             FontSize = fontSize,
-            FontFamily = new FontFamily("Consolas"),
+            FontFamily = ConsolasFamily,
             FontWeight = FontWeights.Bold,
             Foreground = WhiteBrush,
             Opacity = 1.0,
+            Width = w,
+            Height = h,
+            TextAlignment = TextAlignment.Center,
             // No per-leader BlurEffect — the parent ZoomLayer Canvas already has one,
             // and stacking shader passes per element is expensive on GPU.
         };
@@ -240,6 +291,8 @@ public sealed class MatrixBlobPattern : BlobPatternBase
 
         double effectiveFontSize = col.FontSize * inv;
         col.Leader.FontSize = effectiveFontSize;
+        col.Leader.Width = effectiveFontSize * 0.62;
+        col.Leader.Height = effectiveFontSize * 1.25;
 
         // Spawn within the visible rect of the active layer
         double vw = _canvasW * inv;
@@ -261,7 +314,7 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             col.FadeOutY = double.MaxValue;
 
         col.Leader.Opacity = _intensity;
-        col.Leader.Text = RandomChar().ToString();
+        col.Leader.Text = RandomCharString();
         // Lock the trail color for this column's entire life
         if (ColorCycling && col.Index < _brushes.Count)
             col.TrailColor = _brushes[col.Index].Color;
@@ -280,7 +333,8 @@ public sealed class MatrixBlobPattern : BlobPatternBase
         double candidateScreenSize = selfSize * selfScale;
 
         // Collect screen-space X positions of active columns near the top
-        var occupied = new List<double>();
+        var occupied = _occupiedScratch;
+        occupied.Clear();
         foreach (var other in _columns)
         {
             if (other == self) continue;
@@ -321,6 +375,7 @@ public sealed class MatrixBlobPattern : BlobPatternBase
     }
 
     private char RandomChar() => MatrixChars[_rng.Next(MatrixChars.Length)];
+    private string RandomCharString() => MatrixCharStrings[_rng.Next(MatrixCharStrings.Length)];
 
     protected override void StartMotion()
     {
@@ -374,7 +429,8 @@ public sealed class MatrixBlobPattern : BlobPatternBase
                 layer.Transform.CenterY = _canvasH / 2;
 
                 // Counter-scale blur so it doesn't magnify with zoom
-                layer.Blur.Radius = 1.3 / layer.Scale;
+                if (layer.Blur != null)
+                    layer.Blur.Radius = 1.3 / layer.Scale;
             }
 
             // Rotate: when active layer exceeds threshold, create a new one
@@ -425,6 +481,17 @@ public sealed class MatrixBlobPattern : BlobPatternBase
         }
 
         // Update columns (leaders)
+        // Cache canvas-center math and per-layer visBottom (constant across columns this tick).
+        double halfH = _canvasH * 0.5;
+        // Use a small dictionary keyed by layer to avoid recomputing visBottom per column.
+        // We only have 1–3 layers in practice, so a List<(layer, value)> would also work,
+        // but reading from a per-layer field cached on ZoomLayer is even cheaper.
+        foreach (var layer in _layers)
+        {
+            double ls = InfiniteZoom ? layer.Scale : 1.0;
+            layer.CachedVisBottom = halfH + halfH / ls;
+        }
+
         foreach (var col in _columns)
         {
             // Wait out initial stagger delay before the column begins falling
@@ -447,7 +514,7 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             if (col.CharChangeAccum > 0.05)
             {
                 col.CharChangeAccum = 0;
-                col.Leader.Text = RandomChar().ToString();
+                col.Leader.Text = RandomCharString();
             }
 
             // Spawn trail character only after moving enough to avoid overlap
@@ -478,9 +545,7 @@ public sealed class MatrixBlobPattern : BlobPatternBase
                 }
             else
             {
-                // Visible bottom in layer-local coords: center + half-height/scale
-                double ls = (InfiniteZoom && col.Layer != null) ? col.Layer.Scale : 1.0;
-                double visBottom = _canvasH / 2 + (_canvasH / 2) / ls;
+                double visBottom = col.Layer?.CachedVisBottom ?? (halfH + halfH);
                 if (col.Y > visBottom + col.Leader.FontSize)
                 {
                     SpawnColumn(col);
@@ -496,8 +561,7 @@ public sealed class MatrixBlobPattern : BlobPatternBase
 
             if (trail.Lifetime <= 0)
             {
-                trail.Layer?.Canvas.Children.Remove(trail.Element);
-                if (trail.Layer != null) trail.Layer.TrailCount--;
+                ReleaseTrail(trail);
                 // Swap-and-pop: O(1) removal at arbitrary index.
                 int last = _trails.Count - 1;
                 if (i != last) _trails[i] = _trails[last];
@@ -514,9 +578,31 @@ public sealed class MatrixBlobPattern : BlobPatternBase
             if (trail.CharChangeAccum > 1.5 + _rng.NextDouble() * 1.5)
             {
                 trail.CharChangeAccum = 0;
-                trail.Element.Text = RandomChar().ToString();
+                trail.Element.Text = RandomCharString();
             }
         }
+    }
+
+    /// <summary>
+    /// Remove a trail from the canvas and return its element + brush to their pools.
+    /// </summary>
+    private void ReleaseTrail(TrailChar trail)
+    {
+        var tb = trail.Element;
+        trail.Layer?.Canvas.Children.Remove(tb);
+        if (trail.Layer != null) trail.Layer.TrailCount--;
+
+        // Reclaim the brush if it's pool-eligible (non-frozen per-trail brush).
+        // The classic-green frozen brush is shared and must not be pooled.
+        if (tb.Foreground is SolidColorBrush sb && !sb.IsFrozen)
+        {
+            // Cancel any active animation so the brush returns to a clean state.
+            sb.BeginAnimation(SolidColorBrush.ColorProperty, null);
+            _trailBrushPool.Push(sb);
+        }
+        // Detach brush before pooling the element so the next consumer assigns its own.
+        tb.ClearValue(TextBlock.ForegroundProperty);
+        _trailElementPool.Push(tb);
     }
 
     private void SpawnTrail(MatrixColumn col, double x, double y, double fontSize, int columnIndex)
@@ -527,8 +613,7 @@ public sealed class MatrixBlobPattern : BlobPatternBase
         while (_trails.Count >= MaxTrails)
         {
             var oldest = _trails[0];
-            oldest.Layer?.Canvas.Children.Remove(oldest.Element);
-            if (oldest.Layer != null) oldest.Layer.TrailCount--;
+            ReleaseTrail(oldest);
             // Swap-and-pop: O(1) removal of head.
             int last = _trails.Count - 1;
             if (last > 0) _trails[0] = _trails[last];
@@ -549,31 +634,59 @@ public sealed class MatrixBlobPattern : BlobPatternBase
         }
 
         // Use the column's locked trail color (set at spawn) for uniform columns.
-        // A fresh per-trail SolidColorBrush is needed so PulseDominantColor can
-        // animate trails independently (staggered/lingering flash). Frozen brushes
-        // would prevent animation; pooled shared brushes flash in unison and lose
-        // the natural look.
+        // A per-trail non-frozen SolidColorBrush is needed so PulseDominantColor can
+        // animate trails independently (staggered/lingering flash). We pool these
+        // brushes to avoid allocating ~1500 per refresh cycle. Frozen brushes
+        // would prevent animation; sharing live brushes across trails would make
+        // PulseDominantColor's per-trail stagger flash in unison (losing the
+        // "lightning bolt travel" look).
         SolidColorBrush brush;
         if (ColorCycling)
         {
-            brush = new SolidColorBrush(col.TrailColor);
+            if (_trailBrushPool.Count > 0)
+            {
+                brush = _trailBrushPool.Pop();
+                brush.Color = col.TrailColor;
+            }
+            else
+            {
+                brush = new SolidColorBrush(col.TrailColor);
+            }
         }
         else
         {
             brush = ClassicGreenBrush; // frozen; non-cycling trails never pulse
         }
 
-        var tb = new TextBlock
+        // Reuse a pooled TextBlock when available; otherwise allocate one.
+        TextBlock tb;
+        if (_trailElementPool.Count > 0)
         {
-            Text = RandomChar().ToString(),
-            FontSize = fontSize,
-            FontFamily = new FontFamily("Consolas"),
-            FontWeight = FontWeights.Bold,
-            Foreground = brush,
-            Opacity = _intensity,
-            // No CacheMode: trail Text + Opacity change every tick, which invalidates
-            // the bitmap cache each frame and is more expensive than not caching.
-        };
+            tb = _trailElementPool.Pop();
+            tb.Text = RandomCharString();
+            tb.FontSize = fontSize;
+            tb.Width = fontSize * 0.62;
+            tb.Height = fontSize * 1.25;
+            tb.Foreground = brush;
+            tb.Opacity = _intensity;
+        }
+        else
+        {
+            tb = new TextBlock
+            {
+                Text = RandomCharString(),
+                FontSize = fontSize,
+                FontFamily = ConsolasFamily,
+                FontWeight = FontWeights.Bold,
+                Foreground = brush,
+                Opacity = _intensity,
+                Width = fontSize * 0.62,
+                Height = fontSize * 1.25,
+                TextAlignment = TextAlignment.Center,
+                // No CacheMode: trail Text + Opacity change every tick, which invalidates
+                // the bitmap cache each frame and is more expensive than not caching.
+            };
+        }
 
         Canvas.SetLeft(tb, x);
         Canvas.SetTop(tb, y);
@@ -600,6 +713,9 @@ public sealed class MatrixBlobPattern : BlobPatternBase
         foreach (var trail in _trails)
             trail.Layer?.Canvas.Children.Remove(trail.Element);
         _trails.Clear();
+        // Drop pooled trail elements/brushes — they're tied to the canvas instance.
+        _trailElementPool.Clear();
+        _trailBrushPool.Clear();
         foreach (var layer in _layers)
         {
             layer.TrailCount = 0;

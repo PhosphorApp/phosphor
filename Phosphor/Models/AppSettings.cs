@@ -126,6 +126,17 @@ public class AppSettings
     public bool MatrixColorCycling { get; set; } = true;
     public bool MatrixInfiniteZoom { get; set; }
     public double MatrixZoomRate { get; set; } = 0.05;
+    /// <summary>
+    /// Maximum simultaneous trail characters on the Matrix canvas. Higher values
+    /// give longer/denser trails at increased GPU/CPU cost. Default 1500.
+    /// </summary>
+    public int MatrixMaxTrails { get; set; } = 1500;
+    /// <summary>
+    /// When true, the per-layer blur effect is skipped. Significantly reduces
+    /// GPU cost on lower-end hardware at the expense of the soft halo look.
+    /// Default false.
+    /// </summary>
+    public bool MatrixDisableBlur { get; set; }
 
     // Clock tuning
     /// <summary>0 = Analog, 1 = Digital dot-matrix.</summary>

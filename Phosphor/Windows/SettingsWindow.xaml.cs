@@ -638,6 +638,9 @@ public partial class SettingsWindow : JukeboxWindow
         CbMatrixInfiniteZoom.IsChecked = settings.MatrixInfiniteZoom;
         SliderMatrixZoomRate.Value = settings.MatrixZoomRate;
         MatrixZoomRateValueText.Text = settings.MatrixZoomRate.ToString("F2");
+        SliderMatrixMaxTrails.Value = settings.MatrixMaxTrails;
+        MatrixMaxTrailsValueText.Text = settings.MatrixMaxTrails.ToString();
+        CbMatrixDisableBlur.IsChecked = settings.MatrixDisableBlur;
         UpdateMatrixTuningVisibility();
 
         // Game of Life tuning
@@ -1870,6 +1873,12 @@ public partial class SettingsWindow : JukeboxWindow
     {
         if (MatrixZoomRateValueText != null)
             MatrixZoomRateValueText.Text = $"{e.NewValue:F2}";
+    }
+
+    private void SliderMatrixMaxTrails_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (MatrixMaxTrailsValueText != null)
+            MatrixMaxTrailsValueText.Text = $"{(int)e.NewValue}";
     }
 
     private void SliderReactivityThreshold_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -3154,6 +3163,8 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.MatrixColorCycling = CbMatrixColorCycling.IsChecked == true;
         _settings.MatrixInfiniteZoom = CbMatrixInfiniteZoom.IsChecked == true;
         _settings.MatrixZoomRate = SliderMatrixZoomRate.Value;
+        _settings.MatrixMaxTrails = (int)SliderMatrixMaxTrails.Value;
+        _settings.MatrixDisableBlur = CbMatrixDisableBlur.IsChecked == true;
         _settings.GameOfLifeCellSize = (int)SliderGameOfLifeCellSize.Value;
         _settings.GameOfLifeUseScreenRate = CbGameOfLifeUseScreenRate.IsChecked == true;
         _settings.GameOfLifeTickIntervalMs = (int)SliderGameOfLifeTickInterval.Value;

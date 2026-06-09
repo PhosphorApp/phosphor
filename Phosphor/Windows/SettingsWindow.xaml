@@ -1303,6 +1303,21 @@
                                     <TextBlock x:Name="MatrixZoomRateValueText" Text="0.05" Foreground="{StaticResource TextDimBrush}"
                                                VerticalAlignment="Center"/>
                                 </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <TextBlock Text="Max Trails:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <Slider x:Name="SliderMatrixMaxTrails" Minimum="200" Maximum="3000" Value="1500"
+                                            Width="100" VerticalAlignment="Center" IsMoveToPointEnabled="True"
+                                            IsSnapToTickEnabled="True" TickFrequency="100"
+                                            ValueChanged="SliderMatrixMaxTrails_ValueChanged"
+                                            ToolTip="Maximum simultaneous trail characters. Higher = denser/longer trails at increased GPU/CPU cost. Tune to your hardware."
+                                            Margin="0,0,8,0"/>
+                                    <TextBlock x:Name="MatrixMaxTrailsValueText" Text="1500" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <CheckBox x:Name="CbMatrixDisableBlur" Content="Disable blur effect (better performance on lower-end hardware)"
+                                          Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
+                                          ToolTip="Skips the per-layer blur effect. Significantly reduces GPU cost at the expense of the soft halo look."/>
                             </StackPanel>
 
                             <TextBlock Text="REACTIVE ELEMENTS" FontSize="12" FontWeight="Bold"

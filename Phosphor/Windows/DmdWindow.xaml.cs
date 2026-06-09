@@ -762,6 +762,8 @@ public partial class DmdWindow : JukeboxWindow
         MatrixBlobPattern.ColorCycling = settings.MatrixColorCycling;
         MatrixBlobPattern.InfiniteZoom = settings.MatrixInfiniteZoom;
         MatrixBlobPattern.ZoomRate = settings.MatrixZoomRate;
+        MatrixBlobPattern.MaxTrails = Math.Max(100, settings.MatrixMaxTrails);
+        MatrixBlobPattern.DisableBlur = settings.MatrixDisableBlur;
         GameOfLifePattern.CellSize = Math.Clamp(settings.GameOfLifeCellSize, 1, 10);
         GameOfLifePattern.TickIntervalMs = settings.GameOfLifeUseScreenRate
             ? ComputeScreenRateTickMs()
@@ -2135,6 +2137,8 @@ public partial class DmdWindow : JukeboxWindow
         MatrixBlobPattern.ColorCycling = _appSettings.MatrixColorCycling;
         MatrixBlobPattern.InfiniteZoom = _appSettings.MatrixInfiniteZoom;
         MatrixBlobPattern.ZoomRate = _appSettings.MatrixZoomRate;
+        MatrixBlobPattern.MaxTrails = Math.Max(100, _appSettings.MatrixMaxTrails);
+        MatrixBlobPattern.DisableBlur = _appSettings.MatrixDisableBlur;
         GameOfLifePattern.CellSize = Math.Clamp(_appSettings.GameOfLifeCellSize, 1, 10);
         GameOfLifePattern.TickIntervalMs = _appSettings.GameOfLifeUseScreenRate
             ? ComputeScreenRateTickMs()
