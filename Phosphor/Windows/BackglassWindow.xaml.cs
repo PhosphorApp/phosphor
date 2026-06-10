@@ -565,45 +565,45 @@ public partial class BackglassWindow : JukeboxWindow
         if (_libVLC == null || _mediaPlayer == null) return;
 
         try
-        {
-            _colorTimer.Stop();
-
-            // Cancel any pending delayed-overlay reveal from a previous transition
-            _transitionOverlayTimer?.Stop();
-            _transitionOverlayTimer = null;
-
-            // During transitions (video view still attached from previous track),
-            // detach the old video view BEFORE stopping. This removes the WinForms
-            // HWND from the visual tree so VLC's surface clear isn't visible — the
-            // black Grid background shows through instead of a white flash.
-            bool isTransition = _videoView != null;
-            if (isTransition)
             {
-                DetachVideoView();
+                _colorTimer.Stop();
 
-                // Schedule a delayed reveal of the idle overlay. Cached / prefetched
-                // transitions typically Vout within 100-300ms, so the timer fires
-                // *after* the overlay is no longer needed and OnVout cancels it —
-                // the user sees a clean black-to-video swap with no blob-screen blip.
-                // Only slower buffering transitions (>600ms) reach the timer tick and
-                // reveal the overlay, which then animates until the new video appears.
-                _transitionOverlayTimer = new DispatcherTimer
+                // Cancel any pending delayed-overlay reveal from a previous transition
+                _transitionOverlayTimer?.Stop();
+                _transitionOverlayTimer = null;
+
+                // During transitions (video view still attached from previous track),
+                // detach the old video view BEFORE stopping. This removes the WinForms
+                // HWND from the visual tree so VLC's surface clear isn't visible — the
+                // black Grid background shows through instead of a white flash.
+                bool isTransition = _videoView != null;
+                if (isTransition)
                 {
-                    Interval = TimeSpan.FromMilliseconds(TransitionOverlayDelayMs)
-                };
-                _transitionOverlayTimer.Tick += (_, _) =>
-                {
-                    _transitionOverlayTimer?.Stop();
-                    _transitionOverlayTimer = null;
-                    // Only reveal if video still hasn't appeared (videoView is hidden)
-                    if (_videoView == null || _videoView.Visibility != Visibility.Visible)
+                    DetachVideoView();
+
+                    // Schedule a delayed reveal of the idle overlay. Cached / prefetched
+                    // transitions typically Vout within 100-300ms, so the timer fires
+                    // *after* the overlay is no longer needed and OnVout cancels it —
+                    // the user sees a clean black-to-video swap with no blob-screen blip.
+                    // Only slower buffering transitions (>600ms) reach the timer tick and
+                    // reveal the overlay, which then animates until the new video appears.
+                    _transitionOverlayTimer = new DispatcherTimer
                     {
-                        IdleOverlay.Visibility = Visibility.Visible;
-                        _colorTimer.Start();
-                    }
-                };
-                _transitionOverlayTimer.Start();
-            }
+                        Interval = TimeSpan.FromMilliseconds(TransitionOverlayDelayMs)
+                    };
+                    _transitionOverlayTimer.Tick += (_, _) =>
+                    {
+                        _transitionOverlayTimer?.Stop();
+                        _transitionOverlayTimer = null;
+                        // Only reveal if video still hasn't appeared (videoView is hidden)
+                        if (_videoView == null || _videoView.Visibility != Visibility.Visible)
+                        {
+                            IdleOverlay.Visibility = Visibility.Visible;
+                            _colorTimer.Start();
+                        }
+                    };
+                    _transitionOverlayTimer.Start();
+                }
 
             // Ensure the media player is fully stopped before starting new playback.
             // This is critical when called from OnMediaEnded (via PlayNext) because
@@ -911,13 +911,6 @@ public partial class BackglassWindow : JukeboxWindow
             var seekable = _mediaPlayer.IsSeekable;
             DebugLog.Log("Seek", $"Requested: {timeMs}ms | State={_mediaPlayer.State} Length={length} Time={_mediaPlayer.Time} Seekable={seekable}");
 
-            // Always trigger transient caching on the first scrub of an uncached YouTube
-            // video — even if the in-place seek succeeds this time, subsequent seeks
-            // benefit from the muxed-on-disk copy, and the user has clearly indicated
-            // they want to interact with the timeline. No-op for Plex / audio-only /
-            // cached / Plex-only sessions, and a no-op if AllowTransientCaching=false.
-            (DataContext as JukeboxViewModel)?.EnsureTransientCacheForCurrent();
-
             if (length <= 0)
             {
                 DebugLog.Log("Seek", "Skipped: Length <= 0");
@@ -1165,6 +1158,18 @@ public partial class BackglassWindow : JukeboxWindow
 
                     // Advance the queue without triggering a new play request
                     vm.AdvanceQueueGapless();
+
+                    // If the new track is audio-only (e.g. Plex music), the video
+                    // surface from the previous track would just sit there black —
+                    // detach it and show the idle overlay (logo + blobs). Mirrors
+                    // the audio-only branch in OnPlayRequested.
+                    bool nextIsAudioOnly = _audioOnly || (vm.CurrentlyPlaying?.IsAudioOnly == true);
+                    if (nextIsAudioOnly)
+                    {
+                        DetachVideoView();
+                        IdleOverlay.Visibility = Visibility.Visible;
+                        _colorTimer.Start();
+                    }
 
                     _positionTimer?.Start();
 

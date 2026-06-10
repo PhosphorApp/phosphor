@@ -20,20 +20,6 @@ public class VideoCache
     private readonly YoutubeClient _youtube = new();
     private readonly object _lock = new();
     private List<CacheEntry> _entries = new();
-    /// <summary>
-    /// VideoIds whose backing files should be deleted on the next <see cref="PurgeTransient"/>
-    /// (called from app shutdown). Populated by <see cref="MarkTransient"/> when a cache
-    /// entry is created opportunistically for a session-only purpose (e.g. enabling reliable
-    /// scrubbing of an uncached YouTube video).
-    /// </summary>
-    private readonly HashSet<string> _transientIds = new();
-    /// <summary>
-    /// VideoIds that have been (or are being) cached via a *persistent* code path this
-    /// session — i.e. <see cref="CacheVideoAsync"/> was called with allowDisabled=false.
-    /// These are protected from <see cref="PurgeTransient"/> even if a transient cache
-    /// job also raced for the same id (e.g. CacheMode=Everything plus a mid-track scrub).
-    /// </summary>
-    private readonly HashSet<string> _persistentIds = new();
     private long _maxBytes;
     private bool _enabled;
     private int _maxClipLengthMinutes;
@@ -108,21 +94,10 @@ public class VideoCache
         return duration.Value.TotalMinutes <= _maxClipLengthMinutes;
     }
 
-    public async Task CacheVideoAsync(string videoId, VideoQualityPreference quality = VideoQualityPreference.High, bool preferStereo = false, TimeSpan? duration = null, List<ChapterMarker>? chapters = null, string? title = null, CancellationToken ct = default, bool allowDisabled = false)
+    public async Task CacheVideoAsync(string videoId, VideoQualityPreference quality = VideoQualityPreference.High, bool preferStereo = false, TimeSpan? duration = null, List<ChapterMarker>? chapters = null, string? title = null, CancellationToken ct = default)
     {
-        if (!_enabled && !allowDisabled) return;
+        if (!_enabled) return;
         if (!IsWithinClipLengthLimit(duration)) return;
-
-        // Track persistent intent so a racing transient job (e.g. user scrubs while
-        // CacheMode=Everything is downloading) can't cause PurgeTransient to remove
-        // this entry on exit. Persistent intent always wins over transient.
-        if (!allowDisabled)
-        {
-            lock (_lock)
-            {
-                _persistentIds.Add(videoId);
-            }
-        }
 
         // Already cached?
         lock (_lock)
@@ -263,69 +238,6 @@ public class VideoCache
     {
         lock (_lock)
             return _entries.Sum(e => e.SizeBytes);
-    }
-
-    /// <summary>
-    /// Marks a videoId as "transient" so that its on-disk cache entry (if any) will be
-    /// deleted by the next call to <see cref="PurgeTransient"/> (typically at app exit).
-    /// Safe to call before or after the corresponding <see cref="CacheVideoAsync"/> finishes.
-    /// No-op when the videoId has already been requested via a persistent cache path —
-    /// persistent intent always wins so a mid-track scrub during CacheMode=Everything
-    /// (or for a playlist item) does not cause the entry to be purged on exit.
-    /// </summary>
-    public void MarkTransient(string videoId)
-    {
-        if (string.IsNullOrEmpty(videoId)) return;
-        lock (_lock)
-        {
-            if (_persistentIds.Contains(videoId))
-            {
-                DebugLog.Log("VideoCache", $"MarkTransient skipped for {videoId}: already marked persistent this session");
-                return;
-            }
-            _transientIds.Add(videoId);
-        }
-    }
-
-    /// <summary>
-    /// Deletes all cache entries (and on-disk files) previously marked via <see cref="MarkTransient"/>.
-    /// Intended to be called once at app shutdown. Non-transient entries, and any entries that
-    /// were also touched by a persistent cache path this session, are left alone.
-    /// </summary>
-    public void PurgeTransient()
-    {
-        List<CacheEntry> toRemove;
-        lock (_lock)
-        {
-            if (_transientIds.Count == 0) return;
-
-            // Defense in depth: even if MarkTransient was called, never purge a videoId that
-            // was also requested via a persistent path (CacheMode=Everything, playlist add, etc.).
-            toRemove = _entries
-                .Where(e => _transientIds.Contains(e.VideoId) && !_persistentIds.Contains(e.VideoId))
-                .ToList();
-
-            int skipped = _transientIds.Count(id => _persistentIds.Contains(id));
-            if (skipped > 0)
-                DebugLog.Log("VideoCache", $"PurgeTransient: keeping {skipped} entries that were also marked persistent");
-
-            if (toRemove.Count == 0)
-            {
-                _transientIds.Clear();
-                return;
-            }
-
-            DebugLog.Log("VideoCache", $"Purging {toRemove.Count} transient entries on exit");
-            foreach (var entry in toRemove)
-            {
-                var filePath = Path.Combine(CacheDir, entry.FileName);
-                try { if (File.Exists(filePath)) File.Delete(filePath); }
-                catch (Exception ex) { DebugLog.Log("VideoCache", $"Transient delete failed for {entry.VideoId}: {ex.Message}"); }
-                _entries.Remove(entry);
-            }
-            _transientIds.Clear();
-            SaveIndex();
-        }
     }
 
     private void Evict()

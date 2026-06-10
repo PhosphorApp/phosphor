@@ -66,7 +66,6 @@ public partial class App : Application
         viewModel.VideoQuality = _settings.VideoQuality;
         viewModel.StereoAudio = _settings.StereoAudio;
         viewModel.CacheMode = _settings.CacheMode;
-        viewModel.AllowTransientCaching = _settings.AllowTransientCaching;
         viewModel.PreemptiveCache = _settings.PreemptiveCache;
         viewModel.GaplessPlayback = _settings.PlexGaplessPlayback;
         viewModel.Volume = _settings.Volume;
@@ -369,10 +368,11 @@ public partial class App : Application
         if (_dmdWindow.DataContext is JukeboxViewModel vm)
             vm.ThumbnailCache?.Prune();
 
-        // Purge any transient video-cache entries created this session (e.g. for
-        // reliable scrubbing of an uncached YouTube video).
-        if (_dmdWindow.DataContext is JukeboxViewModel vmCache)
-            vmCache.Cache?.PurgeTransient();
+        // Purge the video cache on exit if the user has opted in. Pairs with
+        // CacheMode=Everything + PreemptiveCache for "instant scrub during the
+        // session, clean disk at exit" behavior.
+        if (_settings.PurgeCacheOnShutdown && _dmdWindow.DataContext is JukeboxViewModel vmCache)
+            vmCache.Cache?.Purge();
 
         // Close other windows
         _backglassProxy?.Close();

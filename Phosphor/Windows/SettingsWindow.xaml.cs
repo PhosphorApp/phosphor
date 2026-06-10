@@ -826,8 +826,8 @@ public partial class SettingsWindow : JukeboxWindow
 
         CbShowStatusText.IsChecked = settings.ShowStatusText;
         CbCacheEnabled.IsChecked = settings.CacheEnabled;
-        CbAllowTransientCaching.IsChecked = settings.AllowTransientCaching;
         CbPreemptiveCache.IsChecked = settings.PreemptiveCache;
+        CbPurgeCacheOnShutdown.IsChecked = settings.PurgeCacheOnShutdown;
         CbPrefetchEnabled.IsChecked = settings.PrefetchEnabled;
         var cacheSizeOptions = new (string label, double gb)[] { ("1 GB", 1), ("2 GB", 2), ("5 GB", 5), ("10 GB", 10), ("25 GB", 25), ("50 GB", 50), ("100 GB", 100), ("250 GB", 250), ("500 GB", 500), ("1 TB", 1024), ("2 TB", 2048), ("5 TB", 5120), ("Unlimited", 0) };
         int selectedCacheSizeIndex = 2; // default 5 GB
@@ -3054,8 +3054,8 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.HideCursorTimeoutSeconds = CbHideCursorTimeout.SelectedIndex >= 0 && CbHideCursorTimeout.SelectedIndex < cursorTimeoutValues.Length
             ? cursorTimeoutValues[CbHideCursorTimeout.SelectedIndex] : 15;
         _settings.CacheEnabled = CbCacheEnabled.IsChecked == true;
-        _settings.AllowTransientCaching = CbAllowTransientCaching.IsChecked == true;
         _settings.PreemptiveCache = CbPreemptiveCache.IsChecked == true;
+        _settings.PurgeCacheOnShutdown = CbPurgeCacheOnShutdown.IsChecked == true;
         _settings.PrefetchEnabled = CbPrefetchEnabled.IsChecked == true;
         _settings.CacheMode = (CacheMode)Math.Clamp(CbCacheMode.SelectedIndex, 0, 1);
         var cacheSizeValues = new double[] { 1, 2, 5, 10, 25, 50, 100, 250, 500, 0 };

@@ -34,15 +34,6 @@ public class AppSettings
     public int CacheMaxClipLengthMinutes { get; set; }
     public CacheMode CacheMode { get; set; } = CacheMode.Playlists;
     /// <summary>
-    /// When true, the currently playing YouTube video is opportunistically downloaded
-    /// and remuxed in the background the first time the user attempts to scrub. This
-    /// turns subsequent seeks into reliable file-based seeks. The download uses the
-    /// same on-disk cache directory but is marked transient and deleted at app exit
-    /// regardless of the persistent cache size limit. Defaults to false.
-    /// </summary>
-    public bool AllowTransientCaching { get; set; }
-
-    /// <summary>
     /// When true (and the persistent video cache is enabled), the next item in the
     /// queue is preemptively downloaded and remuxed as soon as the current track
     /// starts playing. This gives the download up to one full track-length of head
@@ -51,6 +42,13 @@ public class AppSettings
     /// (which uses a separate last-second prefetch cache). Defaults to false.
     /// </summary>
     public bool PreemptiveCache { get; set; }
+
+    /// <summary>
+    /// When true, all video cache files are deleted at app shutdown. Pairs well with
+    /// <see cref="CacheEnabled"/> + <see cref="CacheMode"/>=Everything + <see cref="PreemptiveCache"/>
+    /// to give reliable in-session scrubbing without long-term disk usage. Defaults to false.
+    /// </summary>
+    public bool PurgeCacheOnShutdown { get; set; }
     public bool ThumbnailCacheEnabled { get; set; } = true;
     public double ThumbnailCacheMaxSizeMb { get; set; } = 500;
     public bool CategoryCacheEnabled { get; set; } = true;

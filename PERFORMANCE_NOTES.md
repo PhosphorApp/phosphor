@@ -1344,3 +1344,233 @@ Both features need optimization, prioritized by impact:
   cycling AND reactive audio, a single coordinated update path could
   eliminate the compounding effect.
 
+---
+
+## 🟣 Future — yt-dlp / DASH Integration for Reliable YouTube Streaming
+
+### Problem Statement
+
+Phosphor uses [YoutubeExplode](https://github.com/Tyrrrz/YoutubeExplode) to
+resolve YouTube stream URLs, which gives us **progressive DASH streams** —
+a single monolithic URL that returns the entire file as one HTTP response.
+This works for sequential playback but has two well-documented failure modes:
+
+1. **Forward seeks are unreliable.** The progressive container's seek index
+   (cues for webm, moov for mp4) lives at the *end* of the file. VLC has no
+   way to map a target time to a byte offset without first downloading the
+   whole stream. The result: forward scrubbing into uncached content often
+   wedges the VLC decoder on a non-keyframe (see `BackglassWindow.OnSeekRequested`
+   for our detection-and-restart recovery).
+
+2. **Tail-end CDN throttling.** googlevideo rate-limits the last few seconds
+   of progressive streams. As VLC's read pointer reaches the throttled tail,
+   the demuxer can briefly stall — observed as a ~3-4 second time-label
+   regression and minor decode stutter near the end of uncached playback.
+   See the workaround note in BackglassWindow's position-timer comments.
+
+Both issues vanish when the video is cached as a remuxed local MKV (which
+is exactly what the persistent / transient / preemptive caching paths do).
+But streaming-only playback remains a degraded experience.
+
+### Root Cause: Wrong Protocol
+
+YouTube's *web player* doesn't use progressive streams. It uses **MPEG-DASH**
+(Dynamic Adaptive Streaming over HTTP). Key differences:
+
+| Feature | Progressive (what we use) | DASH (what the web player uses) |
+|---------|---------------------------|---------------------------------|
+| URL shape | Single URL → entire file | Manifest URL → many small `.m4s` segments (2-10s each) |
+| Seek index | At end of file; unusable until full download | Explicit byte-range index in the manifest |
+| Forward seek | Decoder must walk packets from start | Single HTTP request for target segment |
+| Bitrate | Fixed at selection time | Adaptive — switches segments to match bandwidth |
+| Resilience | Whole stream is one HTTP connection | Per-segment retries, no cascading failure |
+
+DASH is built for seeking. Each segment starts with a keyframe and is
+independently decodable. VLC's `dash` demuxer handles DASH manifests
+natively — there's no client-side work beyond pointing it at the manifest URL.
+
+### Why YoutubeExplode Doesn't Expose DASH
+
+YouTube's DASH manifest URLs require **signature decryption** — they're
+returned by the player config endpoint with a `s=` parameter that has to
+be transformed by interpreting a JavaScript function YouTube embeds in
+the player. YouTube changes this function frequently (sometimes weekly)
+specifically to break scrapers. Maintaining a signature decryptor is a
+full-time chase. YoutubeExplode focuses on progressive streams (which
+don't need signature decryption) and has historically declined to take
+on DASH for this reason.
+
+[yt-dlp](https://github.com/yt-dlp/yt-dlp) does exactly the maintenance
+work YoutubeExplode avoids. It has a team of contributors continuously
+updating signature handling, format selectors, and per-platform quirks.
+That's why most media players (Kodi, mpv front-ends, JellyfinPlayer,
+PinkVD) shell out to yt-dlp for YouTube resolution rather than rolling
+their own.
+
+### Proposed Architecture
+
+**Drop yt-dlp.exe into `dependencies/`** (same pattern as `ffmpeg.exe`).
+It's ~30 MB, a single Windows binary with Python embedded — no Python
+install required on the user's machine.
+
+**New service:** `Phosphor/Services/YtDlpResolver.cs`
+
+```csharp
+public class YtDlpResolver
+{
+    private static readonly string YtDlpPath = Path.Combine(
+        AppDomain.CurrentDomain.BaseDirectory, "yt-dlp.exe");
+
+    public static bool IsAvailable => File.Exists(YtDlpPath);
+
+    /// <summary>
+    /// Resolves a DASH manifest URL for the given YouTube video.
+    /// Returns null if yt-dlp is unavailable or the resolution fails.
+    /// </summary>
+    public static async Task<string?> ResolveDashManifestAsync(
+        string videoId, VideoQualityPreference quality, CancellationToken ct)
+    {
+        if (!IsAvailable) return null;
+
+        string formatSelector = quality switch
+        {
+            VideoQualityPreference.Low    => "bestvideo[height<=480]+bestaudio/best",
+            VideoQualityPreference.Medium => "bestvideo[height<=720]+bestaudio/best",
+            VideoQualityPreference.High   => "bestvideo[height<=1080]+bestaudio/best",
+            _ => "bestvideo+bestaudio/best"
+        };
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = YtDlpPath,
+            Arguments = $"-g --format \"{formatSelector}\" " +
+                        $"--no-warnings --no-playlist " +
+                        $"https://www.youtube.com/watch?v={videoId}",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+
+        using var proc = Process.Start(psi);
+        if (proc == null) return null;
+
+        var stdout = await proc.StandardOutput.ReadToEndAsync(ct);
+        await proc.WaitForExitAsync(ct);
+
+        if (proc.ExitCode != 0) return null;
+
+        // -g returns one URL per line: first video, then audio. For DASH playback
+        // VLC handles the manifest URL directly. For separate video+audio streams
+        // we'd need to feed them as primary + slave like the current YoutubeExplode path.
+        var lines = stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        return lines.Length > 0 ? lines[0].Trim() : null;
+    }
+}
+```
+
+**Integration point** in `BackglassWindow.OnPlayRequested`, around the
+existing YoutubeExplode `GetManifestAsync` call:
+
+```csharp
+// Try yt-dlp first if available — gives us DASH URLs with proper seek indices.
+// Falls back to YoutubeExplode (progressive streams) if yt-dlp is missing or fails.
+string? dashUrl = await YtDlpResolver.ResolveDashManifestAsync(videoId, quality, ct);
+if (dashUrl != null)
+{
+    var media = new Media(_libVLC, new Uri(dashUrl));
+    ApplyNetworkOptions(media, vm);
+    _lastMuxedStreamUrl = dashUrl;
+    _mediaPlayer.Play(media);
+}
+else
+{
+    // existing YoutubeExplode path …
+}
+```
+
+**Settings UI** (Cache tab, alongside `AllowTransientCaching`):
+- `EnableYtDlpStreams` checkbox (default: auto-detect based on `IsAvailable`).
+- A "Check for yt-dlp updates" button that runs `yt-dlp.exe -U` (yt-dlp
+  self-updates with this flag) and reports the version.
+
+### Cost / Benefit Analysis
+
+| Concern | Cost / Risk |
+|---------|-------------|
+| Binary size | +30 MB in `dependencies/`; bumps installer/clone size noticeably |
+| Per-play latency | +200-500 ms for yt-dlp invocation before `Play()` |
+| Maintenance | **Primary concern.** Bundled yt-dlp version goes stale; YT may break it after a few months. See "Update strategy" below |
+| Process spawning | Some AV / sandboxing setups flag yt-dlp.exe as suspicious (it's a Python interpreter scraping a website). Possible support burden |
+| Code complexity | New resolver service + integration branch in OnPlayRequested + settings UI ≈ 150-250 lines |
+| Privacy | yt-dlp may make additional metadata requests to youtube.com that YoutubeExplode doesn't |
+
+### Benefits
+
+- **Seek anywhere, anytime** on uncached YouTube content with ~200-500 ms
+  re-buffer per seek (single segment fetch). No more "scrub failed → restart
+  from beginning" recovery path.
+- **No end-of-clip stutter** — DASH segments aren't subject to the same
+  tail-throttling as progressive streams.
+- **Better quality selection.** yt-dlp exposes the full format ladder
+  (including AV1 and Opus tracks YoutubeExplode hides).
+- **Future-proofs against YoutubeExplode breakage.** When YT changes
+  something fundamental, yt-dlp typically lands a fix within days; YoutubeExplode
+  releases lag by weeks-to-months.
+
+### Update Strategy (The Hard Part)
+
+yt-dlp ships releases multiple times per week. The bundled binary will go
+stale eventually. Options, in order of operator effort:
+
+1. **Ship it, never update.** Works until YouTube makes a breaking change
+   (typically 3-6 months from any given snapshot). On break, all yt-dlp
+   resolutions fail; we fall back to YoutubeExplode. User sees degraded
+   scrubbing but playback still works. **Lowest effort, highest staleness risk.**
+
+2. **`yt-dlp -U` button in settings.** yt-dlp can self-update its own
+   binary by downloading from its GitHub releases. We expose a button;
+   the user runs it when they hit issues. **Moderate effort; puts burden
+   on user to know to update.**
+
+3. **Auto-update on startup.** Background-check GitHub releases API for a
+   newer version once per day; download to a temp location, replace
+   `yt-dlp.exe` if Phosphor is restarted. **Highest effort; introduces
+   network dependency at startup and need for elevated permissions to
+   replace the binary in `Program Files`-style installs.**
+
+4. **Don't ship a binary; require user to install.** Detect yt-dlp in
+   `PATH` or a configured location; if missing, disable the feature with
+   a settings-tab hint. Many advanced users already have yt-dlp installed.
+   **Sidesteps bundling entirely; raises onboarding friction for casual users.**
+
+Recommended path: **option 1 + option 2** — ship a known-good version,
+provide a manual update button, and fall back gracefully when yt-dlp fails.
+Add option 3 later if breakage frequency justifies the complexity.
+
+### When Not to Do This
+
+- If transient + preemptive caching covers the common usage patterns
+  (which it does for jukebox-style sequential play with occasional
+  scrubbing), the binary size and maintenance load aren't worth it.
+- If users primarily play short cached clips, DASH adds nothing.
+- If the team wants to avoid the "shelling out to a third-party scraper
+  for a core feature" support burden.
+
+### When to Reconsider
+
+- If complaints about the "seek failed — restarted" recovery path become
+  frequent.
+- If long-form content (concerts, full albums on YouTube) becomes a major
+  use case and the tail-throttling stutter is noticeable.
+- If YoutubeExplode hits a prolonged outage from a YouTube breakage.
+
+### References
+
+- yt-dlp GitHub: https://github.com/yt-dlp/yt-dlp
+- yt-dlp Windows release: https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe
+- Current seek recovery code: `Phosphor/Windows/BackglassWindow.xaml.cs`, `OnSeekRequested`
+- Current caching infrastructure to reuse the muxed-output pattern:
+  `Phosphor/Caching/VideoCache.cs`, `MuxWithFfmpegAsync`
+
+

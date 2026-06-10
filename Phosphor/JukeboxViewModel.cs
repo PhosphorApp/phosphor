@@ -585,89 +585,9 @@ public partial class JukeboxViewModel : ObservableObject
     // ── Cache mode ──
     public CacheMode CacheMode { get; set; } = CacheMode.Playlists;
 
-    /// <summary>
-    /// When true, the currently playing YouTube video is opportunistically downloaded
-    /// and muxed the first time the user attempts to scrub it. The resulting cache
-    /// entry is marked transient and deleted at app exit. Independent of CacheEnabled
-    /// (so the user can keep the persistent cache off and still get reliable scrubbing).
-    /// </summary>
-    public bool AllowTransientCaching { get; set; }
-
-    /// <summary>Tracks which YouTube videoIds we've already kicked off a transient cache job for this session.</summary>
-    private readonly HashSet<string> _transientCacheStarted = new();
-
     public void SetupCache(bool enabled, double maxSizeGb, int maxClipLengthMinutes = 0)
     {
         _cache = new VideoCache(enabled, maxSizeGb, maxClipLengthMinutes);
-    }
-
-    /// <summary>
-    /// If <see cref="AllowTransientCaching"/> is enabled and the currently playing item is
-    /// an uncached YouTube video, kicks off a background cache job and marks the resulting
-    /// entry as transient so it is purged on app exit. Safe to call repeatedly; only the
-    /// first invocation per videoId per session triggers work.
-    /// </summary>
-    public void EnsureTransientCacheForCurrent()
-    {
-        if (!AllowTransientCaching) return;
-        if (_cache == null) return;
-
-        var item = _currentlyPlaying;
-        if (item == null || item.IsPlex || item.IsAudioOnly) return;
-
-        var videoId = item.VideoId;
-        if (string.IsNullOrEmpty(videoId)) return;
-
-        // Skip if already cached (persistent or transient) or prefetched
-        if (_cache.TryGet(videoId) != null) return;
-        if (_prefetch?.TryGet(videoId) != null) return;
-
-        // If the persistent cache is on AND CacheMode=Everything, the persistent download
-        // path was already kicked off by PlayNow — let that finish normally instead of
-        // starting a parallel transient job that would mark the same videoId as transient.
-        if (_cache.Enabled && CacheMode == CacheMode.Everything)
-        {
-            DebugLog.Log("TransientCache", $"Skip {videoId}: persistent CacheMode=Everything already handles it");
-            return;
-        }
-
-        // Only kick off once per session per video
-        lock (_transientCacheStarted)
-        {
-            if (!_transientCacheStarted.Add(videoId)) return;
-        }
-
-        // Force the cache to accept the write even if disabled in settings, then mark
-        // the entry transient on completion so it is purged at exit.
-        DebugLog.Log("TransientCache", $"Starting transient cache job for {videoId}: {item.Title}");
-        SetStatusPrefix("Caching for scrub");
-        _ = SafeFireAndForget(StartTransientCacheAsync(videoId, item));
-    }
-
-    private async Task StartTransientCacheAsync(string videoId, VideoItem item)
-    {
-        if (_cache == null) return;
-        try
-        {
-            await _cache.CacheVideoAsync(
-                videoId,
-                VideoQuality,
-                StereoAudio,
-                item.Duration,
-                item.Chapters,
-                item.Title,
-                allowDisabled: true);
-
-            // Whether the download succeeded or failed, mark the videoId transient so any
-            // resulting on-disk entry is purged on exit. (MarkTransient is a no-op if the
-            // entry doesn't exist.)
-            _cache.MarkTransient(videoId);
-            DebugLog.Log("TransientCache", $"Transient cache complete for {videoId}");
-        }
-        catch (Exception ex)
-        {
-            DebugLog.LogException("TransientCache", ex);
-        }
     }
 
     /// <summary>

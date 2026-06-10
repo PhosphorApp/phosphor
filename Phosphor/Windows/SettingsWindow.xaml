@@ -2225,12 +2225,6 @@
                             <!-- VIDEO CACHE subsection -->
                             <TextBlock Text="VIDEO CACHE" FontSize="9" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,6"/>
-                            <CheckBox x:Name="CbAllowTransientCaching" Content="Cache current track on first scrub (transient)"
-                                      Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
-                                      Margin="0,0,0,2"/>
-                            <TextBlock Text="Caches immediate files for faster seek; deleted on exit."
-                                       FontSize="11" Foreground="{StaticResource TextDimBrush}"
-                                       Margin="22,0,0,10" TextWrapping="Wrap"/>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                 <CheckBox x:Name="CbCacheEnabled" Content="Cache enabled"
                                           Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
@@ -2265,6 +2259,12 @@
                                       Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
                                       Margin="0,0,0,2"/>
                             <TextBlock Text="Starts downloading the next track as soon as the current one starts playing (requires Cache enabled). Makes transitions instant and the next track fully seekable."
+                                       FontSize="11" Foreground="{StaticResource TextDimBrush}"
+                                       Margin="22,0,0,8" TextWrapping="Wrap"/>
+                            <CheckBox x:Name="CbPurgeCacheOnShutdown" Content="Purge cache on shutdown"
+                                      Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
+                                      Margin="0,0,0,2"/>
+                            <TextBlock Text="Deletes all video cache files when the app exits. Pairs well with Cache Everything + Preemptive Cache for reliable in-session scrubbing without long-term disk usage."
                                        FontSize="11" Foreground="{StaticResource TextDimBrush}"
                                        Margin="22,0,0,8" TextWrapping="Wrap"/>
 
