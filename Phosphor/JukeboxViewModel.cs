@@ -585,9 +585,149 @@ public partial class JukeboxViewModel : ObservableObject
     // ── Cache mode ──
     public CacheMode CacheMode { get; set; } = CacheMode.Playlists;
 
+    /// <summary>
+    /// When true, the currently playing YouTube video is opportunistically downloaded
+    /// and muxed the first time the user attempts to scrub it. The resulting cache
+    /// entry is marked transient and deleted at app exit. Independent of CacheEnabled
+    /// (so the user can keep the persistent cache off and still get reliable scrubbing).
+    /// </summary>
+    public bool AllowTransientCaching { get; set; }
+
+    /// <summary>Tracks which YouTube videoIds we've already kicked off a transient cache job for this session.</summary>
+    private readonly HashSet<string> _transientCacheStarted = new();
+
     public void SetupCache(bool enabled, double maxSizeGb, int maxClipLengthMinutes = 0)
     {
         _cache = new VideoCache(enabled, maxSizeGb, maxClipLengthMinutes);
+    }
+
+    /// <summary>
+    /// If <see cref="AllowTransientCaching"/> is enabled and the currently playing item is
+    /// an uncached YouTube video, kicks off a background cache job and marks the resulting
+    /// entry as transient so it is purged on app exit. Safe to call repeatedly; only the
+    /// first invocation per videoId per session triggers work.
+    /// </summary>
+    public void EnsureTransientCacheForCurrent()
+    {
+        if (!AllowTransientCaching) return;
+        if (_cache == null) return;
+
+        var item = _currentlyPlaying;
+        if (item == null || item.IsPlex || item.IsAudioOnly) return;
+
+        var videoId = item.VideoId;
+        if (string.IsNullOrEmpty(videoId)) return;
+
+        // Skip if already cached (persistent or transient) or prefetched
+        if (_cache.TryGet(videoId) != null) return;
+        if (_prefetch?.TryGet(videoId) != null) return;
+
+        // If the persistent cache is on AND CacheMode=Everything, the persistent download
+        // path was already kicked off by PlayNow — let that finish normally instead of
+        // starting a parallel transient job that would mark the same videoId as transient.
+        if (_cache.Enabled && CacheMode == CacheMode.Everything)
+        {
+            DebugLog.Log("TransientCache", $"Skip {videoId}: persistent CacheMode=Everything already handles it");
+            return;
+        }
+
+        // Only kick off once per session per video
+        lock (_transientCacheStarted)
+        {
+            if (!_transientCacheStarted.Add(videoId)) return;
+        }
+
+        // Force the cache to accept the write even if disabled in settings, then mark
+        // the entry transient on completion so it is purged at exit.
+        DebugLog.Log("TransientCache", $"Starting transient cache job for {videoId}: {item.Title}");
+        SetStatusPrefix("Caching for scrub");
+        _ = SafeFireAndForget(StartTransientCacheAsync(videoId, item));
+    }
+
+    private async Task StartTransientCacheAsync(string videoId, VideoItem item)
+    {
+        if (_cache == null) return;
+        try
+        {
+            await _cache.CacheVideoAsync(
+                videoId,
+                VideoQuality,
+                StereoAudio,
+                item.Duration,
+                item.Chapters,
+                item.Title,
+                allowDisabled: true);
+
+            // Whether the download succeeded or failed, mark the videoId transient so any
+            // resulting on-disk entry is purged on exit. (MarkTransient is a no-op if the
+            // entry doesn't exist.)
+            _cache.MarkTransient(videoId);
+            DebugLog.Log("TransientCache", $"Transient cache complete for {videoId}");
+        }
+        catch (Exception ex)
+        {
+            DebugLog.LogException("TransientCache", ex);
+        }
+    }
+
+    /// <summary>
+    /// When true (and the persistent video cache is enabled), the next item in the
+    /// queue is preemptively downloaded and remuxed as soon as the current track
+    /// starts playing. Independent of <see cref="PrefetchEnabled"/>: prefetch uses
+    /// a lightweight last-second cache for instant transitions; preemptive cache
+    /// writes into the persistent cache and also makes the next track fully seekable.
+    /// </summary>
+    public bool PreemptiveCache { get; set; }
+
+    /// <summary>
+    /// Tracks which YouTube videoIds we've already kicked off a preemptive cache
+    /// job for this session, to avoid duplicate work when the same next-track is
+    /// targeted multiple times (e.g. queue navigation, repeat).
+    /// </summary>
+    private readonly HashSet<string> _preemptiveCacheStarted = new();
+
+    /// <summary>
+    /// If <see cref="PreemptiveCache"/> is enabled and the persistent cache is on,
+    /// kicks off a background <see cref="VideoCache.CacheVideoAsync"/> for the next
+    /// playable queue item. Safe to call repeatedly; only the first invocation per
+    /// videoId per session does any work. Skips Plex / audio-only / already-cached
+    /// / already-prefetched / already-transient-cached items.
+    /// </summary>
+    public void KickoffPreemptiveCacheForNext()
+    {
+        if (!PreemptiveCache) return;
+        if (_cache is not { Enabled: true }) return;
+
+        // Determine which item is "next" in the queue (with repeat wrap-around).
+        int nextIdx = _queueIndex + 1;
+        if (nextIdx >= Queue.Count && _repeatEnabled && Queue.Count > 0)
+            nextIdx = 0;
+        if (nextIdx < 0 || nextIdx >= Queue.Count) return;
+
+        var next = Queue[nextIdx];
+        if (next.IsPlex || next.IsAudioOnly) return;
+
+        var videoId = next.VideoId;
+        if (string.IsNullOrEmpty(videoId)) return;
+
+        // Skip if already cached (persistent or transient) or prefetched
+        if (_cache.TryGet(videoId) != null) return;
+        if (_prefetch?.TryGet(videoId) != null) return;
+
+        // Only kick off once per session per video
+        lock (_preemptiveCacheStarted)
+        {
+            if (!_preemptiveCacheStarted.Add(videoId)) return;
+        }
+
+        DebugLog.Log("PreemptiveCache", $"Starting preemptive cache job for next track {videoId}: {next.Title}");
+        _ = SafeFireAndForget(_cache.CacheVideoAsync(
+            videoId,
+            VideoQuality,
+            StereoAudio,
+            next.Duration,
+            next.Chapters,
+            next.Title));
     }
 
     public void SetupPrefetch(bool enabled)
@@ -2356,6 +2496,11 @@ public partial class JukeboxViewModel : ObservableObject
         // Cache on playback when mode is Everything (YouTube only)
         if (_cache is { Enabled: true } && CacheMode == CacheMode.Everything && !item.IsPlex)
             _ = SafeFireAndForget(_cache.CacheVideoAsync(item.VideoId, VideoQuality, StereoAudio, item.Duration, item.Chapters, item.Title));
+
+        // Preemptively cache the *next* queue item as soon as this one starts —
+        // gives the download a full track-length head start so the next transition
+        // is effectively instant and the next track is also fully seekable.
+        KickoffPreemptiveCacheForNext();
     }
 
     /// <summary>

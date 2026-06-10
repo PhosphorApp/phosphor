@@ -2321,6 +2321,8 @@ public partial class DmdWindow : JukeboxWindow
             vm.HttpReconnect = _appSettings.HttpReconnect;
             vm.SetYouTubeTimeout(_appSettings.YouTubeTimeoutSeconds);
             vm.CacheMode = _appSettings.CacheMode;
+            vm.AllowTransientCaching = _appSettings.AllowTransientCaching;
+            vm.PreemptiveCache = _appSettings.PreemptiveCache;
             vm.GaplessPlayback = _appSettings.PlexGaplessPlayback;
             LogStep("VmProperties");
         }

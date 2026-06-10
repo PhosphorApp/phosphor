@@ -61,6 +61,30 @@ public partial class BackglassWindow : JukeboxWindow
     private GaplessAudioPlayer? _gaplessPlayer;
     private bool _usingGaplessPlayer;
 
+    // ── Last YouTube/HTTP stream context (used for re-opening on failed seek) ──
+    // These are populated whenever we kick off playback so that OnSeekRequested can
+    // rebuild a Media with ":start-time=<seconds>" without re-querying the manifest.
+    // _lastLocalFilePath is set for cached/prefetched playback (re-open uses Time/Position
+    // since seeking always works on local files).
+    private string? _lastPlayingVideoId;
+    private string? _lastVideoStreamUrl;
+    private string? _lastAudioStreamUrl;
+    private string? _lastMuxedStreamUrl;
+    private string? _lastLocalFilePath;
+
+    // ── Seek verification cancellation ──
+    // A new seek request cancels any in-flight verification from the previous seek so
+    // that the older verification can't "restore" a position over the new target.
+    private CancellationTokenSource? _seekVerifyCts;
+
+    // ── Transition idle-overlay reveal timer ──
+    // During a track-to-track transition we delay showing the idle (logo/blob) overlay
+    // by a short window so cached/prefetched transitions (which Vout in 100-300ms)
+    // remain a clean black-to-video swap. Only slower buffering transitions reveal the
+    // overlay, avoiding a jarring blob-screen blip on fast transitions.
+    private DispatcherTimer? _transitionOverlayTimer;
+    private const int TransitionOverlayDelayMs = 600;
+
     public MediaPlayer MediaPlayer => EnsureVlcInitialized();
 
     /// <summary>
@@ -490,6 +514,14 @@ public partial class BackglassWindow : JukeboxWindow
         media.AddOption($":file-caching={fileCache}");
         if (reconnect)
             media.AddOption(":http-reconnect");
+
+        // NOTE: We intentionally do NOT set :input-fast-seek. The VLC docs warn it
+        // "may cause errors when seeking forward in a stream because the demuxer may
+        // not be at a keyframe." For long YouTube videos this manifests as the
+        // decoder freezing on a non-keyframe after a forward scrub — Time stays
+        // frozen at the seek target, video restarts from 0, and Play/Pause stop
+        // responding. The slower default behavior fails more cleanly (Time drops to
+        // a small value) and our verification can detect and recover.
     }
 
     private async void OnPlayRequested(string videoId)
@@ -508,6 +540,17 @@ public partial class BackglassWindow : JukeboxWindow
         var cts = _playCts = new CancellationTokenSource();
         var ct = cts.Token;
 
+        // Any in-flight seek verification from the previous track is now stale.
+        // Cancel it so it can't restore an old position into a brand-new player.
+        _seekVerifyCts?.Cancel();
+
+        // Reset re-open context — populated below for the source we actually use.
+        _lastPlayingVideoId = videoId;
+        _lastVideoStreamUrl = null;
+        _lastAudioStreamUrl = null;
+        _lastMuxedStreamUrl = null;
+        _lastLocalFilePath = null;
+
         // Wait for background LibVLC initialization to complete if it's still
         // in flight (e.g. user hit play within the first few seconds of launch).
         // Without this, the request would silently drop and leave the UI stuck
@@ -525,13 +568,42 @@ public partial class BackglassWindow : JukeboxWindow
         {
             _colorTimer.Stop();
 
+            // Cancel any pending delayed-overlay reveal from a previous transition
+            _transitionOverlayTimer?.Stop();
+            _transitionOverlayTimer = null;
+
             // During transitions (video view still attached from previous track),
             // detach the old video view BEFORE stopping. This removes the WinForms
-            // HWND from the visual tree so VLC's surface clear isn't visible � the
+            // HWND from the visual tree so VLC's surface clear isn't visible — the
             // black Grid background shows through instead of a white flash.
             bool isTransition = _videoView != null;
             if (isTransition)
+            {
                 DetachVideoView();
+
+                // Schedule a delayed reveal of the idle overlay. Cached / prefetched
+                // transitions typically Vout within 100-300ms, so the timer fires
+                // *after* the overlay is no longer needed and OnVout cancels it —
+                // the user sees a clean black-to-video swap with no blob-screen blip.
+                // Only slower buffering transitions (>600ms) reach the timer tick and
+                // reveal the overlay, which then animates until the new video appears.
+                _transitionOverlayTimer = new DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(TransitionOverlayDelayMs)
+                };
+                _transitionOverlayTimer.Tick += (_, _) =>
+                {
+                    _transitionOverlayTimer?.Stop();
+                    _transitionOverlayTimer = null;
+                    // Only reveal if video still hasn't appeared (videoView is hidden)
+                    if (_videoView == null || _videoView.Visibility != Visibility.Visible)
+                    {
+                        IdleOverlay.Visibility = Visibility.Visible;
+                        _colorTimer.Start();
+                    }
+                };
+                _transitionOverlayTimer.Start();
+            }
 
             // Ensure the media player is fully stopped before starting new playback.
             // This is critical when called from OnMediaEnded (via PlayNext) because
@@ -554,6 +626,10 @@ public partial class BackglassWindow : JukeboxWindow
                 _mediaPlayer.Vout -= OnVout;
                 Dispatcher.BeginInvoke(() =>
                 {
+                    // Cancel the pending overlay reveal — video is ready, no need to flash blobs.
+                    _transitionOverlayTimer?.Stop();
+                    _transitionOverlayTimer = null;
+
                     if (_videoView != null)
                     {
                         _videoView.Visibility = Visibility.Visible;
@@ -562,6 +638,9 @@ public partial class BackglassWindow : JukeboxWindow
                     // Hide idle overlay once video is rendering (in case it was
                     // briefly shown during a slow transition)
                     IdleOverlay.Visibility = Visibility.Collapsed;
+                    // Stop the blob color cycle now that the overlay is hidden — no
+                    // point burning CPU on an invisible surface during playback.
+                    _colorTimer.Stop();
                 });
                 voutTcs.TrySetResult();
             }
@@ -632,6 +711,9 @@ public partial class BackglassWindow : JukeboxWindow
                     media.AddOption(":sout-mux-caching=5000");
                 }
 
+                // Remember the source so a failed in-place seek can re-open at :start-time.
+                _lastMuxedStreamUrl = streamUrl;
+
                 _mediaPlayer.Play(media);
             }
             // Check local cache first (main cache, then prefetch cache)
@@ -647,6 +729,7 @@ public partial class BackglassWindow : JukeboxWindow
                     vm?.SetStatusPrefix("Cached");
                     DebugLog.Log("Play", $"Cached playback: {cached.FilePath}");
                     var media = new Media(_libVLC, new Uri(cached.FilePath));
+                    _lastLocalFilePath = cached.FilePath;
                     _mediaPlayer.Play(media);
                     cachedResolution = cached.Resolution;
 
@@ -672,6 +755,7 @@ public partial class BackglassWindow : JukeboxWindow
                         // Audio-only mode � stream only audio, no video download
                         var media = new Media(_libVLC, new Uri(audioStream.Url));
                         ApplyNetworkOptions(media, vm);
+                        _lastAudioStreamUrl = audioStream.Url;
                         _mediaPlayer.Play(media);
                     }
                     else
@@ -684,6 +768,8 @@ public partial class BackglassWindow : JukeboxWindow
                             var media = new Media(_libVLC, new Uri(videoStream.Url));
                             media.AddSlave(MediaSlaveType.Audio, 4, new Uri(audioStream.Url));
                             ApplyNetworkOptions(media, vm);
+                            _lastVideoStreamUrl = videoStream.Url;
+                            _lastAudioStreamUrl = audioStream.Url;
                             _mediaPlayer.Play(media);
                             infoForOverlay = videoStream;
                         }
@@ -694,6 +780,7 @@ public partial class BackglassWindow : JukeboxWindow
                             if (muxed == null) { _mediaPlayer.Vout -= OnVout; (DataContext as JukeboxViewModel)?.NotifyPlaybackStarted(); return; }
                             var media = new Media(_libVLC, new Uri(muxed.Url));
                             ApplyNetworkOptions(media, vm);
+                            _lastMuxedStreamUrl = muxed.Url;
                             _mediaPlayer.Play(media);
                             infoForOverlay = muxed;
                         }
@@ -824,56 +911,171 @@ public partial class BackglassWindow : JukeboxWindow
             var seekable = _mediaPlayer.IsSeekable;
             DebugLog.Log("Seek", $"Requested: {timeMs}ms | State={_mediaPlayer.State} Length={length} Time={_mediaPlayer.Time} Seekable={seekable}");
 
-            if (!seekable)
-                DebugLog.Log("Seek", "Warning: media reports IsSeekable=false — stream may restart or ignore seek (common with progressive YouTube streams)");
+            // Always trigger transient caching on the first scrub of an uncached YouTube
+            // video — even if the in-place seek succeeds this time, subsequent seeks
+            // benefit from the muxed-on-disk copy, and the user has clearly indicated
+            // they want to interact with the timeline. No-op for Plex / audio-only /
+            // cached / Plex-only sessions, and a no-op if AllowTransientCaching=false.
+            (DataContext as JukeboxViewModel)?.EnsureTransientCacheForCurrent();
 
-            if (length > 0)
+            if (length <= 0)
             {
-                var timeBefore = _mediaPlayer.Time;
-                var targetMs = Math.Clamp(timeMs, 0, length);
-                var userRequestedStart = targetMs < 3000; // explicit seek to beginning
-                _mediaPlayer.Time = targetMs;
+                DebugLog.Log("Seek", "Skipped: Length <= 0");
+                return;
+            }
 
-                // VLC echoes back whatever we set to Time — it does NOT reflect
-                // where the stream actually landed.  To detect a failed seek we
-                // sample twice with a gap: if playback is progressing near zero
-                // instead of near the target, the stream restarted.
-                _ = Task.Run(async () =>
+            var timeBefore = _mediaPlayer.Time;
+            var targetMs = Math.Clamp(timeMs, 0, length);
+            var userRequestedStart = targetMs < 3000; // explicit seek to beginning
+
+            // Cancel any pending verification from a previous seek; otherwise an older
+            // task could fire after a newer scrub and "restore" the wrong position.
+            _seekVerifyCts?.Cancel();
+            var verifyCts = _seekVerifyCts = new CancellationTokenSource();
+            var verifyCt = verifyCts.Token;
+
+            // If the source is a local file (cached / prefetched), seeks always work —
+            // skip the in-place attempt and the verification dance.
+            bool isLocalSource = !string.IsNullOrEmpty(_lastLocalFilePath);
+
+            if (isLocalSource || seekable)
+            {
+                _mediaPlayer.Time = targetMs;
+            }
+
+            // For local files we're done.
+            if (isLocalSource) return;
+
+            // For HTTP streams reported as not-seekable, there is no in-place recovery
+            // path that works reliably. Restart from the beginning so the player ends
+            // in a known good state.
+            if (!seekable)
+            {
+                DebugLog.Log("Seek", "IsSeekable=false — restarting playback from the beginning (use transient caching for reliable scrubbing)");
+
+                var vm = DataContext as JukeboxViewModel;
+                var videoIdToRestart = _lastPlayingVideoId;
+                if (vm != null && !string.IsNullOrEmpty(videoIdToRestart))
                 {
-                    // First sample: VLC resets Time to 0 almost immediately on
-                    // failed seeks, so we don't need a long wait.
-                    await Task.Delay(750);
+                    vm.SetStatusPrefix("Seek failed — restarted");
+                    vm.PlaybackPosition = 0;
+                    OnPlayRequested(videoIdToRestart);
+                }
+                return;
+            }
+
+            // VLC echoes back whatever we set to Time — it does NOT reflect where the
+            // stream actually landed. Worse, on a wedged demuxer (e.g. forward seek to
+            // a non-keyframe in a YouTube webm/vp9 stream), Time can stay frozen at the
+            // value we wrote while playback has actually restarted from 0 (or stalled).
+            //
+            // Detection strategy: two complementary signals, whichever proves health first.
+            //   1. BUFFERING activity. A healthy seek causes VLC to fire Buffering events
+            //      almost immediately (0→100% as the new chunk loads). A wedged player
+            //      fires nothing because VLC thinks it's still happily playing. We hook
+            //      Buffering for the verification window and check if any tick arrived.
+            //   2. TIME PROGRESS. A real playing decoder advances ~750ms in 750ms wall
+            //      time; a wedged player reports the same number twice.
+            //
+            // Fast path: if we see buffering AND time advances within ~800ms, the seek
+            // worked — exit early. Slow path: if neither signal appears by ~1500ms, the
+            // seek wedged — restart playback from the beginning.
+            //
+            // Recovery: we tried multiple in-place strategies (Position retry, Play(newMedia)
+            // on the same player, swapping to a fresh MediaPlayer with :start-time, force
+            // Time= on the fresh player) — all failed for problem YouTube progressive
+            // streams. The only reliable recovery is a full restart. Users who need
+            // reliable scrubbing on long YouTube videos should enable transient caching
+            // in settings — that downloads + remuxes the file, after which all seeks are
+            // file-based and always work.
+            const int fastCheckDelayMs = 800;   // by this point a healthy seek shows life
+            const int finalCheckDelayMs = 700;  // additional wait if fast check inconclusive
+            const long MinHealthyProgressMs = 100;
+
+            // Subscribe to Buffering events so we can detect activity without polling.
+            int bufferingTickCount = 0;
+            void OnBufferingTick(object? s, LibVLCSharp.Shared.MediaPlayerBufferingEventArgs e)
+            {
+                System.Threading.Interlocked.Increment(ref bufferingTickCount);
+            }
+            _mediaPlayer.Buffering += OnBufferingTick;
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    // Fast check at ~800ms — most healthy seeks show life by now
+                    await Task.Delay(fastCheckDelayMs, verifyCt);
+
                     long sample1 = 0;
                     await Dispatcher.InvokeAsync(() => { if (_mediaPlayer != null) sample1 = _mediaPlayer.Time; });
 
-                    // Second sample: confirm direction of playback
-                    await Task.Delay(250);
+                    int bufferTicksFast = System.Threading.Interlocked.CompareExchange(ref bufferingTickCount, 0, 0);
+                    bool sawBuffering = bufferTicksFast > 0;
+                    bool nearTargetFast = Math.Abs(sample1 - targetMs) <= Math.Max(5000L, (long)(length * 0.02));
+
+                    DebugLog.Log("Seek", $"Fast check ({fastCheckDelayMs}ms): sample1={sample1} bufferTicks={bufferTicksFast} sawBuffering={sawBuffering} nearTargetFast={nearTargetFast}");
+
+                    // Confirm with a second sample to ensure time is actually advancing.
+                    await Task.Delay(finalCheckDelayMs, verifyCt);
                     long sample2 = 0;
                     await Dispatcher.InvokeAsync(() => { if (_mediaPlayer != null) sample2 = _mediaPlayer.Time; });
+
+                    if (verifyCt.IsCancellationRequested) return;
 
                     await Dispatcher.InvokeAsync(() =>
                     {
                         if (_mediaPlayer == null) return;
 
-                        // The stream is progressing somewhere — check if near the target or near zero
-                        var progressingNearTarget = sample1 > targetMs - 10000 && sample2 >= sample1;
-                        var progressingNearStart = sample2 < 10000 && sample2 >= sample1;
-                        var progressingFromReset = sample2 > 0 && sample2 < targetMs / 2 && Math.Abs(sample2 - targetMs) > 15000;
+                        var nearTargetTolerance = Math.Max(5000L, (long)(length * 0.02));
+                        long progress = sample2 - sample1;
+                        bool advancing = progress >= MinHealthyProgressMs;
+                        bool nearTarget = Math.Abs(sample2 - targetMs) <= nearTargetTolerance;
 
-                        DebugLog.Log("Seek", $"Verify: sample1={sample1} sample2={sample2} (was {timeBefore}, target {targetMs}) nearTarget={progressingNearTarget} nearStart={progressingNearStart}");
+                        // Healthy if Time is at the right spot AND either we saw buffering
+                        // activity OR Time is still advancing. Both signals are sufficient.
+                        bool seekHealthy = nearTarget && (sawBuffering || advancing);
 
-                        if (!userRequestedStart && targetMs > 5000 && (progressingNearStart || progressingFromReset) && !progressingNearTarget)
-                        {
-                            DebugLog.Log("Seek", $"Seek failed — stream is playing near {sample2}ms instead of {targetMs}ms. Restoring previous position {timeBefore}ms");
-                            _mediaPlayer.Time = timeBefore;
-                        }
+                        DebugLog.Log("Seek", $"Verify: sample2={sample2} progress={progress}ms (was {timeBefore}, target {targetMs}) nearTarget={nearTarget} advancing={advancing} sawBuffering={sawBuffering} healthy={seekHealthy}");
+
+                        if (seekHealthy) return;
+
+                        // Wedge confirmed. Bail out cleanly: stop and restart from the
+                        // beginning so the user has a known, controllable state.
+                        DebugLog.Log("Seek", "Seek failed — restarting playback from the beginning (use transient caching for reliable scrubbing)");
+
+                        var vm = DataContext as JukeboxViewModel;
+                        var videoIdToRestart = _lastPlayingVideoId;
+                        if (vm == null || string.IsNullOrEmpty(videoIdToRestart)) return;
+
+                        vm.SetStatusPrefix("Seek failed — restarted");
+                        vm.PlaybackPosition = 0;
+
+                        // Re-fire the play request via the normal code path. This rebuilds
+                        // the stream from scratch and ends up in a fully healthy state.
+                        OnPlayRequested(videoIdToRestart);
                     });
-                });
-            }
-            else
-            {
-                DebugLog.Log("Seek", "Skipped: Length <= 0");
-            }
+                }
+                catch (OperationCanceledException) { /* superseded by a newer seek */ }
+                catch (Exception ex)
+                {
+                    DebugLog.LogException("Seek/Verify", ex);
+                }
+                finally
+                {
+                    // Always detach our buffering probe — both on success and failure.
+                    // Marshal to dispatcher since events live on it.
+                    try
+                    {
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            if (_mediaPlayer != null)
+                                _mediaPlayer.Buffering -= OnBufferingTick;
+                        });
+                    }
+                    catch { /* shutting down */ }
+                }
+            }, verifyCt);
         });
     }
 
@@ -881,11 +1083,16 @@ public partial class BackglassWindow : JukeboxWindow
     {
         // Cancel any in-flight play operation so it doesn't resume after stop
         _playCts?.Cancel();
+        // Cancel any pending seek verification / re-open
+        _seekVerifyCts?.Cancel();
 
         Dispatcher.BeginInvoke(async () =>
         {
             _positionTimer?.Stop();
             _infoTimer?.Stop();
+            // Cancel any pending delayed-overlay reveal from a transition
+            _transitionOverlayTimer?.Stop();
+            _transitionOverlayTimer = null;
             VideoInfoChanged?.Invoke("");
 
             // Stop PCM gapless player if active
