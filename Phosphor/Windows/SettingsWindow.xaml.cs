@@ -121,6 +121,10 @@ public partial class SettingsWindow : JukeboxWindow
     private int _originalGameOfLifeSeedColorMask = 0x7F;
     private int _originalGameOfLifeHueSpread = 60;
     private int _originalGameOfLifeSeedSpread = 0;
+    private bool _originalGameOfLifeBloom;
+    private int _originalGameOfLifeBloomRadius = 3;
+    private int _originalGameOfLifeBloomIntensity = 6;
+    private int _originalGameOfLifeBirthGenerations;
     private double _originalGravityBlobMultiplier = 1.0;
     private bool _originalGravityCameraRoam = false;
     private bool _originalGravityShowDiagnostics = false;
@@ -304,7 +308,11 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.GameOfLifeCustomRule != _originalGameOfLifeCustomRule ||
         _settings.GameOfLifeSeedColorMask != _originalGameOfLifeSeedColorMask ||
         _settings.GameOfLifeHueSpread != _originalGameOfLifeHueSpread ||
-        _settings.GameOfLifeSeedSpread != _originalGameOfLifeSeedSpread;
+        _settings.GameOfLifeSeedSpread != _originalGameOfLifeSeedSpread ||
+        _settings.GameOfLifeBloom != _originalGameOfLifeBloom ||
+        _settings.GameOfLifeBloomRadius != _originalGameOfLifeBloomRadius ||
+        _settings.GameOfLifeBloomIntensity != _originalGameOfLifeBloomIntensity ||
+        _settings.GameOfLifeBirthGenerations != _originalGameOfLifeBirthGenerations;
 
     /// <summary>
     /// True when gravity settings that require a simulation restart have changed
@@ -670,7 +678,8 @@ public partial class SettingsWindow : JukeboxWindow
         CbGameOfLifeScalingMode.Items.Clear();
         CbGameOfLifeScalingMode.Items.Add("Nearest Neighbor");
         CbGameOfLifeScalingMode.Items.Add("Smooth (Fant)");
-        CbGameOfLifeScalingMode.SelectedIndex = Math.Clamp(settings.GameOfLifeScalingMode, 0, 1);
+        CbGameOfLifeScalingMode.Items.Add("Blocky (aliased)");
+        CbGameOfLifeScalingMode.SelectedIndex = Math.Clamp(settings.GameOfLifeScalingMode, 0, 2);
         CbGameOfLifeColorMode.Items.Clear();
         CbGameOfLifeColorMode.Items.Add("Genetic Blend (parents)");
         CbGameOfLifeColorMode.Items.Add("Genetic Vivid (re-saturated)");
@@ -689,6 +698,16 @@ public partial class SettingsWindow : JukeboxWindow
         CbGameOfLifeSeedSpread.Items.Add("Scattered");
         CbGameOfLifeSeedSpread.Items.Add("Full");
         CbGameOfLifeSeedSpread.SelectedIndex = Math.Clamp(settings.GameOfLifeSeedSpread, 0, 2);
+        SliderGameOfLifeBirthGenerations.Value = Math.Clamp(settings.GameOfLifeBirthGenerations, 0, 8);
+        TxtGameOfLifeBirthGenerations.Text = settings.GameOfLifeBirthGenerations == 0
+            ? "Off"
+            : $"{Math.Clamp(settings.GameOfLifeBirthGenerations, 0, 8)}";
+        CbGameOfLifeBloom.IsChecked = settings.GameOfLifeBloom;
+        SliderGameOfLifeBloomIntensity.Value = Math.Clamp(settings.GameOfLifeBloomIntensity, 1, 10);
+        TxtGameOfLifeBloomIntensity.Text = $"{Math.Clamp(settings.GameOfLifeBloomIntensity, 1, 10) * 10}%";
+        SliderGameOfLifeBloomRadius.Value = Math.Clamp(settings.GameOfLifeBloomRadius, 1, 10);
+        TxtGameOfLifeBloomRadius.Text = $"{Math.Clamp(settings.GameOfLifeBloomRadius, 1, 10)}×";
+        UpdateGameOfLifeBloomVisibility();
         CbGameOfLifeRulesEngine.Items.Clear();
         CbGameOfLifeRulesEngine.Items.Add("Conway (B3/S23)");
         CbGameOfLifeRulesEngine.Items.Add("Brian's Brain (B2/S/refractory)");
@@ -1011,6 +1030,10 @@ public partial class SettingsWindow : JukeboxWindow
         _originalGameOfLifeSeedColorMask = settings.GameOfLifeSeedColorMask;
         _originalGameOfLifeHueSpread = settings.GameOfLifeHueSpread;
         _originalGameOfLifeSeedSpread = settings.GameOfLifeSeedSpread;
+        _originalGameOfLifeBloom = settings.GameOfLifeBloom;
+        _originalGameOfLifeBloomRadius = settings.GameOfLifeBloomRadius;
+        _originalGameOfLifeBloomIntensity = settings.GameOfLifeBloomIntensity;
+        _originalGameOfLifeBirthGenerations = settings.GameOfLifeBirthGenerations;
         _originalGravityBlobMultiplier = settings.GravityBlobMultiplier;
         _originalGravityCameraRoam = settings.GravityCameraRoam;
         _originalGravityShowDiagnostics = settings.GravityShowDiagnostics;
@@ -2522,6 +2545,42 @@ public partial class SettingsWindow : JukeboxWindow
             TxtGameOfLifeHeatBoost.Text = (int)e.NewValue == 0 ? "Off" : $"{(int)e.NewValue}";
     }
 
+    private void SliderGameOfLifeBirthGenerations_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtGameOfLifeBirthGenerations != null)
+            TxtGameOfLifeBirthGenerations.Text = (int)e.NewValue == 0 ? "Off" : $"{(int)e.NewValue}";
+    }
+
+    private void CbGameOfLifeBloom_Changed(object sender, RoutedEventArgs e)
+    {
+        UpdateGameOfLifeBloomVisibility();
+    }
+
+    private void SliderGameOfLifeBloomIntensity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtGameOfLifeBloomIntensity != null)
+            TxtGameOfLifeBloomIntensity.Text = $"{(int)e.NewValue * 10}%";
+    }
+
+    private void SliderGameOfLifeBloomRadius_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtGameOfLifeBloomRadius != null)
+            TxtGameOfLifeBloomRadius.Text = $"{(int)e.NewValue}×";
+    }
+
+    /// <summary>
+    /// Show the Bloom Intensity / Radius rows only when Bloom is enabled — they
+    /// have no effect otherwise, so hiding reduces visual clutter in the panel.
+    /// </summary>
+    private void UpdateGameOfLifeBloomVisibility()
+    {
+        bool on = CbGameOfLifeBloom?.IsChecked == true;
+        if (PanelGameOfLifeBloomIntensity != null)
+            PanelGameOfLifeBloomIntensity.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        if (PanelGameOfLifeBloomRadius != null)
+            PanelGameOfLifeBloomRadius.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private void SliderGameOfLifeDensity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (TxtGameOfLifeDensity != null)
@@ -3190,6 +3249,10 @@ public partial class SettingsWindow : JukeboxWindow
             0 => 0, 1 => 15, 2 => 30, 3 => 45, _ => 60
         };
         _settings.GameOfLifeSeedSpread = Math.Clamp(CbGameOfLifeSeedSpread.SelectedIndex, 0, 2);
+        _settings.GameOfLifeBloom = CbGameOfLifeBloom.IsChecked == true;
+        _settings.GameOfLifeBloomRadius = (int)SliderGameOfLifeBloomRadius.Value;
+        _settings.GameOfLifeBloomIntensity = (int)SliderGameOfLifeBloomIntensity.Value;
+        _settings.GameOfLifeBirthGenerations = (int)SliderGameOfLifeBirthGenerations.Value;
         _settings.GravityG = (int)SliderGravityG.Value;
         _settings.GravityOrbitRepulsion = SliderGravityOrbitRepulsion.Value;
         _settings.GravityCentralGravity = SliderGravityCentralGravity.Value;
@@ -3334,6 +3397,10 @@ public partial class SettingsWindow : JukeboxWindow
         _originalGameOfLifeSeedColorMask = _settings.GameOfLifeSeedColorMask;
         _originalGameOfLifeHueSpread = _settings.GameOfLifeHueSpread;
         _originalGameOfLifeSeedSpread = _settings.GameOfLifeSeedSpread;
+        _originalGameOfLifeBloom = _settings.GameOfLifeBloom;
+        _originalGameOfLifeBloomRadius = _settings.GameOfLifeBloomRadius;
+        _originalGameOfLifeBloomIntensity = _settings.GameOfLifeBloomIntensity;
+        _originalGameOfLifeBirthGenerations = _settings.GameOfLifeBirthGenerations;
         _originalGravityBlobMultiplier = _settings.GravityBlobMultiplier;
         _originalGravityCameraRoam = _settings.GravityCameraRoam;
         _originalGravityShowDiagnostics = _settings.GravityShowDiagnostics;

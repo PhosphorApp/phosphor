@@ -763,11 +763,12 @@
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Width="100"/>
-                                    <Slider x:Name="SliderGameOfLifeTickInterval" Minimum="1" Maximum="100"
+                                    <Slider x:Name="SliderGameOfLifeTickInterval" Minimum="1" Maximum="200"
                                             Width="150" VerticalAlignment="Center"
-                                            IsSnapToTickEnabled="True" TickFrequency="1"
+                                            IsSnapToTickEnabled="True"
+                                            Ticks="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,150,200"
                                             ValueChanged="SliderGameOfLifeTickInterval_ValueChanged"
-                                            ToolTip="Simulation speed in milliseconds per generation. Lower = faster. Default 100."/>
+                                            ToolTip="Simulation speed in milliseconds per generation. Lower = faster. Default 100. Snaps to every integer 1–100, then 150 and 200 for slower animations."/>
                                     <TextBlock x:Name="TxtGameOfLifeTickInterval" Foreground="{StaticResource TextDimBrush}"
                                                VerticalAlignment="Center" Margin="8,0,0,0"/>
                                 </StackPanel>
@@ -802,6 +803,48 @@
                                             ValueChanged="SliderGameOfLifeHeatBoost_ValueChanged"
                                             ToolTip="Brightness boost for newly born cells. Higher = brighter flash on birth. Default 60."/>
                                     <TextBlock x:Name="TxtGameOfLifeHeatBoost" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Birth Fade-In:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <Slider x:Name="SliderGameOfLifeBirthGenerations" Minimum="0" Maximum="8"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="1"
+                                            ValueChanged="SliderGameOfLifeBirthGenerations_ValueChanged"
+                                            ToolTip="Generations newborn cells take to ramp from invisible to full. 0 = instant. Higher = more organic / breathing look. Pairs well with Bloom."/>
+                                    <TextBlock x:Name="TxtGameOfLifeBirthGenerations" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Bloom:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <CheckBox x:Name="CbGameOfLifeBloom" Content="Glow halo around cells" Foreground="{StaticResource TextBrush}"
+                                              VerticalAlignment="Center"
+                                              Checked="CbGameOfLifeBloom_Changed"
+                                              Unchecked="CbGameOfLifeBloom_Changed"
+                                              ToolTip="GPU-accelerated soft glow underneath the crisp cell layer. Adds an organic neon look without changing simulation behavior."/>
+                                </StackPanel>
+                                <StackPanel x:Name="PanelGameOfLifeBloomIntensity" Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Bloom Intensity:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <Slider x:Name="SliderGameOfLifeBloomIntensity" Minimum="1" Maximum="10"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="1"
+                                            ValueChanged="SliderGameOfLifeBloomIntensity_ValueChanged"
+                                            ToolTip="Opacity of the glow layer (10%–100%). Higher = stronger glow but may wash out the cell colors. Default 6."/>
+                                    <TextBlock x:Name="TxtGameOfLifeBloomIntensity" Foreground="{StaticResource TextDimBrush}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <StackPanel x:Name="PanelGameOfLifeBloomRadius" Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Bloom Radius:" Foreground="{StaticResource TextBrush}"
+                                               VerticalAlignment="Center" Width="100"/>
+                                    <Slider x:Name="SliderGameOfLifeBloomRadius" Minimum="1" Maximum="10"
+                                            Width="150" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="1"
+                                            ValueChanged="SliderGameOfLifeBloomRadius_ValueChanged"
+                                            ToolTip="Glow halo size multiplier (multiplied by cell size). Larger = softer, more diffuse. Default 3."/>
+                                    <TextBlock x:Name="TxtGameOfLifeBloomRadius" Foreground="{StaticResource TextDimBrush}"
                                                VerticalAlignment="Center" Margin="8,0,0,0"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
@@ -877,7 +920,7 @@
                                                VerticalAlignment="Center" Width="100"/>
                                     <ComboBox x:Name="CbGameOfLifeScalingMode" Width="170"
                                               SelectionChanged="CbGameOfLifeScalingMode_SelectionChanged"
-                                              ToolTip="NearestNeighbor = crisp blocky pixels. Smooth (Fant) = antialiased cell edges via GPU filtering."/>
+                                              ToolTip="NearestNeighbor = crisp blocky pixels (subtle edge AA). Smooth (Fant) = antialiased cell edges via GPU filtering. Blocky (aliased) = hardest edges; pair with camera roam off for chunkiest look."/>
                                 </StackPanel>
                                 <StackPanel x:Name="PanelGameOfLifeColorMode" Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Color:" Foreground="{StaticResource TextBrush}"

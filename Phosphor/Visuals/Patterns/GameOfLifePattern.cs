@@ -62,8 +62,53 @@ public sealed class GameOfLifePattern : BlobPatternBase
     /// <summary>When true, restart the Game of Life simulation whenever a new track starts.</summary>
     public static bool RestartOnTrackChange { get; set; } = false;
 
+    /// <summary>
+    /// How the cell bitmap is scaled and edge-rasterized when upscaled to screen size.
+    /// <list type="bullet">
+    /// <item><c>NearestNeighbor</c> — crisp interior pixels, but the outer image rectangle is
+    /// still antialiased (and any camera rotation / fractional zoom softens interiors too).</item>
+    /// <item><c>Fant</c> — WPF's smooth high-quality filter. Soft cell edges, good for small cells.</item>
+    /// <item><c>Blocky</c> — NearestNeighbor sampling paired with <see cref="EdgeMode.Aliased"/>,
+    /// which removes the outer-rectangle AA halo. Cell edges are as hard as WPF will permit.
+    /// Camera rotation and fractional zoom will still soften interiors because WPF must AA
+    /// rotated/sub-pixel geometry — turn camera roam off (or accept that softness) for the
+    /// chunkiest look.</item>
+    /// </list>
+    /// </summary>
+    public enum ScalingModeKind { NearestNeighbor = 0, Fant = 1, Blocky = 2 }
+
     /// <summary>Bitmap scaling mode used when upscaling cells to screen size. Default NearestNeighbor.</summary>
-    public static BitmapScalingMode ScalingMode { get; set; } = BitmapScalingMode.NearestNeighbor;
+    public static ScalingModeKind ScalingMode { get; set; } = ScalingModeKind.NearestNeighbor;
+
+    /// <summary>
+    /// When true, render a secondary blurred copy of the cell bitmap beneath the
+    /// main image, producing a soft glow halo around live cells. The base image
+    /// stays crisp; the glow layer adds a bleed of color into the surrounding
+    /// pixels. Uses a GPU-accelerated <see cref="BlurEffect"/> so it adds
+    /// effectively no CPU cost. Pairs well with <see cref="BirthGenerations"/>.
+    /// </summary>
+    public static bool Bloom { get; set; } = false;
+
+    /// <summary>
+    /// Glow halo size multiplier (1–10). Multiplied by <see cref="CellSize"/> to get
+    /// the <see cref="BlurEffect"/> radius in pixels. Default 3 — a moderate halo.
+    /// </summary>
+    public static int BloomRadius { get; set; } = 3;
+
+    /// <summary>
+    /// Glow layer opacity, 1–10 (mapped to 10%–100%). Default 6 = 60% — the glow is
+    /// visible without overwhelming the crisp cells on top. Higher = more washed-out.
+    /// </summary>
+    public static int BloomIntensity { get; set; } = 6;
+
+    /// <summary>
+    /// Number of generations a newly born cell takes to ramp up from 0 → full alpha.
+    /// 0 = cells appear instantly (original behavior). Higher values smooth out the
+    /// pop-in of new births; pairs with the existing <see cref="FadeGenerations"/>
+    /// (which controls death fade-out) to make the whole simulation visibly breathe.
+    /// Clamped 0–8 in practice; the underlying _age field can hold up to 31.
+    /// </summary>
+    public static int BirthGenerations { get; set; } = 0;
 
     /// <summary>
     /// Color model for new births.
@@ -248,6 +293,12 @@ public sealed class GameOfLifePattern : BlobPatternBase
 
     private WriteableBitmap? _bitmap;
     private Image? _image;
+    // Optional second Image layered beneath _image with a permanent GPU
+    // BlurEffect, sharing _bitmap as its Source. Created only when Bloom is
+    // enabled at Enter() time; otherwise null and incurs zero cost. Lives
+    // under the same RenderTransform group as _image so the glow tracks the
+    // camera in lockstep.
+    private Image? _glowImage;
     private DispatcherTimer? _timer;
 
     private int _gridW, _gridH;
@@ -255,9 +306,13 @@ public sealed class GameOfLifePattern : BlobPatternBase
     // Per-cell state: color RGB (0 = dead), age (generations alive), fade (countdown when dying)
     private uint[] _colorCurrent = [];   // packed BGRA — 0 means dead
     private uint[] _colorNext = [];
-    // Age is clamped at 3 — only the "<= 2" test in RenderRow (newborn brightness boost)
-    // ever inspects it, so a single byte (vs. ushort) halves this array's memory bandwidth.
-    private byte[] _age = [];              // how many generations this cell has been alive (clamped to 3)
+    // Age is a byte so it fits in 1/4 the bandwidth of a ushort. We clamp it
+    // to AgeClampMax — the original "<= 2" newborn brightness test only needed
+    // 3 values, but BirthGenerations now also reads age (up to ~8 ticks) so we
+    // bump the ceiling. 31 leaves plenty of headroom without affecting the
+    // byte storage. See also: BirthGenerations doc comment.
+    private const byte AgeClampMax = 31;
+    private byte[] _age = [];              // how many generations this cell has been alive (clamped to AgeClampMax)
     private byte[] _fade = [];           // remaining fade-out ticks (>0 = recently died, still rendering)
     private uint[] _fadeColor = [];      // color at moment of death, for fade rendering
 
@@ -555,8 +610,18 @@ public sealed class GameOfLifePattern : BlobPatternBase
         _overscanH = h * (1.0 + overscanFrac);
 
         int cellSize = Math.Max(1, CellSize);
-        _gridW = Math.Max(1, (int)(_overscanW / cellSize));
-        _gridH = Math.Max(1, (int)(_overscanH / cellSize));
+        // Round the grid UP and snap _overscanW/H to an exact integer multiple of
+        // cellSize. Without this, Stretch.Fill maps _gridW source texels across
+        // _overscanW display pixels at a non-integer ratio (e.g. 127 cells stretched
+        // to 1276 px = 10.047 px/cell), so most cells render 10 px wide and ~12%
+        // render 11 px wide. The unevenness is hidden by edge AA in the smooth /
+        // default modes but is glaringly obvious in Blocky mode. Rounding up also
+        // guarantees the image fully covers the visible canvas even when overscan
+        // is 0% and the canvas dimensions aren't multiples of cellSize.
+        _gridW = Math.Max(1, (int)Math.Ceiling(_overscanW / cellSize));
+        _gridH = Math.Max(1, (int)Math.Ceiling(_overscanH / cellSize));
+        _overscanW = _gridW * cellSize;
+        _overscanH = _gridH * cellSize;
 
         int totalCells = _gridW * _gridH;
         _colorCurrent = new uint[totalCells];
@@ -603,7 +668,25 @@ public sealed class GameOfLifePattern : BlobPatternBase
             Opacity = 0,
         };
 
-        RenderOptions.SetBitmapScalingMode(_image!, ScalingMode);
+        switch (ScalingMode)
+        {
+            case ScalingModeKind.Fant:
+                RenderOptions.SetBitmapScalingMode(_image!, BitmapScalingMode.Fant);
+                RenderOptions.SetEdgeMode(_image!, EdgeMode.Unspecified);
+                break;
+            case ScalingModeKind.Blocky:
+                // NearestNeighbor + Aliased edges removes the outer-rectangle AA halo that
+                // NearestNeighbor alone still produces. Rotation / fractional zoom from camera
+                // roam will still soften interiors (WPF can't render rotated geometry without
+                // AA) — users wanting the pure chunky look should also disable camera roam.
+                RenderOptions.SetBitmapScalingMode(_image!, BitmapScalingMode.NearestNeighbor);
+                RenderOptions.SetEdgeMode(_image!, EdgeMode.Aliased);
+                break;
+            default:
+                RenderOptions.SetBitmapScalingMode(_image!, BitmapScalingMode.NearestNeighbor);
+                RenderOptions.SetEdgeMode(_image!, EdgeMode.Unspecified);
+                break;
+        }
 
         // Position oversized image so the visible center aligns with the canvas center
         double offsetX = -(_overscanW - w) / 2.0;
@@ -642,6 +725,45 @@ public sealed class GameOfLifePattern : BlobPatternBase
         // Dummy brush/grad so base class indexing doesn't crash
         _brushes.Add(new SolidColorBrush(Colors.Black));
         _gradBrushes.Add(new RadialGradientBrush());
+
+        // Glow layer (Bloom): a second Image sharing the same WriteableBitmap,
+        // permanently blurred via a GPU BlurEffect. Added to the canvas FIRST so
+        // it renders beneath the crisp _image. Shares the same TransformGroup so
+        // camera roam keeps the glow perfectly aligned with the cells. When Bloom
+        // is off, nothing is allocated and the second visual is never created.
+        if (Bloom)
+        {
+            int radiusMult = Math.Clamp(BloomRadius, 1, 10);
+            double intensity = Math.Clamp(BloomIntensity, 1, 10) / 10.0;
+            _glowImage = new Image
+            {
+                Width = _overscanW,
+                Height = _overscanH,
+                Source = _bitmap,
+                Stretch = Stretch.Fill,
+                Opacity = 0, // matched up with _image's intro fade-in below
+                IsHitTestVisible = false,
+                Effect = new BlurEffect
+                {
+                    // Bloom radius scales with cellSize so cells of any size get a
+                    // proportional halo. RenderingBias.Performance keeps the effect
+                    // GPU-only (no software fallback).
+                    Radius = Math.Max(1, cellSize * radiusMult),
+                    KernelType = KernelType.Gaussian,
+                    RenderingBias = RenderingBias.Performance,
+                },
+                RenderTransform = transformGroup,
+                RenderTransformOrigin = new System.Windows.Point(0.5, 0.5),
+            };
+            // Bilinear sampling for the glow keeps the bleed smooth even when the
+            // base image is set to NearestNeighbor / Blocky — we don't want the
+            // halo to inherit the chunky look.
+            RenderOptions.SetBitmapScalingMode(_glowImage, BitmapScalingMode.Linear);
+            Canvas.SetLeft(_glowImage, offsetX);
+            Canvas.SetTop(_glowImage, offsetY);
+            _glowImage.Opacity = intensity;
+            _canvas.Children.Add(_glowImage);
+        }
 
         _canvas.Children.Add(_image!);
         _blobs.Add(_image!);
@@ -1406,7 +1528,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
                 int x = xBase + b;
                 int idx = rowBase + x;
                 _colorNext[idx] = _colorCurrent[idx];
-                if (_age[idx] < 3) _age[idx]++;
+                if (_age[idx] < AgeClampMax) _age[idx]++;
                 _fade[idx] = 0;
                 int si = Math.Min(x / sectorW, sectorCx) + sectorRowBase;
                 sectorAlive[si]++;
@@ -1636,7 +1758,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
                 int x = xBase + b;
                 int idx = rowBase + x;
                 _colorNext[idx] = _colorCurrent[idx];
-                if (_age[idx] < 3) _age[idx]++;
+                if (_age[idx] < AgeClampMax) _age[idx]++;
                 _fade[idx] = 0;
                 int si = Math.Min(x / sectorW, sectorCx) + sectorRowBase;
                 sectorAlive[si]++;
@@ -1709,8 +1831,9 @@ public sealed class GameOfLifePattern : BlobPatternBase
             if ((SurviveMask & (1 << neighbors)) != 0)
             {
                 _colorNext[idx] = self;
-                // Age is clamped at 3 — anything ≥ 3 produces the same RenderRow result.
-                if (_age[idx] < 3) _age[idx]++;
+                // Age is clamped at AgeClampMax — used by RenderRow for both the
+                // newborn brightness boost ("<= 2") and the BirthGenerations alpha ramp.
+                if (_age[idx] < AgeClampMax) _age[idx]++;
                 _fade[idx] = 0;
                 int si = Math.Min(x / sectorW, sectorCx) + sectorRowBase;
                 sectorAlive[si]++;
@@ -1986,6 +2109,10 @@ public sealed class GameOfLifePattern : BlobPatternBase
         int fadeMax = Math.Max(1, FadeGenerations);
         uint heat = (uint)Math.Clamp(HeatBoost, 0, 255);
         int rowBase = y * w;
+        // BirthGenerations > 0 ramps newborn alpha from 1/(N+1) at age 1 up to
+        // full at age N+1. Clamp to the actual byte ceiling so we never index
+        // past what _age can hold. 0 means "no ramp" (instant pop-in).
+        int birthRamp = Math.Clamp(BirthGenerations, 0, AgeClampMax - 1);
 
         for (int x = 0; x < w; x++)
         {
@@ -2007,14 +2134,26 @@ public sealed class GameOfLifePattern : BlobPatternBase
 
                 if (boost > 0)
                 {
-                    uint r = Math.Min(255, cr + boost);
-                    uint g = Math.Min(255, cg + boost);
-                    uint b = Math.Min(255, cb + boost);
-                    pixels[i] = 0xFF000000 | (r << 16) | (g << 8) | b;
+                    cr = Math.Min(255, cr + boost);
+                    cg = Math.Min(255, cg + boost);
+                    cb = Math.Min(255, cb + boost);
+                }
+
+                // Birth fade-in: ramp from 0 -> full over birthRamp generations.
+                // Cells with age > birthRamp render at full intensity. Premultiply
+                // RGB by alpha so the WPF compositor blends correctly against
+                // whatever's beneath (and against the glow layer).
+                if (birthRamp > 0 && _age[i] <= birthRamp)
+                {
+                    uint alpha = (uint)(255 * _age[i] / (birthRamp + 1));
+                    cr = cr * alpha / 255;
+                    cg = cg * alpha / 255;
+                    cb = cb * alpha / 255;
+                    pixels[i] = (alpha << 24) | (cr << 16) | (cg << 8) | cb;
                 }
                 else
                 {
-                    pixels[i] = c;
+                    pixels[i] = 0xFF000000 | (cr << 16) | (cg << 8) | cb;
                 }
             }
             else if (_fade[i] > 0)
@@ -2848,15 +2987,49 @@ public sealed class GameOfLifePattern : BlobPatternBase
     public override void Exit(Action onComplete)
     {
         StopMotion();
+        // Fade the glow layer out in parallel with the base class's exit
+        // animation. base.Exit handles _image (via _blobs); _glowImage isn't
+        // in _blobs because we want it locked to _image's transform, not
+        // flown out on its own trajectory. A short opacity fade keeps the
+        // glow from snapping off-screen mid-transition.
+        if (_glowImage != null)
+        {
+            var fade = new DoubleAnimation
+            {
+                From = _glowImage.Opacity,
+                To = 0,
+                Duration = TimeSpan.FromMilliseconds(400),
+            };
+            _glowImage.BeginAnimation(UIElement.OpacityProperty, fade);
+        }
         base.Exit(onComplete);
+    }
+
+    protected override void CleanupCanvas()
+    {
+        if (_glowImage != null)
+        {
+            _glowImage.BeginAnimation(UIElement.OpacityProperty, null);
+            _glowImage.Effect = null;
+            _canvas.Children.Remove(_glowImage);
+            _glowImage = null;
+        }
+        base.CleanupCanvas();
     }
 
     public override void Dispose()
     {
         StopMotion();
+        // Null fields AFTER base.Dispose() — base.Dispose calls CleanupCanvas
+        // (our override), which needs _glowImage/_image still set so it can
+        // properly remove them from the canvas and detach their effects. If
+        // we nulled them first, the orphaned visuals would keep rendering
+        // their (still-referenced) WriteableBitmap source after each restart,
+        // stacking as a faint background behind the new pattern.
+        base.Dispose();
         _bitmap = null;
         _image = null;
-        base.Dispose();
+        _glowImage = null;
     }
 
     // ─── Helpers ──────────────────────────────────────────────

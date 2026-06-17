@@ -767,7 +767,7 @@ public partial class DmdWindow : JukeboxWindow
         GameOfLifePattern.CellSize = Math.Clamp(settings.GameOfLifeCellSize, 1, 10);
         GameOfLifePattern.TickIntervalMs = settings.GameOfLifeUseScreenRate
             ? ComputeScreenRateTickMs()
-            : Math.Clamp(settings.GameOfLifeTickIntervalMs, 1, 100);
+            : Math.Clamp(settings.GameOfLifeTickIntervalMs, 1, 200);
         GameOfLifePattern.FadeGenerations = Math.Clamp(settings.GameOfLifeFadeGenerations, 0, 20);
         GameOfLifePattern.HeatBoost = Math.Clamp(settings.GameOfLifeHeatBoost, 0, 100);
         GameOfLifePattern.Density = Math.Clamp(settings.GameOfLifeDensity, 1, 10);
@@ -778,8 +778,9 @@ public partial class DmdWindow : JukeboxWindow
         GameOfLifePattern.RestartOnTrackChange = settings.GameOfLifeRestartOnTrackChange;
         GameOfLifePattern.ScalingMode = settings.GameOfLifeScalingMode switch
         {
-            1 => BitmapScalingMode.Fant,
-            _ => BitmapScalingMode.NearestNeighbor,
+            1 => GameOfLifePattern.ScalingModeKind.Fant,
+            2 => GameOfLifePattern.ScalingModeKind.Blocky,
+            _ => GameOfLifePattern.ScalingModeKind.NearestNeighbor,
         };
         // Apply custom B/S rule from settings.
         GameOfLifePattern.ApplyRule(settings.GameOfLifeCustomRule ?? "B3/S23");
@@ -791,6 +792,10 @@ public partial class DmdWindow : JukeboxWindow
         GameOfLifePattern.SeedColorMask = settings.GameOfLifeSeedColorMask;
         GameOfLifePattern.HueSpread = Math.Clamp(settings.GameOfLifeHueSpread, 0, 60);
         GameOfLifePattern.SeedSpread = (GameOfLifePattern.SeedSpreadKind)Math.Clamp(settings.GameOfLifeSeedSpread, 0, 2);
+        GameOfLifePattern.Bloom = settings.GameOfLifeBloom;
+        GameOfLifePattern.BloomRadius = Math.Clamp(settings.GameOfLifeBloomRadius, 1, 10);
+        GameOfLifePattern.BloomIntensity = Math.Clamp(settings.GameOfLifeBloomIntensity, 1, 10);
+        GameOfLifePattern.BirthGenerations = Math.Clamp(settings.GameOfLifeBirthGenerations, 0, 8);
         GravityBlobPattern.GravityG = Math.Clamp(settings.GravityG, 100, 1000);
         GravityBlobPattern.OrbitRepulsion = Math.Clamp(settings.GravityOrbitRepulsion, 0, 6);
         GravityBlobPattern.CentralGravity = Math.Clamp(settings.GravityCentralGravity, 2, 100);
@@ -2142,7 +2147,7 @@ public partial class DmdWindow : JukeboxWindow
         GameOfLifePattern.CellSize = Math.Clamp(_appSettings.GameOfLifeCellSize, 1, 10);
         GameOfLifePattern.TickIntervalMs = _appSettings.GameOfLifeUseScreenRate
             ? ComputeScreenRateTickMs()
-            : Math.Clamp(_appSettings.GameOfLifeTickIntervalMs, 1, 100);
+            : Math.Clamp(_appSettings.GameOfLifeTickIntervalMs, 1, 200);
         GameOfLifePattern.FadeGenerations = Math.Clamp(_appSettings.GameOfLifeFadeGenerations, 0, 20);
         GameOfLifePattern.HeatBoost = Math.Clamp(_appSettings.GameOfLifeHeatBoost, 0, 100);
         GameOfLifePattern.Density = Math.Clamp(_appSettings.GameOfLifeDensity, 1, 10);
@@ -2161,6 +2166,10 @@ public partial class DmdWindow : JukeboxWindow
         GameOfLifePattern.SeedColorMask = _appSettings.GameOfLifeSeedColorMask;
         GameOfLifePattern.HueSpread = Math.Clamp(_appSettings.GameOfLifeHueSpread, 0, 60);
         GameOfLifePattern.SeedSpread = (GameOfLifePattern.SeedSpreadKind)Math.Clamp(_appSettings.GameOfLifeSeedSpread, 0, 2);
+        GameOfLifePattern.Bloom = _appSettings.GameOfLifeBloom;
+        GameOfLifePattern.BloomRadius = Math.Clamp(_appSettings.GameOfLifeBloomRadius, 1, 10);
+        GameOfLifePattern.BloomIntensity = Math.Clamp(_appSettings.GameOfLifeBloomIntensity, 1, 10);
+        GameOfLifePattern.BirthGenerations = Math.Clamp(_appSettings.GameOfLifeBirthGenerations, 0, 8);
         if (settingsWindow.GameOfLifeSettingsChanged)
         {
             _playfieldProxy?.RestartGameOfLife();

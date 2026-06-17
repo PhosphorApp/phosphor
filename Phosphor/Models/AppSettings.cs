@@ -219,6 +219,27 @@ public class AppSettings
     /// <summary>Seed spread mode (0 = Clustered, 1 = Scattered, 2 = Full). Default 0.</summary>
     public int GameOfLifeSeedSpread { get; set; } = 0;
 
+    /// <summary>
+    /// When true, renders a blurred glow halo beneath the crisp cell layer so live
+    /// cells bleed soft color into their neighbors. Pairs especially well with
+    /// <see cref="GameOfLifeBirthGenerations"/> for an organic "breathing" look.
+    /// </summary>
+    public bool GameOfLifeBloom { get; set; } = false;
+
+    /// <summary>Glow halo radius multiplier (1–10), multiplied by cell size. Default 3.</summary>
+    public int GameOfLifeBloomRadius { get; set; } = 3;
+
+    /// <summary>Glow layer opacity, 1–10 (10% to 100%). Default 6.</summary>
+    public int GameOfLifeBloomIntensity { get; set; } = 6;
+
+    /// <summary>
+    /// Number of generations newborn cells take to ramp from invisible to full
+    /// alpha. 0 = instant pop-in (original behavior). Pairs with
+    /// <see cref="GameOfLifeFadeGenerations"/> (death fade-out) to smooth the
+    /// sim's overall visual cadence. Range 0–8.
+    /// </summary>
+    public int GameOfLifeBirthGenerations { get; set; } = 0;
+
     // Gravity tuning
     /// <summary>Gravitational constant (100–800). Default 400.</summary>
     public int GravityG { get; set; } = 400;
