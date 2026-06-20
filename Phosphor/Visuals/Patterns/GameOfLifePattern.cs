@@ -379,15 +379,15 @@ public sealed class GameOfLifePattern : BlobPatternBase
     // Camera roam state — continuous exploration model
     private enum CameraState { Settling, Exploring }
     private CameraState _cameraState = CameraState.Settling;
-    private int _cameraRetargetTicks;       // ticks until we pick a new wander target
+    private int _cameraRetargetTicks;       // ticks until the next gated retarget evaluation
+    private int _cameraDwellTicks;          // ticks since the last committed retarget (min-dwell debounce)
     private double _cameraZoom = 1.0;       // current zoom level
     private double _cameraTargetZoom = 1.0;
     private double _cameraPanX, _cameraPanY; // current pan offset in pixels
     private double _cameraTargetX, _cameraTargetY;
     private double _cameraAngle;            // current rotation in degrees
     private double _cameraTargetAngle;
-    private double _cameraDriftX, _cameraDriftY; // very slow constant drift velocity
-    private double _cameraDriftAngle;       // very slow rotational drift
+    private double _cameraDriftAngle;       // very slow rotational drift (subtle organic motion)
     private ScaleTransform? _scaleTransform;
     private TranslateTransform? _translateTransform;
     private RotateTransform? _rotateTransform;
@@ -412,6 +412,48 @@ public sealed class GameOfLifePattern : BlobPatternBase
     private readonly double[] _sectorHeat = new double[SectorCountX * SectorCountY];
     // Smoothing factor: heat = heat*(1-α) + currentScore*α. Lower = more inertia.
     private const double SectorHeatAlpha = 0.08;
+
+    // ─── Smart-drift camera tunables ──────────────────────────────────────
+    // Grouped here so the camera feel can be tweaked without hunting through
+    // the logic. NONE of these affect motion *rate* — that stays governed
+    // solely by CameraSpeed via the per-frame lerp in OnCompositionRendering.
+
+    // Tier 1 — continuous smart drift (pan leans toward the heat centroid).
+    // heat^this exponent weights the centroid toward the hottest sectors.
+    // 2.0 = heat² (leans toward the single hottest bloom); 1.0 = plain center of mass.
+    private const double SmartDriftHeatExponent = 2.0;
+    // Deadzone: if the action centroid is within this fraction of the frame
+    // from center, desired pan = 0 (hold still — "close enough" centering).
+    private const double SmartDriftDeadzoneFrac = 0.10;
+    // Fraction of the available pan margin we're willing to use when leaning.
+    // <1 keeps the lean gentle and never fully jams action to a frame edge.
+    private const double SmartDriftPanFrac = 0.80;
+    // Below this total heat the grid is considered "quiet" — pan eases back
+    // to center instead of chasing noise.
+    private const double SmartDriftIdleHeat = 1.0;
+    // Smoothing time-constant (seconds) applied to the *pan target itself* so it
+    // eases toward each newly-computed lean instead of snapping. The desired pan
+    // is recomputed every tick from the (noisy) heat centroid, which hops as the
+    // hottest bloom switches sectors; snapping makes the target reverse abruptly
+    // and the value lerp chases those reversals as visible jerks. This slow EWMA
+    // makes the target glide, giving the camera a floaty feel. Larger = floatier
+    // (and laggier). Tick-rate independent — see AdvanceCameraTargets.
+    private const double SmartDriftEaseSeconds = 0.9;
+
+    // Tier 2 — gated retarget (occasional zoom/angle variety, only when earned).
+    // A new retarget commits only if the best candidate sector's heat exceeds
+    // the currently-framed heat by at least this factor.
+    private const double RetargetImprovementMargin = 1.75;
+    // Minimum seconds to hold a committed shot before another retarget may fire
+    // (debounce — "we just moved, let it breathe").
+    private const double RetargetMinDwellSeconds = 7.0;
+    // When a retarget evaluation is skipped (nothing better / still in dwell),
+    // re-check again after this short interval instead of the full dwell.
+    private const double RetargetRecheckMinSeconds = 2.0;
+    private const double RetargetRecheckMaxSeconds = 4.0;
+    // Committed-retarget dwell window before the next evaluation fires.
+    private const double RetargetCommitMinSeconds = 10.0;
+    private const double RetargetCommitMaxSeconds = 25.0;
 
     // Stagnation detection — two snapshots taken SnapshotInterval generations apart.
     // Cells alive in both snapshots at the same position are considered stagnant
@@ -716,10 +758,11 @@ public sealed class GameOfLifePattern : BlobPatternBase
         _cameraTargetX = 0; _cameraTargetY = 0;
         _cameraAngle = 0; _cameraTargetAngle = 0;
         _cameraRetargetTicks = TicksFromSeconds(3, 6);
+        _cameraDwellTicks = 0;
 
-        // Initial gentle drift
-        _cameraDriftX = (_rng.NextDouble() - 0.5) * 0.22;
-        _cameraDriftY = (_rng.NextDouble() - 0.5) * 0.22;
+        // Initial gentle rotational drift. Pan is no longer seeded with a random
+        // walk — it's driven continuously toward live action by the smart-drift
+        // logic in AdvanceCameraTargets.
         _cameraDriftAngle = (_rng.NextDouble() - 0.5) * 0.012;
 
         // Dummy brush/grad so base class indexing doesn't crash
@@ -2191,21 +2234,160 @@ public sealed class GameOfLifePattern : BlobPatternBase
         double speed = Math.Clamp(CameraSpeed, 0.1, 3.0);
         double maxZoom = Math.Clamp(CameraMaxZoom, 1.1, 5.0);
 
-        // Drift accumulates onto targets at the sim-tick rate (sub-pixel motion
-        // between explicit retargets). Tuned for the original 100ms-tick feel.
-        _cameraTargetX += _cameraDriftX * speed;
-        _cameraTargetY += _cameraDriftY * speed;
+        // ─── Tier 1: smart drift — lean the pan target toward live action ───
+        // Aim continuously at the heat-weighted centroid of activity. The
+        // per-frame lerp in OnCompositionRendering (governed solely by
+        // CameraSpeed) decides how fast we actually get there, so this only
+        // chooses *where* to lean — never how quickly.
+        ComputeGlobalHeatCentroid(out double cFracX, out double cFracY, out double totalHeat);
+
+        double desiredPanX, desiredPanY;
+        if (totalHeat < SmartDriftIdleHeat)
+        {
+            // Grid is essentially quiet — ease back to center instead of
+            // chasing a handful of stray cells out to the fringe.
+            desiredPanX = 0;
+            desiredPanY = 0;
+        }
+        else
+        {
+            // Soft deadzone: ignore the central band so we hold still when
+            // action is already roughly centered, then ramp in smoothly past
+            // the deadzone edge (no jump at the boundary).
+            double offX = cFracX - 0.5;
+            double offY = cFracY - 0.5;
+            offX = Math.Sign(offX) * Math.Max(0, Math.Abs(offX) - SmartDriftDeadzoneFrac);
+            offY = Math.Sign(offY) * Math.Max(0, Math.Abs(offY) - SmartDriftDeadzoneFrac);
+            FracToPan(0.5 + offX, 0.5 + offY, _cameraTargetZoom, out desiredPanX, out desiredPanY);
+        }
+
+        // Ease the pan *target* toward the freshly-computed lean instead of
+        // snapping to it. The value lerp in OnCompositionRendering keeps
+        // position continuous, but a target that jumps still makes velocity
+        // reverse abruptly (which reads as jerky) as the heat centroid hops
+        // between competing blooms. This slow, tick-rate-independent EWMA glides
+        // the target so the motion stays floaty: easeA = 1 - e^(-dt/tau) with
+        // tau = SmartDriftEaseSeconds. CameraSpeed deliberately does NOT scale
+        // this — it governs the value lerp only, not where we aim.
+        double tickSeconds = Math.Max(16, TickIntervalMs) / 1000.0;
+        double easeA = 1.0 - Math.Exp(-tickSeconds / Math.Max(0.001, SmartDriftEaseSeconds));
+        _cameraTargetX = Lerp(_cameraTargetX, desiredPanX, easeA);
+        _cameraTargetY = Lerp(_cameraTargetY, desiredPanY, easeA);
+
+        // Subtle organic rotational drift (angle only; re-randomized on each
+        // committed retarget). Speed-scaled like the original feel.
         _cameraTargetAngle += _cameraDriftAngle * speed;
         ClampCameraTarget();
 
+        _cameraDwellTicks++;
+
+        // ─── Tier 2: gated retarget — occasional zoom/angle variety, earned ──
+        // The timer only *evaluates*; it commits a new shot when (a) we've held
+        // the current one long enough (debounce) and (b) the hottest bloom is
+        // clearly more interesting than what we're already framing. Otherwise
+        // we skip and re-check again shortly rather than waiting a full dwell.
         _cameraRetargetTicks--;
         if (_cameraRetargetTicks <= 0)
         {
-            PickCameraTarget(maxZoom);
-            if (_cameraState == CameraState.Settling)
+            int minDwellTicks = (int)(RetargetMinDwellSeconds * 1000.0 / Math.Max(16, TickIntervalMs));
+            bool dwellSatisfied = _cameraState == CameraState.Settling || _cameraDwellTicks >= minDwellTicks;
+
+            double bestHeat = 0;
+            for (int i = 0; i < SectorCountX * SectorCountY; i++)
+                if (_sectorHeat[i] > bestHeat) bestHeat = _sectorHeat[i];
+            double framedHeat = EstimateFramedHeat();
+            bool worthMoving = bestHeat >= framedHeat * RetargetImprovementMargin;
+
+            if (dwellSatisfied && worthMoving)
+            {
+                PickCameraTarget(maxZoom);
                 _cameraState = CameraState.Exploring;
-            _cameraRetargetTicks = TicksFromSeconds(10, 25);
+                _cameraDwellTicks = 0;
+                _cameraRetargetTicks = TicksFromSeconds(RetargetCommitMinSeconds, RetargetCommitMaxSeconds);
+            }
+            else
+            {
+                // Nothing better right now (or still in min-dwell) — look again soon.
+                // The initial Settling period is over once we've evaluated once,
+                // so drop to the calmer Exploring lerp even if we didn't commit.
+                _cameraState = CameraState.Exploring;
+                _cameraRetargetTicks = TicksFromSeconds(RetargetRecheckMinSeconds, RetargetRecheckMaxSeconds);
+            }
         }
+    }
+
+    /// <summary>
+    /// Heat-weighted centroid of the smoothed <see cref="_sectorHeat"/> map,
+    /// returned as a fractional position on the image (0..1 on each axis) plus
+    /// the total heat summed across all sectors. Each sector's weight is its
+    /// heat raised to <see cref="SmartDriftHeatExponent"/> so the centroid
+    /// leans toward the hottest blooms (exponent 2 = heat²). When the grid is
+    /// empty the centroid defaults to image center (0.5, 0.5) and totalHeat 0.
+    /// </summary>
+    private void ComputeGlobalHeatCentroid(out double fracX, out double fracY, out double totalHeat)
+    {
+        fracX = 0.5;
+        fracY = 0.5;
+        totalHeat = 0;
+
+        double weightSum = 0;
+        double sumX = 0, sumY = 0;
+        for (int sy = 0; sy < SectorCountY; sy++)
+        {
+            for (int sx = 0; sx < SectorCountX; sx++)
+            {
+                double heat = _sectorHeat[sy * SectorCountX + sx];
+                totalHeat += heat;
+                double w = Math.Pow(heat, SmartDriftHeatExponent);
+                weightSum += w;
+                sumX += w * ((sx + 0.5) / SectorCountX);
+                sumY += w * ((sy + 0.5) / SectorCountY);
+            }
+        }
+
+        if (weightSum > 0)
+        {
+            fracX = sumX / weightSum;
+            fracY = sumY / weightSum;
+        }
+    }
+
+    /// <summary>
+    /// Map a fractional image position (0..1 on each axis) to the pan offset
+    /// that would move that point toward the viewport center at the given zoom.
+    /// Uses <see cref="SmartDriftPanFrac"/> so the lean stays gentle and never
+    /// jams action fully to a frame edge. At zoom 1.0 there is no pannable
+    /// margin, so this returns zero.
+    /// </summary>
+    private void FracToPan(double fracX, double fracY, double zoom, out double panX, out double panY)
+    {
+        double imgCenterFracX = fracX - 0.5; // -0.5..+0.5
+        double imgCenterFracY = fracY - 0.5;
+        panX = -imgCenterFracX * _overscanW * (zoom - 1.0) * SmartDriftPanFrac;
+        panY = -imgCenterFracY * _overscanH * (zoom - 1.0) * SmartDriftPanFrac;
+    }
+
+    /// <summary>
+    /// Estimate the heat of the region currently at the center of the viewport.
+    /// Inverts the scale+translate geometry to find which fractional image
+    /// position sits under the screen center given the current pan target and
+    /// zoom, then returns that sector's smoothed heat. Used by the gated
+    /// retarget to decide whether the current shot is boring relative to the
+    /// hottest bloom elsewhere.
+    /// </summary>
+    private double EstimateFramedHeat()
+    {
+        // Image point (as a fraction) currently at the display center: scaling
+        // happens about the image center (0.5,0.5), so screen offset = u*zoom + pan
+        // where u is the image-space offset from center; solving for screen
+        // center (offset 0) gives u = -pan/zoom.
+        double zoom = Math.Max(1e-6, _cameraTargetZoom);
+        double fracX = 0.5 - _cameraTargetX / (zoom * Math.Max(1e-6, _overscanW));
+        double fracY = 0.5 - _cameraTargetY / (zoom * Math.Max(1e-6, _overscanH));
+
+        int sx = Math.Clamp((int)(fracX * SectorCountX), 0, SectorCountX - 1);
+        int sy = Math.Clamp((int)(fracY * SectorCountY), 0, SectorCountY - 1);
+        return _sectorHeat[sy * SectorCountX + sx];
     }
 
     /// <summary>
@@ -2270,64 +2452,22 @@ public sealed class GameOfLifePattern : BlobPatternBase
     }
 
     /// <summary>
-    /// Pick a new camera wander target. Uses the smoothed <see cref="_sectorHeat"/>
-    /// map (EWMA across recent frames) so persistent blooms dominate over
-    /// single-frame noise. Selection is heat²-weighted random, then the actual
-    /// centroid of live cells inside the chosen sector is computed so the
-    /// camera lands on the bloom rather than at the sector midpoint.
+    /// Commit fresh zoom and rotation on a gated retarget, for variety. Pan is
+    /// owned continuously by the smart-drift logic in
+    /// <see cref="AdvanceCameraTargets"/>, so this no longer chooses a pan
+    /// target or seeds a random pan walk — it only refreshes the zoom level and
+    /// a safe random angle (plus a gentle rotational drift). Zoom wanders
+    /// between ~50% and 100% of max so committed shots feel varied.
     /// </summary>
     private void PickCameraTarget(double maxZoom)
     {
-        int totalSectors = SectorCountX * SectorCountY;
-
-        // Heat² weighting strongly biases toward the hottest sectors but keeps
-        // a chance of visiting secondary blooms. Add a small uniform floor so
-        // dead grids still pick *something* without dividing by zero.
-        Span<double> weights = stackalloc double[totalSectors];
-        double weightSum = 0;
-        double maxHeat = 0;
-        for (int i = 0; i < totalSectors; i++)
-            if (_sectorHeat[i] > maxHeat) maxHeat = _sectorHeat[i];
-
-        double floor = Math.Max(1e-6, maxHeat * 0.02); // 2% floor relative to peak
-        for (int i = 0; i < totalSectors; i++)
-        {
-            double h = _sectorHeat[i] + floor;
-            double w = h * h;
-            weights[i] = w;
-            weightSum += w;
-        }
-
-        // Weighted random pick
-        double r = _rng.NextDouble() * weightSum;
-        int bestIdx = 0;
-        double acc = 0;
-        for (int i = 0; i < totalSectors; i++)
-        {
-            acc += weights[i];
-            if (r <= acc) { bestIdx = i; break; }
-        }
-
-        // Compute actual centroid of live cells inside the chosen sector so we
-        // aim at the bloom, not the sector midpoint. Fall back to the midpoint
-        // if the sector is empty (which can happen with EWMA inertia).
-        int sectorX = bestIdx % SectorCountX;
-        int sectorY = bestIdx / SectorCountX;
-        double fracX = (sectorX + 0.5) / SectorCountX;
-        double fracY = (sectorY + 0.5) / SectorCountY;
-        ComputeSectorCentroid(sectorX, sectorY, ref fracX, ref fracY);
-
-        // Gently vary zoom — wander between ~60% and 100% of max zoom so it stays interesting
+        // Gently vary zoom — wander between ~50% and 100% of max zoom so it stays interesting
         double minWander = 1.0 + (maxZoom - 1.0) * 0.5;
         _cameraTargetZoom = minWander + _rng.NextDouble() * (maxZoom - minWander);
 
-        // Pan offset: move the target sector toward the viewport center
-        double imgCenterFracX = fracX - 0.5; // -0.5..+0.5
-        double imgCenterFracY = fracY - 0.5;
-        _cameraTargetX = -imgCenterFracX * _overscanW * (_cameraTargetZoom - 1.0) * 0.8;
-        _cameraTargetY = -imgCenterFracY * _overscanH * (_cameraTargetZoom - 1.0) * 0.8;
-
-        // Compute the maximum safe rotation angle given zoom, overscan, and pan offset.
+        // Maximum safe rotation given zoom, overscan, and the current
+        // (smart-drift owned) pan offset. ClampCameraTarget keeps the angle
+        // valid as pan continues to drift between retargets.
         double marginX = Math.Max(0, (_overscanW * _cameraTargetZoom - _displayW) / 2.0 - Math.Abs(_cameraTargetX));
         double marginY = Math.Max(0, (_overscanH * _cameraTargetZoom - _displayH) / 2.0 - Math.Abs(_cameraTargetY));
         double minMargin = Math.Min(marginX, marginY);
@@ -2336,57 +2476,10 @@ public sealed class GameOfLifePattern : BlobPatternBase
 
         _cameraTargetAngle = (_rng.NextDouble() - 0.5) * 2.0 * maxAngle;
 
-        // Set a new gentle drift direction — keeps the camera floating between retargets
-        _cameraDriftX = (_rng.NextDouble() - 0.5) * 0.165;
-        _cameraDriftY = (_rng.NextDouble() - 0.5) * 0.165;
+        // Refresh the gentle rotational drift so rotation keeps floating between retargets.
         _cameraDriftAngle = (_rng.NextDouble() - 0.5) * 0.009 * Math.Max(1.0, maxAngle / 15.0);
 
         ClampCameraTarget();
-    }
-
-    /// <summary>
-    /// Find the weighted centroid of live cells inside a single sector and
-    /// convert it to a fractional position on the image (0..1). Falls back to
-    /// the sector midpoint (preserving the input values) if the sector has no
-    /// live cells. Sampled (every Nth cell) so the cost stays trivial even on
-    /// 2M+ cell grids — accuracy doesn't need to be pixel-perfect for camera aim.
-    /// </summary>
-    private void ComputeSectorCentroid(int sectorX, int sectorY, ref double fracX, ref double fracY)
-    {
-        int w = _gridW, h = _gridH;
-        if (w == 0 || h == 0) return;
-
-        int sectorW = Math.Max(1, w / SectorCountX);
-        int sectorH = Math.Max(1, h / SectorCountY);
-        int x0 = sectorX * sectorW;
-        int y0 = sectorY * sectorH;
-        int x1 = sectorX == SectorCountX - 1 ? w : Math.Min(w, x0 + sectorW);
-        int y1 = sectorY == SectorCountY - 1 ? h : Math.Min(h, y0 + sectorH);
-
-        // Stride to keep this under ~4k samples per sector regardless of grid size
-        int cellsInSector = (x1 - x0) * (y1 - y0);
-        int stride = Math.Max(1, (int)Math.Sqrt(cellsInSector / 4096.0));
-
-        long sumX = 0, sumY = 0, count = 0;
-        for (int y = y0; y < y1; y += stride)
-        {
-            int rowBase = y * w;
-            for (int x = x0; x < x1; x += stride)
-            {
-                if (_colorCurrent[rowBase + x] != 0)
-                {
-                    sumX += x;
-                    sumY += y;
-                    count++;
-                }
-            }
-        }
-
-        if (count > 0)
-        {
-            fracX = (sumX / (double)count) / w;
-            fracY = (sumY / (double)count) / h;
-        }
     }
 
     /// <summary>Clamp camera pan and rotation targets so the viewport stays within bounds.</summary>
