@@ -931,6 +931,27 @@ public partial class BackglassWindow : JukeboxWindow
             // skip the in-place attempt and the verification dance.
             bool isLocalSource = !string.IsNullOrEmpty(_lastLocalFilePath);
 
+            // The current track may have started as a live stream while its cached
+            // (downloaded + remuxed) copy finished in the background. Live streams scrub
+            // unreliably, so if a ready cache now exists for this video, switch to it
+            // seamlessly and resume at the scrub target — the user never notices because
+            // playback is already interrupted by the scrub. Skip in audio-only mode: the
+            // cache holds full video files and we must not introduce video mid-scrub.
+            if (!isLocalSource)
+            {
+                var vmForCache = DataContext as JukeboxViewModel;
+                bool isAudioOnly = _audioOnly || (vmForCache?.CurrentlyPlaying?.IsAudioOnly == true);
+                var cached = !isAudioOnly && !string.IsNullOrEmpty(_lastPlayingVideoId)
+                    ? vmForCache?.Cache?.TryGet(_lastPlayingVideoId!)
+                    : null;
+                if (cached != null)
+                {
+                    DebugLog.Log("Seek", $"Cache ready — switching from live stream to cached file for reliable scrub: {cached.FilePath}");
+                    SwitchToCachedFileAndSeek(cached, targetMs);
+                    return;
+                }
+            }
+
             if (isLocalSource || seekable)
             {
                 _mediaPlayer.Time = targetMs;
@@ -1070,6 +1091,72 @@ public partial class BackglassWindow : JukeboxWindow
                 }
             }, verifyCt);
         });
+    }
+
+    /// <summary>
+    /// Seamlessly swaps the currently-playing live stream for its now-ready cached
+    /// (downloaded + remuxed) local file, resuming at <paramref name="targetMs"/>.
+    /// The cached .mkv has proper cue points, so all subsequent seeks are file-based
+    /// and reliable. Uses ":start-time" so VLC begins decoding at the scrub target
+    /// rather than replaying from the beginning.
+    /// </summary>
+    private void SwitchToCachedFileAndSeek(CachedVideo cached, long targetMs)
+    {
+        if (_mediaPlayer == null || _libVLC == null) return;
+
+        // A cache switch supersedes any in-flight seek verification from the live stream.
+        _seekVerifyCts?.Cancel();
+
+        var vm = DataContext as JukeboxViewModel;
+
+        try
+        {
+            var media = new Media(_libVLC, new Uri(cached.FilePath));
+
+            // Begin decoding at the scrub target (seconds). Clamp so we never pass a
+            // negative or absurd value if Length was briefly misreported.
+            var startSeconds = Math.Max(0, targetMs) / 1000.0;
+            media.AddOption($":start-time={startSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)}");
+
+            // Preserve a paused scrub: if the user scrubbed while paused, re-apply pause
+            // once VLC reaches the playing state (SetPause before then is ignored).
+            bool wasPaused = vm?.IsPaused == true;
+            if (wasPaused)
+            {
+                void OnPlayingReapplyPause(object? s, EventArgs a)
+                {
+                    _mediaPlayer.Playing -= OnPlayingReapplyPause;
+                    _mediaPlayer.SetPause(true);
+                }
+                _mediaPlayer.Playing += OnPlayingReapplyPause;
+            }
+
+            _mediaPlayer.Play(media);
+
+            // From now on this track is a local file — future seeks skip the live-stream
+            // verification path and just set Time directly.
+            _lastLocalFilePath = cached.FilePath;
+            _lastVideoStreamUrl = null;
+            _lastAudioStreamUrl = null;
+            _lastMuxedStreamUrl = null;
+
+            // Reflect the seek target immediately so the scrubber doesn't snap back.
+            if (vm != null)
+                vm.PlaybackPosition = targetMs;
+
+            // Restore cached chapters if the playing item doesn't have them yet.
+            if (cached.Chapters is { Count: > 0 } && vm?.CurrentlyPlaying is { } cp && cp.Chapters == null)
+            {
+                cp.Chapters = cached.Chapters;
+                vm.NotifyCachedChaptersRestored();
+            }
+
+            StartVideoInfoPollingCached(cached.Resolution);
+        }
+        catch (Exception ex)
+        {
+            DebugLog.LogException("Seek/CacheSwitch", ex);
+        }
     }
 
     private void OnStopRequested()
