@@ -1,6 +1,6 @@
 # Phase 3 — yt-dlp Video Engine: Download Path ✅ DONE
 
-**Status:** Complete. Commit `<pending>`. **Prereq:** Phase 2 complete.
+**Status:** Complete. Commit `5a21e13`. **Prereq:** Phase 2 complete.
 **Goal:** Implement `YtDlpVideoEngine` and make the **cache/prefetch download** path
 use it when `AppSettings.VideoEngine == YtDlp`. Biggest, safest win (offline, measurable).
 

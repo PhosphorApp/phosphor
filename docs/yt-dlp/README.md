@@ -15,7 +15,7 @@
 |------:|-------|--------|-----|-----------|
 | 1 | Spike / feasibility | ✅ Done | [phase-1-spike.md](phase-1-spike.md) | `baf619f`, `65795ce` |
 | 2 | `IVideoEngine` seam (no behavior change) | ✅ Done | [phase-2-video-engine-seam.md](phase-2-video-engine-seam.md) | `56805ee` |
-| 3 | yt-dlp video engine — download path | ✅ Done | [phase-3-ytdlp-download.md](phase-3-ytdlp-download.md) | `<pending>` |
+| 3 | yt-dlp video engine — download path | ✅ Done | [phase-3-ytdlp-download.md](phase-3-ytdlp-download.md) | `5a21e13` |
 | 4 | yt-dlp video engine — live playback | ⬜ Not started | [phase-4-ytdlp-live.md](phase-4-ytdlp-live.md) | — |
 | 5 | Metadata & native chapters | ⬜ Not started | [phase-5-metadata-chapters.md](phase-5-metadata-chapters.md) | — |
 | 6 | `ISearchEngine` seam + optional yt-dlp search | ⬜ Not started | [phase-6-search-engine.md](phase-6-search-engine.md) | — |
@@ -70,7 +70,7 @@ Every file added/modified by the migration, with the phase and disposition.
 `YoutubeExplodeVideoEngine`. Default engine = YoutubeExplode → **no behavior change**.
 Build green.
 
-### Phase 3 (yt-dlp download path) — commit `<pending>`
+### Phase 3 (yt-dlp download path) — commit `5a21e13`
 | File | Change | Disposition | Notes |
 |------|--------|-------------|-------|
 | `Phosphor/Video/YtDlpVideoEngine.cs` | added | keep | Native yt-dlp download; live playback delegated to YoutubeExplode (Phase 4 replaces) |
@@ -88,7 +88,7 @@ unchanged → **no behavior change** by default. Build green.
 
 Actions to take **before or at Phase 7 (cutover)**. Check off as done.
 
-- [x] **Remove `Phosphor/YtDlp/YtDlpSpike.cs`** — done in Phase 3 (commit `<pending>`);
+- [x] **Remove `Phosphor/YtDlp/YtDlpSpike.cs`** — done in Phase 3 (commit `5a21e13`);
   replaced by `Phosphor/Video/YtDlpVideoEngine.cs`.
 - [x] **Reassess `Phosphor/YtDlp/` folder** — deleted (empty after spike removal). The
   real engine lives under `Phosphor/Video/` alongside the seam, not `Phosphor/YtDlp/`.
