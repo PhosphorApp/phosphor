@@ -1063,6 +1063,10 @@ public partial class SettingsWindow : JukeboxWindow
         CbVideoQuality.Items.Add("Max (4k)");
         CbVideoQuality.SelectedIndex = (int)settings.VideoQuality;
         UpdateQualityHint(settings.VideoQuality);
+        CbVideoEngine.Items.Add("YoutubeExplode");
+        CbVideoEngine.Items.Add("yt-dlp");
+        CbVideoEngine.SelectedIndex = (int)settings.VideoEngine;
+        UpdateEngineHint(settings.VideoEngine);
         CbStereoAudio.IsChecked = settings.StereoAudio;
 
         // Network
@@ -3291,6 +3295,7 @@ public partial class SettingsWindow : JukeboxWindow
             : RbTopperLogoColorMorph.IsChecked == true ? LogoColorMode.SlowMorph
             : LogoColorMode.Off;
         _settings.VideoQuality = (VideoQualityPreference)CbVideoQuality.SelectedIndex;
+        _settings.VideoEngine = (VideoEngineKind)CbVideoEngine.SelectedIndex;
         _settings.StereoAudio = CbStereoAudio.IsChecked == true;
         _settings.NetworkCachingMs = (int)SliderNetworkCaching.Value;
         _settings.LiveCachingMs = (int)SliderLiveCaching.Value;
@@ -3445,6 +3450,22 @@ public partial class SettingsWindow : JukeboxWindow
     {
         if (CbVideoQuality.SelectedIndex >= 0)
             UpdateQualityHint((VideoQualityPreference)CbVideoQuality.SelectedIndex);
+    }
+
+    private void CbVideoEngine_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (CbVideoEngine.SelectedIndex >= 0)
+            UpdateEngineHint((VideoEngineKind)CbVideoEngine.SelectedIndex);
+    }
+
+    private void UpdateEngineHint(VideoEngineKind engine)
+    {
+        if (EngineHintText == null) return;
+        EngineHintText.Text = engine switch
+        {
+            VideoEngineKind.YtDlp => "yt-dlp — downloads via yt-dlp.exe",
+            _ => "YoutubeExplode — in-process (default)"
+        };
     }
 
     private void UpdateQualityHint(VideoQualityPreference pref)

@@ -159,6 +159,15 @@
                                             <TextBlock x:Name="QualityHintText" Foreground="{StaticResource TextDimBrush}"
                                                        VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11"/>
                                         </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                            <TextBlock Text="Engine:" Foreground="{StaticResource TextBrush}"
+                                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <ComboBox x:Name="CbVideoEngine" Width="150"
+                                                      VerticalAlignment="Center"
+                                                      SelectionChanged="CbVideoEngine_SelectionChanged"/>
+                                            <TextBlock x:Name="EngineHintText" Foreground="{StaticResource TextDimBrush}"
+                                                       VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11"/>
+                                        </StackPanel>
                                         <CheckBox x:Name="CbStereoAudio" Content="Prefer stereo audio (instead of 5.1 surround)"
                                                   Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
                                                   Margin="0,0,0,4"/>

@@ -82,9 +82,19 @@ yt-dlp (separate video-only + audio-only streams, caches mux as before). Live
 playback still uses YoutubeExplode via delegation until Phase 4. Default engine
 unchanged → **no behavior change** by default. Build green.
 
+### Phase 3.1 (Settings UI toggle) — commit `<pending>`
+| File | Change | Disposition | Notes |
+|------|--------|-------------|-------|
+| `Phosphor/Windows/SettingsWindow.xaml` | modified | keep | "Engine" dropdown in General → VIDEO section (mirrors Quality combo) |
+| `Phosphor/Windows/SettingsWindow.xaml.cs` | modified | keep | Load/save `VideoEngine`; `CbVideoEngine_SelectionChanged` + `UpdateEngineHint` |
+
+**Net effect:** engine is now selectable interactively (YoutubeExplode / yt-dlp).
+`DmdWindow` already calls `SetVideoEngine` on settings-apply, so the switch takes
+effect without a restart. Default (index 0 = YoutubeExplode) unchanged.
+
 ---
 
-## 🧹 Cleanup / removal tracker
+
 
 Actions to take **before or at Phase 7 (cutover)**. Check off as done.
 
@@ -118,4 +128,4 @@ Actions to take **before or at Phase 7 (cutover)**. Check off as done.
 
 ---
 
-_Last updated: Phase 3 complete (yt-dlp download path landed, spike removed, build green)._
+_Last updated: Phase 3 complete + Settings UI engine toggle (build green)._
