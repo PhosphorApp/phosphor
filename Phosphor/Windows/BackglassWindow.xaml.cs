@@ -4,8 +4,6 @@ using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using LibVLCSharp.Shared;
-using YoutubeExplode;
-using YoutubeExplode.Videos.Streams;
 using Phosphor.Audio;
 using WpfMedia = System.Windows.Media;
 using WpfColor = System.Windows.Media.Color;
@@ -17,7 +15,6 @@ public partial class BackglassWindow : JukeboxWindow
 {
     private LibVLC? _libVLC;
     private MediaPlayer? _mediaPlayer;
-    private readonly YoutubeClient _youtube = new();
     private readonly Random _rng = new();
     private readonly DispatcherTimer _colorTimer;
     private DispatcherTimer? _positionTimer;
@@ -616,7 +613,10 @@ public partial class BackglassWindow : JukeboxWindow
 
             if (ct.IsCancellationRequested) return;
 
-            IStreamInfo? infoForOverlay = null;
+            // Non-null once a streaming (non-cached) source starts. Doubles as the
+            // "is streaming" signal for the overlay + seekability diagnostics; the
+            // string is the "WxH" resolution ("" for audio-only).
+            string? streamingResolution = null;
             string? cachedResolution = null;
 
             // Wait for first video output before revealing the video surface
@@ -743,46 +743,52 @@ public partial class BackglassWindow : JukeboxWindow
                 }
                 else
                 {
-                    var manifest = await _youtube.Videos.Streams.GetManifestAsync(videoId);
-                    if (ct.IsCancellationRequested) { _mediaPlayer.Vout -= OnVout; return; }
                     var quality = vm?.VideoQuality ?? VideoQualityPreference.High;
-
                     var stereo = vm?.StereoAudio ?? false;
-                    var audioStream = StreamSelector.SelectAudio(manifest, stereo);
+                    var engine = vm?.VideoEngine ?? new Phosphor.Video.YoutubeExplodeVideoEngine();
 
-                    if (isAudioOnly && audioStream != null)
+                    var streams = await engine.ResolveStreamsAsync(videoId, quality, stereo, isAudioOnly, ct);
+                    if (ct.IsCancellationRequested) { _mediaPlayer.Vout -= OnVout; return; }
+
+                    if (streams == null)
                     {
-                        // Audio-only mode � stream only audio, no video download
-                        var media = new Media(_libVLC, new Uri(audioStream.Url));
-                        ApplyNetworkOptions(media, vm);
-                        _lastAudioStreamUrl = audioStream.Url;
-                        _mediaPlayer.Play(media);
+                        _mediaPlayer.Vout -= OnVout;
+                        (DataContext as JukeboxViewModel)?.NotifyPlaybackStarted();
+                        return;
                     }
-                    else
-                    {
-                        var videoStream = StreamSelector.SelectVideo(manifest, quality);
 
-                        if (videoStream != null && audioStream != null)
+                    switch (streams.Kind)
+                    {
+                        case Phosphor.Video.VideoStreamKind.AudioOnly:
+                        {
+                            // Audio-only mode — stream only audio, no video download
+                            var media = new Media(_libVLC, new Uri(streams.PrimaryUrl));
+                            ApplyNetworkOptions(media, vm);
+                            _lastAudioStreamUrl = streams.PrimaryUrl;
+                            _mediaPlayer.Play(media);
+                            break;
+                        }
+                        case Phosphor.Video.VideoStreamKind.SeparateVideoAudio:
                         {
                             // Feed video as primary, audio as slave input
-                            var media = new Media(_libVLC, new Uri(videoStream.Url));
-                            media.AddSlave(MediaSlaveType.Audio, 4, new Uri(audioStream.Url));
+                            var media = new Media(_libVLC, new Uri(streams.PrimaryUrl));
+                            media.AddSlave(MediaSlaveType.Audio, 4, new Uri(streams.AudioSlaveUrl!));
                             ApplyNetworkOptions(media, vm);
-                            _lastVideoStreamUrl = videoStream.Url;
-                            _lastAudioStreamUrl = audioStream.Url;
+                            _lastVideoStreamUrl = streams.PrimaryUrl;
+                            _lastAudioStreamUrl = streams.AudioSlaveUrl;
                             _mediaPlayer.Play(media);
-                            infoForOverlay = videoStream;
+                            streamingResolution = streams.Resolution;
+                            break;
                         }
-                        else
+                        default: // Muxed
                         {
                             // Fallback to muxed if separate streams aren't available
-                            var muxed = StreamSelector.SelectMuxed(manifest, quality);
-                            if (muxed == null) { _mediaPlayer.Vout -= OnVout; (DataContext as JukeboxViewModel)?.NotifyPlaybackStarted(); return; }
-                            var media = new Media(_libVLC, new Uri(muxed.Url));
+                            var media = new Media(_libVLC, new Uri(streams.PrimaryUrl));
                             ApplyNetworkOptions(media, vm);
-                            _lastMuxedStreamUrl = muxed.Url;
+                            _lastMuxedStreamUrl = streams.PrimaryUrl;
                             _mediaPlayer.Play(media);
-                            infoForOverlay = muxed;
+                            streamingResolution = streams.Resolution;
+                            break;
                         }
                     }
                 }
@@ -858,14 +864,14 @@ public partial class BackglassWindow : JukeboxWindow
 
             IdleOverlay.Visibility = Visibility.Collapsed;
 
-            if (infoForOverlay != null)
-                StartVideoInfoPolling(infoForOverlay);
+            if (streamingResolution != null)
+                StartVideoInfoPolling(streamingResolution);
             else if (cachedResolution != null)
                 StartVideoInfoPollingCached(cachedResolution);
             _positionTimer?.Start();
 
             // Log seekability diagnostics for streaming (non-cached) playback
-            if (infoForOverlay != null)
+            if (streamingResolution != null)
             {
                 var seekable = _mediaPlayer.IsSeekable;
                 var length = _mediaPlayer.Length;
@@ -1340,13 +1346,9 @@ public partial class BackglassWindow : JukeboxWindow
         _reactiveHueBoost = data.Treble * 90.0;
     }
 
-    private void StartVideoInfoPolling(IStreamInfo streamInfo)
+    private void StartVideoInfoPolling(string resolution)
     {
         if (!_showVideoInfo) return;
-
-        string resolution = streamInfo is IVideoStreamInfo vs
-            ? $"{vs.VideoResolution.Width}x{vs.VideoResolution.Height}"
-            : "?";
 
         VideoInfoChanged?.Invoke(resolution);
 

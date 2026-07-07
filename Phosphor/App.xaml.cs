@@ -56,6 +56,7 @@ public partial class App : Application
             }
         });
         var viewModel = new JukeboxViewModel();
+        viewModel.SetVideoEngine(_settings.VideoEngine);
         viewModel.SetupCache(_settings.CacheEnabled, _settings.CacheMaxSizeGb, _settings.CacheMaxClipLengthMinutes);
         viewModel.SetupPrefetch(_settings.PrefetchEnabled);
         viewModel.SetupThumbnailCache(_settings.ThumbnailCacheEnabled, _settings.ThumbnailCacheMaxSizeMb);

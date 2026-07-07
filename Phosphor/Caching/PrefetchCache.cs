@@ -1,6 +1,5 @@
 using System.IO;
-using YoutubeExplode;
-using YoutubeExplode.Videos.Streams;
+using Phosphor.Video;
 
 namespace Phosphor;
 
@@ -14,8 +13,13 @@ public class PrefetchCache
     private static readonly string PrefetchDir = Path.Combine(
         AppDomain.CurrentDomain.BaseDirectory, "prefetch");
 
-    private readonly YoutubeClient _youtube = new();
     private readonly object _lock = new();
+
+    /// <summary>
+    /// The video engine used to download streams. Assigned by the ViewModel; defaults
+    /// to YoutubeExplode so the cache is usable even if wiring is skipped.
+    /// </summary>
+    public IVideoEngine VideoEngine { get; set; } = new YoutubeExplodeVideoEngine();
 
     private string? _cachedVideoId;
     private string? _filePath;
@@ -80,18 +84,12 @@ public class PrefetchCache
 
         try
         {
-            var manifest = await _youtube.Videos.Streams.GetManifestAsync(videoId, cts.Token);
-            var videoStream = StreamSelector.SelectVideo(manifest, quality);
-            var audioStream = StreamSelector.SelectAudio(manifest, preferStereo);
-            if (videoStream == null || audioStream == null) return;
+            var download = await VideoEngine.DownloadStreamsAsync(videoId, quality, preferStereo, PrefetchDir, cts.Token);
+            if (download == null) return;
 
-            var videoFile = Path.Combine(PrefetchDir, $"{videoId}_video.{videoStream.Container.Name}");
-            var audioFile = Path.Combine(PrefetchDir, $"{videoId}_audio.{audioStream.Container.Name}");
-
-            await _youtube.Videos.Streams.DownloadAsync(videoStream, videoFile, cancellationToken: cts.Token);
-            await _youtube.Videos.Streams.DownloadAsync(audioStream, audioFile, cancellationToken: cts.Token);
-
-            var resolution = $"{videoStream.VideoResolution.Width}x{videoStream.VideoResolution.Height}";
+            var videoFile = download.VideoFilePath;
+            var audioFile = download.AudioFilePath;
+            var resolution = download.Resolution;
 
             // Mux into a single seekable .mkv
             var muxedFile = Path.Combine(PrefetchDir, $"{videoId}.mkv");

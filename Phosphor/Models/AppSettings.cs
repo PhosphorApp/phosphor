@@ -327,6 +327,7 @@ public class AppSettings
     public string LogoText { get; set; } = "\u2022 PHOSPHOR \u2022 PHOSPHOR ";
     public bool PrefetchEnabled { get; set; } = true;
     public VideoQualityPreference VideoQuality { get; set; } = VideoQualityPreference.High;
+    public VideoEngineKind VideoEngine { get; set; } = VideoEngineKind.YoutubeExplode;
     public bool StereoAudio { get; set; } = true;
     public int Volume { get; set; } = 100;
 
@@ -497,6 +498,12 @@ public enum VideoQualityPreference
     Medium, // up to 720p
     High,   // up to 1080p
     Max     // best available
+}
+
+public enum VideoEngineKind
+{
+    YoutubeExplode, // in-process YoutubeExplode (default)
+    YtDlp           // external yt-dlp.exe (added incrementally)
 }
 
 public enum LogoRingsMode

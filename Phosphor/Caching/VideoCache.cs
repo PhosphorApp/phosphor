@@ -1,7 +1,6 @@
 using System.IO;
 using System.Text.Json;
-using YoutubeExplode;
-using YoutubeExplode.Videos.Streams;
+using Phosphor.Video;
 
 namespace Phosphor;
 
@@ -17,12 +16,17 @@ public class VideoCache
 
     private static readonly string IndexPath = Path.Combine(CacheDir, "index.json");
 
-    private readonly YoutubeClient _youtube = new();
     private readonly object _lock = new();
     private List<CacheEntry> _entries = new();
     private long _maxBytes;
     private bool _enabled;
     private int _maxClipLengthMinutes;
+
+    /// <summary>
+    /// The video engine used to download streams. Assigned by the ViewModel; defaults
+    /// to YoutubeExplode so the cache is usable even if wiring is skipped.
+    /// </summary>
+    public IVideoEngine VideoEngine { get; set; } = new YoutubeExplodeVideoEngine();
 
     public bool Enabled => _enabled;
 
@@ -108,21 +112,12 @@ public class VideoCache
 
         try
         {
-            var manifest = await _youtube.Videos.Streams.GetManifestAsync(videoId, ct);
-            var videoStream = StreamSelector.SelectVideo(manifest, quality);
-            var audioStream = StreamSelector.SelectAudio(manifest, preferStereo);
+            var download = await VideoEngine.DownloadStreamsAsync(videoId, quality, preferStereo, CacheDir, ct);
+            if (download == null) return;
 
-            if (videoStream == null || audioStream == null) return;
-
-            var videoFile = $"{videoId}_video.{videoStream.Container.Name}";
-            var audioFile = $"{videoId}_audio.{audioStream.Container.Name}";
-            var videoPath = Path.Combine(CacheDir, videoFile);
-            var audioPath = Path.Combine(CacheDir, audioFile);
-
-            await _youtube.Videos.Streams.DownloadAsync(videoStream, videoPath, cancellationToken: ct);
-            await _youtube.Videos.Streams.DownloadAsync(audioStream, audioPath, cancellationToken: ct);
-
-            var resolution = $"{videoStream.VideoResolution.Width}x{videoStream.VideoResolution.Height}";
+            var videoPath = download.VideoFilePath;
+            var audioPath = download.AudioFilePath;
+            var resolution = download.Resolution;
 
             // Mux video+audio into a single .mkv with proper cue points for seeking.
             // Raw WebM streams from YouTube lack cue points, making them unseekable.

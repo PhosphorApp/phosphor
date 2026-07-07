@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using YoutubeExplode;
 using YoutubeExplode.Common;
 using YoutubeExplode.Videos;
+using Phosphor.Video;
 
 namespace Phosphor;
 
@@ -494,6 +495,26 @@ public partial class JukeboxViewModel : ObservableObject
     public PrefetchCache? Prefetch => _prefetch;
     private string? _prefetchingVideoId;
 
+    // ── Video engine (YoutubeExplode / yt-dlp switch point) ──
+    private IVideoEngine _videoEngine = new YoutubeExplodeVideoEngine();
+
+    /// <summary>
+    /// The active video engine used to resolve/download YouTube streams. Defaults to
+    /// YoutubeExplode; swapped via <see cref="SetVideoEngine"/> from settings.
+    /// </summary>
+    public IVideoEngine VideoEngine => _videoEngine;
+
+    /// <summary>
+    /// Rebuilds the video engine from the given kind and propagates it to the caches.
+    /// Safe to call at startup and on settings changes.
+    /// </summary>
+    public void SetVideoEngine(VideoEngineKind kind)
+    {
+        _videoEngine = VideoEngineFactory.Create(kind);
+        if (_cache != null) _cache.VideoEngine = _videoEngine;
+        if (_prefetch != null) _prefetch.VideoEngine = _videoEngine;
+    }
+
     // ── Thumbnail cache ──
     public ThumbnailCache? ThumbnailCache { get; private set; }
 
@@ -587,7 +608,7 @@ public partial class JukeboxViewModel : ObservableObject
 
     public void SetupCache(bool enabled, double maxSizeGb, int maxClipLengthMinutes = 0)
     {
-        _cache = new VideoCache(enabled, maxSizeGb, maxClipLengthMinutes);
+        _cache = new VideoCache(enabled, maxSizeGb, maxClipLengthMinutes) { VideoEngine = _videoEngine };
     }
 
     /// <summary>
@@ -653,7 +674,10 @@ public partial class JukeboxViewModel : ObservableObject
     public void SetupPrefetch(bool enabled)
     {
         if (enabled)
+        {
             _prefetch ??= new PrefetchCache();
+            _prefetch.VideoEngine = _videoEngine;
+        }
         else
         {
             _prefetch?.PurgeAll();

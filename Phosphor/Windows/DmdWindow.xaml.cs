@@ -2314,6 +2314,7 @@ public partial class DmdWindow : JukeboxWindow
             LogStep("ConfigurePlex");
             vm.ReloadGenreCategories();
             LogStep("ReloadGenreCategories");
+            vm.SetVideoEngine(_appSettings.VideoEngine);
             vm.Cache?.UpdateSettings(_appSettings.CacheEnabled, _appSettings.CacheMaxSizeGb, _appSettings.CacheMaxClipLengthMinutes);
             vm.SetupPrefetch(_appSettings.PrefetchEnabled);
             vm.SetupThumbnailCache(_appSettings.ThumbnailCacheEnabled, _appSettings.ThumbnailCacheMaxSizeMb);
