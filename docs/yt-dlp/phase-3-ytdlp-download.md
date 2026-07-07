@@ -1,29 +1,42 @@
-# Phase 3 — yt-dlp Video Engine: Download Path ⬜
+# Phase 3 — yt-dlp Video Engine: Download Path ✅ DONE
 
-**Status:** Not started. **Prereq:** Phase 2 complete.
+**Status:** Complete. Commit `<pending>`. **Prereq:** Phase 2 complete.
 **Goal:** Implement `YtDlpVideoEngine` and make the **cache/prefetch download** path
 use it when `AppSettings.VideoEngine == YtDlp`. Biggest, safest win (offline, measurable).
 
-## Plan sketch
-- Add `Phosphor/Video/YtDlpVideoEngine.cs : IVideoEngine` (promote the spike's process
-  plumbing + JSON parsing from `YtDlpSpike.cs`, then **delete the spike**).
-- `DownloadStreamsAsync`: prefer yt-dlp one-shot `-f "bv*+ba/b" --remux-video mkv`
-  (uses bundled ffmpeg). Decide: return the already-remuxed `.mkv` (simplest) vs. raw
-  files for the caller to mux. If returning a finished `.mkv`, extend the seam with an
-  optional "already muxed" signal so `VideoCache`/`PrefetchCache` skip their mux step.
-- Keep the caches' index/eviction/chapters logic intact.
-- yt-dlp path resolution: `YtDlpVideoEngine` uses `dependencies/yt-dlp.exe` copied next
-  to the app (same as spike's `ResolveYtDlpPath`).
+## Decision — seam unchanged ("Plan X"), one-shot remux deferred ("Plan Y")
+The open question (return finished `.mkv` vs. raw files) was resolved in favor of
+**keeping the seam contract identical**: `DownloadStreamsAsync` returns raw video +
+audio files and the caches mux them exactly as before. Rationale: zero interface/caller
+change, lowest risk, and the caches' existing chapters-XML + index + eviction logic is
+untouched. The one-shot `--remux-video mkv` optimization (return a finished `.mkv`,
+skip the caller's mux) is recorded as a **future optimization**, revisit if the double
+process spawn or the caches' mux proves costly.
 
-## Validation
-- Toggle `VideoEngine = YtDlp`, enable cache, play a playlist; confirm `.mkv` is
-  seekable and scrub reliability improves vs. streaming.
-- Measure cache/prefetch time vs. YoutubeExplode path.
+## What was delivered
+- `Phosphor/Video/YtDlpVideoEngine.cs : IVideoEngine`.
+  - `DownloadStreamsAsync`: two yt-dlp invocations — video-only `bv*[height<=N]`
+    (N per `VideoQualityPreference`; Max = no cap) and audio-only
+    `ba[audio_channels<=2]/ba` (stereo) or `ba`. Uses
+    `-o "<dir>/%(id)s_{video,audio}.%(ext)s" --print after_move:filepath --no-simulate`
+    to download **and** capture the exact final path. Returns `VideoDownload`.
+  - `ResolveStreamsAsync` (live) **delegates to `YoutubeExplodeVideoEngine`** — native
+    `-g` resolution is Phase 4.
+  - `ResolveYtDlpPath` locates `dependencies/yt-dlp.exe` next to the app (PATH fallback).
+- `VideoEngineFactory`: `YtDlp` → `YtDlpVideoEngine`.
+- Deleted `Phosphor/YtDlp/YtDlpSpike.cs` + empty folder.
 
-## Cleanup touchpoints
-- ✅ Remove `Phosphor/YtDlp/YtDlpSpike.cs` (superseded).
-- Reassess `Phosphor/YtDlp/` folder (delete or house the real engine).
+## Validation done
+- Real terminal downloads (jNQXAC9IVRw): separate video (mp4) + audio (webm) files;
+  `--print after_move:filepath` returns exact paths; resolution print = `320x240`.
+- Full build green; `yt-dlp.exe` copied to `bin/.../net8.0-windows`; factory routes
+  correctly; default engine (YoutubeExplode) untouched.
 
-## Open questions
-- One-shot remux (return finished `.mkv`) vs. raw-files-then-caller-mux — pick based on
-  how cleanly the seam extends. Record decision in the tracker.
+## Not covered (deferred)
+- **Live A/B scrub-reliability measurement** needs the native live path — that's Phase 4.
+  With YtDlp today, downloads are yt-dlp but live playback is still YoutubeExplode.
+- One-shot remux optimization (Plan Y) — see decision above.
+
+## Open questions for later
+- Should preemptive/prefetch caching parallelize the two yt-dlp spawns? (Currently
+  sequential video→audio; fine for background, measure if it matters.)

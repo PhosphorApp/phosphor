@@ -15,7 +15,7 @@
 |------:|-------|--------|-----|-----------|
 | 1 | Spike / feasibility | ✅ Done | [phase-1-spike.md](phase-1-spike.md) | `baf619f`, `65795ce` |
 | 2 | `IVideoEngine` seam (no behavior change) | ✅ Done | [phase-2-video-engine-seam.md](phase-2-video-engine-seam.md) | `56805ee` |
-| 3 | yt-dlp video engine — download path | ⬜ Not started | [phase-3-ytdlp-download.md](phase-3-ytdlp-download.md) | — |
+| 3 | yt-dlp video engine — download path | ✅ Done | [phase-3-ytdlp-download.md](phase-3-ytdlp-download.md) | `<pending>` |
 | 4 | yt-dlp video engine — live playback | ⬜ Not started | [phase-4-ytdlp-live.md](phase-4-ytdlp-live.md) | — |
 | 5 | Metadata & native chapters | ⬜ Not started | [phase-5-metadata-chapters.md](phase-5-metadata-chapters.md) | — |
 | 6 | `ISearchEngine` seam + optional yt-dlp search | ⬜ Not started | [phase-6-search-engine.md](phase-6-search-engine.md) | — |
@@ -47,7 +47,7 @@ Every file added/modified by the migration, with the phase and disposition.
 | `YT-DLP_MIGRATION_ANALYSIS.md` | added | keep | Analysis + appendices (design source of truth) |
 | `dependencies/yt-dlp.exe` | added (17.4 MB) | **keep** | Bundled runtime, tracked like `ffmpeg.exe` |
 | `Phosphor/Phosphor.csproj` | modified | keep | Copy-to-output item for `yt-dlp.exe` |
-| `Phosphor/YtDlp/YtDlpSpike.cs` | added | **REMOVE** | Throwaway Option-B resolver; superseded by real engine in Phase 3 |
+| `Phosphor/YtDlp/YtDlpSpike.cs` | added, then **removed in Phase 3** | done | Throwaway Option-B resolver; superseded by `YtDlpVideoEngine` |
 
 ### Phase 2 (video engine seam) — commit `56805ee`
 | File | Change | Disposition | Notes |
@@ -70,16 +70,28 @@ Every file added/modified by the migration, with the phase and disposition.
 `YoutubeExplodeVideoEngine`. Default engine = YoutubeExplode → **no behavior change**.
 Build green.
 
+### Phase 3 (yt-dlp download path) — commit `<pending>`
+| File | Change | Disposition | Notes |
+|------|--------|-------------|-------|
+| `Phosphor/Video/YtDlpVideoEngine.cs` | added | keep | Native yt-dlp download; live playback delegated to YoutubeExplode (Phase 4 replaces) |
+| `Phosphor/Video/VideoEngineFactory.cs` | modified | keep | `YtDlp` → `YtDlpVideoEngine` |
+| `Phosphor/YtDlp/YtDlpSpike.cs` | **deleted** | done | Spike removed; folder deleted |
+
+**Net effect:** with `VideoEngine=YtDlp`, `VideoCache`/`PrefetchCache` download via
+yt-dlp (separate video-only + audio-only streams, caches mux as before). Live
+playback still uses YoutubeExplode via delegation until Phase 4. Default engine
+unchanged → **no behavior change** by default. Build green.
+
 ---
 
 ## 🧹 Cleanup / removal tracker
 
 Actions to take **before or at Phase 7 (cutover)**. Check off as done.
 
-- [ ] **Remove `Phosphor/YtDlp/YtDlpSpike.cs`** — throwaway spike, replaced by the real
-  `YtDlpVideoEngine` (Phase 3). Delete once Phase 3 lands.
-- [ ] **Reassess `Phosphor/YtDlp/` folder** — delete if empty after spike removal, or
-  repurpose for the real yt-dlp engine (decide in Phase 3).
+- [x] **Remove `Phosphor/YtDlp/YtDlpSpike.cs`** — done in Phase 3 (commit `<pending>`);
+  replaced by `Phosphor/Video/YtDlpVideoEngine.cs`.
+- [x] **Reassess `Phosphor/YtDlp/` folder** — deleted (empty after spike removal). The
+  real engine lives under `Phosphor/Video/` alongside the seam, not `Phosphor/YtDlp/`.
 - [ ] **`App.xaml.cs` YoutubeExplode exception suppression** (~L549) — revisit once the
   search engine may fail over (Phase 6); failures must be *observable* for fallback.
 - [ ] **Prune YoutubeExplode package** — only if/when *both* seams no longer use it
@@ -106,4 +118,4 @@ Actions to take **before or at Phase 7 (cutover)**. Check off as done.
 
 ---
 
-_Last updated: Phase 2 complete (seam landed, build green)._
+_Last updated: Phase 3 complete (yt-dlp download path landed, spike removed, build green)._

@@ -8,7 +8,7 @@ public static class VideoEngineFactory
 {
     public static IVideoEngine Create(VideoEngineKind kind) => kind switch
     {
-        // YtDlp is added in a later phase; fall back to YoutubeExplode until then.
+        VideoEngineKind.YtDlp => new YtDlpVideoEngine(),
         _ => new YoutubeExplodeVideoEngine(),
     };
 }
