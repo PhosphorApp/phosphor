@@ -6,17 +6,15 @@ namespace Phosphor.Video;
 /// <see cref="IVideoEngine"/> backed by the external <c>yt-dlp.exe</c>.
 /// </summary>
 /// <remarks>
-/// Phase 3 scope: the <b>download</b> path (used by <c>VideoCache</c> /
-/// <c>PrefetchCache</c>) is native yt-dlp — it downloads separate best video-only and
+/// Both paths are native yt-dlp: <see cref="DownloadStreamsAsync"/> (used by
+/// <c>VideoCache</c> / <c>PrefetchCache</c>) downloads separate best video-only and
 /// audio-only streams into the destination dir, and the caches mux them exactly as
 /// before (the seam contract is unchanged). <see cref="ResolveStreamsAsync"/> (live
-/// playback) delegates to <see cref="YoutubeExplodeVideoEngine"/> for now; native
-/// yt-dlp live resolution (<c>-g</c>) arrives in Phase 4.
+/// playback) resolves short-lived playable URLs via <c>-g</c>.
 /// </remarks>
 public sealed class YtDlpVideoEngine : IVideoEngine
 {
     private readonly string _ytDlpPath;
-    private readonly YoutubeExplodeVideoEngine _liveFallback = new();
 
     public YtDlpVideoEngine(string? ytDlpPath = null)
     {
@@ -34,16 +32,75 @@ public sealed class YtDlpVideoEngine : IVideoEngine
     }
 
     /// <summary>
-    /// Live playback resolution is delegated to YoutubeExplode in Phase 3.
-    /// Phase 4 replaces this with native yt-dlp <c>-g</c> URL resolution.
+    /// Resolves short-lived playable stream URLs natively via yt-dlp <c>-g</c>. A single
+    /// invocation yields the "WxH" resolution (first line, non-audio) followed by the
+    /// playable URL(s): two lines for separate video+audio, one for a muxed fallback.
+    /// URLs are time-limited and IP-bound, so this is resolved fresh for each play.
     /// </summary>
-    public Task<VideoStreams?> ResolveStreamsAsync(
+    public async Task<VideoStreams?> ResolveStreamsAsync(
         string videoId,
         VideoQualityPreference quality,
         bool preferStereo,
         bool audioOnly,
         CancellationToken ct = default)
-        => _liveFallback.ResolveStreamsAsync(videoId, quality, preferStereo, audioOnly, ct);
+    {
+        var url = ToWatchUrl(videoId);
+        var cap = HeightCap(quality);
+
+        // Audio-only: a single URL, no resolution needed.
+        if (audioOnly)
+        {
+            var audioSel = preferStereo ? "ba[audio_channels<=2]/ba" : "ba";
+            var (aCode, aOut, aErr) = await RunAsync(new[]
+            {
+                "--no-warnings", "-f", audioSel, "-g", url,
+            }, ct);
+
+            var audioUrl = FirstNonEmptyLine(aOut);
+            if (aCode != 0 || audioUrl == null)
+            {
+                DebugLog.Log("YtDlpVideoEngine", $"audio-only resolve failed ({aCode}): {Trim(aErr)}");
+                return null;
+            }
+            return new VideoStreams(VideoStreamKind.AudioOnly, audioUrl, null, "");
+        }
+
+        // Non-audio: prefer separate video+audio (stereo audio first if requested), fall
+        // back to a muxed stream — all in one invocation. The fallback chain is built with
+        // explicit "video+audio" tiers so the muxed tier stays last; reusing the audio-only
+        // selector here would inject an unintended bare-audio tier before muxed.
+        // Output: [resolution, videoUrl, audioUrl] (separate, 3 lines) or
+        //         [resolution, muxedUrl] (muxed fallback, 2 lines).
+        var videoAudioSel = preferStereo
+            ? $"bv*{cap}+ba[audio_channels<=2]/bv*{cap}+ba/b{cap}"
+            : $"bv*{cap}+ba/b{cap}";
+        var (code, stdout, stderr) = await RunAsync(new[]
+        {
+            "--no-warnings", "-f", videoAudioSel, "-g",
+            "--print", "%(width)sx%(height)s", url,
+        }, ct);
+
+        var lines = stdout
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+
+        if (code != 0 || lines.Count < 2)
+        {
+            DebugLog.Log("YtDlpVideoEngine", $"live resolve failed ({code}), lines={lines.Count}: {Trim(stderr)}");
+            return null;
+        }
+
+        var resolution = lines[0];
+
+        if (lines.Count >= 3)
+        {
+            // Separate video-only + audio-only streams.
+            return new VideoStreams(VideoStreamKind.SeparateVideoAudio, lines[1], lines[2], resolution);
+        }
+
+        // Muxed fallback (resolution + single URL).
+        return new VideoStreams(VideoStreamKind.Muxed, lines[1], null, resolution);
+    }
 
     public async Task<VideoDownload?> DownloadStreamsAsync(
         string videoId,
@@ -176,6 +233,10 @@ public sealed class YtDlpVideoEngine : IVideoEngine
     {
         try { File.Delete(path); } catch { /* best effort */ }
     }
+
+    private static string? FirstNonEmptyLine(string s)
+        => s.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault();
 
     private static string Trim(string s)
         => s.Length <= 400 ? s : s[..400];

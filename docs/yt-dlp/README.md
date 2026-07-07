@@ -16,7 +16,7 @@
 | 1 | Spike / feasibility | ✅ Done | [phase-1-spike.md](phase-1-spike.md) | `baf619f`, `65795ce` |
 | 2 | `IVideoEngine` seam (no behavior change) | ✅ Done | [phase-2-video-engine-seam.md](phase-2-video-engine-seam.md) | `56805ee` |
 | 3 | yt-dlp video engine — download path | ✅ Done | [phase-3-ytdlp-download.md](phase-3-ytdlp-download.md) | `5a21e13` |
-| 4 | yt-dlp video engine — live playback | ⬜ Not started | [phase-4-ytdlp-live.md](phase-4-ytdlp-live.md) | — |
+| 4 | yt-dlp video engine — live playback | ✅ Done | [phase-4-ytdlp-live.md](phase-4-ytdlp-live.md) | `<pending>` |
 | 5 | Metadata & native chapters | ⬜ Not started | [phase-5-metadata-chapters.md](phase-5-metadata-chapters.md) | — |
 | 6 | `ISearchEngine` seam + optional yt-dlp search | ⬜ Not started | [phase-6-search-engine.md](phase-6-search-engine.md) | — |
 | 7 | Cutover & cleanup | ⬜ Not started | [phase-7-cutover-cleanup.md](phase-7-cutover-cleanup.md) | — |
@@ -92,6 +92,16 @@ unchanged → **no behavior change** by default. Build green.
 `DmdWindow` already calls `SetVideoEngine` on settings-apply, so the switch takes
 effect without a restart. Default (index 0 = YoutubeExplode) unchanged.
 
+### Phase 4 (yt-dlp live playback) — commit `<pending>`
+| File | Change | Disposition | Notes |
+|------|--------|-------------|-------|
+| `Phosphor/Video/YtDlpVideoEngine.cs` | modified | keep | Native `ResolveStreamsAsync` via `-g`; removed `_liveFallback` delegation |
+
+**Net effect:** with `VideoEngine=YtDlp`, live playback now resolves URLs natively
+(single yt-dlp spawn: resolution + video/audio or muxed URLs). The yt-dlp engine is
+now **fully native** (download + live). Default engine unchanged → no behavior change
+by default. Build green.
+
 ---
 
 
@@ -128,4 +138,4 @@ Actions to take **before or at Phase 7 (cutover)**. Check off as done.
 
 ---
 
-_Last updated: Phase 3 complete + Settings UI engine toggle (build green)._
+_Last updated: Phase 4 complete (native yt-dlp live playback, build green)._
