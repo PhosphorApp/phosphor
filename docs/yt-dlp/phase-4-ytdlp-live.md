@@ -1,6 +1,6 @@
 # Phase 4 — yt-dlp Video Engine: Live Playback ✅ DONE
 
-**Status:** Complete. Commit `<pending>`. **Prereq:** Phase 3 complete.
+**Status:** Complete. Commit `e0cc5f7`. **Prereq:** Phase 3 complete.
 **Goal:** Make `YtDlpVideoEngine.ResolveStreamsAsync` native (no delegation), so
 `VideoEngine == YtDlp` resolves live playback URLs via yt-dlp. Enables A/B vs YoutubeExplode.
 
