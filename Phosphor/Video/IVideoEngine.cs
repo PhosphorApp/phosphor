@@ -46,6 +46,16 @@ public interface IVideoEngine
         bool preferStereo,
         string destinationDir,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetches video metadata: duration, description, and any <em>native</em> chapter
+    /// markers the source exposes. Engines that lack native chapters return an empty
+    /// chapter list (and a non-null <see cref="VideoMetadata.Description"/> so the
+    /// caller can fall back to description parsing).
+    /// </summary>
+    /// <param name="videoId">The YouTube video id.</param>
+    /// <returns>The metadata, or <c>null</c> if the lookup failed.</returns>
+    Task<VideoMetadata?> GetMetadataAsync(string videoId, CancellationToken ct = default);
 }
 
 /// <summary>Shape of a resolved live stream set.</summary>
@@ -83,3 +93,14 @@ public sealed record VideoDownload(
     string VideoContainer,
     string AudioContainer,
     string Resolution);
+
+/// <summary>
+/// Video metadata for chapter/duration enrichment. <see cref="Chapters"/> holds
+/// <em>native</em> markers when the engine exposes them; when empty, the caller falls
+/// back to parsing <see cref="Description"/>. <see cref="Duration"/> may be null if the
+/// source did not report it.
+/// </summary>
+public sealed record VideoMetadata(
+    TimeSpan? Duration,
+    string? Description,
+    List<ChapterMarker> Chapters);

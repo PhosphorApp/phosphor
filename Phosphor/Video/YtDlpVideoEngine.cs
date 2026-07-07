@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Phosphor.Video;
 
@@ -138,6 +140,51 @@ public sealed class YtDlpVideoEngine : IVideoEngine
             resolution);
     }
 
+    /// <summary>
+    /// Fetches metadata via <c>--dump-single-json</c>: duration, description, and yt-dlp's
+    /// <em>native</em> structured chapter markers. When a video has no native chapters, the
+    /// list is empty and the caller falls back to parsing the description.
+    /// </summary>
+    public async Task<VideoMetadata?> GetMetadataAsync(string videoId, CancellationToken ct = default)
+    {
+        var url = ToWatchUrl(videoId);
+        var (code, stdout, stderr) = await RunAsync(new[]
+        {
+            "--no-warnings", "--dump-single-json", url,
+        }, ct);
+
+        if (code != 0 || string.IsNullOrWhiteSpace(stdout))
+        {
+            DebugLog.Log("YtDlpVideoEngine", $"metadata failed ({code}): {Trim(stderr)}");
+            return null;
+        }
+
+        try
+        {
+            var dto = JsonSerializer.Deserialize<YtDlpMetaJson>(stdout);
+            if (dto == null) return null;
+
+            var duration = dto.Duration is > 0 ? TimeSpan.FromSeconds(dto.Duration.Value) : (TimeSpan?)null;
+
+            var chapters = (dto.Chapters ?? new List<YtDlpChapterJson>())
+                .Where(c => c != null)
+                .Select(c => new ChapterMarker
+                {
+                    Title = c.Title ?? "",
+                    StartTime = TimeSpan.FromSeconds(c.StartTime ?? 0),
+                    EndTime = TimeSpan.FromSeconds(c.EndTime ?? 0),
+                })
+                .ToList();
+
+            return new VideoMetadata(duration, dto.Description, chapters);
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Log("YtDlpVideoEngine", $"metadata parse failed: {ex.Message}");
+            return null;
+        }
+    }
+
     // ── yt-dlp invocations ──
 
     /// <summary>
@@ -240,4 +287,20 @@ public sealed class YtDlpVideoEngine : IVideoEngine
 
     private static string Trim(string s)
         => s.Length <= 400 ? s : s[..400];
+
+    // ── JSON shapes (subset of yt-dlp --dump-single-json) ──
+
+    private sealed class YtDlpMetaJson
+    {
+        [JsonPropertyName("duration")] public double? Duration { get; set; }
+        [JsonPropertyName("description")] public string? Description { get; set; }
+        [JsonPropertyName("chapters")] public List<YtDlpChapterJson>? Chapters { get; set; }
+    }
+
+    private sealed class YtDlpChapterJson
+    {
+        [JsonPropertyName("start_time")] public double? StartTime { get; set; }
+        [JsonPropertyName("end_time")] public double? EndTime { get; set; }
+        [JsonPropertyName("title")] public string? Title { get; set; }
+    }
 }

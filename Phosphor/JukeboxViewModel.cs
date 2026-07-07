@@ -3213,8 +3213,8 @@ public partial class JukeboxViewModel : ObservableObject
     {
         try
         {
-            var video = await _youtube.Videos.GetAsync(videoId);
-            return video.Duration;
+            var meta = await _videoEngine.GetMetadataAsync(videoId);
+            return meta?.Duration;
         }
         catch (Exception ex)
         {
@@ -3224,23 +3224,30 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Fetch YouTube video metadata and extract chapters from the description.
-    /// Also refreshes the item's duration.
+    /// Fetch YouTube video metadata and extract chapters. Prefers the engine's native
+    /// chapter markers (yt-dlp) and falls back to parsing the description when none are
+    /// present (always the case for YoutubeExplode). Also refreshes the item's duration.
     /// </summary>
     private async Task FetchYouTubeChaptersAsync(VideoItem item)
     {
         try
         {
-            var video = await _youtube.Videos.GetAsync(item.VideoId);
+            var meta = await _videoEngine.GetMetadataAsync(item.VideoId);
+            if (meta == null) return;
 
-            if (video.Duration.HasValue)
-                item.Duration = video.Duration;
+            if (meta.Duration.HasValue)
+                item.Duration = meta.Duration;
 
-            var chapters = ParseYouTubeChapters(video.Description, video.Duration);
+            // Native chapters (yt-dlp) take precedence; otherwise parse the description.
+            var chapters = meta.Chapters.Count > 0
+                ? meta.Chapters
+                : ParseYouTubeChapters(meta.Description ?? "", meta.Duration);
+
             if (chapters.Count > 0)
             {
                 item.Chapters = chapters;
-                DebugLog.Log("Chapters", $"YouTube chapters parsed: {chapters.Count} from description");
+                var source = meta.Chapters.Count > 0 ? "native" : "description";
+                DebugLog.Log("Chapters", $"YouTube chapters ({source}): {chapters.Count}");
                 if (ReferenceEquals(item, _currentlyPlaying))
                 {
                     UpdateChapterTickPositions();
