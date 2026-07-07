@@ -82,7 +82,7 @@ yt-dlp (separate video-only + audio-only streams, caches mux as before). Live
 playback still uses YoutubeExplode via delegation until Phase 4. Default engine
 unchanged → **no behavior change** by default. Build green.
 
-### Phase 3.1 (Settings UI toggle) — commit `<pending>`
+### Phase 3.1 (Settings UI toggle) — commit `973e96f`
 | File | Change | Disposition | Notes |
 |------|--------|-------------|-------|
 | `Phosphor/Windows/SettingsWindow.xaml` | modified | keep | "Engine" dropdown in General → VIDEO section (mirrors Quality combo) |
