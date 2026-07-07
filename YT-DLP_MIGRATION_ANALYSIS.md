@@ -463,3 +463,58 @@ public static class EngineFactory
   `VideoMetadata.Chapters` (search engine) can both be populated by yt-dlp. Decide
   which is authoritative when both engines are yt-dlp (avoid double-fetching the
   same `--dump-json`).
+
+---
+
+## ✅ Appendix B — Phase 1 spike results (executed on branch `yt-dlp`)
+
+Phase 1 was executed. **Outcome: feasibility confirmed.** All assumptions behind the
+two-seam design and the DTO sketch held up against the real `yt-dlp.exe`.
+
+### What was done
+- **Bundled `yt-dlp.exe`** (`2026.07.04`, 17.4 MB) into `dependencies\`, committed to
+  git the same way as `dependencies\ffmpeg.exe` (repo tracks dependency binaries; not
+  gitignored).
+- **Wired copy-to-output** in `Phosphor.csproj` — a `<None Include="..\dependencies\yt-dlp.exe">`
+  item with `PreserveNewest` + `Link`, mirroring the existing `ffmpeg.exe` item, so the
+  exe lands next to `Phosphor.exe` (and `ffmpeg.exe`) at build.
+- **Added throwaway resolver** `Phosphor\YtDlp\YtDlpSpike.cs` (Option B — direct
+  process invocation). Shells out via `ProcessStartInfo`/`ArgumentList` (same pattern
+  as `PrefetchCache.MuxWithFfmpegAsync`), parses `--dump-single-json` with
+  `System.Text.Json`, and resolves playable URLs via `-g`. **Inert** — not wired into
+  startup; safe to delete. It is the seed for `YtDlpVideoEngine`.
+- **Build: green** (`run_build` succeeded with the spike + csproj change).
+
+### Terminal validation (against `jNQXAC9IVRw` — "Me at the zoo")
+| Check | Command | Result |
+|-------|---------|--------|
+| Executable runs | `yt-dlp.exe --version` | `2026.07.04` |
+| Metadata | `--print title/uploader/duration` | Resolved: "Me at the zoo" / jawed / 19s |
+| **Native chapters** | `--print chapters` | Structured array of 3 (`start_time`/`title`/`end_time`) — **confirms the chapters win** |
+| Format selection | `-f "bv*+ba/b" --print …` | `395+251`, exposes `vcodec/width/height/vbr/acodec/abr/ext/protocol` — **matches `MediaFormat` DTO 1:1** |
+| **Playable URLs** | `-f "bv*+ba/b" -g` | **Two** `googlevideo.com/videoplayback` URLs (video + audio) — exactly what VLC `Media` + `AddSlave` consume |
+| JSON parse targets | `--dump-single-json` | All 8 top-level keys present (`id/title/uploader/duration/description/chapters/thumbnails/formats`); 11 formats |
+
+### Findings & confirmations
+- **`-g` returns the video+audio URL pair** for `bv*+ba` — the live-playback seam
+  (`ResolveStreamsAsync → StreamSet` with `AudioSlave`) maps directly onto this.
+- **The `-g` URLs carry an `expire=` query param** → confirms the *short-lived,
+  IP-bound* caveat. `ResolveStreamsAsync` must resolve fresh per play; never persist.
+- **Native `chapters[]` is real and structured** → `GetMetadataAsync` can drop the
+  description-scraping `ParseYouTubeChapters` for the yt-dlp path (keep as fallback).
+- **DTO shape validated**: the fields `StreamSelector` policy needs (`height`,
+  bitrate, codecs, container) are all present per-format; no YoutubeExplode-only
+  concept is missing.
+
+### Not covered by the spike (still open, by design)
+- **Interactive VLC playback** wasn't automated — terminal `-g` resolution is the
+  proxy proof (VLC receives the same URL string). Live A/B is Phase 3–4 work.
+- **Scrub reliability** unchanged by resolution alone — remains a caching/remux
+  outcome (Phase 3), consistent with the primary-goal caveat above.
+- **Search UX** (batch-spawn vs incremental) untested — that's the §4a decision,
+  deferred to Phase 6.
+
+### Net
+Green light to proceed to **Phase 2** (introduce the `IVideoEngine` / `ISearchEngine`
+seams as a no-behavior-change refactor). The spike de-risked the yt-dlp mechanics; the
+remaining unknowns are UX/perf judgments best answered with the live A/B toggle.
