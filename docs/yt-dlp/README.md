@@ -20,6 +20,7 @@
 | 5 | Metadata & native chapters | ⬜ Not started | [phase-5-metadata-chapters.md](phase-5-metadata-chapters.md) | — |
 | 6 | `ISearchEngine` seam + optional yt-dlp search | ⬜ Not started | [phase-6-search-engine.md](phase-6-search-engine.md) | — |
 | 7 | Cutover & cleanup | ⬜ Not started | [phase-7-cutover-cleanup.md](phase-7-cutover-cleanup.md) | — |
+| 8 | Engine updater (yt-dlp self-update + version check) | ⬜ Not started | [phase-8-engine-updater.md](phase-8-engine-updater.md) | — |
 
 Legend: ⬜ not started · 🚧 in progress · ✅ done · ⏸️ blocked
 
@@ -138,4 +139,4 @@ Actions to take **before or at Phase 7 (cutover)**. Check off as done.
 
 ---
 
-_Last updated: Phase 4 complete (native yt-dlp live playback, build green)._
+_Last updated: Phase 4 complete; Phase 8 (engine updater) recorded._
