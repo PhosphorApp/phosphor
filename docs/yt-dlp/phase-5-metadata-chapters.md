@@ -1,6 +1,6 @@
 # Phase 5 — Metadata & Native Chapters ✅ DONE
 
-**Status:** Complete. Commit `<pending>`. **Prereq:** Phases 3–4.
+**Status:** Complete. Commit `768e136`. **Prereq:** Phases 3–4.
 **Goal:** Use yt-dlp's native structured `chapters[]` + duration instead of scraping
 the description (`ParseYouTubeChapters`), keeping description-parse as fallback.
 
