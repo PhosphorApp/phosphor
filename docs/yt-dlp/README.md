@@ -14,7 +14,7 @@
 | Phase | Title | Status | Doc | Commit(s) |
 |------:|-------|--------|-----|-----------|
 | 1 | Spike / feasibility | ✅ Done | [phase-1-spike.md](phase-1-spike.md) | `baf619f`, `65795ce` |
-| 2 | `IVideoEngine` seam (no behavior change) | ✅ Done | [phase-2-video-engine-seam.md](phase-2-video-engine-seam.md) | `447fc26` |
+| 2 | `IVideoEngine` seam (no behavior change) | ✅ Done | [phase-2-video-engine-seam.md](phase-2-video-engine-seam.md) | `56805ee` |
 | 3 | yt-dlp video engine — download path | ⬜ Not started | [phase-3-ytdlp-download.md](phase-3-ytdlp-download.md) | — |
 | 4 | yt-dlp video engine — live playback | ⬜ Not started | [phase-4-ytdlp-live.md](phase-4-ytdlp-live.md) | — |
 | 5 | Metadata & native chapters | ⬜ Not started | [phase-5-metadata-chapters.md](phase-5-metadata-chapters.md) | — |
@@ -49,7 +49,7 @@ Every file added/modified by the migration, with the phase and disposition.
 | `Phosphor/Phosphor.csproj` | modified | keep | Copy-to-output item for `yt-dlp.exe` |
 | `Phosphor/YtDlp/YtDlpSpike.cs` | added | **REMOVE** | Throwaway Option-B resolver; superseded by real engine in Phase 3 |
 
-### Phase 2 (video engine seam) — commit `447fc26`
+### Phase 2 (video engine seam) — commit `56805ee`
 | File | Change | Disposition | Notes |
 |------|--------|-------------|-------|
 | `docs/yt-dlp/*` | added | keep | This tracker + per-phase docs |
