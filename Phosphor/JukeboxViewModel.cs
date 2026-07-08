@@ -2218,6 +2218,14 @@ public partial class JukeboxViewModel : ObservableObject
         catch { }
     }
 
+    /// <summary>
+    /// Persists the current queue to disk. Called on exit so metadata enriched during the
+    /// session (upload date, accurate duration, chapters populated on play) survives a
+    /// restart — the per-item enrichment does not raise <see cref="Queue"/>'s
+    /// CollectionChanged, so it is not otherwise re-saved.
+    /// </summary>
+    public void SaveQueueState() => SaveQueue();
+
     private void LoadQueue()
     {
         if (!File.Exists(QueuePath)) return;

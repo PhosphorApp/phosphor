@@ -309,13 +309,16 @@ public sealed class YtDlpVideoEngine : IVideoEngine
     private static string Trim(string s)
         => s.Length <= 400 ? s : s[..400];
 
-    /// <summary>Parses yt-dlp's <c>upload_date</c> ("YYYYMMDD") into a UTC-based offset.</summary>
+    /// <summary>Parses yt-dlp's <c>upload_date</c> ("YYYYMMDD") as a UTC-midnight offset.</summary>
     private static DateTimeOffset? ParseUploadDate(string? uploadDate)
     {
+        // Parse with DateTimeStyles.None so the result is Kind=Unspecified. AssumeUniversal
+        // would yield Kind=Local (converting to local time), which then makes the
+        // DateTimeOffset(dt, TimeSpan.Zero) constructor throw when the local offset != 0.
         if (string.IsNullOrWhiteSpace(uploadDate)
             || !DateTime.TryParseExact(uploadDate, "yyyyMMdd",
                 System.Globalization.CultureInfo.InvariantCulture,
-                System.Globalization.DateTimeStyles.AssumeUniversal, out var dt))
+                System.Globalization.DateTimeStyles.None, out var dt))
             return null;
         return new DateTimeOffset(dt, TimeSpan.Zero);
     }

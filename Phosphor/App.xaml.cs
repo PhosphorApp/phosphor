@@ -350,6 +350,9 @@ public partial class App : Application
             _settings.RepeatEnabled = vmSettings.RepeatEnabled;
             _settings.AutoDjEnabled = vmSettings.AutoDjEnabled;
             _settings.LastQueueIndex = vmSettings.LastKnownQueueIndex;
+            // Persist the queue on exit so metadata enriched during the session
+            // (upload date, accurate duration, chapters) survives a restart.
+            vmSettings.SaveQueueState();
         }
         _settings.Save();
 
