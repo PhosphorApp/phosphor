@@ -13,6 +13,14 @@ namespace Phosphor.Search;
 /// </remarks>
 public interface ISearchEngine
 {
+    /// <summary>
+    /// Whether this engine can actually run in the current environment. In-process engines
+    /// (YoutubeExplode) are always available; external ones (yt-dlp) report false when their
+    /// executable is missing, so the factory can fall back to an available engine. This is a
+    /// general capability hook — future engines report their own readiness however they need.
+    /// </summary>
+    bool IsAvailable { get; }
+
     /// <summary>Incrementally yields videos matching a free-text query.</summary>
     IAsyncEnumerable<VideoItem> SearchVideosAsync(string query, CancellationToken ct = default);
 

@@ -25,6 +25,9 @@ public sealed class YtDlpSearchEngine : ISearchEngine
         _ytDlpPath = ytDlpPath ?? YtDlpVideoEngine.ResolveYtDlpPath();
     }
 
+    /// <summary>Available only when the yt-dlp executable is present.</summary>
+    public bool IsAvailable => File.Exists(_ytDlpPath);
+
     public IAsyncEnumerable<VideoItem> SearchVideosAsync(string query, CancellationToken ct = default)
         // ytsearchN: returns up to N results; a large N lets the VM page via its own take-count.
         => EnumerateAsync($"ytsearch{MaxSearchResults}:{query}", ct);

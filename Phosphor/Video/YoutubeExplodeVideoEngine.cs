@@ -13,6 +13,9 @@ public sealed class YoutubeExplodeVideoEngine : IVideoEngine
 {
     private readonly YoutubeClient _youtube = new();
 
+    /// <summary>Always available — runs in-process.</summary>
+    public bool IsAvailable => true;
+
     public async Task<VideoStreams?> ResolveStreamsAsync(
         string videoId,
         VideoQualityPreference quality,

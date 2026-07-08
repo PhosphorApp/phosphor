@@ -13,6 +13,14 @@ namespace Phosphor.Video;
 public interface IVideoEngine
 {
     /// <summary>
+    /// Whether this engine can actually run in the current environment. In-process engines
+    /// (YoutubeExplode) are always available; external ones (yt-dlp) report false when their
+    /// executable is missing, so the factory can fall back to an available engine. This is a
+    /// general capability hook — future engines report their own readiness however they need.
+    /// </summary>
+    bool IsAvailable { get; }
+
+    /// <summary>
     /// Resolves short-lived playable stream URLs for live playback into LibVLC.
     /// URLs are typically time-limited and IP-bound, so callers must resolve fresh
     /// for each play and must not persist the result.

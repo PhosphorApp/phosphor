@@ -6,9 +6,22 @@ namespace Phosphor.Video;
 /// </summary>
 public static class VideoEngineFactory
 {
-    public static IVideoEngine Create(VideoEngineKind kind) => kind switch
+    public static IVideoEngine Create(VideoEngineKind kind)
     {
-        VideoEngineKind.YtDlp => new YtDlpVideoEngine(),
-        _ => new YoutubeExplodeVideoEngine(),
-    };
+        IVideoEngine engine = kind switch
+        {
+            VideoEngineKind.YtDlp => new YtDlpVideoEngine(),
+            _ => new YoutubeExplodeVideoEngine(),
+        };
+
+        // Safety net: if the requested engine can't run (e.g. yt-dlp.exe missing), fall
+        // back to the always-available in-process engine so playback never hard-fails.
+        if (!engine.IsAvailable)
+        {
+            DebugLog.Log("VideoEngine", $"{kind} unavailable — falling back to YoutubeExplode");
+            return new YoutubeExplodeVideoEngine();
+        }
+
+        return engine;
+    }
 }

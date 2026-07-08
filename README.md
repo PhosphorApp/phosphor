@@ -4,7 +4,7 @@ A WPF-based music jukebox designed for virtual pinball cabinets, though supports
 
 ## Features
 
-- **YouTube & Plex playback** — Search YouTube or browse Plex music libraries; streams are selected and played via LibVLCSharp
+- **YouTube & Plex playback** — Search YouTube or browse Plex music libraries; streams are selected and played via LibVLCSharp. YouTube video and search each run through a selectable engine — **YoutubeExplode** (in-process, default) or **yt-dlp** (bundled, self-updating) — chosen in Settings.
 - **Multi-screen layout** — Independent windows for Playfield, Backglass, Topper, and DMD, each independently positioned and sized
 - **Audio-reactive visuals** — WASAPI loopback capture drives animated blob patterns, Mandelbrot zoom, projectM visualizations, and ferrofluid simulations in real time
 - **DOF lighting** — Triggers cabinet solenoids/LEDs via DirectOutput Framework through an isolated .NET Framework 4.8 bridge process (`DofBridge`)
@@ -46,3 +46,4 @@ See [`AGENTS.md`](AGENTS.md) for a detailed component map intended for AI-assist
 ## Known Issues
 
 - **Scrubbing forward on streaming (non-cached) YouTube videos can fail.** YouTube delivers progressive DASH streams that lack a complete seek index until the full stream has been downloaded. A forward scrub can leave VLC's decoder wedged on a non-keyframe — the seek is detected as failed (Time stops advancing) and Phosphor recovers by restarting playback from the beginning. The user loses their place but the player ends in a known, controllable state. To eliminate the issue, enable **Cache enabled** + **Cache mode: Everything** + **Preemptively cache next queue item** in settings — the current track is downloaded as soon as it starts, and the next queued track is downloaded in parallel. By the time the user scrubs or the track ends, the content is local-file-backed and all seeks become instant and reliable. If you don't want long-term disk usage, also enable **Purge cache on shutdown** — files are cleaned at app exit while remaining instantly seekable in-session.
+  - **Tip:** switching **Settings → Video engine → yt-dlp** noticeably improves streaming scrub reliability even without caching (fresher stream-URL handling avoids the throttling that wedges the decoder). Caching remains the deterministic fix; yt-dlp makes the streaming path fail far less often.

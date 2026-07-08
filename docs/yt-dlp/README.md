@@ -20,7 +20,7 @@
 | 5 | Metadata & native chapters | ✅ Done | [phase-5-metadata-chapters.md](phase-5-metadata-chapters.md) | `768e136` |
 | 6 | `ISearchEngine` seam (wrap YoutubeExplode, no behavior change) | ✅ Done | [phase-6-search-engine.md](phase-6-search-engine.md) | `d1191fd` |
 | 6b | yt-dlp search impl + dormant fallback (optional) | ✅ Done (search impl; fallback deferred) | [phase-6-search-engine.md](phase-6-search-engine.md) | `eb837b7` |
-| 7 | Cutover & cleanup | ⬜ Not started | [phase-7-cutover-cleanup.md](phase-7-cutover-cleanup.md) | — |
+| 7 | Cutover & cleanup | ✅ Done | [phase-7-cutover-cleanup.md](phase-7-cutover-cleanup.md) | `<pending>` |
 | 8 | Engine updater (yt-dlp self-update + version check) | ✅ Done | [phase-8-engine-updater.md](phase-8-engine-updater.md) | `33f4b65` |
 
 Legend: ⬜ not started · 🚧 in progress · ✅ done · ⏸️ blocked
@@ -183,6 +183,28 @@ writes `settings.json` next to its exe (portable/cabinet-style, writable install
 yt-dlp self-updates **in place** — no app-data-copy indirection needed. YoutubeExplode is
 compiled-in and intentionally has no update action. Build green.
 
+### Phase 7 (cutover & cleanup) — commit `<pending>`
+| File | Change | Disposition | Notes |
+|------|--------|-------------|-------|
+| `Phosphor/Video/IVideoEngine.cs` | modified | keep | Added `IsAvailable` capability |
+| `Phosphor/Video/YoutubeExplodeVideoEngine.cs` | modified | keep | `IsAvailable => true` |
+| `Phosphor/Video/YtDlpVideoEngine.cs` | modified | keep | `IsAvailable => File.Exists(exe)` |
+| `Phosphor/Video/VideoEngineFactory.cs` | modified | keep | Fallback to YoutubeExplode when unavailable |
+| `Phosphor/Search/ISearchEngine.cs` | modified | keep | Added `IsAvailable` capability |
+| `Phosphor/Search/YoutubeExplodeSearchEngine.cs` | modified | keep | `IsAvailable => true` |
+| `Phosphor/Search/YtDlpSearchEngine.cs` | modified | keep | `IsAvailable => File.Exists(exe)` |
+| `Phosphor/Search/SearchEngineFactory.cs` | modified | keep | Fallback to YoutubeExplode when unavailable |
+| `Phosphor/Services/StreamSelector.cs` | modified | keep | `public` → `internal` (engine-private) |
+| `AGENTS.md` | modified | keep | Dual-engine tech stack + engine seams in ownership map |
+| `README.md` | modified | keep | Selectable engines; yt-dlp scrubbing tip in Known Issues |
+
+**Net effect:** each engine exposes an `IsAvailable` capability (YoutubeExplode always
+true; yt-dlp = exe present). Both factories fall back to the always-available YoutubeExplode
+engine when a selected yt-dlp engine can't run, so playback/search never hard-fail — the
+safety net for a missing/undeployed `yt-dlp.exe`. Defaults **stay YoutubeExplode** (no flip;
+existing installs untouched — users opt in via Settings). `StreamSelector` is now internal.
+Docs refreshed. Build green.
+
 ---
 
 
@@ -196,14 +218,18 @@ Actions to take **before or at Phase 7 (cutover)**. Check off as done.
 - [x] **yt-dlp self-update mechanism** — done in Phase 8: `YtDlpUpdater` + Settings
   "Check for updates" button + opt-in throttled startup auto-update; in-place update
   (writable install dir), gated against concurrent yt-dlp use.
-- [ ] **`App.xaml.cs` YoutubeExplode exception suppression** (~L549) — revisit once the
-  search engine may fail over (Phase 6); failures must be *observable* for fallback.
-- [ ] **Prune YoutubeExplode package** — only if/when *both* seams no longer use it
-  (Phase 7). Likely retained for search unless full yt-dlp search is adopted.
-- [ ] **`StreamSelector` visibility** — currently public static; if it stays a private
-  detail of `YoutubeExplodeVideoEngine`, consider making it internal (Phase 7 tidy).
-- [ ] **Default engine flip** — decide whether `AppSettings.VideoEngine` default moves
-  from `YoutubeExplode` to `YtDlp` at cutover (Phase 7).
+- [x] **`App.xaml.cs` YoutubeExplode exception suppression** (~L549) — **kept as-is** in
+  Phase 7. The dormant search-fallback (§4a) was not built, and YoutubeExplode remains the
+  default, so the suppression is still correct. Revisit only if the exception-triggered
+  fallback is ever implemented.
+- [x] **Prune YoutubeExplode package** — **kept** (Phase 7 decision). It's the default for
+  both video and search, and the guaranteed `IsAvailable` fallback floor. No prune.
+- [x] **`StreamSelector` visibility** — made **internal** in Phase 7 (only used by
+  `YoutubeExplodeVideoEngine`, same assembly).
+- [x] **Default engine flip** — **no flip** (Phase 7 decision). Defaults stay YoutubeExplode
+  for both video and search (more testing first); existing installs untouched. Users opt in
+  to yt-dlp via Settings. A startup **safety net** (`IsAvailable` + factory fallback) makes a
+  future flip safe.
 
 ---
 
@@ -222,4 +248,4 @@ Actions to take **before or at Phase 7 (cutover)**. Check off as done.
 
 ---
 
-_Last updated: Phase 6b complete (yt-dlp search engine, switchable via Settings)._
+_Last updated: Phase 7 complete — migration finished (all phases done)._

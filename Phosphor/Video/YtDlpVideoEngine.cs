@@ -23,6 +23,9 @@ public sealed class YtDlpVideoEngine : IVideoEngine
         _ytDlpPath = ytDlpPath ?? ResolveYtDlpPath();
     }
 
+    /// <summary>Available only when the yt-dlp executable is present.</summary>
+    public bool IsAvailable => File.Exists(_ytDlpPath);
+
     /// <summary>
     /// Locates <c>yt-dlp.exe</c> next to the app (copied via csproj, like ffmpeg.exe),
     /// falling back to whatever is on PATH.

@@ -4,8 +4,9 @@ namespace Phosphor;
 
 /// <summary>
 /// Selects video and audio streams from a manifest based on the user's quality preference.
+/// Internal detail of <see cref="Phosphor.Video.YoutubeExplodeVideoEngine"/>.
 /// </summary>
-public static class StreamSelector
+internal static class StreamSelector
 {
     private static int MaxHeight(VideoQualityPreference pref) => pref switch
     {

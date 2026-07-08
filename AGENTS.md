@@ -137,7 +137,7 @@ Each command is written as: `BinaryWriter.Write(char type)` + `Write(int number)
 - **Video**: LibVLCSharp
 - **Audio capture**: NAudio (WASAPI loopback)
 - **Visuals**: Custom WPF `DrawingContext`, SharpDX/Direct2D (Mandelbrot GPU), projectM 4 (P/Invoke)
-- **YouTube**: YoutubeExplode
+- **YouTube**: pluggable engines behind seams — **YoutubeExplode** (in-process, default) and **yt-dlp** (bundled `dependencies/yt-dlp.exe`, self-updating). Separate video (`IVideoEngine`, `Phosphor/Video/`) and search (`ISearchEngine`, `Phosphor/Search/`) engines, each independently selectable in Settings. Factories fall back to YoutubeExplode when a selected engine's `IsAvailable` is false (e.g. yt-dlp exe missing).
 - **DOF**: DirectOutput Framework (via DofBridge process)
 - **Input**: DirectInput (via SharpDX or interop)
 - **Serialization**: System.Text.Json
@@ -170,7 +170,10 @@ Each command is written as: `BinaryWriter.Write(char type)` + `Write(int number)
 | Caching | `Caching/*.cs` |
 | Data models | `Models/VideoItem.cs`, `Models/Category.cs`, `Models/KeyBindings.cs` |
 | Genre categories | `Models/GenreCategoryStore.cs`, `categories.json` |
-| Stream selection | `Services/StreamSelector.cs` |
+| Video engines (resolve/download/metadata) | `Video/IVideoEngine.cs`, `Video/YoutubeExplodeVideoEngine.cs`, `Video/YtDlpVideoEngine.cs`, `Video/VideoEngineFactory.cs` |
+| Search engines (discovery/metadata) | `Search/ISearchEngine.cs`, `Search/YoutubeExplodeSearchEngine.cs`, `Search/YtDlpSearchEngine.cs`, `Search/SearchEngineFactory.cs` |
+| yt-dlp self-update | `Video/YtDlpUpdater.cs` |
+| Stream selection (YoutubeExplode video engine internal) | `Services/StreamSelector.cs` |
 
 ---
 

@@ -21,6 +21,9 @@ public sealed class YoutubeExplodeSearchEngine : ISearchEngine
         _youtube = http != null ? new YoutubeClient(http) : new YoutubeClient();
     }
 
+    /// <summary>Always available — runs in-process.</summary>
+    public bool IsAvailable => true;
+
     public IAsyncEnumerable<VideoItem> SearchVideosAsync(string query, CancellationToken ct = default)
         => MapVideos(_youtube.Search.GetVideosAsync(query), ct);
 

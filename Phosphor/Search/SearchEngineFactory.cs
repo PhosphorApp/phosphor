@@ -8,9 +8,22 @@ namespace Phosphor.Search;
 /// </summary>
 public static class SearchEngineFactory
 {
-    public static ISearchEngine Create(SearchEngineKind kind, HttpClient? http = null) => kind switch
+    public static ISearchEngine Create(SearchEngineKind kind, HttpClient? http = null)
     {
-        SearchEngineKind.YtDlp => new YtDlpSearchEngine(),
-        _ => new YoutubeExplodeSearchEngine(http),
-    };
+        ISearchEngine engine = kind switch
+        {
+            SearchEngineKind.YtDlp => new YtDlpSearchEngine(),
+            _ => new YoutubeExplodeSearchEngine(http),
+        };
+
+        // Safety net: if the requested engine can't run (e.g. yt-dlp.exe missing), fall
+        // back to the always-available in-process engine so search never hard-fails.
+        if (!engine.IsAvailable)
+        {
+            DebugLog.Log("SearchEngine", $"{kind} unavailable — falling back to YoutubeExplode");
+            return new YoutubeExplodeSearchEngine(http);
+        }
+
+        return engine;
+    }
 }
