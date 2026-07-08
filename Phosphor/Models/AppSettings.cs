@@ -328,6 +328,7 @@ public class AppSettings
     public bool PrefetchEnabled { get; set; } = true;
     public VideoQualityPreference VideoQuality { get; set; } = VideoQualityPreference.High;
     public VideoEngineKind VideoEngine { get; set; } = VideoEngineKind.YoutubeExplode;
+    public SearchEngineKind SearchEngine { get; set; } = SearchEngineKind.YoutubeExplode;
     public bool StereoAudio { get; set; } = true;
     public int Volume { get; set; } = 100;
 
@@ -501,6 +502,12 @@ public enum VideoQualityPreference
 }
 
 public enum VideoEngineKind
+{
+    YoutubeExplode, // in-process YoutubeExplode (default)
+    YtDlp           // external yt-dlp.exe (added incrementally)
+}
+
+public enum SearchEngineKind
 {
     YoutubeExplode, // in-process YoutubeExplode (default)
     YtDlp           // external yt-dlp.exe (added incrementally)

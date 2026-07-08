@@ -317,6 +317,7 @@
   "PrefetchEnabled": true,
   "VideoQuality": 2,
   "VideoEngine": 0,
+  "SearchEngine": 0,
   "StereoAudio": true,
   "Volume": 100,
   "NetworkCachingMs": 2000,

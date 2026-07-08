@@ -18,7 +18,8 @@
 | 3 | yt-dlp video engine — download path | ✅ Done | [phase-3-ytdlp-download.md](phase-3-ytdlp-download.md) | `5a21e13` |
 | 4 | yt-dlp video engine — live playback | ✅ Done | [phase-4-ytdlp-live.md](phase-4-ytdlp-live.md) | `e0cc5f7` |
 | 5 | Metadata & native chapters | ✅ Done | [phase-5-metadata-chapters.md](phase-5-metadata-chapters.md) | `768e136` |
-| 6 | `ISearchEngine` seam + optional yt-dlp search | ⬜ Not started | [phase-6-search-engine.md](phase-6-search-engine.md) | — |
+| 6 | `ISearchEngine` seam (wrap YoutubeExplode, no behavior change) | ✅ Done | [phase-6-search-engine.md](phase-6-search-engine.md) | `<pending>` |
+| 6b | yt-dlp search impl + dormant fallback (optional) | ⬜ Not started | [phase-6-search-engine.md](phase-6-search-engine.md) | — |
 | 7 | Cutover & cleanup | ⬜ Not started | [phase-7-cutover-cleanup.md](phase-7-cutover-cleanup.md) | — |
 | 8 | Engine updater (yt-dlp self-update + version check) | ⬜ Not started | [phase-8-engine-updater.md](phase-8-engine-updater.md) | — |
 
@@ -117,6 +118,25 @@ to description parsing when absent); YoutubeExplode path is identical to before 
 description parse). `ParseYouTubeChapters` stays single-sourced in the VM as the shared
 fallback. Build green.
 
+### Phase 6 (ISearchEngine seam) — commit `<pending>`
+| File | Change | Disposition | Notes |
+|------|--------|-------------|-------|
+| `Phosphor/Search/ISearchEngine.cs` | added | keep | Discovery seam (search, playlist, channel, playlist-id resolve) |
+| `Phosphor/Search/YoutubeExplodeSearchEngine.cs` | added | keep | Wraps YoutubeExplode search/playlist/channel + `IVideo`→`VideoItem` mapping + fallbacks |
+| `Phosphor/Search/SearchEngineFactory.cs` | added | keep | `SearchEngineKind` → engine (YtDlp falls back to YT-Explode until Phase 6b) |
+| `Phosphor/Models/AppSettings.cs` | modified | keep | Added `SearchEngineKind` enum + `SearchEngine` setting (default YoutubeExplode) |
+| `Phosphor/default_settings.json` | modified | keep | Added `"SearchEngine": 0` |
+| `Phosphor/JukeboxViewModel.cs` | modified | keep | Search/playlist/channel/AutoDJ via engine; `_searchEnumerator`→`VideoItem`; dropped `_youtube` + YT-Explode usings |
+| `Phosphor/App.xaml.cs` | modified | keep | `SetSearchEngine` at startup |
+| `Phosphor/Windows/DmdWindow.xaml.cs` | modified | keep | `SetSearchEngine` on settings-change |
+
+**Net effect:** all YouTube discovery routes through `ISearchEngine`. `_youtube` is gone
+from the ViewModel; the only `YoutubeClient` + `Search/Playlists/Channels` calls now live
+inside `YoutubeExplodeSearchEngine`. The engine yields `VideoItem` directly, so the
+pagination/duration-filter/cache/prefetch pipeline is unchanged. Default engine =
+YoutubeExplode → **no behavior change**. Build green. (yt-dlp search impl + dormant
+fallback deferred to Phase 6b.)
+
 ---
 
 
@@ -153,4 +173,4 @@ Actions to take **before or at Phase 7 (cutover)**. Check off as done.
 
 ---
 
-_Last updated: Phase 5 complete (native chapters via engine seam); Phase 8 recorded._
+_Last updated: Phase 6 complete (ISearchEngine seam; _youtube fully removed from VM)._

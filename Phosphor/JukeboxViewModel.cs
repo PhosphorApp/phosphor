@@ -5,16 +5,15 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
-using YoutubeExplode;
-using YoutubeExplode.Common;
-using YoutubeExplode.Videos;
 using Phosphor.Video;
+using Phosphor.Search;
 
 namespace Phosphor;
 
 public partial class JukeboxViewModel : ObservableObject
 {
-    private YoutubeClient _youtube = new();
+    private SearchEngineKind _searchEngineKind = SearchEngineKind.YoutubeExplode;
+    private ISearchEngine _searchEngine = new YoutubeExplodeSearchEngine();
     private readonly PlayHistory _history;
     private readonly PlaylistManager _playlists;
     private readonly SearchHistory _searchHistory;
@@ -575,9 +574,24 @@ public partial class JukeboxViewModel : ObservableObject
         seconds = Math.Clamp(seconds, 5, 120);
         if (seconds == YouTubeTimeoutSeconds) return;
         YouTubeTimeoutSeconds = seconds;
-        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(seconds) };
-        _youtube = new YoutubeClient(http);
+        RebuildSearchEngine();
         DebugLog.Log("YouTube", $"Timeout set to {seconds}s");
+    }
+
+    /// <summary>
+    /// Rebuilds the search engine from the given kind (and current timeout) and
+    /// propagates it. Safe to call at startup and on settings changes.
+    /// </summary>
+    public void SetSearchEngine(SearchEngineKind kind)
+    {
+        _searchEngineKind = kind;
+        RebuildSearchEngine();
+    }
+
+    private void RebuildSearchEngine()
+    {
+        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(YouTubeTimeoutSeconds) };
+        _searchEngine = SearchEngineFactory.Create(_searchEngineKind, http);
     }
 
     // ── Gapless playback ──
@@ -726,7 +740,7 @@ public partial class JukeboxViewModel : ObservableObject
     private int _durationScanned;
 
     // ── Pagination state ──
-    private IAsyncEnumerator<IVideo>? _searchEnumerator;
+    private IAsyncEnumerator<VideoItem>? _searchEnumerator;
     private CancellationTokenSource _searchCts = new();
     private string _currentSearchQuery = "";
     private bool _hasMoreResults;
@@ -1126,34 +1140,17 @@ public partial class JukeboxViewModel : ObservableObject
 
             try
             {
-                // Try as a direct playlist ID first (e.g. PLxxxxxxx or URL)
-                var playlistId = playlistIdOrName;
-                try
+                // Resolve id / URL, or search by name (engine encapsulates the fallback).
+                var playlistId = await _searchEngine.ResolvePlaylistIdAsync(
+                    playlistIdOrName, title => StatusText = $"Found playlist: {title}");
+                if (playlistId == null)
                 {
-                    // YoutubeExplode can parse playlist IDs from URLs or raw IDs
-                    var resolved = YoutubeExplode.Playlists.PlaylistId.Parse(playlistIdOrName);
-                    playlistId = resolved.Value;
-                }
-                catch
-                {
-                    // If it doesn't parse as an ID, search for the playlist by name
-                    var found = false;
-                    await foreach (var result in _youtube.Search.GetPlaylistsAsync(playlistIdOrName))
-                    {
-                        playlistId = result.Id.Value;
-                        StatusText = $"Found playlist: {result.Title}";
-                        found = true;
-                        break;
-                    }
-                    if (!found)
-                    {
-                        StatusText = $"Could not find playlist: {playlistIdOrName}";
-                        IsSearching = false;
-                        return;
-                    }
+                    StatusText = $"Could not find playlist: {playlistIdOrName}";
+                    IsSearching = false;
+                    return;
                 }
 
-                var videos = AsVideos(_youtube.Playlists.GetVideosAsync(playlistId));
+                var videos = _searchEngine.GetPlaylistVideosAsync(playlistId);
                 _searchEnumerator = string.IsNullOrEmpty(filterTerms)
                     ? videos.GetAsyncEnumerator()
                     : FilterVideosAsync(videos, filterTerms).GetAsyncEnumerator();
@@ -1174,33 +1171,23 @@ public partial class JukeboxViewModel : ObservableObject
 
             try
             {
-                var playlistId = playlistIdOrName;
-                try
-                {
-                    var resolved = YoutubeExplode.Playlists.PlaylistId.Parse(playlistIdOrName);
-                    playlistId = resolved.Value;
-                    // If it parsed as an ID, remaining text before "playlist:" is filter
+                // If the token parses as an id, text before "playlist:" is the filter.
+                bool parsedAsId = false;
+                try { YoutubeExplode.Playlists.PlaylistId.Parse(playlistIdOrName); parsedAsId = true; }
+                catch { /* treat as a name to search */ }
+                if (parsedAsId)
                     filterTerms = Regex.Replace(query, @"playlist:\S+", "", RegexOptions.IgnoreCase).Trim();
-                }
-                catch
+
+                var playlistId = await _searchEngine.ResolvePlaylistIdAsync(
+                    playlistIdOrName, title => StatusText = $"Found playlist: {title}");
+                if (playlistId == null)
                 {
-                    var found = false;
-                    await foreach (var result in _youtube.Search.GetPlaylistsAsync(playlistIdOrName))
-                    {
-                        playlistId = result.Id.Value;
-                        StatusText = $"Found playlist: {result.Title}";
-                        found = true;
-                        break;
-                    }
-                    if (!found)
-                    {
-                        StatusText = $"Could not find playlist: {playlistIdOrName}";
-                        IsSearching = false;
-                        return;
-                    }
+                    StatusText = $"Could not find playlist: {playlistIdOrName}";
+                    IsSearching = false;
+                    return;
                 }
 
-                var videos = AsVideos(_youtube.Playlists.GetVideosAsync(playlistId));
+                var videos = _searchEngine.GetPlaylistVideosAsync(playlistId);
                 _searchEnumerator = string.IsNullOrEmpty(filterTerms)
                     ? videos.GetAsyncEnumerator()
                     : FilterVideosAsync(videos, filterTerms).GetAsyncEnumerator();
@@ -1220,37 +1207,23 @@ public partial class JukeboxViewModel : ObservableObject
 
             try
             {
-                var channel = await _youtube.Channels.GetByHandleAsync(channelName);
-                var videos = AsVideos(_youtube.Channels.GetUploadsAsync(channel.Id));
-
+                // Engine encapsulates the handle→user fallback.
+                var videos = _searchEngine.GetChannelUploadsAsync(channelName);
                 _searchEnumerator = string.IsNullOrEmpty(filterTerms)
                     ? videos.GetAsyncEnumerator()
                     : FilterVideosAsync(videos, filterTerms).GetAsyncEnumerator();
             }
-            catch
+            catch (Exception ex)
             {
-                // If handle lookup fails, try as a user name
-                try
-                {
-                    var channel = await _youtube.Channels.GetByUserAsync(channelName);
-                    var videos = AsVideos(_youtube.Channels.GetUploadsAsync(channel.Id));
-
-                    _searchEnumerator = string.IsNullOrEmpty(filterTerms)
-                        ? videos.GetAsyncEnumerator()
-                        : FilterVideosAsync(videos, filterTerms).GetAsyncEnumerator();
-                }
-                catch (Exception ex)
-                {
-                    StatusText = $"Could not find channel: {channelName}";
-                    DebugLog.LogException("Channel lookup", ex);
-                    IsSearching = false;
-                    return;
-                }
+                StatusText = $"Could not find channel: {channelName}";
+                DebugLog.LogException("Channel lookup", ex);
+                IsSearching = false;
+                return;
             }
         }
         else
         {
-            _searchEnumerator = AsVideos(_youtube.Search.GetVideosAsync(query)).GetAsyncEnumerator();
+            _searchEnumerator = _searchEngine.SearchVideosAsync(query).GetAsyncEnumerator();
         }
 
         _hasMoreResults = true;
@@ -1359,8 +1332,8 @@ public partial class JukeboxViewModel : ObservableObject
         return true;
     }
 
-    private static async IAsyncEnumerable<IVideo> FilterVideosAsync(
-        IAsyncEnumerable<IVideo> source, string filter,
+    private static async IAsyncEnumerable<VideoItem> FilterVideosAsync(
+        IAsyncEnumerable<VideoItem> source, string filter,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
         var terms = filter.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -1370,14 +1343,6 @@ public partial class JukeboxViewModel : ObservableObject
             if (terms.All(t => title.Contains(t, StringComparison.OrdinalIgnoreCase)))
                 yield return video;
         }
-    }
-
-    private static async IAsyncEnumerable<IVideo> AsVideos<T>(
-        IAsyncEnumerable<T> source,
-        [EnumeratorCancellation] CancellationToken ct = default) where T : IVideo
-    {
-        await foreach (var item in source.WithCancellation(ct))
-            yield return item;
     }
 
     // ── Plex browsing ──
@@ -2139,14 +2104,7 @@ public partial class JukeboxViewModel : ObservableObject
 
                 try
                 {
-                    SearchResults.Add(new VideoItem
-                    {
-                        Title = video.Title ?? "",
-                        Author = video.Author?.ChannelTitle ?? "",
-                        ThumbnailUrl = video.Thumbnails?.GetWithHighestResolution()?.Url ?? "",
-                        VideoId = video.Id,
-                        Duration = video.Duration
-                    });
+                    SearchResults.Add(video);
                     loaded++;
                 }
                 catch
@@ -2201,14 +2159,7 @@ public partial class JukeboxViewModel : ObservableObject
 
                         try
                         {
-                            prefetchItems.Add(new VideoItem
-                            {
-                                Title = video.Title ?? "",
-                                Author = video.Author?.ChannelTitle ?? "",
-                                ThumbnailUrl = video.Thumbnails?.GetWithHighestResolution()?.Url ?? "",
-                                VideoId = video.Id,
-                                Duration = video.Duration
-                            });
+                            prefetchItems.Add(video);
                             prefetched++;
                         }
                         catch { }
@@ -3019,8 +2970,8 @@ public partial class JukeboxViewModel : ObservableObject
         try
         {
             // Load a larger pool from this genre to pick randomly from
-            var results = new List<YoutubeExplode.Search.VideoSearchResult>();
-            var enumerator = _youtube.Search.GetVideosAsync(genre.SearchTerm).GetAsyncEnumerator();
+            var results = new List<VideoItem>();
+            var enumerator = _searchEngine.SearchVideosAsync(genre.SearchTerm).GetAsyncEnumerator();
             try
             {
                 int fetched = 0;
@@ -3039,22 +2990,13 @@ public partial class JukeboxViewModel : ObservableObject
             // Shuffle and pick items not already queued/played
             var shuffled = results.OrderBy(_ => _autoDjRng.Next()).ToList();
 
-            foreach (var video in shuffled)
+            foreach (var item in shuffled)
             {
                 if (Queue.Count >= targetSize) break;
-                var videoId = video.Id.Value;
+                var videoId = item.VideoId;
                 if (_autoDjUsedIds.Contains(videoId)) continue;
                 if (Queue.Any(q => q.VideoId == videoId)) continue;
                 if (CurrentlyPlaying?.VideoId == videoId) continue;
-
-                var item = new VideoItem
-                {
-                    Title = video.Title,
-                    Author = video.Author.ChannelTitle,
-                    ThumbnailUrl = video.Thumbnails.GetWithHighestResolution()?.Url ?? "",
-                    VideoId = videoId,
-                    Duration = video.Duration
-                };
 
                 Queue.Add(item);
                 _autoDjUsedIds.Add(videoId);
@@ -3094,8 +3036,8 @@ public partial class JukeboxViewModel : ObservableObject
         try
         {
             // Fetch a page of results and randomize so we don't always pick the same top results
-            var pool = new List<YoutubeExplode.Search.VideoSearchResult>();
-            var enumerator = _youtube.Search.GetVideosAsync(query).GetAsyncEnumerator();
+            var pool = new List<VideoItem>();
+            var enumerator = _searchEngine.SearchVideosAsync(query).GetAsyncEnumerator();
             try
             {
                 int fetched = 0;
@@ -3113,22 +3055,13 @@ public partial class JukeboxViewModel : ObservableObject
 
             var shuffled = pool.OrderBy(_ => _autoDjRng.Next()).ToList();
 
-            foreach (var video in shuffled)
+            foreach (var item in shuffled)
             {
                 if (Queue.Count >= targetSize) break;
-                var videoId = video.Id.Value;
+                var videoId = item.VideoId;
                 if (_autoDjUsedIds.Contains(videoId)) continue;
                 if (Queue.Any(q => q.VideoId == videoId)) continue;
                 if (CurrentlyPlaying?.VideoId == videoId) continue;
-
-                var item = new VideoItem
-                {
-                    Title = video.Title,
-                    Author = video.Author.ChannelTitle,
-                    ThumbnailUrl = video.Thumbnails.GetWithHighestResolution()?.Url ?? "",
-                    VideoId = videoId,
-                    Duration = video.Duration
-                };
 
                 Queue.Add(item);
                 _autoDjUsedIds.Add(videoId);
