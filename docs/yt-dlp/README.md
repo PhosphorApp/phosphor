@@ -19,7 +19,7 @@
 | 4 | yt-dlp video engine — live playback | ✅ Done | [phase-4-ytdlp-live.md](phase-4-ytdlp-live.md) | `e0cc5f7` |
 | 5 | Metadata & native chapters | ✅ Done | [phase-5-metadata-chapters.md](phase-5-metadata-chapters.md) | `768e136` |
 | 6 | `ISearchEngine` seam (wrap YoutubeExplode, no behavior change) | ✅ Done | [phase-6-search-engine.md](phase-6-search-engine.md) | `d1191fd` |
-| 6b | yt-dlp search impl + dormant fallback (optional) | ⬜ Not started | [phase-6-search-engine.md](phase-6-search-engine.md) | — |
+| 6b | yt-dlp search impl + dormant fallback (optional) | ✅ Done (search impl; fallback deferred) | [phase-6-search-engine.md](phase-6-search-engine.md) | `<pending>` |
 | 7 | Cutover & cleanup | ⬜ Not started | [phase-7-cutover-cleanup.md](phase-7-cutover-cleanup.md) | — |
 | 8 | Engine updater (yt-dlp self-update + version check) | ✅ Done | [phase-8-engine-updater.md](phase-8-engine-updater.md) | `33f4b65` |
 
@@ -137,6 +137,33 @@ pagination/duration-filter/cache/prefetch pipeline is unchanged. Default engine 
 YoutubeExplode → **no behavior change**. Build green. (yt-dlp search impl + dormant
 fallback deferred to Phase 6b.)
 
+### Phase 6b (yt-dlp search engine) — commit `<pending>`
+| File | Change | Disposition | Notes |
+|------|--------|-------------|-------|
+| `Phosphor/Video/YtDlpVideoEngine.cs` | modified | keep | Added `RunYtDlpStreamingAsync` (line-by-line stdout; gate held only at launch) |
+| `Phosphor/Search/YtDlpSearchEngine.cs` | added | keep | `ISearchEngine` via yt-dlp `ytsearch`/playlist/channel; JSONL → `VideoItem` |
+| `Phosphor/Search/SearchEngineFactory.cs` | modified | keep | `YtDlp` → `YtDlpSearchEngine` |
+| `Phosphor/JukeboxViewModel.cs` | modified | keep | Engine-aware `SearchPageSize` (yt-dlp 50, YT-Explode 25) |
+| `Phosphor/Windows/SettingsWindow.xaml` | modified | keep | "Search:" engine dropdown |
+| `Phosphor/Windows/SettingsWindow.xaml.cs` | modified | keep | Search-engine load/save + handler + hint |
+
+**Net effect:** search is now switchable (YoutubeExplode | yt-dlp) via Settings, mirroring
+the video engine. yt-dlp search streams `--flat-playlist --dump-json` JSONL line-by-line
+into the same `IAsyncEnumerable<VideoItem>` pipeline, so pagination + the app's
+`min:`/`max:`/title/channel filters work unchanged (they're VM-level, engine-agnostic).
+Page size doubles for yt-dlp to offset per-page process-spawn latency. Default
+(YoutubeExplode) unchanged → no behavior change by default. Build green.
+
+**Known limitations / deferred (yt-dlp search):**
+- **Playlist-by-name** (`playlist:"Some Name"`) returns null → "could not find" (yt-dlp
+  search returns videos, not playlist entities). Direct playlist id/URL works.
+- **Dormant exception fallback** (analysis §4a) not built — the App.xaml.cs YoutubeExplode
+  exception suppression must be revisited first (see cleanup tracker).
+- **Server-side `--match-filters` duration** optimization deferred (client-side parity
+  for now); see phase-6 doc.
+- **Test point:** verify the doubled page size (50) keeps scroll fetches infrequent
+  enough; tune if the ~2s per-page spawn still feels laggy.
+
 ### Phase 8 (engine updater) — commit `33f4b65`
 | File | Change | Disposition | Notes |
 |------|--------|-------------|-------|
@@ -195,4 +222,4 @@ Actions to take **before or at Phase 7 (cutover)**. Check off as done.
 
 ---
 
-_Last updated: Phase 8 complete (yt-dlp self-update mechanism)._
+_Last updated: Phase 6b complete (yt-dlp search engine, switchable via Settings)._

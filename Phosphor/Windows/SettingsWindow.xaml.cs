@@ -1068,6 +1068,10 @@ public partial class SettingsWindow : JukeboxWindow
         CbVideoEngine.Items.Add("yt-dlp");
         CbVideoEngine.SelectedIndex = (int)settings.VideoEngine;
         UpdateEngineHint(settings.VideoEngine);
+        CbSearchEngine.Items.Add("YoutubeExplode");
+        CbSearchEngine.Items.Add("yt-dlp");
+        CbSearchEngine.SelectedIndex = (int)settings.SearchEngine;
+        UpdateSearchEngineHint(settings.SearchEngine);
         CbYtDlpAutoUpdate.IsChecked = settings.YtDlpAutoUpdate;
         CbStereoAudio.IsChecked = settings.StereoAudio;
 
@@ -3298,6 +3302,7 @@ public partial class SettingsWindow : JukeboxWindow
             : LogoColorMode.Off;
         _settings.VideoQuality = (VideoQualityPreference)CbVideoQuality.SelectedIndex;
         _settings.VideoEngine = (VideoEngineKind)CbVideoEngine.SelectedIndex;
+        _settings.SearchEngine = (SearchEngineKind)CbSearchEngine.SelectedIndex;
         _settings.YtDlpAutoUpdate = CbYtDlpAutoUpdate.IsChecked == true;
         _settings.StereoAudio = CbStereoAudio.IsChecked == true;
         _settings.NetworkCachingMs = (int)SliderNetworkCaching.Value;
@@ -3473,6 +3478,25 @@ public partial class SettingsWindow : JukeboxWindow
         EngineHintText.Text = engine switch
         {
             VideoEngineKind.YtDlp => "yt-dlp — downloads via yt-dlp.exe",
+            _ => "YoutubeExplode — in-process (default)"
+        };
+    }
+
+    private void CbSearchEngine_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (CbSearchEngine.SelectedIndex >= 0)
+            UpdateSearchEngineHint((SearchEngineKind)CbSearchEngine.SelectedIndex);
+        // Stop the routed SelectionChanged from bubbling to the parent TabControl, whose
+        // handling would scroll the settings panel back to the top.
+        e.Handled = true;
+    }
+
+    private void UpdateSearchEngineHint(SearchEngineKind engine)
+    {
+        if (SearchEngineHintText == null) return;
+        SearchEngineHintText.Text = engine switch
+        {
+            SearchEngineKind.YtDlp => "yt-dlp — out-of-process (larger pages)",
             _ => "YoutubeExplode — in-process (default)"
         };
     }

@@ -602,6 +602,14 @@ public partial class JukeboxViewModel : ObservableObject
         _searchEngine = SearchEngineFactory.Create(_searchEngineKind, http);
     }
 
+    /// <summary>
+    /// Number of results to fetch per "load more" page. The out-of-process yt-dlp search
+    /// engine has higher per-page latency (a process spawn), so it uses a larger page to
+    /// reduce how often the user hits a fetch while scrolling.
+    /// </summary>
+    private int SearchPageSize =>
+        _searchEngineKind == SearchEngineKind.YtDlp ? 50 : 25;
+
     // ── Gapless playback ──
     public bool GaplessPlayback { get; set; }
 
@@ -1253,7 +1261,7 @@ public partial class JukeboxViewModel : ObservableObject
             _activeResultCache = YtPlaylistCache;
         }
 
-        await LoadMoreResults(25);
+        await LoadMoreResults(SearchPageSize);
     }
 
     /// <summary>
@@ -2031,7 +2039,7 @@ public partial class JukeboxViewModel : ObservableObject
         else if (_isPlexBrowsing)
             await LoadMorePlexResultsAsync();
         else
-            await LoadMoreResults(25);
+            await LoadMoreResults(SearchPageSize);
     }
 
     private async Task LoadMoreResults(int count)

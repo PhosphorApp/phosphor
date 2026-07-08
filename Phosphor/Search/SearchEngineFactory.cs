@@ -10,7 +10,7 @@ public static class SearchEngineFactory
 {
     public static ISearchEngine Create(SearchEngineKind kind, HttpClient? http = null) => kind switch
     {
-        // YtDlp search is added in a later phase; fall back to YoutubeExplode until then.
+        SearchEngineKind.YtDlp => new YtDlpSearchEngine(),
         _ => new YoutubeExplodeSearchEngine(http),
     };
 }

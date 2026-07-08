@@ -278,6 +278,56 @@ public sealed class YtDlpVideoEngine : IVideoEngine
         }
     }
 
+    /// <summary>
+    /// Runs <c>yt-dlp.exe</c> and yields each stdout line as it arrives (for streaming
+    /// search results). The <see cref="ProcessGate"/> is held only long enough to launch
+    /// the process — once started, the exe is loaded into memory, so a concurrent updater
+    /// replacing the on-disk file is harmless, and other reads aren't blocked for the
+    /// (multi-second) lifetime of the stream. The process is killed if the enumeration is
+    /// cancelled or disposed early.
+    /// </summary>
+    internal static async IAsyncEnumerable<string> RunYtDlpStreamingAsync(
+        string ytDlpPath, IReadOnlyList<string> args,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = ytDlpPath,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        foreach (var a in args) psi.ArgumentList.Add(a);
+
+        using var proc = new Process { StartInfo = psi };
+
+        await ProcessGate.WaitAsync(ct);
+        try
+        {
+            proc.Start();
+        }
+        finally
+        {
+            ProcessGate.Release();
+        }
+
+        try
+        {
+            while (!proc.StandardOutput.EndOfStream)
+            {
+                ct.ThrowIfCancellationRequested();
+                var line = await proc.StandardOutput.ReadLineAsync(ct);
+                if (line == null) break;
+                if (line.Length > 0) yield return line;
+            }
+        }
+        finally
+        {
+            try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch { }
+        }
+    }
+
     // ── helpers ──
 
     /// <summary>Maps the quality ceiling onto a yt-dlp height filter (mirrors StreamSelector).</summary>
