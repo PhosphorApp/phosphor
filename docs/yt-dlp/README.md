@@ -20,7 +20,7 @@
 | 5 | Metadata & native chapters | ✅ Done | [phase-5-metadata-chapters.md](phase-5-metadata-chapters.md) | `768e136` |
 | 6 | `ISearchEngine` seam (wrap YoutubeExplode, no behavior change) | ✅ Done | [phase-6-search-engine.md](phase-6-search-engine.md) | `d1191fd` |
 | 6b | yt-dlp search impl + dormant fallback (optional) | ✅ Done (search impl; fallback deferred) | [phase-6-search-engine.md](phase-6-search-engine.md) | `eb837b7` |
-| 7 | Cutover & cleanup | ✅ Done | [phase-7-cutover-cleanup.md](phase-7-cutover-cleanup.md) | `<pending>` |
+| 7 | Cutover & cleanup | ✅ Done | [phase-7-cutover-cleanup.md](phase-7-cutover-cleanup.md) | `35ca198` |
 | 8 | Engine updater (yt-dlp self-update + version check) | ✅ Done | [phase-8-engine-updater.md](phase-8-engine-updater.md) | `33f4b65` |
 
 Legend: ⬜ not started · 🚧 in progress · ✅ done · ⏸️ blocked
@@ -183,7 +183,7 @@ writes `settings.json` next to its exe (portable/cabinet-style, writable install
 yt-dlp self-updates **in place** — no app-data-copy indirection needed. YoutubeExplode is
 compiled-in and intentionally has no update action. Build green.
 
-### Phase 7 (cutover & cleanup) — commit `<pending>`
+### Phase 7 (cutover & cleanup) — commit `35ca198`
 | File | Change | Disposition | Notes |
 |------|--------|-------------|-------|
 | `Phosphor/Video/IVideoEngine.cs` | modified | keep | Added `IsAvailable` capability |

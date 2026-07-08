@@ -1,6 +1,6 @@
 # Phase 7 — Cutover & Cleanup ✅ DONE
 
-**Status:** Complete. Commit `<pending>`. Final phase — migration finished.
+**Status:** Complete. Commit `35ca198`. Final phase — migration finished.
 **Goal:** Decide defaults, add a safety net, remove dead code, refresh docs.
 
 ## Decisions (as made)
