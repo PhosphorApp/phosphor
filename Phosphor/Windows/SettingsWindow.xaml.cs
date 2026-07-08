@@ -3453,12 +3453,18 @@ public partial class SettingsWindow : JukeboxWindow
     {
         if (CbVideoQuality.SelectedIndex >= 0)
             UpdateQualityHint((VideoQualityPreference)CbVideoQuality.SelectedIndex);
+        // Stop the routed SelectionChanged from bubbling to the parent TabControl, whose
+        // handling would scroll the settings panel back to the top.
+        e.Handled = true;
     }
 
     private void CbVideoEngine_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
         if (CbVideoEngine.SelectedIndex >= 0)
             UpdateEngineHint((VideoEngineKind)CbVideoEngine.SelectedIndex);
+        // Stop the routed SelectionChanged from bubbling to the parent TabControl, whose
+        // handling would scroll the settings panel back to the top.
+        e.Handled = true;
     }
 
     private void UpdateEngineHint(VideoEngineKind engine)

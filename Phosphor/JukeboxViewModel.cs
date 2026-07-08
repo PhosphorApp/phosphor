@@ -3168,32 +3168,45 @@ public partial class JukeboxViewModel : ObservableObject
             var meta = await _videoEngine.GetMetadataAsync(item.VideoId);
             if (meta == null) return;
 
-            if (meta.Duration.HasValue)
-                item.Duration = meta.Duration;
-
-            if (meta.UploadDate.HasValue)
-                item.UploadDate = meta.UploadDate;
-
             // Native chapters (yt-dlp) take precedence; otherwise parse the description.
             var chapters = meta.Chapters.Count > 0
                 ? meta.Chapters
                 : ParseYouTubeChapters(meta.Description ?? "", meta.Duration);
+            var chapterSource = meta.Chapters.Count > 0 ? "native" : "description";
 
-            if (chapters.Count > 0)
+            // Apply item/UI mutations on the UI thread. GetMetadataAsync may resume on a
+            // thread-pool thread (the yt-dlp engine awaits an external process), and raising
+            // PropertyChanged for bound VideoItem properties off the UI thread silently
+            // fails to refresh the queue bindings.
+            void Apply()
             {
-                item.Chapters = chapters;
-                var source = meta.Chapters.Count > 0 ? "native" : "description";
-                DebugLog.Log("Chapters", $"YouTube chapters ({source}): {chapters.Count}");
-                if (ReferenceEquals(item, _currentlyPlaying))
-                {
-                    UpdateChapterTickPositions();
-                    OnPropertyChanged(nameof(ShouldSnapToChapters));
-                    UpdateCurrentChapter();
-                }
+                if (meta.Duration.HasValue)
+                    item.Duration = meta.Duration;
 
-                // Persist chapters to video cache if the item is cached
-                _cache?.UpdateChapters(item.VideoId, chapters);
+                if (meta.UploadDate.HasValue)
+                    item.UploadDate = meta.UploadDate;
+
+                if (chapters.Count > 0)
+                {
+                    item.Chapters = chapters;
+                    DebugLog.Log("Chapters", $"YouTube chapters ({chapterSource}): {chapters.Count}");
+                    if (ReferenceEquals(item, _currentlyPlaying))
+                    {
+                        UpdateChapterTickPositions();
+                        OnPropertyChanged(nameof(ShouldSnapToChapters));
+                        UpdateCurrentChapter();
+                    }
+
+                    // Persist chapters to video cache if the item is cached
+                    _cache?.UpdateChapters(item.VideoId, chapters);
+                }
             }
+
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess())
+                await dispatcher.InvokeAsync(Apply);
+            else
+                Apply();
         }
         catch (Exception ex)
         {

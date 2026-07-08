@@ -569,9 +569,8 @@
                                                    Foreground="{StaticResource TextDimBrush}" Cursor="Hand"
                                                    FontSize="{DynamicResource QueueFontSize}"
                                                    VerticalAlignment="Center" Margin="8,0,0,0"
-                                                   Visibility="Collapsed">
-                                            <Run Text="{Binding DetailTextDurationFirst, Mode=OneWay}"/>
-                                        </TextBlock>
+                                                   Visibility="Collapsed"
+                                                   Text="{Binding DetailTextDurationFirst, Mode=OneWay}"/>
                                         <TextBlock TextTrimming="CharacterEllipsis" FontSize="{DynamicResource QueueFontSize}"
                                                    Foreground="{StaticResource TextBrush}" Cursor="Hand">
                                             <TextBlock.Text>
