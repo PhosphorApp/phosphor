@@ -86,11 +86,20 @@ public class VideoItem : ObservableObject
         set
         {
             if (SetProperty(ref _uploadDate, value))
+            {
                 OnPropertyChanged(nameof(UploadDateText));
+                OnPropertyChanged(nameof(DetailTextDurationFirst));
+            }
         }
     }
 
-    public string UploadDateText => UploadDate is { } d ? d.ToString("yyyy-MM-dd") : "";
+    /// <summary>
+    /// Upload date formatted with the user's locale short-date pattern (e.g. MM/dd/yyyy
+    /// or dd/MM/yyyy). Formatted from the value's own offset (no local-time conversion) so
+    /// a UTC-midnight date never shifts a day. Empty when no date is known.
+    /// </summary>
+    public string UploadDateText =>
+        UploadDate is { } d ? d.ToString("d", System.Globalization.CultureInfo.CurrentCulture) : "";
 
     public string DurationText => Duration switch
     {
@@ -106,10 +115,23 @@ public class VideoItem : ObservableObject
                 ? Author
                 : $"{Author} \u00B7 {DurationText}";
 
-    public string DetailTextDurationFirst =>
-        string.IsNullOrWhiteSpace(Author)
-            ? DurationText
-            : string.IsNullOrEmpty(DurationText)
-                ? Author
-                : $"{DurationText} \u00B7 {Author}";
+    public string DetailTextDurationFirst
+    {
+        get
+        {
+            // Base: "duration · author" (or whichever is present).
+            var baseText =
+                string.IsNullOrWhiteSpace(Author)
+                    ? DurationText
+                    : string.IsNullOrEmpty(DurationText)
+                        ? Author
+                        : $"{DurationText} \u00B7 {Author}";
+
+            // Append the upload date after the author when both are available.
+            if (!string.IsNullOrWhiteSpace(Author) && UploadDateText.Length > 0)
+                return $"{baseText} \u00B7 {UploadDateText}";
+
+            return baseText;
+        }
+    }
 }
