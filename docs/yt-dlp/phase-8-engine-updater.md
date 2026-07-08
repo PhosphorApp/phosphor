@@ -1,6 +1,6 @@
 # Phase 8 — Engine Updater (yt-dlp self-update + version check) ✅ DONE
 
-**Status:** Complete. Commit `<pending>`. Shipped independently of Phases 6b/7.
+**Status:** Complete. Commit `33f4b65`. Shipped independently of Phases 6b/7.
 **Goal:** Keep the engines fresh **between app releases**, with a Settings control to
 auto-update and/or "Check now."
 

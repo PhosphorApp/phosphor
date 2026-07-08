@@ -21,7 +21,7 @@
 | 6 | `ISearchEngine` seam (wrap YoutubeExplode, no behavior change) | ✅ Done | [phase-6-search-engine.md](phase-6-search-engine.md) | `d1191fd` |
 | 6b | yt-dlp search impl + dormant fallback (optional) | ⬜ Not started | [phase-6-search-engine.md](phase-6-search-engine.md) | — |
 | 7 | Cutover & cleanup | ⬜ Not started | [phase-7-cutover-cleanup.md](phase-7-cutover-cleanup.md) | — |
-| 8 | Engine updater (yt-dlp self-update + version check) | ✅ Done | [phase-8-engine-updater.md](phase-8-engine-updater.md) | `<pending>` |
+| 8 | Engine updater (yt-dlp self-update + version check) | ✅ Done | [phase-8-engine-updater.md](phase-8-engine-updater.md) | `33f4b65` |
 
 Legend: ⬜ not started · 🚧 in progress · ✅ done · ⏸️ blocked
 
@@ -137,7 +137,7 @@ pagination/duration-filter/cache/prefetch pipeline is unchanged. Default engine 
 YoutubeExplode → **no behavior change**. Build green. (yt-dlp search impl + dormant
 fallback deferred to Phase 6b.)
 
-### Phase 8 (engine updater) — commit `<pending>`
+### Phase 8 (engine updater) — commit `33f4b65`
 | File | Change | Disposition | Notes |
 |------|--------|-------------|-------|
 | `Phosphor/Video/YtDlpVideoEngine.cs` | modified | keep | Shared `ProcessGate` + static `RunYtDlpAsync` serializing all yt-dlp invocations |
