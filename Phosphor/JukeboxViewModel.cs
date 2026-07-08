@@ -189,14 +189,22 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Display title for the now-playing area. Appends chapter name when available.
+    /// Display title for the now-playing area. Appends the chapter name when available,
+    /// and the upload date (in parentheses) when known.
     /// </summary>
     public string NowPlayingTitle
     {
         get
         {
             var title = _currentlyPlaying?.Title ?? "Nothing playing";
-            return string.IsNullOrEmpty(_currentChapterName) ? title : $"{title} \u2014 {_currentChapterName}";
+            if (!string.IsNullOrEmpty(_currentChapterName))
+                title = $"{title} \u2014 {_currentChapterName}";
+
+            var dateText = _currentlyPlaying?.UploadDateText;
+            if (!string.IsNullOrEmpty(dateText))
+                title = $"{title} ({dateText})";
+
+            return title;
         }
     }
 
@@ -3192,7 +3200,12 @@ public partial class JukeboxViewModel : ObservableObject
                     item.Duration = meta.Duration;
 
                 if (meta.UploadDate.HasValue)
+                {
                     item.UploadDate = meta.UploadDate;
+                    // Refresh the now-playing header so the date appears for the live track.
+                    if (ReferenceEquals(item, _currentlyPlaying))
+                        OnPropertyChanged(nameof(NowPlayingTitle));
+                }
 
                 if (chapters.Count > 0)
                 {

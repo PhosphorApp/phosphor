@@ -181,7 +181,7 @@
                                         <TextBlock Text="The yt-dlp engine can update itself between app releases to keep working as YouTube changes."
                                                     FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,8"
                                                     TextWrapping="Wrap"/>
-                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
                                             <Button x:Name="BtnCheckYtDlpUpdate" Content="Check for yt-dlp updates"
                                                     Padding="8,4" VerticalAlignment="Center"
                                                     Click="BtnCheckYtDlpUpdate_Click"/>
