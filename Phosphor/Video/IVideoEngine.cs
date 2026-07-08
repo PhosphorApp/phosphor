@@ -97,10 +97,11 @@ public sealed record VideoDownload(
 /// <summary>
 /// Video metadata for chapter/duration enrichment. <see cref="Chapters"/> holds
 /// <em>native</em> markers when the engine exposes them; when empty, the caller falls
-/// back to parsing <see cref="Description"/>. <see cref="Duration"/> may be null if the
-/// source did not report it.
+/// back to parsing <see cref="Description"/>. <see cref="Duration"/> and
+/// <see cref="UploadDate"/> may be null if the source did not report them.
 /// </summary>
 public sealed record VideoMetadata(
     TimeSpan? Duration,
     string? Description,
-    List<ChapterMarker> Chapters);
+    List<ChapterMarker> Chapters,
+    DateTimeOffset? UploadDate = null);

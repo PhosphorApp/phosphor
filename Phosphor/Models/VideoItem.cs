@@ -75,6 +75,23 @@ public class VideoItem : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Video upload date, lazily populated only when full metadata is fetched (on play /
+    /// duration refresh) — never during search. Null until then, or if the source has none.
+    /// </summary>
+    private DateTimeOffset? _uploadDate;
+    public DateTimeOffset? UploadDate
+    {
+        get => _uploadDate;
+        set
+        {
+            if (SetProperty(ref _uploadDate, value))
+                OnPropertyChanged(nameof(UploadDateText));
+        }
+    }
+
+    public string UploadDateText => UploadDate is { } d ? d.ToString("yyyy-MM-dd") : "";
+
     public string DurationText => Duration switch
     {
         { TotalHours: >= 1 } d => d.ToString(@"h\:mm\:ss"),

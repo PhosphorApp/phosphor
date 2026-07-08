@@ -87,6 +87,6 @@ public sealed class YoutubeExplodeVideoEngine : IVideoEngine
 
         // YoutubeExplode exposes no native chapter markers — return an empty list plus
         // the description so the caller parses chapters from it (as it always has).
-        return new VideoMetadata(video.Duration, video.Description, new List<ChapterMarker>());
+        return new VideoMetadata(video.Duration, video.Description, new List<ChapterMarker>(), video.UploadDate);
     }
 }

@@ -3171,6 +3171,9 @@ public partial class JukeboxViewModel : ObservableObject
             if (meta.Duration.HasValue)
                 item.Duration = meta.Duration;
 
+            if (meta.UploadDate.HasValue)
+                item.UploadDate = meta.UploadDate;
+
             // Native chapters (yt-dlp) take precedence; otherwise parse the description.
             var chapters = meta.Chapters.Count > 0
                 ? meta.Chapters

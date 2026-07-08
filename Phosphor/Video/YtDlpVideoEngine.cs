@@ -176,7 +176,7 @@ public sealed class YtDlpVideoEngine : IVideoEngine
                 })
                 .ToList();
 
-            return new VideoMetadata(duration, dto.Description, chapters);
+            return new VideoMetadata(duration, dto.Description, chapters, ParseUploadDate(dto.UploadDate));
         }
         catch (Exception ex)
         {
@@ -309,6 +309,17 @@ public sealed class YtDlpVideoEngine : IVideoEngine
     private static string Trim(string s)
         => s.Length <= 400 ? s : s[..400];
 
+    /// <summary>Parses yt-dlp's <c>upload_date</c> ("YYYYMMDD") into a UTC-based offset.</summary>
+    private static DateTimeOffset? ParseUploadDate(string? uploadDate)
+    {
+        if (string.IsNullOrWhiteSpace(uploadDate)
+            || !DateTime.TryParseExact(uploadDate, "yyyyMMdd",
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal, out var dt))
+            return null;
+        return new DateTimeOffset(dt, TimeSpan.Zero);
+    }
+
     // ── JSON shapes (subset of yt-dlp --dump-single-json) ──
 
     private sealed class YtDlpMetaJson
@@ -316,6 +327,7 @@ public sealed class YtDlpVideoEngine : IVideoEngine
         [JsonPropertyName("duration")] public double? Duration { get; set; }
         [JsonPropertyName("description")] public string? Description { get; set; }
         [JsonPropertyName("chapters")] public List<YtDlpChapterJson>? Chapters { get; set; }
+        [JsonPropertyName("upload_date")] public string? UploadDate { get; set; }
     }
 
     private sealed class YtDlpChapterJson
