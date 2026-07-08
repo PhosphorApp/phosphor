@@ -18,7 +18,7 @@
 | 3 | yt-dlp video engine — download path | ✅ Done | [phase-3-ytdlp-download.md](phase-3-ytdlp-download.md) | `5a21e13` |
 | 4 | yt-dlp video engine — live playback | ✅ Done | [phase-4-ytdlp-live.md](phase-4-ytdlp-live.md) | `e0cc5f7` |
 | 5 | Metadata & native chapters | ✅ Done | [phase-5-metadata-chapters.md](phase-5-metadata-chapters.md) | `768e136` |
-| 6 | `ISearchEngine` seam (wrap YoutubeExplode, no behavior change) | ✅ Done | [phase-6-search-engine.md](phase-6-search-engine.md) | `<pending>` |
+| 6 | `ISearchEngine` seam (wrap YoutubeExplode, no behavior change) | ✅ Done | [phase-6-search-engine.md](phase-6-search-engine.md) | `d1191fd` |
 | 6b | yt-dlp search impl + dormant fallback (optional) | ⬜ Not started | [phase-6-search-engine.md](phase-6-search-engine.md) | — |
 | 7 | Cutover & cleanup | ⬜ Not started | [phase-7-cutover-cleanup.md](phase-7-cutover-cleanup.md) | — |
 | 8 | Engine updater (yt-dlp self-update + version check) | ⬜ Not started | [phase-8-engine-updater.md](phase-8-engine-updater.md) | — |
@@ -118,7 +118,7 @@ to description parsing when absent); YoutubeExplode path is identical to before 
 description parse). `ParseYouTubeChapters` stays single-sourced in the VM as the shared
 fallback. Build green.
 
-### Phase 6 (ISearchEngine seam) — commit `<pending>`
+### Phase 6 (ISearchEngine seam) — commit `d1191fd`
 | File | Change | Disposition | Notes |
 |------|--------|-------------|-------|
 | `Phosphor/Search/ISearchEngine.cs` | added | keep | Discovery seam (search, playlist, channel, playlist-id resolve) |

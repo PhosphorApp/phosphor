@@ -1,6 +1,6 @@
 # Phase 6 — `ISearchEngine` Seam ✅ DONE (+ Phase 6b: yt-dlp search — deferred)
 
-**Status:** Phase 6 (seam) complete, commit `<pending>`. Phase 6b (yt-dlp search impl +
+**Status:** Phase 6 (seam) complete, commit `d1191fd`. Phase 6b (yt-dlp search impl +
 dormant fallback) deferred. **Prereq:** Phases 2–5.
 **Goal (Phase 6):** Abstract discovery behind `ISearchEngine`, wrapping YoutubeExplode —
 **no behavior change** — to isolate the last `_youtube` usages and set up a future yt-dlp
