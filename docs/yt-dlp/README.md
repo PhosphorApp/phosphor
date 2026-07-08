@@ -144,7 +144,7 @@ fallback deferred to Phase 6b.)
 | `Phosphor/Video/YtDlpUpdater.cs` | added | keep | `GetVersionAsync` + `UpdateAsync` (`--update-to stable`) behind the gate |
 | `Phosphor/Models/AppSettings.cs` | modified | keep | `YtDlpAutoUpdate` + `YtDlpLastUpdateCheck` |
 | `Phosphor/default_settings.json` | modified | keep | `"YtDlpAutoUpdate": false` |
-| `Phosphor/Windows/SettingsWindow.xaml` | modified | keep | VIDEO section: "Check for yt-dlp updates" button + status + auto-update checkbox |
+| `Phosphor/Windows/SettingsWindow.xaml` | modified | keep | Dedicated UPDATES section: "Check for yt-dlp updates" button + status + auto-update checkbox |
 | `Phosphor/Windows/SettingsWindow.xaml.cs` | modified | keep | Load/save + async `BtnCheckYtDlpUpdate_Click` |
 | `Phosphor/App.xaml.cs` | modified | keep | Throttled (7-day) background auto-update at startup |
 

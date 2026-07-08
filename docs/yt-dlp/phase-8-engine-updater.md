@@ -57,12 +57,20 @@ of the yt-dlp path.
 - **`YtDlpUpdater`:** `GetVersionAsync` (`--version`) + `UpdateAsync` (`--update-to stable`,
   capturing before/after version) → `YtDlpUpdateResult` (`Updated` / `AlreadyCurrent` /
   `Failed`) with `ToDisplayString()` for the UI. Never throws to the caller.
-- **Settings UI:** General → VIDEO, under the Engine dropdown — "Check for yt-dlp updates"
-  button + status text + "Automatically check … on startup" checkbox. Async handler,
-  non-blocking.
+- **Settings UI:** General → **UPDATES** section (its own section, separate from VIDEO so
+  the engine area stays clean and future update controls can consolidate here) — "Check
+  for yt-dlp updates" button + status text + "Automatically check … on startup" checkbox.
+  Async handler, non-blocking.
 - **Startup auto-update:** `App.MaybeAutoUpdateYtDlp()` — fires only if `YtDlpAutoUpdate`
   is on **and** a yt-dlp engine is selected **and** last check > 7 days ago; stamps
   `YtDlpLastUpdateCheck` and runs `UpdateAsync` fire-and-forget (persisted on exit).
+- **Prompt vs. silent (decision):** auto-update is **silent** (no modal), by design. This
+  is a cabinet app driven by a button-box — a blocking "update? yes/no" dialog at startup
+  could strand a machine with no keyboard to dismiss it. The yt-dlp self-update is low-risk
+  (refreshes the extractor only; a stale exe is already the failure we're avoiding). The
+  **manual "Check for updates" button is the interactive path** for users who prefer to
+  decide. No startup prompt; if a heads-up is ever wanted it must be non-modal /
+  keyboard-optional, never a hard modal.
 - **Validated:** full command sequence (`--version` → `--update-to stable` → `--version`)
   produced "Already current (2026.07.04)" as expected; build green.
 - **YoutubeExplode notice:** skipped (optional/low-value); the asymmetry is documented so

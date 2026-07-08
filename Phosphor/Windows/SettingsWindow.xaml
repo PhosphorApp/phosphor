@@ -168,6 +168,19 @@
                                             <TextBlock x:Name="EngineHintText" Foreground="{StaticResource TextDimBrush}"
                                                        VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11"/>
                                         </StackPanel>
+                                        <CheckBox x:Name="CbStereoAudio" Content="Prefer stereo audio (instead of 5.1 surround)"
+                                                  Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
+                                                  Margin="0,0,0,4"/>
+                                        <CheckBox x:Name="CbPrefetchEnabled" Content="Prefetch next track for instant transitions"
+                                                  Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
+                                                  Margin="0,0,0,0"/>
+
+                                        <!-- ═══ SECTION: Updates ═══ -->
+                                        <TextBlock Text="UPDATES" FontSize="12" FontWeight="Bold"
+                                                   Foreground="{StaticResource AccentBrush}" Margin="0,16,0,6"/>
+                                        <TextBlock Text="The yt-dlp engine can update itself between app releases to keep working as YouTube changes."
+                                                    FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,8"
+                                                    TextWrapping="Wrap"/>
                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                                             <Button x:Name="BtnCheckYtDlpUpdate" Content="Check for yt-dlp updates"
                                                     Padding="8,4" VerticalAlignment="Center"
@@ -176,12 +189,6 @@
                                                        VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11"/>
                                         </StackPanel>
                                         <CheckBox x:Name="CbYtDlpAutoUpdate" Content="Automatically check for yt-dlp updates on startup"
-                                                  Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
-                                                  Margin="0,0,0,8"/>
-                                        <CheckBox x:Name="CbStereoAudio" Content="Prefer stereo audio (instead of 5.1 surround)"
-                                                  Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
-                                                  Margin="0,0,0,4"/>
-                                        <CheckBox x:Name="CbPrefetchEnabled" Content="Prefetch next track for instant transitions"
                                                   Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
                                                   Margin="0,0,0,0"/>
 
