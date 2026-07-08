@@ -314,9 +314,12 @@ public sealed class YtDlpVideoEngine : IVideoEngine
 
         try
         {
-            while (!proc.StandardOutput.EndOfStream)
+            // Loop purely on the async ReadLineAsync (null = end of stream). Do NOT gate on
+            // StreamReader.EndOfStream — that property is synchronous and BLOCKS the calling
+            // thread while it waits for the underlying stream, which freezes the UI during
+            // yt-dlp's initial spawn/resolve before any output arrives.
+            while (true)
             {
-                ct.ThrowIfCancellationRequested();
                 var line = await proc.StandardOutput.ReadLineAsync(ct);
                 if (line == null) break;
                 if (line.Length > 0) yield return line;
