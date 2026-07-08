@@ -329,6 +329,8 @@ public class AppSettings
     public VideoQualityPreference VideoQuality { get; set; } = VideoQualityPreference.High;
     public VideoEngineKind VideoEngine { get; set; } = VideoEngineKind.YoutubeExplode;
     public SearchEngineKind SearchEngine { get; set; } = SearchEngineKind.YoutubeExplode;
+    public bool YtDlpAutoUpdate { get; set; }
+    public DateTime YtDlpLastUpdateCheck { get; set; } = DateTime.MinValue;
     public bool StereoAudio { get; set; } = true;
     public int Volume { get; set; } = 100;
 

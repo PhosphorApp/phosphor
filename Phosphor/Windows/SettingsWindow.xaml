@@ -168,6 +168,16 @@
                                             <TextBlock x:Name="EngineHintText" Foreground="{StaticResource TextDimBrush}"
                                                        VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11"/>
                                         </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                            <Button x:Name="BtnCheckYtDlpUpdate" Content="Check for yt-dlp updates"
+                                                    Padding="8,4" VerticalAlignment="Center"
+                                                    Click="BtnCheckYtDlpUpdate_Click"/>
+                                            <TextBlock x:Name="YtDlpUpdateStatusText" Foreground="{StaticResource TextDimBrush}"
+                                                       VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11"/>
+                                        </StackPanel>
+                                        <CheckBox x:Name="CbYtDlpAutoUpdate" Content="Automatically check for yt-dlp updates on startup"
+                                                  Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
+                                                  Margin="0,0,0,8"/>
                                         <CheckBox x:Name="CbStereoAudio" Content="Prefer stereo audio (instead of 5.1 surround)"
                                                   Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
                                                   Margin="0,0,0,4"/>

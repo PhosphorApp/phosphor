@@ -4,6 +4,7 @@ using System.Windows;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using Key = System.Windows.Input.Key;
 using Button = System.Windows.Controls.Button;
+using Phosphor.Video;
 
 namespace Phosphor;
 
@@ -1067,6 +1068,7 @@ public partial class SettingsWindow : JukeboxWindow
         CbVideoEngine.Items.Add("yt-dlp");
         CbVideoEngine.SelectedIndex = (int)settings.VideoEngine;
         UpdateEngineHint(settings.VideoEngine);
+        CbYtDlpAutoUpdate.IsChecked = settings.YtDlpAutoUpdate;
         CbStereoAudio.IsChecked = settings.StereoAudio;
 
         // Network
@@ -3296,6 +3298,7 @@ public partial class SettingsWindow : JukeboxWindow
             : LogoColorMode.Off;
         _settings.VideoQuality = (VideoQualityPreference)CbVideoQuality.SelectedIndex;
         _settings.VideoEngine = (VideoEngineKind)CbVideoEngine.SelectedIndex;
+        _settings.YtDlpAutoUpdate = CbYtDlpAutoUpdate.IsChecked == true;
         _settings.StereoAudio = CbStereoAudio.IsChecked == true;
         _settings.NetworkCachingMs = (int)SliderNetworkCaching.Value;
         _settings.LiveCachingMs = (int)SliderLiveCaching.Value;
@@ -3466,6 +3469,27 @@ public partial class SettingsWindow : JukeboxWindow
             VideoEngineKind.YtDlp => "yt-dlp — downloads via yt-dlp.exe",
             _ => "YoutubeExplode — in-process (default)"
         };
+    }
+
+    private async void BtnCheckYtDlpUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        BtnCheckYtDlpUpdate.IsEnabled = false;
+        YtDlpUpdateStatusText.Text = "Checking…";
+        try
+        {
+            var result = await new YtDlpUpdater().UpdateAsync();
+            YtDlpUpdateStatusText.Text = result.ToDisplayString();
+            if (_settings != null)
+                _settings.YtDlpLastUpdateCheck = DateTime.UtcNow;
+        }
+        catch (Exception ex)
+        {
+            YtDlpUpdateStatusText.Text = $"Update failed: {ex.Message}";
+        }
+        finally
+        {
+            BtnCheckYtDlpUpdate.IsEnabled = true;
+        }
     }
 
     private void UpdateQualityHint(VideoQualityPreference pref)

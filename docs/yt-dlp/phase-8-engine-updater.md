@@ -1,7 +1,6 @@
-# Phase 8 — Engine Updater (yt-dlp self-update + version check) ⬜
+# Phase 8 — Engine Updater (yt-dlp self-update + version check) ✅ DONE
 
-**Status:** Not started. **Prereq:** yt-dlp engine in use (Phases 3–4 done). Can ship
-independently of Phases 5–7 — orthogonal to migration mechanics.
+**Status:** Complete. Commit `<pending>`. Shipped independently of Phases 6b/7.
 **Goal:** Keep the engines fresh **between app releases**, with a Settings control to
 auto-update and/or "Check now."
 
@@ -46,3 +45,25 @@ of the yt-dlp path.
 - "Check now" updates a stale bundled exe and reports the version delta; no-ops when current.
 - Auto-update respects the throttle and never blocks the UI thread.
 - A resolve/download in flight does not corrupt an in-progress update (gate works).
+
+## Outcome (as built)
+- **Write-permission decision:** the "read-only Program Files / app-data-copy" concern
+  was resolved as **not applicable** — the app already writes `settings.json` into its own
+  `BaseDirectory` and runs `DofBridge.exe` from there, i.e. it's a portable/cabinet-style
+  app with a **writable install dir**. yt-dlp self-updates **in place**; no indirection.
+- **Concurrency gate:** `YtDlpVideoEngine.ProcessGate` (`SemaphoreSlim(1,1)`) + static
+  `RunYtDlpAsync` now serialize *every* yt-dlp invocation (resolve / download / metadata /
+  update). `YtDlpUpdater` uses the same static runner, so an update waits for in-flight work.
+- **`YtDlpUpdater`:** `GetVersionAsync` (`--version`) + `UpdateAsync` (`--update-to stable`,
+  capturing before/after version) → `YtDlpUpdateResult` (`Updated` / `AlreadyCurrent` /
+  `Failed`) with `ToDisplayString()` for the UI. Never throws to the caller.
+- **Settings UI:** General → VIDEO, under the Engine dropdown — "Check for yt-dlp updates"
+  button + status text + "Automatically check … on startup" checkbox. Async handler,
+  non-blocking.
+- **Startup auto-update:** `App.MaybeAutoUpdateYtDlp()` — fires only if `YtDlpAutoUpdate`
+  is on **and** a yt-dlp engine is selected **and** last check > 7 days ago; stamps
+  `YtDlpLastUpdateCheck` and runs `UpdateAsync` fire-and-forget (persisted on exit).
+- **Validated:** full command sequence (`--version` → `--update-to stable` → `--version`)
+  produced "Already current (2026.07.04)" as expected; build green.
+- **YoutubeExplode notice:** skipped (optional/low-value); the asymmetry is documented so
+  no misleading "update YoutubeExplode" action was added.

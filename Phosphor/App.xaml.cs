@@ -77,6 +77,8 @@ public partial class App : Application
         if (!string.IsNullOrWhiteSpace(_settings.PlexServerUrl) && !string.IsNullOrWhiteSpace(_settings.PlexToken))
             viewModel.ConfigurePlex(_settings.PlexServerUrl, _settings.PlexToken, _settings.PlexLibraries, _settings.PlexStereoAudio);
 
+        MaybeAutoUpdateYtDlp();
+
         // Create and show DMD first — it's the primary window
         _dmdWindow = new DmdWindow { DataContext = viewModel };
         _dmdWindow.SetAppSettings(_settings);
@@ -392,6 +394,36 @@ public partial class App : Application
         _sharedVlc = null;
 
         Shutdown();
+    }
+
+    /// <summary>
+    /// If yt-dlp auto-update is enabled and the yt-dlp engine is in use, runs a throttled
+    /// self-update in the background (at most once per week). Fire-and-forget: never blocks
+    /// startup and swallows failures. The last-check timestamp is persisted on exit.
+    /// </summary>
+    private void MaybeAutoUpdateYtDlp()
+    {
+        if (!_settings.YtDlpAutoUpdate) return;
+        if (_settings.VideoEngine != VideoEngineKind.YtDlp
+            && _settings.SearchEngine != SearchEngineKind.YtDlp)
+            return;
+
+        if ((DateTime.UtcNow - _settings.YtDlpLastUpdateCheck) < TimeSpan.FromDays(7))
+            return;
+
+        _settings.YtDlpLastUpdateCheck = DateTime.UtcNow;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var result = await new Phosphor.Video.YtDlpUpdater().UpdateAsync();
+                DebugLog.Log("YtDlpUpdater", $"Startup auto-update: {result.ToDisplayString()}");
+            }
+            catch (Exception ex)
+            {
+                DebugLog.Log("YtDlpUpdater", $"Startup auto-update failed: {ex.Message}");
+            }
+        });
     }
 
     private void PlayStartupDitti(JukeboxViewModel viewModel)

@@ -236,25 +236,46 @@ public sealed class YtDlpVideoEngine : IVideoEngine
 
     private async Task<(int exitCode, string stdout, string stderr)> RunAsync(
         IReadOnlyList<string> args, CancellationToken ct)
+        => await RunYtDlpAsync(_ytDlpPath, args, ct);
+
+    /// <summary>
+    /// Serializes all <c>yt-dlp.exe</c> invocations (resolve / download / metadata /
+    /// self-update) through a single process gate. This prevents the updater from
+    /// replacing the exe while a resolve or download is mid-flight against it, and
+    /// vice-versa. Shared by <see cref="YtDlpUpdater"/>.
+    /// </summary>
+    internal static readonly SemaphoreSlim ProcessGate = new(1, 1);
+
+    /// <summary>Runs <c>yt-dlp.exe</c> with the given args under <see cref="ProcessGate"/>.</summary>
+    internal static async Task<(int exitCode, string stdout, string stderr)> RunYtDlpAsync(
+        string ytDlpPath, IReadOnlyList<string> args, CancellationToken ct)
     {
-        var psi = new ProcessStartInfo
+        await ProcessGate.WaitAsync(ct);
+        try
         {
-            FileName = _ytDlpPath,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        foreach (var a in args) psi.ArgumentList.Add(a);
+            var psi = new ProcessStartInfo
+            {
+                FileName = ytDlpPath,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            foreach (var a in args) psi.ArgumentList.Add(a);
 
-        using var proc = new Process { StartInfo = psi };
-        proc.Start();
+            using var proc = new Process { StartInfo = psi };
+            proc.Start();
 
-        var stdoutTask = proc.StandardOutput.ReadToEndAsync(ct);
-        var stderrTask = proc.StandardError.ReadToEndAsync(ct);
-        await proc.WaitForExitAsync(ct);
+            var stdoutTask = proc.StandardOutput.ReadToEndAsync(ct);
+            var stderrTask = proc.StandardError.ReadToEndAsync(ct);
+            await proc.WaitForExitAsync(ct);
 
-        return (proc.ExitCode, await stdoutTask, await stderrTask);
+            return (proc.ExitCode, await stdoutTask, await stderrTask);
+        }
+        finally
+        {
+            ProcessGate.Release();
+        }
     }
 
     // ── helpers ──

@@ -21,7 +21,7 @@
 | 6 | `ISearchEngine` seam (wrap YoutubeExplode, no behavior change) | ✅ Done | [phase-6-search-engine.md](phase-6-search-engine.md) | `d1191fd` |
 | 6b | yt-dlp search impl + dormant fallback (optional) | ⬜ Not started | [phase-6-search-engine.md](phase-6-search-engine.md) | — |
 | 7 | Cutover & cleanup | ⬜ Not started | [phase-7-cutover-cleanup.md](phase-7-cutover-cleanup.md) | — |
-| 8 | Engine updater (yt-dlp self-update + version check) | ⬜ Not started | [phase-8-engine-updater.md](phase-8-engine-updater.md) | — |
+| 8 | Engine updater (yt-dlp self-update + version check) | ✅ Done | [phase-8-engine-updater.md](phase-8-engine-updater.md) | `<pending>` |
 
 Legend: ⬜ not started · 🚧 in progress · ✅ done · ⏸️ blocked
 
@@ -137,6 +137,25 @@ pagination/duration-filter/cache/prefetch pipeline is unchanged. Default engine 
 YoutubeExplode → **no behavior change**. Build green. (yt-dlp search impl + dormant
 fallback deferred to Phase 6b.)
 
+### Phase 8 (engine updater) — commit `<pending>`
+| File | Change | Disposition | Notes |
+|------|--------|-------------|-------|
+| `Phosphor/Video/YtDlpVideoEngine.cs` | modified | keep | Shared `ProcessGate` + static `RunYtDlpAsync` serializing all yt-dlp invocations |
+| `Phosphor/Video/YtDlpUpdater.cs` | added | keep | `GetVersionAsync` + `UpdateAsync` (`--update-to stable`) behind the gate |
+| `Phosphor/Models/AppSettings.cs` | modified | keep | `YtDlpAutoUpdate` + `YtDlpLastUpdateCheck` |
+| `Phosphor/default_settings.json` | modified | keep | `"YtDlpAutoUpdate": false` |
+| `Phosphor/Windows/SettingsWindow.xaml` | modified | keep | VIDEO section: "Check for yt-dlp updates" button + status + auto-update checkbox |
+| `Phosphor/Windows/SettingsWindow.xaml.cs` | modified | keep | Load/save + async `BtnCheckYtDlpUpdate_Click` |
+| `Phosphor/App.xaml.cs` | modified | keep | Throttled (7-day) background auto-update at startup |
+
+**Net effect:** yt-dlp can self-update via its own `--update-to stable`, either on demand
+("Check for updates" button) or opt-in at startup (throttled, background, off the UI
+thread). All yt-dlp processes (resolve/download/metadata/update) serialize through a shared
+`SemaphoreSlim` so an update never collides with in-flight work. **Design note:** the app
+writes `settings.json` next to its exe (portable/cabinet-style, writable install dir), so
+yt-dlp self-updates **in place** — no app-data-copy indirection needed. YoutubeExplode is
+compiled-in and intentionally has no update action. Build green.
+
 ---
 
 
@@ -147,6 +166,9 @@ Actions to take **before or at Phase 7 (cutover)**. Check off as done.
   replaced by `Phosphor/Video/YtDlpVideoEngine.cs`.
 - [x] **Reassess `Phosphor/YtDlp/` folder** — deleted (empty after spike removal). The
   real engine lives under `Phosphor/Video/` alongside the seam, not `Phosphor/YtDlp/`.
+- [x] **yt-dlp self-update mechanism** — done in Phase 8: `YtDlpUpdater` + Settings
+  "Check for updates" button + opt-in throttled startup auto-update; in-place update
+  (writable install dir), gated against concurrent yt-dlp use.
 - [ ] **`App.xaml.cs` YoutubeExplode exception suppression** (~L549) — revisit once the
   search engine may fail over (Phase 6); failures must be *observable* for fallback.
 - [ ] **Prune YoutubeExplode package** — only if/when *both* seams no longer use it
@@ -173,4 +195,4 @@ Actions to take **before or at Phase 7 (cutover)**. Check off as done.
 
 ---
 
-_Last updated: Phase 6 complete (ISearchEngine seam; _youtube fully removed from VM)._
+_Last updated: Phase 8 complete (yt-dlp self-update mechanism)._

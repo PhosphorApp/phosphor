@@ -318,6 +318,7 @@
   "VideoQuality": 2,
   "VideoEngine": 0,
   "SearchEngine": 0,
+  "YtDlpAutoUpdate": false,
   "StereoAudio": true,
   "Volume": 100,
   "NetworkCachingMs": 2000,
