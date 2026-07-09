@@ -362,6 +362,7 @@ public partial class SettingsWindow : JukeboxWindow
             case PlayfieldMode.Screensaver: RbScreensaver.IsChecked = true; break;
             case PlayfieldMode.StaticImage: RbStatic.IsChecked = true; break;
             case PlayfieldMode.Video: RbVideo.IsChecked = true; break;
+            case PlayfieldMode.VideoFolders: RbVideoFolders.IsChecked = true; break;
         }
 
         // OLED Sleep Defeat
@@ -380,6 +381,29 @@ public partial class SettingsWindow : JukeboxWindow
 
         TbStaticImagePath.Text = settings.PlayfieldStaticImagePath;
         TbVideoPath.Text = settings.PlayfieldVideoPath;
+
+        // Populate playfield video folders list
+        _playfieldVideoFolders.Clear();
+        foreach (var f in settings.PlayfieldVideoFolders)
+            if (!string.IsNullOrWhiteSpace(f))
+                _playfieldVideoFolders.Add(f);
+        LbPlayfieldVideoFolders.ItemsSource = _playfieldVideoFolders;
+
+        // Video folder play mode
+        CbVideoFolderPlayMode.Items.Clear();
+        CbVideoFolderPlayMode.Items.Add("Random");
+        CbVideoFolderPlayMode.Items.Add("Most Recent First");
+        CbVideoFolderPlayMode.SelectedIndex =
+            settings.PlayfieldVideoFolderPlayMode == VideoFolderPlayMode.MostRecentFirst ? 1 : 0;
+
+        // Min duration (5–300s, step 5)
+        SliderVideoFolderMinDuration.Value =
+            Math.Clamp(settings.PlayfieldVideoFolderMinDurationSeconds, 5, 300);
+        // Max duration (10–600s, step 10; 0 = No Maximum, represented by the 610 tick)
+        SliderVideoFolderMaxDuration.Value = settings.PlayfieldVideoFolderMaxDurationSeconds <= 0
+            ? 610
+            : Math.Clamp(settings.PlayfieldVideoFolderMaxDurationSeconds, 10, 600);
+        UpdateVideoFolderDurationLabels();
 
         CbShowVideoInfo.IsChecked = settings.ShowVideoInfo;
         CbResizableWindows.IsChecked = settings.ResizableWindows;
@@ -1363,6 +1387,86 @@ public partial class SettingsWindow : JukeboxWindow
     private void ClearVideo_Click(object sender, RoutedEventArgs e)
     {
         TbVideoPath.Text = "";
+    }
+
+    private readonly ObservableCollection<string> _playfieldVideoFolders = new();
+
+    private void AddVideoFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = "Select Playfield Video Folder",
+            Multiselect = true
+        };
+        // Seed initial directory: an existing entry, else the default vPinball
+        // PlayField folder when it exists on disk.
+        string? seed = null;
+        if (_playfieldVideoFolders.Count > 0)
+        {
+            var first = _playfieldVideoFolders[0];
+            seed = System.IO.Path.IsPathRooted(first)
+                ? first
+                : System.IO.Path.Combine(AppContext.BaseDirectory, first);
+        }
+        else if (System.IO.Directory.Exists(AppSettings.DefaultPlayfieldVideoFolder))
+        {
+            seed = AppSettings.DefaultPlayfieldVideoFolder;
+        }
+        if (!string.IsNullOrEmpty(seed) && System.IO.Directory.Exists(seed))
+            dlg.InitialDirectory = seed;
+
+        if (dlg.ShowDialog(this) != true) return;
+
+        foreach (var folder in dlg.FolderNames)
+        {
+            var stored = MakePortableDittiPath(folder);
+            if (!_playfieldVideoFolders.Contains(stored))
+                _playfieldVideoFolders.Add(stored);
+        }
+    }
+
+    private void RemoveVideoFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button btn && btn.DataContext is string path)
+            _playfieldVideoFolders.Remove(path);
+    }
+
+    private const int VideoFolderMaxNoLimitTick = 610;
+
+    private void SliderVideoFolderMinDuration_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        // Ensure Max stays >= Min (unless Max is "No Maximum").
+        if (SliderVideoFolderMaxDuration != null)
+        {
+            double max = SliderVideoFolderMaxDuration.Value;
+            if (max < VideoFolderMaxNoLimitTick && max < e.NewValue)
+                SliderVideoFolderMaxDuration.Value = Math.Min(VideoFolderMaxNoLimitTick, e.NewValue);
+        }
+        UpdateVideoFolderDurationLabels();
+    }
+
+    private void SliderVideoFolderMaxDuration_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        // Don't allow Max below Min (unless it's the "No Maximum" tick).
+        if (SliderVideoFolderMinDuration != null &&
+            e.NewValue < VideoFolderMaxNoLimitTick && e.NewValue < SliderVideoFolderMinDuration.Value)
+        {
+            SliderVideoFolderMaxDuration.Value = SliderVideoFolderMinDuration.Value;
+            return; // this reassignment re-enters and updates the labels
+        }
+        UpdateVideoFolderDurationLabels();
+    }
+
+    private void UpdateVideoFolderDurationLabels()
+    {
+        if (TxtVideoFolderMinDuration != null)
+            TxtVideoFolderMinDuration.Text = $"{(int)SliderVideoFolderMinDuration.Value}s";
+        if (TxtVideoFolderMaxDuration != null)
+        {
+            TxtVideoFolderMaxDuration.Text = SliderVideoFolderMaxDuration.Value >= VideoFolderMaxNoLimitTick
+                ? "No Maximum"
+                : $"{(int)SliderVideoFolderMaxDuration.Value}s";
+        }
     }
 
     public void SetHistoryCount(int count)
@@ -2966,6 +3070,8 @@ public partial class SettingsWindow : JukeboxWindow
             _settings.PlayfieldDisplayMode = PlayfieldMode.Screensaver;
         else if (RbVideo.IsChecked == true)
             _settings.PlayfieldDisplayMode = PlayfieldMode.Video;
+        else if (RbVideoFolders.IsChecked == true)
+            _settings.PlayfieldDisplayMode = PlayfieldMode.VideoFolders;
         else
             _settings.PlayfieldDisplayMode = PlayfieldMode.StaticImage;
 
@@ -2976,6 +3082,16 @@ public partial class SettingsWindow : JukeboxWindow
         SelectedPlayfieldMode = _settings.PlayfieldDisplayMode;
         _settings.PlayfieldStaticImagePath = TbStaticImagePath.Text;
         _settings.PlayfieldVideoPath = TbVideoPath.Text;
+        _settings.PlayfieldVideoFolders = new List<string>(_playfieldVideoFolders);
+        _settings.PlayfieldVideoFolderPlayMode = CbVideoFolderPlayMode.SelectedIndex == 1
+            ? VideoFolderPlayMode.MostRecentFirst
+            : VideoFolderPlayMode.Random;
+        _settings.PlayfieldVideoFolderMinDurationSeconds = (int)SliderVideoFolderMinDuration.Value;
+        // The 610 tick means "No Maximum" -> store 0.
+        _settings.PlayfieldVideoFolderMaxDurationSeconds =
+            SliderVideoFolderMaxDuration.Value >= VideoFolderMaxNoLimitTick
+                ? 0
+                : (int)SliderVideoFolderMaxDuration.Value;
         _settings.ShowVideoInfo = CbShowVideoInfo.IsChecked == true;
         _settings.ResizableWindows = CbResizableWindows.IsChecked == true;
         _settings.SetCursorOnLaunch = CbSetCursorOnLaunch.IsChecked == true;

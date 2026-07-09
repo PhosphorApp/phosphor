@@ -2056,6 +2056,11 @@ public partial class DmdWindow : JukeboxWindow
 
         _playfieldProxy?.SetStaticImage(_appSettings.PlayfieldStaticImagePath);
         _playfieldProxy?.SetVideoPath(_appSettings.PlayfieldVideoPath);
+        _playfieldProxy?.SetVideoFolders(_appSettings.PlayfieldVideoFolders);
+        _playfieldProxy?.SetVideoFolderOptions(
+            _appSettings.PlayfieldVideoFolderPlayMode,
+            _appSettings.PlayfieldVideoFolderMinDurationSeconds,
+            _appSettings.PlayfieldVideoFolderMaxDurationSeconds);
         _playfieldProxy?.SetMode(settingsWindow.SelectedPlayfieldMode);
         _showVideoInfo = _appSettings.ShowVideoInfo;
         _backglassProxy?.SetShowVideoInfo(_appSettings.ShowVideoInfo);

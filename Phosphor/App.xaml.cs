@@ -126,6 +126,11 @@ public partial class App : Application
             // Set playfield mode
             _playfieldProxy.SetStaticImage(_settings.PlayfieldStaticImagePath);
             _playfieldProxy.SetVideoPath(_settings.PlayfieldVideoPath);
+            _playfieldProxy.SetVideoFolders(_settings.PlayfieldVideoFolders);
+            _playfieldProxy.SetVideoFolderOptions(
+                _settings.PlayfieldVideoFolderPlayMode,
+                _settings.PlayfieldVideoFolderMinDurationSeconds,
+                _settings.PlayfieldVideoFolderMaxDurationSeconds);
             _playfieldProxy.SetMode(_settings.PlayfieldDisplayMode);
 
             // Always initialize backglass so its visual tree and media player are ready.

@@ -130,6 +130,12 @@ public sealed class PlayfieldProxy
     public void SetVideoPath(string? path) =>
         _dispatcher.BeginInvoke(() => _window.SetVideoPath(path));
 
+    public void SetVideoFolders(IReadOnlyList<string>? folders) =>
+        _dispatcher.BeginInvoke(() => _window.SetVideoFolders(folders));
+
+    public void SetVideoFolderOptions(VideoFolderPlayMode playMode, int minDurationSec, int maxDurationSec) =>
+        _dispatcher.BeginInvoke(() => _window.SetVideoFolderOptions(playMode, minDurationSec, maxDurationSec));
+
     public void SetMode(PlayfieldMode mode) =>
         _dispatcher.BeginInvoke(() => _window.SetMode(mode));
 

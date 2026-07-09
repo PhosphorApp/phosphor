@@ -10,6 +10,9 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using Color = System.Windows.Media.Color;
 using Point = System.Windows.Point;
+using LibVLC = LibVLCSharp.Shared.LibVLC;
+using VlcMediaPlayer = LibVLCSharp.Shared.MediaPlayer;
+using VlcMedia = LibVLCSharp.Shared.Media;
 
 namespace Phosphor;
 
@@ -40,6 +43,47 @@ public partial class PlayfieldWindow : JukeboxWindow
     private double _savedIntensity;
     private double _oledDefeatIntensity = 0.8;
     private double _brightnessBoost = 1.1;
+    private string? _videoPath;
+
+    // ── Playfield video (LibVLC) ──
+    // Owns a dedicated LibVLC instance (NOT the app's shared one) because the
+    // video is rotated via instance-level transform args (--video-filter), which
+    // must be baked into the instance at creation. The VideoView is attached only
+    // while in Video mode so its WinForms-hosted HWND doesn't force software
+    // rendering for the GPU-accelerated blob screensaver.
+    private LibVLC? _libVLC;
+    private VlcMediaPlayer? _mediaPlayer;
+    private LibVLCSharp.WPF.VideoView? _videoView;
+    private Border? _videoFadeOverlay;
+    private Task? _vlcInitTask;
+    private bool _videoMode;
+    private string? _playingVideoPath;
+    private int _videoRotation;
+    // Folder-mode crossfade: a position timer starts the fade-to-black slightly
+    // BEFORE a clip ends (while it's still rendering) so the dip is actually
+    // visible; _videoTransitioning guards against the timer, EndReached, and the
+    // Vout teardown event all firing during the same swap.
+    private DispatcherTimer? _videoPositionTimer;
+    private bool _videoTransitioning;
+    private const int VideoTransitionFadeMs = 500;
+    // Video Folders mode: a random file from a random folder plays, advancing to a
+    // new random file when each clip ends (EndReached). Empty => single-file mode.
+    private string[] _videoFolders = [];
+    private bool _folderMode;
+    private static readonly string[] _videoExtensions =
+        [".mp4", ".mkv", ".avi", ".mov", ".wmv", ".m4v", ".webm"];
+    // Folder-mode playback options (set via SetVideoFolderOptions).
+    private VideoFolderPlayMode _folderPlayMode = VideoFolderPlayMode.Random;
+    private int _folderMinDurationSec = 15;
+    private int _folderMaxDurationSec;              // 0 = no maximum
+    // Most-Recent-First ordering: the full file list is enumerated + sorted ONCE
+    // and cached (heavy folders may hold thousands of files); rebuilt only when
+    // folders or play mode change. _mostRecentIndex walks it, wrapping at the end.
+    private string[]? _mostRecentFiles;
+    private int _mostRecentIndex;
+    // Wall-clock start of the current clip, used to measure elapsed on-screen time
+    // (robust under seamless input-repeat looping where mp.Time resets each loop).
+    private DateTime _clipStartUtc;
 
     //added to try to prevent window from stealing focus
     private const int WS_EX_NOACTIVATE = 0x08000000;
@@ -645,30 +689,306 @@ public partial class PlayfieldWindow : JukeboxWindow
         }
     }
 
-    public void SetVideoPath(string? path)
+    /// <summary>
+    /// Returns the MediaPlayer, lazily initializing LibVLC on first use. Called
+    /// on the playfield dispatcher thread; pumps messages while waiting for the
+    /// engine so the window stays responsive.
+    /// </summary>
+    private VlcMediaPlayer? EnsureVlcInitialized()
     {
-        if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+        if (_mediaPlayer != null)
+            return _mediaPlayer;
+
+        if (_vlcInitTask == null)
+            _vlcInitTask = Task.Run(InitializeVlcCore);
+
+        if (!_vlcInitTask.IsCompleted)
         {
-            VideoPlayer.Source = new Uri(path, UriKind.Absolute);
+            // Pump dispatcher messages so the window doesn't freeze while LibVLC
+            // finishes its background plugin scan.
+            var frame = new DispatcherFrame();
+            _vlcInitTask.ContinueWith(_ => frame.Continue = false);
+            Dispatcher.PushFrame(frame);
         }
-        else
+
+        if (_mediaPlayer == null)
+            InitializeVlcCore();
+
+        return _mediaPlayer;
+    }
+
+    /// <summary>
+    /// Builds the LibVLC instance arguments, baking in the video rotation as an
+    /// instance-level transform filter. In LibVLC 3.x the transform is a video
+    /// output filter configured when the vout is created from these instance args
+    /// (per-media :transform-type options are not honored), so rotation must live
+    /// here and the instance must be rebuilt when rotation changes.
+    /// </summary>
+    private string[] BuildVlcArgs()
+    {
+        var args = new List<string> { "--no-video-title-show" };
+        if (_videoRotation is 90 or 180 or 270)
         {
-            VideoPlayer.Source = null;
+            args.Add("--video-filter=transform");
+            // transform-type degrees are clockwise, matching WPF RotateTransform.
+            args.Add($"--transform-type={_videoRotation}");
+        }
+        return args.ToArray();
+    }
+
+    /// <summary>
+    /// Core LibVLC + MediaPlayer creation. Creates a dedicated LibVLC instance
+    /// (with rotation baked into instance args) rather than reusing the app's
+    /// shared one. The player is muted — the playfield video is a silent ambient
+    /// loop that must not compete with the backglass music.
+    /// </summary>
+    private void InitializeVlcCore()
+    {
+        if (_mediaPlayer != null)
+            return;
+
+        var vlc = new LibVLC(BuildVlcArgs());
+        var mp = new VlcMediaPlayer(vlc) { Mute = true };
+        mp.Vout += OnVideoVout;
+        mp.EndReached += OnVideoEndReached;
+
+        _libVLC = vlc;
+        _mediaPlayer = mp;
+    }
+
+    /// <summary>
+    /// Tears down the current MediaPlayer + LibVLC instance so a fresh one can be
+    /// built with new instance args (used when rotation changes). Runs the VLC
+    /// disposal on a background thread to avoid blocking the dispatcher; detaches
+    /// the VideoView first so it doesn't hold the old player.
+    /// </summary>
+    private void DisposeVlc()
+    {
+        StopVideoPositionTimer();
+        _videoTransitioning = false;
+        DetachVideoView();
+
+        var mp = _mediaPlayer;
+        var vlc = _libVLC;
+        _mediaPlayer = null;
+        _libVLC = null;
+        _vlcInitTask = null;
+        _playingVideoPath = null;
+
+        if (mp != null)
+        {
+            mp.Vout -= OnVideoVout;
+            mp.EndReached -= OnVideoEndReached;
+        }
+
+        if (mp != null || vlc != null)
+        {
+            Task.Run(() =>
+            {
+                try { mp?.Stop(); } catch { }
+                try { mp?.Dispose(); } catch { }
+                try { vlc?.Dispose(); } catch { }
+            });
         }
     }
 
-    private void VideoPlayer_MediaEnded(object sender, RoutedEventArgs e)
+    public void SetVideoPath(string? path)
     {
-        VideoPlayer.Position = TimeSpan.Zero;
-        VideoPlayer.Play();
+        // Store the desired path only. SetMode(Video) performs the actual
+        // attach/play so the common "SetVideoPath then SetMode" call sequence
+        // doesn't start playback twice.
+        if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+        {
+            _videoPath = path;
+            // If we're already in single-file video mode, apply immediately.
+            if (_videoMode && !_folderMode)
+                StartVideoPlayback();
+        }
+        else
+        {
+            _videoPath = null;
+            if (_videoMode && !_folderMode)
+                StopVideoPlayback();
+        }
+    }
+
+    /// <summary>
+    /// Sets the folders scanned in <see cref="PlayfieldMode.VideoFolders"/> mode.
+    /// Paths may be relative (resolved against the app base directory) or absolute.
+    /// </summary>
+    public void SetVideoFolders(IReadOnlyList<string>? folders)
+    {
+        _videoFolders = (folders ?? [])
+            .Where(f => !string.IsNullOrWhiteSpace(f))
+            .Select(ResolveFolder)
+            .Where(Directory.Exists)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        // Folder set changed — invalidate the cached Most-Recent-First ordering.
+        _mostRecentFiles = null;
+        _mostRecentIndex = 0;
+
+        // If we're already in folder mode and nothing is playing yet, kick it off.
+        if (_videoMode && _folderMode && _mediaPlayer == null)
+            StartVideoPlayback();
+    }
+
+    /// <summary>
+    /// Sets folder-mode playback options: file ordering, the minimum on-screen
+    /// duration (a clip loops until this elapses), and the maximum runtime cap
+    /// (0 = no maximum). Changing the play mode invalidates the cached ordering.
+    /// </summary>
+    public void SetVideoFolderOptions(VideoFolderPlayMode playMode, int minDurationSec, int maxDurationSec)
+    {
+        if (_folderPlayMode != playMode)
+        {
+            _folderPlayMode = playMode;
+            _mostRecentFiles = null; // ordering changed — rebuild lazily
+            _mostRecentIndex = 0;
+        }
+        _folderMinDurationSec = Math.Max(0, minDurationSec);
+        // 0 means no maximum; otherwise never below the minimum.
+        _folderMaxDurationSec = maxDurationSec <= 0 ? 0 : Math.Max(maxDurationSec, _folderMinDurationSec);
+    }
+
+    /// <summary>
+    /// Builds (once) the Most-Recent-First ordering: every video file across all
+    /// folders, sorted by last-write time descending. Cached until folders or the
+    /// play mode change, to avoid re-enumerating potentially thousands of files.
+    /// </summary>
+    private string[] GetMostRecentFiles()
+    {
+        if (_mostRecentFiles != null)
+            return _mostRecentFiles;
+
+        var all = new List<(string Path, DateTime Modified)>();
+        foreach (var folder in _videoFolders)
+        {
+            try
+            {
+                foreach (var f in Directory.EnumerateFiles(folder))
+                {
+                    if (_videoExtensions.Contains(System.IO.Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
+                    {
+                        DateTime modified;
+                        try { modified = File.GetLastWriteTimeUtc(f); }
+                        catch { modified = DateTime.MinValue; }
+                        all.Add((f, modified));
+                    }
+                }
+            }
+            catch { /* skip unreadable folder */ }
+        }
+
+        _mostRecentFiles = all
+            .OrderByDescending(t => t.Modified)
+            .Select(t => t.Path)
+            .ToArray();
+        _mostRecentIndex = 0;
+        return _mostRecentFiles;
+    }
+
+    private static string ResolveFolder(string path) =>
+        System.IO.Path.IsPathRooted(path) ? path : System.IO.Path.Combine(AppContext.BaseDirectory, path);
+
+    /// <summary>
+    /// Picks the next video file according to the current play mode. In Random
+    /// mode: a random folder (weighted per-folder) then a random file, avoiding
+    /// an immediate repeat when possible. In Most-Recent-First mode: the next
+    /// entry of the cached last-modified-descending list, wrapping at the end.
+    /// Returns null if no playable file is found.
+    /// </summary>
+    private string? PickNextVideoFile(string? avoid)
+    {
+        if (_folderPlayMode == VideoFolderPlayMode.MostRecentFirst)
+            return PickMostRecentFile();
+        return PickRandomVideoFile(avoid);
+    }
+
+    private string? PickMostRecentFile()
+    {
+        var files = GetMostRecentFiles();
+        if (files.Length == 0)
+            return null;
+
+        if (_mostRecentIndex >= files.Length)
+            _mostRecentIndex = 0;
+
+        // Walk forward, skipping any files that have since disappeared. Bounded by
+        // list length so a fully-deleted list can't loop forever.
+        for (int scanned = 0; scanned < files.Length; scanned++)
+        {
+            var candidate = files[_mostRecentIndex];
+            _mostRecentIndex++;
+            if (_mostRecentIndex >= files.Length)
+                _mostRecentIndex = 0;
+
+            if (File.Exists(candidate))
+                return candidate;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Picks a random video file: a random folder (weighted per-folder) then a
+    /// random file within it. Avoids immediately repeating <paramref name="avoid"/>
+    /// when the chosen folder has more than one candidate. Returns null if no
+    /// playable file is found.
+    /// </summary>
+    private string? PickRandomVideoFile(string? avoid)
+    {
+        if (_videoFolders.Length == 0)
+            return null;
+
+        // Try a few folders in case some are empty or unreadable.
+        for (int attempt = 0; attempt < _videoFolders.Length; attempt++)
+        {
+            var folder = _videoFolders[_rng.Next(_videoFolders.Length)];
+            string[] files;
+            try
+            {
+                files = Directory.EnumerateFiles(folder)
+                    .Where(f => _videoExtensions.Contains(System.IO.Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
+                    .ToArray();
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (files.Length == 0)
+                continue;
+
+            if (files.Length == 1)
+                return files[0];
+
+            // Avoid immediate repeat when possible.
+            for (int pick = 0; pick < 6; pick++)
+            {
+                var candidate = files[_rng.Next(files.Length)];
+                if (!string.Equals(candidate, avoid, StringComparison.OrdinalIgnoreCase))
+                    return candidate;
+            }
+            return files[_rng.Next(files.Length)];
+        }
+        return null;
     }
 
     public void SetMode(PlayfieldMode mode)
     {
         _colorTimer.Stop();
         StaticImage.Visibility = Visibility.Collapsed;
-        VideoPlayer.Visibility = Visibility.Collapsed;
-        VideoPlayer.Stop();
+
+        bool enteringVideo = mode is PlayfieldMode.Video or PlayfieldMode.VideoFolders;
+
+        // Leaving (or not entering) video: stop playback and remove the VLC
+        // HWND so the blob screensaver keeps GPU-accelerated rendering.
+        if (!enteringVideo && _videoMode)
+        {
+            _videoMode = false;
+            StopVideoPlayback();
+        }
 
         switch (mode)
         {
@@ -688,14 +1008,399 @@ public partial class PlayfieldWindow : JukeboxWindow
 
             case PlayfieldMode.Video:
                 ScreensaverCanvas.Visibility = Visibility.Collapsed;
-                VideoPlayer.Visibility = Visibility.Visible;
-                if (VideoPlayer.Source != null)
-                {
-                    VideoPlayer.Position = TimeSpan.Zero;
-                    VideoPlayer.Play();
-                }
+                _videoMode = true;
+                _folderMode = false;
+                StartVideoPlayback();
+                break;
+
+            case PlayfieldMode.VideoFolders:
+                ScreensaverCanvas.Visibility = Visibility.Collapsed;
+                _videoMode = true;
+                _folderMode = true;
+                StartVideoPlayback();
                 break;
         }
+    }
+
+    /// <summary>
+    /// Starts (or restarts) the playfield video via LibVLC. In single-file mode
+    /// the clip loops seamlessly at the decoder level (no MediaEnded/seek stall);
+    /// in folder mode a random file plays and advances on EndReached. The player
+    /// is muted so it never competes with the backglass music, and the VideoView
+    /// stays hidden until the first frame is decoded (Vout) so the black window
+    /// background masks the initial decode ramp.
+    /// </summary>
+    private void StartVideoPlayback()
+    {
+        // Nothing to play: single-file needs a valid file; folder mode needs folders.
+        if (_folderMode)
+        {
+            if (_videoFolders.Length == 0)
+                return;
+        }
+        else if (string.IsNullOrWhiteSpace(_videoPath) || !File.Exists(_videoPath))
+        {
+            return;
+        }
+
+        var mp = EnsureVlcInitialized();
+        if (mp == null || _libVLC == null)
+            return;
+
+        var view = EnsureVideoView();
+        if (view == null)
+            return;
+
+        // Single-file mode: if the same file is already looping, just show it.
+        // (Folder mode always advances, so it never takes this shortcut.)
+        if (!_folderMode && mp.IsPlaying &&
+            string.Equals(_playingVideoPath, _videoPath, StringComparison.OrdinalIgnoreCase))
+        {
+            view.Visibility = Visibility.Visible;
+            return;
+        }
+
+        // Hide until first frame (revealed in OnVideoVout).
+        view.Visibility = Visibility.Hidden;
+
+        // CRITICAL: the VideoView must be Loaded (its child HWND created and
+        // handed to the MediaPlayer) before Play(), otherwise libvlc has no
+        // render surface and opens its own detached top-level window. When the
+        // view was just inserted into the tree it hasn't loaded yet, so defer
+        // the actual Play() to its Loaded event.
+        if (view.IsLoaded)
+        {
+            PlayCurrentMedia(mp);
+        }
+        else
+        {
+            view.Loaded -= OnVideoViewLoaded;
+            view.Loaded += OnVideoViewLoaded;
+        }
+    }
+
+    private void OnVideoViewLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is LibVLCSharp.WPF.VideoView v)
+            v.Loaded -= OnVideoViewLoaded;
+
+        // Schedule Play after the full Loaded pass so the VideoView's own
+        // handler has attached the HWND to the MediaPlayer first.
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (_videoMode && _mediaPlayer != null && _videoView != null && _videoView.IsLoaded)
+                PlayCurrentMedia(_mediaPlayer);
+        }), DispatcherPriority.Loaded);
+    }
+
+    /// <summary>
+    /// Builds the looped media and starts playback. Assumes the VideoView is
+    /// loaded and its HWND is bound to the MediaPlayer.
+    /// </summary>
+    private void PlayCurrentMedia(VlcMediaPlayer mp)
+    {
+        if (_libVLC == null)
+            return;
+
+        if (_folderMode)
+        {
+            // Folder mode: choose the next file per play mode.
+            var pick = PickNextVideoFile(_playingVideoPath);
+            if (pick == null)
+            {
+                // Nothing playable — abandon the transition so a later attempt
+                // isn't blocked by a stuck _videoTransitioning flag.
+                _videoTransitioning = false;
+                return;
+            }
+
+            var media = new VlcMedia(_libVLC, new Uri(pick));
+            // Loop seamlessly at the decoder level so a clip shorter than the
+            // minimum duration keeps playing without a gap. The position timer
+            // decides when to advance (loop-aligned minimum, capped by maximum),
+            // using wall-clock elapsed since _clipStartUtc.
+            media.AddOption(":input-repeat=65535");
+            mp.Play(media);
+            _playingVideoPath = pick;
+            _clipStartUtc = DateTime.UtcNow;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_videoPath) || !File.Exists(_videoPath))
+            return;
+
+        var single = new VlcMedia(_libVLC, new Uri(_videoPath));
+        // Seamless gapless loop of a single file (huge repeat count).
+        single.AddOption(":input-repeat=65535");
+        // NOTE: rotation is applied at the LibVLC *instance* level (see
+        // BuildVlcArgs) because the transform video-output filter is configured
+        // when the vout is created, not from per-media options.
+        mp.Play(single);
+        _playingVideoPath = _videoPath;
+    }
+
+    /// <summary>
+    /// Safety fallback for folder mode. Folder clips use :input-repeat so they
+    /// normally loop internally (EndReached doesn't fire) and the position timer
+    /// drives advancement. If EndReached does fire (e.g. a clip that can't loop),
+    /// advance immediately behind a hard-black overlay so no garbage frame shows.
+    /// Marshaled to the dispatcher (VLC forbids Play from inside the callback).
+    /// </summary>
+    private void OnVideoEndReached(object? sender, EventArgs e)
+    {
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!_videoMode || !_folderMode || _mediaPlayer == null)
+                return;
+
+            StopVideoPositionTimer();
+            if (_videoTransitioning)
+                return; // transition already handling the swap
+
+            _videoTransitioning = true;
+            if (_videoFadeOverlay != null)
+            {
+                _videoFadeOverlay.BeginAnimation(UIElement.OpacityProperty, null);
+                _videoFadeOverlay.Opacity = 1.0; // hard black — no visible frame to fade
+            }
+            PlayCurrentMedia(_mediaPlayer);
+        }));
+    }
+
+    /// <summary>
+    /// Stops playback (on a background thread to avoid blocking the dispatcher)
+    /// and removes the VideoView so blob rendering stays GPU-accelerated.
+    /// </summary>
+    private void StopVideoPlayback()
+    {
+        StopVideoPositionTimer();
+        _videoTransitioning = false;
+        _playingVideoPath = null;
+        var mp = _mediaPlayer;
+        if (mp != null)
+            Task.Run(() => { try { mp.Stop(); } catch { } });
+        DetachVideoView();
+    }
+
+    /// <summary>
+    /// Creates the VLC VideoView and inserts it at the bottom of the Root grid.
+    /// Created lazily (only when entering Video mode) so its WinForms-hosted HWND
+    /// doesn't force software rendering during idle blob animations.
+    /// </summary>
+    private LibVLCSharp.WPF.VideoView? EnsureVideoView()
+    {
+        if (_videoView != null)
+            return _videoView;
+
+        var mp = EnsureVlcInitialized();
+        if (mp == null)
+            return null;
+
+        _videoView = new LibVLCSharp.WPF.VideoView
+        {
+            Background = System.Windows.Media.Brushes.Black,
+            MediaPlayer = mp,
+            Visibility = Visibility.Hidden,
+            Focusable = false,
+        };
+
+        // A black overlay hosted in the VideoView's floating Content layer, which
+        // is the only WPF surface that reliably renders OVER the airspace video
+        // HWND. We animate its opacity to dip-to-black between clips (a true
+        // A→B alpha crossfade isn't possible with a single native surface).
+        _videoFadeOverlay = new Border
+        {
+            Background = System.Windows.Media.Brushes.Black,
+            Opacity = 1.0,
+            IsHitTestVisible = false,
+        };
+        _videoView.Content = _videoFadeOverlay;
+
+        // Bottom-most so the black background shows through until first frame,
+        // and above nothing that needs to sit behind it.
+        System.Windows.Controls.Panel.SetZIndex(_videoView, 0);
+        Root.Children.Insert(0, _videoView);
+        return _videoView;
+    }
+
+    /// <summary>
+    /// Removes the VideoView from the visual tree so WPF can use GPU-accelerated
+    /// rendering for the idle overlay. The MediaPlayer itself is retained (owned
+    /// by this window) and disposed in OnClosed.
+    /// </summary>
+    private void DetachVideoView()
+    {
+        if (_videoView != null)
+        {
+            _videoView.Loaded -= OnVideoViewLoaded;
+            _videoView.Content = null;
+            _videoFadeOverlay = null;
+            Root.Children.Remove(_videoView);
+            _videoView = null;
+        }
+    }
+
+    /// <summary>
+    /// Fired by VLC when the video output is created (first frame, Count &gt; 0)
+    /// OR torn down (clip end, Count == 0). Only the creation event reveals the
+    /// view and fades in; the teardown event is ignored so it can't fight the
+    /// transition fade-out. Marshaled to the playfield dispatcher.
+    /// </summary>
+    private void OnVideoVout(object? sender, LibVLCSharp.Shared.MediaPlayerVoutEventArgs e)
+    {
+        // Count > 0 = a vout was created (first frame ready).
+        // Count == 0 = vout torn down at clip end — must NOT trigger a fade-in.
+        if (e.Count <= 0)
+            return;
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (!_videoMode || _videoView == null)
+                return;
+            _videoTransitioning = false;
+            _videoView.Visibility = Visibility.Visible;
+            FadeVideoOverlay(0.0, VideoTransitionFadeMs);
+            // Folder mode: arm the pre-end fade-to-black for this freshly started clip.
+            StartVideoPositionTimer();
+        });
+    }
+
+    /// <summary>
+    /// Animates the black over-video overlay to <paramref name="targetOpacity"/>
+    /// (0 = video visible, 1 = black) over the given duration. Used to dip-to-black
+    /// between folder clips so the decode gap at the seam isn't visible.
+    /// </summary>
+    private void FadeVideoOverlay(double targetOpacity, int durationMs, Action? onCompleted = null)
+    {
+        var overlay = _videoFadeOverlay;
+        if (overlay == null)
+        {
+            onCompleted?.Invoke();
+            return;
+        }
+
+        var anim = new DoubleAnimation
+        {
+            To = targetOpacity,
+            Duration = TimeSpan.FromMilliseconds(durationMs),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
+        };
+        anim.Completed += (_, _) =>
+        {
+            overlay.BeginAnimation(UIElement.OpacityProperty, null);
+            overlay.Opacity = targetOpacity;
+            onCompleted?.Invoke();
+        };
+        overlay.BeginAnimation(UIElement.OpacityProperty, anim);
+    }
+
+    /// <summary>
+    /// Starts a lightweight timer (folder mode only) that watches elapsed on-screen
+    /// time and kicks off the fade-to-black when the clip reaches its target
+    /// duration (loop-aligned minimum, capped by the maximum), while it is still
+    /// rendering — so the dip is visible instead of fading over a torn-down vout.
+    /// </summary>
+    private void StartVideoPositionTimer()
+    {
+        StopVideoPositionTimer();
+        if (!_folderMode)
+            return;
+
+        _videoPositionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+        _videoPositionTimer.Tick += VideoPositionTimer_Tick;
+        _videoPositionTimer.Start();
+    }
+
+    private void StopVideoPositionTimer()
+    {
+        if (_videoPositionTimer != null)
+        {
+            _videoPositionTimer.Stop();
+            _videoPositionTimer.Tick -= VideoPositionTimer_Tick;
+            _videoPositionTimer = null;
+        }
+    }
+
+    private void VideoPositionTimer_Tick(object? sender, EventArgs e)
+    {
+        var mp = _mediaPlayer;
+        if (mp == null || _videoTransitioning || !_folderMode || !_videoMode)
+            return;
+
+        // Elapsed on-screen time measured by wall clock — robust under seamless
+        // input-repeat looping (mp.Time resets to 0 on each loop).
+        double elapsedMs = (DateTime.UtcNow - _clipStartUtc).TotalMilliseconds;
+        if (elapsedMs <= 0)
+            return;
+
+        double targetMs = ComputeClipTargetMs(mp);
+        if (targetMs <= 0)
+            return;
+
+        // Start the fade early enough that the dip-to-black COMPLETES at the target.
+        double trigger = targetMs - VideoTransitionFadeMs;
+        if (elapsedMs >= Math.Max(0, trigger))
+            BeginVideoTransition();
+    }
+
+    /// <summary>
+    /// Computes how long (ms) the current folder clip should stay on screen:
+    /// the minimum duration rounded UP to a whole number of clip loops (so a
+    /// clip shorter than the minimum repeats rather than cutting mid-play),
+    /// then capped by the maximum duration when one is set. Falls back to the
+    /// raw minimum/maximum if the clip length isn't known yet.
+    /// </summary>
+    private double ComputeClipTargetMs(VlcMediaPlayer mp)
+    {
+        double minMs = _folderMinDurationSec * 1000.0;
+        double maxMs = _folderMaxDurationSec > 0 ? _folderMaxDurationSec * 1000.0 : double.PositiveInfinity;
+
+        long clipLenMs = mp.Length; // one loop's length (0 until VLC knows it)
+        double targetMs;
+        if (clipLenMs > 0)
+        {
+            // Round the minimum up to a whole number of loops (at least one).
+            double loops = Math.Max(1, Math.Ceiling(minMs / clipLenMs));
+            targetMs = loops * clipLenMs;
+        }
+        else
+        {
+            // Length unknown — just use the minimum directly.
+            targetMs = minMs;
+        }
+
+        // Apply the hard maximum cap (may cut mid-loop, which is intended).
+        if (targetMs > maxMs)
+            targetMs = maxMs;
+
+        return targetMs;
+    }
+
+    /// <summary>
+    /// Starts a folder-mode transition: fade to black over the still-rendering
+    /// outgoing clip, then swap to the next random file behind the black overlay.
+    /// The incoming clip's first frame (OnVideoVout, Count &gt; 0) fades back in.
+    /// Idempotent for a given clip via <see cref="_videoTransitioning"/>.
+    /// </summary>
+    private void BeginVideoTransition()
+    {
+        if (_videoTransitioning || !_videoMode || !_folderMode || _mediaPlayer == null)
+            return;
+
+        _videoTransitioning = true;
+        StopVideoPositionTimer();
+
+        FadeVideoOverlay(1.0, VideoTransitionFadeMs, () =>
+        {
+            if (!_videoMode || !_folderMode || _mediaPlayer == null)
+            {
+                _videoTransitioning = false;
+                return;
+            }
+            // Swap behind the fully-black overlay; OnVideoVout clears _videoTransitioning
+            // and fades back in when the new clip's first frame arrives.
+            PlayCurrentMedia(_mediaPlayer);
+        });
     }
 
     public void SetRotation(int degrees)
@@ -703,6 +1408,20 @@ public partial class PlayfieldWindow : JukeboxWindow
         degrees = degrees switch { 90 => 90, 180 => 180, 270 => 270, _ => 0 };
         if (Content is FrameworkElement root)
             root.LayoutTransform = degrees == 0 ? Transform.Identity : new RotateTransform(degrees);
+
+        // The VLC video surface is a native HWND that the WPF LayoutTransform
+        // above can't rotate. Rotation is baked into the LibVLC instance args
+        // (BuildVlcArgs), so a change requires rebuilding the instance. Dispose
+        // the old one and, if a video is active, re-init + replay with the new
+        // rotation; otherwise it will be built lazily on next playback.
+        if (degrees != _videoRotation)
+        {
+            _videoRotation = degrees;
+            bool wasVideo = _videoMode && _mediaPlayer != null;
+            DisposeVlc();
+            if (wasVideo)
+                StartVideoPlayback();
+        }
     }
 
     public void SetOledSleepDefeat(int intervalSeconds, int durationSeconds = 5, int intensityPercent = 80)
@@ -868,5 +1587,35 @@ public partial class PlayfieldWindow : JukeboxWindow
             onCompleted?.Invoke();
         };
         blur.BeginAnimation(BlurEffect.RadiusProperty, anim);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        // Detach VLC events first to prevent callbacks during teardown.
+        var mp = _mediaPlayer;
+        var vlc = _libVLC;
+        if (mp != null)
+        {
+            mp.Vout -= OnVideoVout;
+            mp.EndReached -= OnVideoEndReached;
+        }
+        _mediaPlayer = null;
+        _libVLC = null;
+
+        // Stop and dispose the MediaPlayer and the dedicated LibVLC instance on a
+        // background thread to avoid deadlocking the dispatcher (VLC callbacks may
+        // be waiting on it while Stop() blocks here). Unlike the backglass, the
+        // playfield owns its LibVLC instance, so it disposes it here.
+        if (mp != null || vlc != null)
+        {
+            Task.Run(() =>
+            {
+                try { mp?.Stop(); } catch { }
+                try { mp?.Dispose(); } catch { }
+                try { vlc?.Dispose(); } catch { }
+            }).Wait(TimeSpan.FromSeconds(5));
+        }
+
+        base.OnClosed(e);
     }
 }

@@ -19,6 +19,33 @@ public class AppSettings
     public PlayfieldMode PlayfieldDisplayMode { get; set; } = PlayfieldMode.Screensaver;
     public string PlayfieldStaticImagePath { get; set; } = "";
     public string PlayfieldVideoPath { get; set; } = "";
+    /// <summary>
+    /// Folders scanned for video files when <see cref="PlayfieldDisplayMode"/> is
+    /// <see cref="PlayfieldMode.VideoFolders"/>. A random file from a random folder
+    /// is played, and a new random file is chosen when each clip ends. Paths may be
+    /// relative (resolved against the app base directory for portable settings) or
+    /// absolute.
+    /// </summary>
+    public List<string> PlayfieldVideoFolders { get; set; } = [];
+    /// <summary>
+    /// Default folder suggested for <see cref="PlayfieldVideoFolders"/> when the user
+    /// has not added any and this path exists on disk (standard vPinball PlayField media).
+    /// </summary>
+    public const string DefaultPlayfieldVideoFolder =
+        @"C:\vPinball\PinUPSystem\POPMedia\Visual Pinball X\PlayField";
+    /// <summary>Order in which <see cref="PlayfieldVideoFolders"/> files are played.</summary>
+    public VideoFolderPlayMode PlayfieldVideoFolderPlayMode { get; set; } = VideoFolderPlayMode.Random;
+    /// <summary>
+    /// Minimum on-screen time (seconds) for a folder-mode clip. Shorter clips loop
+    /// seamlessly (loop-aligned) until at least this much time has elapsed.
+    /// </summary>
+    public int PlayfieldVideoFolderMinDurationSeconds { get; set; } = 15;
+    /// <summary>
+    /// Maximum runtime (seconds) for a folder-mode clip before advancing to the next.
+    /// 0 means "No Maximum" (a clip that is long enough plays to its natural end or
+    /// until the minimum-duration loop boundary). Must be &gt;= the minimum when non-zero.
+    /// </summary>
+    public int PlayfieldVideoFolderMaxDurationSeconds { get; set; }
     public bool ShowVideoInfo { get; set; }
     public bool ShowBackglass { get; set; } = true;
     public bool ShowPlayfield { get; set; } = true;
@@ -103,8 +130,7 @@ public class AppSettings
     public BlobPattern PlayfieldBlobPattern { get; set; } = BlobPattern.PerfectMixed;
     public int PlayfieldBlobCount { get; set; } = 12;
     public int PlayfieldBlobSizeOffset { get; set; } = 10;
-    public int PlayfieldRotation { get; set; } = 270;
-    public BlobPattern BackglassBlobPattern { get; set; } = BlobPattern.PerfectMixed;
+    public int PlayfieldRotation { get; set; } = 270;    public BlobPattern BackglassBlobPattern { get; set; } = BlobPattern.PerfectMixed;
     public int BackglassBlobCount { get; set; } = 8;
     public int BackglassBlobSizeOffset { get; set; } = 10;
     public BlobPattern TopperBlobPattern { get; set; } = BlobPattern.PerfectMixed;
@@ -492,7 +518,14 @@ public enum PlayfieldMode
     Blank,
     Screensaver,
     StaticImage,
-    Video
+    Video,
+    VideoFolders
+}
+
+public enum VideoFolderPlayMode
+{
+    Random,
+    MostRecentFirst
 }
 
 public enum VideoQualityPreference

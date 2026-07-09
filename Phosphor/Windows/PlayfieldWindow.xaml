@@ -15,9 +15,9 @@
         <!-- Static image layer -->
         <Image x:Name="StaticImage" Stretch="UniformToFill" Visibility="Collapsed"/>
 
-        <!-- Video layer -->
-        <MediaElement x:Name="VideoPlayer" Stretch="UniformToFill" Visibility="Collapsed"
-                      LoadedBehavior="Manual" UnloadedBehavior="Manual" MediaEnded="VideoPlayer_MediaEnded"/>
+        <!-- Video layer: a LibVLCSharp.WPF.VideoView is inserted into Root in
+             code-behind (EnsureVideoView) only while in Video mode, so its
+             WinForms-hosted HWND doesn't force software rendering for the blobs. -->
 
         <!-- Psychedelic screensaver layer -->
         <Canvas x:Name="ScreensaverCanvas" ClipToBounds="True">
