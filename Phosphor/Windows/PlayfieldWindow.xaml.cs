@@ -65,7 +65,7 @@ public partial class PlayfieldWindow : JukeboxWindow
     // Vout teardown event all firing during the same swap.
     private DispatcherTimer? _videoPositionTimer;
     private bool _videoTransitioning;
-    private const int VideoTransitionFadeMs = 500;
+    private const int VideoTransitionFadeMs = 400;
     // Video Folders mode: a random file from a random folder plays, advancing to a
     // new random file when each clip ends (EndReached). Empty => single-file mode.
     private string[] _videoFolders = [];
