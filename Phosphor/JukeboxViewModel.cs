@@ -127,10 +127,12 @@ public partial class JukeboxViewModel : ObservableObject
                     _lastChapterIndex = -1;
                     CurrentChapterName = "";
                     ChapterTickPositions = [];
+                    _isCurrentFromCache = false;
                     OnPropertyChanged(nameof(IsPlaying));
                     OnPropertyChanged(nameof(CanStartOrStop));
                     OnPropertyChanged(nameof(ShouldSnapToChapters));
                     OnPropertyChanged(nameof(NowPlayingTitle));
+                    OnPropertyChanged(nameof(NowPlayingSourceText));
                 }
         }
     }
@@ -205,6 +207,46 @@ public partial class JukeboxViewModel : ObservableObject
                 title = $"{title} ({dateText})";
 
             return title;
+        }
+    }
+
+    /// <summary>
+    /// Tracks whether the currently-playing item was served from the local cache.
+    /// Set by the player window when it begins playback; reset whenever
+    /// <see cref="CurrentlyPlaying"/> changes.
+    /// </summary>
+    private bool _isCurrentFromCache;
+
+    /// <summary>
+    /// Called by the player window to indicate whether the current item is playing
+    /// from the local cache, so the now-playing area can reflect the source.
+    /// </summary>
+    public void SetCurrentFromCache(bool fromCache)
+    {
+        if (_isCurrentFromCache == fromCache) return;
+        _isCurrentFromCache = fromCache;
+        OnPropertyChanged(nameof(NowPlayingSourceText));
+    }
+
+    /// <summary>
+    /// Short source annotation for the now-playing label, e.g. "(from YouTube)",
+    /// "(from Plex)", or "(from YouTube - Cached)". Empty when nothing is playing or
+    /// the source is not a known streaming source (e.g. the local startup ditti).
+    /// </summary>
+    public string NowPlayingSourceText
+    {
+        get
+        {
+            var source = _currentlyPlaying switch
+            {
+                { IsPlex: true } => "Plex",
+                { IsYouTube: true } => "YouTube",
+                _ => null
+            };
+            if (source == null)
+                return "";
+
+            return _isCurrentFromCache ? $"(from {source} - Cached)" : $"(from {source})";
         }
     }
 

@@ -764,8 +764,13 @@
                       </Grid>
                     </Grid>
                     <StackPanel x:Name="NowPlayingInfoPanel" VerticalAlignment="Center">
-                        <TextBlock Text="NOW PLAYING" Foreground="{StaticResource TextDimBrush}"
-                                   FontSize="{DynamicResource NowPlayingLabelFontSize}" FontWeight="Bold" Margin="0,0,0,2"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                            <TextBlock Text="NOW PLAYING" Foreground="{StaticResource TextDimBrush}"
+                                       FontSize="{DynamicResource NowPlayingLabelFontSize}" FontWeight="Bold"/>
+                            <TextBlock Text="{Binding NowPlayingSourceText}" Foreground="{StaticResource TextDimBrush}"
+                                       FontSize="{DynamicResource NowPlayingLabelFontSize}" VerticalAlignment="Center"
+                                       Margin="6,0,0,0" Opacity="0.8"/>
+                        </StackPanel>
                         <TextBlock Text="{Binding NowPlayingTitle, FallbackValue='Nothing playing'}"
                                    Foreground="{StaticResource Accent2Brush}" FontWeight="SemiBold"
                                    FontSize="{DynamicResource NowPlayingTitleFontSize}" TextTrimming="CharacterEllipsis"/>

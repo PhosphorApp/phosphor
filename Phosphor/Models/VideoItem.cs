@@ -25,6 +25,13 @@ public class VideoItem : ObservableObject
     public bool IsPlex => VideoId.StartsWith("plex:");
 
     /// <summary>
+    /// True for real YouTube items. YouTube video IDs are plain identifiers with no
+    /// "scheme:" prefix, so anything containing a colon (e.g. "plex:", "ditti:startup")
+    /// is a non-YouTube source.
+    /// </summary>
+    public bool IsYouTube => !string.IsNullOrEmpty(VideoId) && !VideoId.Contains(':');
+
+    /// <summary>
     /// True for Plex video items (non-music) which typically have portrait/poster thumbnails.
     /// </summary>
     public bool IsPlexVideo => IsPlex && PlexItemType == PlexItemType.None && !IsAudioOnly;

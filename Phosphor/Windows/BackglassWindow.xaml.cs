@@ -727,6 +727,7 @@ public partial class BackglassWindow : JukeboxWindow
                 {
                     // Play from local muxed file � instant, no buffering, seekable
                     vm?.SetStatusPrefix("Cached");
+                    vm?.SetCurrentFromCache(true);
                     DebugLog.Log("Play", $"Cached playback: {cached.FilePath}");
                     var media = new Media(_libVLC, new Uri(cached.FilePath));
                     _lastLocalFilePath = cached.FilePath;
@@ -1145,6 +1146,9 @@ public partial class BackglassWindow : JukeboxWindow
             _lastVideoStreamUrl = null;
             _lastAudioStreamUrl = null;
             _lastMuxedStreamUrl = null;
+
+            // The track is now served from the local cache — reflect that in the source label.
+            vm?.SetCurrentFromCache(true);
 
             // Reflect the seek target immediately so the scrubber doesn't snap back.
             if (vm != null)
