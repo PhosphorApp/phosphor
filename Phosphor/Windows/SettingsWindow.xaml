@@ -2038,13 +2038,20 @@
                                              Margin="0,0,16,0" GroupName="PfMode"/>
                                 <RadioButton x:Name="RbScreensaver" Content="Screensaver" Foreground="{StaticResource TextBrush}"
                                              Margin="0,0,16,0" GroupName="PfMode"/>
-                                <RadioButton x:Name="RbStatic" Content="Static Image" Foreground="{StaticResource TextBrush}"
+                                <RadioButton x:Name="RbStatic" Content="Image" Foreground="{StaticResource TextBrush}"
                                              Margin="0,0,16,0" GroupName="PfMode"/>
-                                <RadioButton x:Name="RbVideo" Content="Video file" Foreground="{StaticResource TextBrush}"
+                                <RadioButton x:Name="RbVideo" Content="Video" Foreground="{StaticResource TextBrush}"
                                              Margin="0,0,16,0" GroupName="PfMode"/>
                                 <RadioButton x:Name="RbVideoFolders" Content="Video Folders" Foreground="{StaticResource TextBrush}"
+                                             Margin="0,0,16,0" GroupName="PfMode"/>
+                                <RadioButton x:Name="RbPinupPlaylist" Content="Pinup Playlist" Foreground="{StaticResource TextBrush}"
                                              GroupName="PfMode"/>
                             </StackPanel>
+                            <TextBlock Text="IMAGE AND VIDEO" FontSize="12" FontWeight="Bold"
+                                  Foreground="{StaticResource AccentBrush}" Margin="0,12,0,4"/>
+                            <TextBlock Text="These settings apply when 'Image' or 'Video' is selected above: choose a single static image or a single video file to display on the playfield."
+                                       FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,4"
+                                       TextWrapping="Wrap"/>
                             <DockPanel Margin="0,8,0,0">
                                 <TextBlock Text="Image file:" Foreground="{StaticResource TextBrush}"
                                            VerticalAlignment="Center" Width="70"/>
@@ -2067,8 +2074,8 @@
                                          Background="{StaticResource SurfaceBrush}" VerticalAlignment="Center"
                                          IsReadOnly="True"/>
                             </DockPanel>
-                            <TextBlock Text="Video Folders (Video Folders mode):" Foreground="{StaticResource TextBrush}"
-                                       Margin="0,10,0,4"/>
+                            <TextBlock Text="VIDEO FOLDERS" FontSize="12" FontWeight="Bold"
+                                  Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
                             <TextBlock Text="When 'Video Folders' is selected, a random video file from a random folder below is played on the playfield. When a clip ends, another random file is chosen. Supported types: mp4, mkv, avi, mov, wmv, m4v, webm."
                                        FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,4"
                                        TextWrapping="Wrap"/>
@@ -2125,7 +2132,168 @@
                             <TextBlock Text="Caps how long a clip runs before advancing (must be at least the minimum). The last tick means no maximum."
                                        FontSize="10" FontWeight="Bold" TextWrapping="Wrap"
                                        Foreground="{StaticResource TextDimBrush}" Margin="90,0,0,8"/>
-                            <TextBlock Text="BLOB SETTINGS" FontSize="12" FontWeight="Bold"
+                            <TextBlock Text="PINUP POPPER SETTINGS" FontSize="12" FontWeight="Bold"
+                                  Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
+                            <TextBlock Text="Point Phosphor at your Pinup Popper database to pull in playlists. Enable the playlists you want Phosphor to use."
+                                       FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,4"
+                                       TextWrapping="Wrap"/>
+                            <DockPanel Margin="0,8,0,0">
+                                <TextBlock Text="Popper DB:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="70"/>
+                                <Button DockPanel.Dock="Right" Content="Browse…" Padding="8,4" Margin="6,0,0,0"
+                                        Click="BrowsePopperDb_Click"/>
+                                <Button DockPanel.Dock="Right" Content="Clear" Padding="8,4" Margin="6,0,0,0"
+                                        Click="ClearPopperDb_Click"/>
+                                <TextBox x:Name="TbPopperDbPath" Foreground="{StaticResource TextBrush}"
+                                         Background="{StaticResource SurfaceBrush}" VerticalAlignment="Center"
+                                         IsReadOnly="True"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,10,0,4">
+                                <Button DockPanel.Dock="Right" Content="Refresh Playlists" Padding="8,4"
+                                        Click="RefreshPinupPlaylists_Click"/>
+                                <TextBlock Text="Playlists:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <TextBlock x:Name="PinupPlaylistStatus" Foreground="{StaticResource TextDimBrush}"
+                                       FontSize="11" Margin="0,0,0,4" TextWrapping="Wrap"/>
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="10"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <!-- Active (enabled) playlists -->
+                                <DockPanel Grid.Column="0">
+                                    <TextBlock DockPanel.Dock="Top" Text="Active" FontWeight="Bold"
+                                               Foreground="{StaticResource TextBrush}" Margin="2,0,0,2"/>
+                                    <Border BorderBrush="#333" BorderThickness="1"
+                                            Background="{StaticResource Surface2Brush}">
+                                        <ListView x:Name="PinupActiveListView" MaxHeight="180" MinHeight="60"
+                                                  Background="Transparent" BorderThickness="0"
+                                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                  HorizontalContentAlignment="Stretch">
+                                            <ListView.ItemContainerStyle>
+                                                <Style TargetType="ListViewItem">
+                                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                                    <Setter Property="Padding" Value="2"/>
+                                                    <Setter Property="Margin" Value="0"/>
+                                                    <Setter Property="Background" Value="Transparent"/>
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="ListViewItem">
+                                                                <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                                                                    <ContentPresenter/>
+                                                                </Border>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </Style>
+                                            </ListView.ItemContainerStyle>
+                                            <ListView.ItemTemplate>
+                                                <DataTemplate>
+                                                    <DockPanel>
+                                                        <Button Content="✕" FontSize="10" Width="20" Height="20"
+                                                                Background="Transparent" Foreground="{StaticResource TextDimBrush}"
+                                                                BorderThickness="0" Cursor="Hand" ToolTip="Deactivate this playlist"
+                                                                VerticalAlignment="Center" Margin="4,0,0,0"
+                                                                DockPanel.Dock="Right"
+                                                                Click="PinupDeactivate_Click">
+                                                            <Button.Template>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border Background="Transparent">
+                                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                    </Border>
+                                                                </ControlTemplate>
+                                                            </Button.Template>
+                                                        </Button>
+                                                        <TextBlock Text="{Binding Name}" Foreground="{StaticResource TextBrush}"
+                                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                    </DockPanel>
+                                                </DataTemplate>
+                                            </ListView.ItemTemplate>
+                                        </ListView>
+                                    </Border>
+                                </DockPanel>
+                                <!-- Inactive (disabled) playlists -->
+                                <DockPanel Grid.Column="2">
+                                    <TextBlock DockPanel.Dock="Top" Text="Inactive" FontWeight="Bold"
+                                               Foreground="{StaticResource TextBrush}" Margin="2,0,0,2"/>
+                                    <Border BorderBrush="#333" BorderThickness="1"
+                                            Background="{StaticResource Surface2Brush}">
+                                        <ListView x:Name="PinupInactiveListView" MaxHeight="180" MinHeight="60"
+                                                  Background="Transparent" BorderThickness="0"
+                                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                  HorizontalContentAlignment="Stretch">
+                                            <ListView.ItemContainerStyle>
+                                                <Style TargetType="ListViewItem">
+                                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                                    <Setter Property="Padding" Value="2"/>
+                                                    <Setter Property="Margin" Value="0"/>
+                                                    <Setter Property="Background" Value="Transparent"/>
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="ListViewItem">
+                                                                <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                                                                    <ContentPresenter/>
+                                                                </Border>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </Style>
+                                            </ListView.ItemContainerStyle>
+                                            <ListView.ItemTemplate>
+                                                <DataTemplate>
+                                                    <DockPanel>
+                                                        <Button Content="＋" FontSize="12" Width="20" Height="20"
+                                                                Background="Transparent" Foreground="{StaticResource TextDimBrush}"
+                                                                BorderThickness="0" Cursor="Hand" ToolTip="Activate this playlist"
+                                                                VerticalAlignment="Center" Margin="0,0,4,0"
+                                                                DockPanel.Dock="Left"
+                                                                Click="PinupActivate_Click">
+                                                            <Button.Template>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border Background="Transparent">
+                                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                    </Border>
+                                                                </ControlTemplate>
+                                                            </Button.Template>
+                                                        </Button>
+                                                        <TextBlock Text="{Binding Name}" Foreground="{StaticResource TextBrush}"
+                                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                    </DockPanel>
+                                                </DataTemplate>
+                                            </ListView.ItemTemplate>
+                                        </ListView>
+                                    </Border>
+                                </DockPanel>
+                            </Grid>
+                                    <DockPanel Margin="0,6,0,6">
+                                        <TextBlock Text="Min duration:" Foreground="{StaticResource TextBrush}"
+                                                   VerticalAlignment="Center" Width="90"/>
+                                        <TextBlock x:Name="TxtPinupMinDuration" Text="15s" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="90"/>
+                                        <Slider x:Name="SliderPinupMinDuration" Minimum="5" Maximum="300" Value="15"
+                                                IsSnapToTickEnabled="True" TickFrequency="5"
+                                                ValueChanged="SliderPinupMinDuration_ValueChanged"/>
+                                    </DockPanel>
+                                    <TextBlock Text="A clip loops until at least this much time has played (e.g. min 30s replays a 15s clip twice)."
+                                               FontSize="10" FontWeight="Bold" TextWrapping="Wrap"
+                                               Foreground="{StaticResource TextDimBrush}" Margin="90,0,0,6"/>
+                                    <DockPanel Margin="0,0,0,6">
+                                        <TextBlock Text="Max duration:" Foreground="{StaticResource TextBrush}"
+                                                   VerticalAlignment="Center" Width="90"/>
+                                        <TextBlock x:Name="TxtPinupMaxDuration" Text="No Maximum" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="90"/>
+                                        <Slider x:Name="SliderPinupMaxDuration" Minimum="10" Maximum="610" Value="610"
+                                                IsSnapToTickEnabled="True" TickFrequency="10"
+                                                ValueChanged="SliderPinupMaxDuration_ValueChanged"/>
+                                    </DockPanel>
+                                    <TextBlock Text="Caps how long a clip runs before advancing (must be at least the minimum). The last tick means no maximum."
+                                               FontSize="10" FontWeight="Bold" TextWrapping="Wrap"
+                                                          Foreground="{StaticResource TextDimBrush}" Margin="90,0,0,8"/>
+                                               <TextBlock Text="BLOB SETTINGS" FontSize="12" FontWeight="Bold"
                                   Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
                             <CheckBox x:Name="CbPulseDominantBlobs" Content="Pulse dominant color blobs"
                                       Foreground="{StaticResource TextBrush}" Margin="0,0,0,2"/>

@@ -46,6 +46,15 @@ public class AppSettings
     /// until the minimum-duration loop boundary). Must be &gt;= the minimum when non-zero.
     /// </summary>
     public int PlayfieldVideoFolderMaxDurationSeconds { get; set; }
+    /// <summary>
+    /// Minimum on-screen time (seconds) for a Pinup Playlist clip. Mirrors the folder-mode
+    /// minimum but is a separate control so the two features can be tuned independently.
+    /// </summary>
+    public int PlayfieldPinupMinDurationSeconds { get; set; } = 15;
+    /// <summary>
+    /// Maximum runtime (seconds) for a Pinup Playlist clip before advancing. 0 = no maximum.
+    /// </summary>
+    public int PlayfieldPinupMaxDurationSeconds { get; set; }
     public bool ShowVideoInfo { get; set; }
     public bool ShowBackglass { get; set; } = true;
     public bool ShowPlayfield { get; set; } = true;
@@ -519,7 +528,8 @@ public enum PlayfieldMode
     Screensaver,
     StaticImage,
     Video,
-    VideoFolders
+    VideoFolders,
+    PinupPlaylist
 }
 
 public enum VideoFolderPlayMode

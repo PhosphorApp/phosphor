@@ -136,6 +136,12 @@ public sealed class PlayfieldProxy
     public void SetVideoFolderOptions(VideoFolderPlayMode playMode, int minDurationSec, int maxDurationSec) =>
         _dispatcher.BeginInvoke(() => _window.SetVideoFolderOptions(playMode, minDurationSec, maxDurationSec));
 
+    public void SetPinupFiles(IReadOnlyList<string>? globs) =>
+        _dispatcher.BeginInvoke(() => _window.SetPinupFiles(globs));
+
+    public void SetPinupOptions(int minDurationSec, int maxDurationSec) =>
+        _dispatcher.BeginInvoke(() => _window.SetPinupOptions(minDurationSec, maxDurationSec));
+
     public void SetMode(PlayfieldMode mode) =>
         _dispatcher.BeginInvoke(() => _window.SetMode(mode));
 

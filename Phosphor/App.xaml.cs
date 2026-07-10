@@ -185,6 +185,11 @@ public partial class App : Application
 
             LogWindowsAudioLevel("Startup");
             DebugLog.Log("App", "Deferred startup complete");
+
+            // Low-priority: refresh Pinup playlists/games and apply resolved files after all
+            // windows are up (only does work when the Pinup Playlist feature is active).
+            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
+                new Action(() => PinupPlaylistLoader.LoadAndApplyAsync(_settings, _playfieldProxy)));
         });
     }
 

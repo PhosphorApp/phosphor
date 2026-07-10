@@ -163,6 +163,10 @@ public partial class SettingsWindow : JukeboxWindow
     private bool _originalProjectMSoftwareRender;
     private readonly ObservableCollection<PlexLibraryMapping> _plexLibraries = new();
     private readonly List<CategoryVisibilityItem> _categoryVisibilityItems = new();
+    private readonly ObservableCollection<PinupPlaylist> _pinupPlaylists = new();
+    private readonly ObservableCollection<PinupPlaylist> _pinupActive = new();
+    private readonly ObservableCollection<PinupPlaylist> _pinupInactive = new();
+    private PinupSettings _pinupSettings = new();
     private PlaylistManager? _playlistManager;
     private bool _originalDofEnabled;
     private bool _originalDofColorBand;
@@ -363,6 +367,7 @@ public partial class SettingsWindow : JukeboxWindow
             case PlayfieldMode.StaticImage: RbStatic.IsChecked = true; break;
             case PlayfieldMode.Video: RbVideo.IsChecked = true; break;
             case PlayfieldMode.VideoFolders: RbVideoFolders.IsChecked = true; break;
+            case PlayfieldMode.PinupPlaylist: RbPinupPlaylist.IsChecked = true; break;
         }
 
         // OLED Sleep Defeat
@@ -381,6 +386,26 @@ public partial class SettingsWindow : JukeboxWindow
 
         TbStaticImagePath.Text = settings.PlayfieldStaticImagePath;
         TbVideoPath.Text = settings.PlayfieldVideoPath;
+
+        // Pinup Popper integration (persisted separately in pinup_integration.json)
+        _pinupSettings = PinupSettings.Load();
+        TbPopperDbPath.Text = _pinupSettings.PopperDbPath;
+        _pinupPlaylists.Clear();
+        foreach (var pl in _pinupSettings.Playlists)
+            _pinupPlaylists.Add(pl);
+        PinupActiveListView.ItemsSource = _pinupActive;
+        PinupInactiveListView.ItemsSource = _pinupInactive;
+        RefreshPinupColumns();
+        UpdatePinupPlaylistStatus();
+
+        // Pinup Min duration (5–300s, step 5)
+        SliderPinupMinDuration.Value =
+            Math.Clamp(settings.PlayfieldPinupMinDurationSeconds, 5, 300);
+        // Pinup Max duration (10–600s, step 10; 0 = No Maximum, represented by the 610 tick)
+        SliderPinupMaxDuration.Value = settings.PlayfieldPinupMaxDurationSeconds <= 0
+            ? 610
+            : Math.Clamp(settings.PlayfieldPinupMaxDurationSeconds, 10, 600);
+        UpdatePinupDurationLabels();
 
         // Populate playfield video folders list
         _playfieldVideoFolders.Clear();
@@ -1389,6 +1414,167 @@ public partial class SettingsWindow : JukeboxWindow
         TbVideoPath.Text = "";
     }
 
+    private void BrowsePopperDb_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Select Pinup Popper Database",
+            Filter = "Pinup Popper database|PUPDatabase.db|Database files|*.db|All files|*.*"
+        };
+        var current = TbPopperDbPath.Text;
+        if (!string.IsNullOrWhiteSpace(current))
+        {
+            var dir = System.IO.Path.GetDirectoryName(current);
+            if (!string.IsNullOrEmpty(dir) && System.IO.Directory.Exists(dir))
+                dlg.InitialDirectory = dir;
+        }
+        else if (System.IO.File.Exists(PinupSettings.DefaultPopperDbPath))
+        {
+            dlg.InitialDirectory = System.IO.Path.GetDirectoryName(PinupSettings.DefaultPopperDbPath);
+        }
+        if (dlg.ShowDialog(this) == true)
+        {
+            TbPopperDbPath.Text = dlg.FileName;
+            LoadPinupPlaylistsFromDb();
+        }
+    }
+
+    private void ClearPopperDb_Click(object sender, RoutedEventArgs e)
+    {
+        TbPopperDbPath.Text = "";
+    }
+
+    private void RefreshPinupPlaylists_Click(object sender, RoutedEventArgs e)
+    {
+        LoadPinupPlaylistsFromDb();
+    }
+
+    /// <summary>
+    /// Loads visible playlists from the selected Popper database, syncing them against the
+    /// currently-shown list (remove missing, add new unchecked, match by PlayListID), then
+    /// rebuilds the resolved game list on a background thread and shows it in the debug box.
+    /// </summary>
+    private void LoadPinupPlaylistsFromDb()
+    {
+        var dbPath = TbPopperDbPath.Text;
+        if (string.IsNullOrWhiteSpace(dbPath))
+        {
+            PinupPlaylistStatus.Text = "Select a Pinup Popper database to load playlists.";
+            return;
+        }
+
+        try
+        {
+            // Fold the currently-shown items back into _pinupSettings so SyncPlaylists can
+            // preserve enabled flags by PlayListID.
+            _pinupSettings.Playlists = new List<PinupPlaylist>(_pinupPlaylists);
+            var live = PinupDatabase.GetVisiblePlaylists(dbPath);
+            _pinupSettings.SyncPlaylists(live);
+
+            _pinupPlaylists.Clear();
+            foreach (var pl in _pinupSettings.Playlists)
+                _pinupPlaylists.Add(pl);
+            RefreshPinupColumns();
+            UpdatePinupPlaylistStatus();
+
+            RebuildPinupGamesAsync(dbPath);
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Log("Pinup", $"Failed to load playlists: {ex.Message}");
+            PinupPlaylistStatus.Text = $"Could not read playlists: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Builds the de-duped game list from the enabled playlists on a background thread and
+    /// reports the resolved count in the status label.
+    /// </summary>
+    private void RebuildPinupGamesAsync(string dbPath)
+    {
+        var enabled = _pinupPlaylists.Where(p => p.Enabled).ToList();
+        if (enabled.Count == 0)
+        {
+            _pinupSettings.Games = new List<PinupGame>();
+            UpdatePinupPlaylistStatus();
+            return;
+        }
+
+        Task.Run(() => PinupDatabase.BuildGameList(dbPath, enabled))
+            .ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    var msg = t.Exception?.GetBaseException().Message ?? "unknown error";
+                    DebugLog.Log("Pinup", $"BuildGameList failed: {msg}");
+                    PinupPlaylistStatus.Text = $"Could not read games: {msg}";
+                    return;
+                }
+
+                var games = t.Result;
+                _pinupSettings.Games = games;
+                int total = _pinupPlaylists.Count;
+                int enabledCount = _pinupPlaylists.Count(p => p.Enabled);
+                PinupPlaylistStatus.Text =
+                    $"{total} playlist(s) loaded, {enabledCount} enabled, {games.Count} game(s) resolved.";
+            }, TaskScheduler.FromCurrentSynchronizationContext());
+    }
+
+    private void UpdatePinupPlaylistStatus()
+    {
+        int total = _pinupPlaylists.Count;
+        int enabled = _pinupPlaylists.Count(p => p.Enabled);
+        PinupPlaylistStatus.Text = total == 0
+            ? "No playlists loaded."
+            : $"{total} playlist(s) loaded, {enabled} enabled.";
+    }
+
+    /// <summary>
+    /// Rebuilds the Active/Inactive column collections from the master playlist list,
+    /// each ordered by DisplayOrder. Called after any activate/deactivate or reload.
+    /// </summary>
+    private void RefreshPinupColumns()
+    {
+        _pinupActive.Clear();
+        foreach (var pl in _pinupPlaylists.Where(p => p.Enabled).OrderBy(p => p.DisplayOrder))
+            _pinupActive.Add(pl);
+
+        _pinupInactive.Clear();
+        foreach (var pl in _pinupPlaylists.Where(p => !p.Enabled).OrderBy(p => p.DisplayOrder))
+            _pinupInactive.Add(pl);
+    }
+
+    private void PinupActivate_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button btn && btn.DataContext is PinupPlaylist pl)
+        {
+            pl.Enabled = true;
+            RefreshPinupColumns();
+            UpdatePinupPlaylistStatus();
+            RebuildPinupGamesIfPossible();
+        }
+    }
+
+    private void PinupDeactivate_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button btn && btn.DataContext is PinupPlaylist pl)
+        {
+            pl.Enabled = false;
+            RefreshPinupColumns();
+            UpdatePinupPlaylistStatus();
+            RebuildPinupGamesIfPossible();
+        }
+    }
+
+    /// <summary>Rebuilds the resolved game list if a database is configured.</summary>
+    private void RebuildPinupGamesIfPossible()
+    {
+        var dbPath = TbPopperDbPath.Text;
+        if (!string.IsNullOrWhiteSpace(dbPath))
+            RebuildPinupGamesAsync(dbPath);
+    }
+
+
     private readonly ObservableCollection<string> _playfieldVideoFolders = new();
 
     private void AddVideoFolder_Click(object sender, RoutedEventArgs e)
@@ -1466,6 +1652,42 @@ public partial class SettingsWindow : JukeboxWindow
             TxtVideoFolderMaxDuration.Text = SliderVideoFolderMaxDuration.Value >= VideoFolderMaxNoLimitTick
                 ? "No Maximum"
                 : $"{(int)SliderVideoFolderMaxDuration.Value}s";
+        }
+    }
+
+    private void SliderPinupMinDuration_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        // Ensure Max stays >= Min (unless Max is "No Maximum").
+        if (SliderPinupMaxDuration != null)
+        {
+            double max = SliderPinupMaxDuration.Value;
+            if (max < VideoFolderMaxNoLimitTick && max < e.NewValue)
+                SliderPinupMaxDuration.Value = Math.Min(VideoFolderMaxNoLimitTick, e.NewValue);
+        }
+        UpdatePinupDurationLabels();
+    }
+
+    private void SliderPinupMaxDuration_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        // Don't allow Max below Min (unless it's the "No Maximum" tick).
+        if (SliderPinupMinDuration != null &&
+            e.NewValue < VideoFolderMaxNoLimitTick && e.NewValue < SliderPinupMinDuration.Value)
+        {
+            SliderPinupMaxDuration.Value = SliderPinupMinDuration.Value;
+            return; // this reassignment re-enters and updates the labels
+        }
+        UpdatePinupDurationLabels();
+    }
+
+    private void UpdatePinupDurationLabels()
+    {
+        if (TxtPinupMinDuration != null)
+            TxtPinupMinDuration.Text = $"{(int)SliderPinupMinDuration.Value}s";
+        if (TxtPinupMaxDuration != null)
+        {
+            TxtPinupMaxDuration.Text = SliderPinupMaxDuration.Value >= VideoFolderMaxNoLimitTick
+                ? "No Maximum"
+                : $"{(int)SliderPinupMaxDuration.Value}s";
         }
     }
 
@@ -3072,6 +3294,8 @@ public partial class SettingsWindow : JukeboxWindow
             _settings.PlayfieldDisplayMode = PlayfieldMode.Video;
         else if (RbVideoFolders.IsChecked == true)
             _settings.PlayfieldDisplayMode = PlayfieldMode.VideoFolders;
+        else if (RbPinupPlaylist.IsChecked == true)
+            _settings.PlayfieldDisplayMode = PlayfieldMode.PinupPlaylist;
         else
             _settings.PlayfieldDisplayMode = PlayfieldMode.StaticImage;
 
@@ -3092,6 +3316,20 @@ public partial class SettingsWindow : JukeboxWindow
             SliderVideoFolderMaxDuration.Value >= VideoFolderMaxNoLimitTick
                 ? 0
                 : (int)SliderVideoFolderMaxDuration.Value;
+
+        _settings.PlayfieldPinupMinDurationSeconds = (int)SliderPinupMinDuration.Value;
+        // The 610 tick means "No Maximum" -> store 0.
+        _settings.PlayfieldPinupMaxDurationSeconds =
+            SliderPinupMaxDuration.Value >= VideoFolderMaxNoLimitTick
+                ? 0
+                : (int)SliderPinupMaxDuration.Value;
+
+        // Persist Pinup Popper integration settings to pinup_integration.json (separate
+        // file to avoid bloating settings.json on large Pinup installs).
+        _pinupSettings.PopperDbPath = TbPopperDbPath.Text;
+        _pinupSettings.Playlists = new List<PinupPlaylist>(_pinupPlaylists);
+        _pinupSettings.Save();
+
         _settings.ShowVideoInfo = CbShowVideoInfo.IsChecked == true;
         _settings.ResizableWindows = CbResizableWindows.IsChecked == true;
         _settings.SetCursorOnLaunch = CbSetCursorOnLaunch.IsChecked == true;
