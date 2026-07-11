@@ -148,7 +148,14 @@ public class AppSettings
     public BlobPattern PlayfieldBlobPattern { get; set; } = BlobPattern.PerfectMixed;
     public int PlayfieldBlobCount { get; set; } = 12;
     public int PlayfieldBlobSizeOffset { get; set; } = 10;
-    public int PlayfieldRotation { get; set; } = 270;    public BlobPattern BackglassBlobPattern { get; set; } = BlobPattern.PerfectMixed;
+    public int PlayfieldRotation { get; set; } = 270;
+    /// <summary>
+    /// When true (default), the playfield orientation is also applied to videos
+    /// (single file, folder, and Pinup playlist). Disable when the monitor is
+    /// physically rotated but the source videos are already pre-rotated to match.
+    /// </summary>
+    public bool PlayfieldApplyOrientationToVideos { get; set; } = true;
+    public BlobPattern BackglassBlobPattern { get; set; } = BlobPattern.PerfectMixed;
     public int BackglassBlobCount { get; set; } = 8;
     public int BackglassBlobSizeOffset { get; set; } = 10;
     public BlobPattern TopperBlobPattern { get; set; } = BlobPattern.PerfectMixed;

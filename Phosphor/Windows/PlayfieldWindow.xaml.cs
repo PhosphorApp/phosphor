@@ -60,6 +60,11 @@ public partial class PlayfieldWindow : JukeboxWindow
     private bool _videoMode;
     private string? _playingVideoPath;
     private int _videoRotation;
+    // Raw orientation from settings (applied to the WPF LayoutTransform for the
+    // screensaver/image). Video rotation is derived from this only when
+    // _applyOrientationToVideos is true.
+    private int _rotationDegrees;
+    private bool _applyOrientationToVideos = true;
     // Playfield video audio: muted by default (silent ambient loop). When enabled, the
     // player is unmuted and set to _videoVolume. Stored so it's reapplied when the VLC
     // instance is rebuilt (e.g. on rotation change).
@@ -1644,6 +1649,7 @@ public partial class PlayfieldWindow : JukeboxWindow
     public void SetRotation(int degrees)
     {
         degrees = degrees switch { 90 => 90, 180 => 180, 270 => 270, _ => 0 };
+        _rotationDegrees = degrees;
         if (Content is FrameworkElement root)
             root.LayoutTransform = degrees == 0 ? Transform.Identity : new RotateTransform(degrees);
 
@@ -1652,14 +1658,33 @@ public partial class PlayfieldWindow : JukeboxWindow
         // (BuildVlcArgs), so a change requires rebuilding the instance. Dispose
         // the old one and, if a video is active, re-init + replay with the new
         // rotation; otherwise it will be built lazily on next playback.
-        if (degrees != _videoRotation)
+        // When orientation is not applied to videos, the effective video
+        // rotation is forced to 0 (the source is assumed pre-rotated).
+        int effectiveVideoRotation = _applyOrientationToVideos ? degrees : 0;
+        if (effectiveVideoRotation != _videoRotation)
         {
-            _videoRotation = degrees;
+            _videoRotation = effectiveVideoRotation;
             bool wasVideo = _videoMode && _mediaPlayer != null;
             DisposeVlc();
             if (wasVideo)
                 StartVideoPlayback();
         }
+    }
+
+    /// <summary>
+    /// Controls whether the playfield orientation is applied to videos. When
+    /// disabled, videos (single file, folder, and Pinup playlist) skip the
+    /// rotation transform because the source is already pre-rotated to match a
+    /// physically rotated monitor. The screensaver/image LayoutTransform is
+    /// unaffected.
+    /// </summary>
+    public void SetApplyOrientationToVideos(bool apply)
+    {
+        if (_applyOrientationToVideos == apply)
+            return;
+        _applyOrientationToVideos = apply;
+        // Re-evaluate the effective video rotation against the current setting.
+        SetRotation(_rotationDegrees);
     }
 
     public void SetOledSleepDefeat(int intervalSeconds, int durationSeconds = 5, int intensityPercent = 80)

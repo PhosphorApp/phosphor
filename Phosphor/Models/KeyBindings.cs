@@ -30,6 +30,7 @@ public enum JukeboxAction
     Home,
     TogglePlayStop,
     OpenPresetBrowser,
+    ToggleResizableWindows,
 }
 
 /// <summary>
@@ -78,6 +79,7 @@ public class KeyBindings
     public ActionBinding Home { get; set; } = new() { PrimaryKey = Key.Home, CabinetButton = Key.None };
     public ActionBinding TogglePlayStop { get; set; } = new() { PrimaryKey = Key.Space, CabinetButton = Key.None };
     public ActionBinding OpenPresetBrowser { get; set; } = new() { PrimaryKey = Key.B, CabinetButton = Key.None };
+    public ActionBinding ToggleResizableWindows { get; set; } = new() { PrimaryKey = Key.None, CabinetButton = Key.None };
 
     /// <summary>
     /// Try to resolve a key press to a logical action.
@@ -108,6 +110,7 @@ public class KeyBindings
         if (Matches(Home, key)) { action = JukeboxAction.Home; return true; }
         if (Matches(TogglePlayStop, key)) { action = JukeboxAction.TogglePlayStop; return true; }
         if (Matches(OpenPresetBrowser, key)) { action = JukeboxAction.OpenPresetBrowser; return true; }
+        if (Matches(ToggleResizableWindows, key)) { action = JukeboxAction.ToggleResizableWindows; return true; }
 
         action = default;
         return false;
@@ -141,6 +144,7 @@ public class KeyBindings
         if (MatchesDInput(Home, deviceGuid, buttonIndex)) { action = JukeboxAction.Home; return true; }
         if (MatchesDInput(TogglePlayStop, deviceGuid, buttonIndex)) { action = JukeboxAction.TogglePlayStop; return true; }
         if (MatchesDInput(OpenPresetBrowser, deviceGuid, buttonIndex)) { action = JukeboxAction.OpenPresetBrowser; return true; }
+        if (MatchesDInput(ToggleResizableWindows, deviceGuid, buttonIndex)) { action = JukeboxAction.ToggleResizableWindows; return true; }
 
         action = default;
         return false;
@@ -186,6 +190,7 @@ public class KeyBindings
         // App
         new("Open Settings", nameof(OpenSettings), OpenSettings),
         new("Preset Browser", nameof(OpenPresetBrowser), OpenPresetBrowser),
+        new("Toggle Resizable Windows", nameof(ToggleResizableWindows), ToggleResizableWindows),
         new("Exit App", nameof(ExitApp), ExitApp),
     ];
 

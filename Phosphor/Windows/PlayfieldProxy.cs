@@ -124,6 +124,9 @@ public sealed class PlayfieldProxy
     public void SetRotation(int degrees) =>
         _dispatcher.BeginInvoke(() => _window.SetRotation(degrees));
 
+    public void SetApplyOrientationToVideos(bool apply) =>
+        _dispatcher.BeginInvoke(() => _window.SetApplyOrientationToVideos(apply));
+
     public void SetStaticImage(string? path) =>
         _dispatcher.BeginInvoke(() => _window.SetStaticImage(path));
 

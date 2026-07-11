@@ -316,7 +316,7 @@
                             </ListView.Resources>
                             <ListView.View>
                                 <GridView>
-                                    <GridViewColumn Header="Action" Width="130"
+                                    <GridViewColumn Header="Action" Width="155"
                                                     DisplayMemberBinding="{Binding DisplayName}"/>
                                     <GridViewColumn Header="Keyboard Key" Width="150">
                                         <GridViewColumn.CellTemplate>
@@ -2032,6 +2032,10 @@
                                 <TextBlock Text="Orientation:" Foreground="{StaticResource TextBrush}"
                                            VerticalAlignment="Center" Width="70"/>
                                 <ComboBox x:Name="CbPlayfieldRotation" Width="75" HorizontalAlignment="Left"/>
+                                <CheckBox x:Name="CbApplyOrientationToVideos" Content="Apply Orientation to Videos"
+                                          Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
+                                          Margin="16,0,0,0" IsChecked="True"
+                                          ToolTip="When enabled (default), the orientation above is also applied to videos (single file, folder, and Pinup playlist). Disable if your monitor is physically rotated but the source videos are already pre-rotated to match."/>
                             </DockPanel>
                             <StackPanel Orientation="Horizontal">
                                 <RadioButton x:Name="RbBlank" Content="Blank"

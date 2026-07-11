@@ -234,7 +234,8 @@ public static class BlobMotion
                 // Top-to-bottom rainfall (screen rotation handles orientation)
                 toX = Canvas.GetLeft(blob);
                 toY = h + blobSize;
-                durationSec = (h + blobSize * 2) / (24 + 56 * state.SpeedFactor)
+                // Base fall speed increased by 20% (24→28.8, 56→67.2 px/sec)
+                durationSec = (h + blobSize * 2) / (28.8 + 67.2 * state.SpeedFactor)
                               / Math.Max(0.1, speedMultiplier);
 
                 var rainAnimX = new DoubleAnimation

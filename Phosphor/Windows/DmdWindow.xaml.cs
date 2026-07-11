@@ -868,6 +868,7 @@ public partial class DmdWindow : JukeboxWindow
         _playfieldProxy.SetBlobSizeOffset(settings.PlayfieldBlobSizeOffset);
         _playfieldProxy.SetBlobPattern(settings.PlayfieldBlobPattern);
         _playfieldProxy.SetPulseDominantBlobs(settings.PlayfieldPulseDominantBlobs);
+        _playfieldProxy.SetApplyOrientationToVideos(settings.PlayfieldApplyOrientationToVideos);
         _playfieldProxy.SetRotation(settings.PlayfieldRotation);
         _topperProxy.SetBlobCount(settings.TopperBlobCount);
         _topperProxy.SetBlobSizeOffset(settings.TopperBlobSizeOffset);
@@ -1397,6 +1398,14 @@ public partial class DmdWindow : JukeboxWindow
 
                 case JukeboxAction.OpenPresetBrowser:
                     OpenPresetBrowser();
+                    break;
+
+                case JukeboxAction.ToggleResizableWindows:
+                    if (_appSettings != null)
+                    {
+                        _appSettings.ResizableWindows = !_appSettings.ResizableWindows;
+                        ApplyResizable(_appSettings.ResizableWindows);
+                    }
                     break;
 
                 case JukeboxAction.ExitApp:
@@ -2267,8 +2276,11 @@ public partial class DmdWindow : JukeboxWindow
             _playfieldProxy?.SetBlobPattern(_appSettings.PlayfieldBlobPattern);
         }
         _playfieldProxy?.SetPulseDominantBlobs(_appSettings.PlayfieldPulseDominantBlobs);
-        if (settingsWindow.PlayfieldRotationChanged)
+        if (settingsWindow.PlayfieldRotationChanged || settingsWindow.PlayfieldApplyOrientationToVideosChanged)
+        {
+            _playfieldProxy?.SetApplyOrientationToVideos(_appSettings.PlayfieldApplyOrientationToVideos);
             _playfieldProxy?.SetRotation(_appSettings.PlayfieldRotation);
+        }
         if (settingsWindow.TopperBlobsChanged)
         {
             _topperProxy?.SetBlobCount(_appSettings.TopperBlobCount);

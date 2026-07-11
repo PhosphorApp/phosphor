@@ -59,6 +59,7 @@ public partial class SettingsWindow : JukeboxWindow
     private int _originalPlayfieldBlobCount;
     private int _originalPlayfieldBlobSizeOffset;
     private int _originalPlayfieldRotation;
+    private bool _originalPlayfieldApplyOrientationToVideos;
     private BlobPattern _originalBackglassBlobPattern;
     private int _originalBackglassBlobCount;
     private int _originalBackglassBlobSizeOffset;
@@ -200,6 +201,9 @@ public partial class SettingsWindow : JukeboxWindow
 
     public bool PlayfieldRotationChanged =>
         _settings.PlayfieldRotation != _originalPlayfieldRotation;
+
+    public bool PlayfieldApplyOrientationToVideosChanged =>
+        _settings.PlayfieldApplyOrientationToVideos != _originalPlayfieldApplyOrientationToVideos;
 
     public bool BackglassBlobsChanged =>
         Math.Abs(_settings.BackglassIntensity - _originalBackglassIntensity) > 0.001 ||
@@ -604,6 +608,7 @@ public partial class SettingsWindow : JukeboxWindow
         foreach (var rot in new[] { "0°", "90°", "180°", "270°" })
             CbPlayfieldRotation.Items.Add(rot);
         CbPlayfieldRotation.SelectedIndex = settings.PlayfieldRotation switch { 90 => 1, 180 => 2, 270 => 3, _ => 0 };
+        CbApplyOrientationToVideos.IsChecked = settings.PlayfieldApplyOrientationToVideos;
 
 
         SliderBlobCountBackglass.Value = settings.BackglassBlobCount;
@@ -1022,6 +1027,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalPlayfieldBlobCount = settings.PlayfieldBlobCount;
         _originalPlayfieldBlobSizeOffset = settings.PlayfieldBlobSizeOffset;
         _originalPlayfieldRotation = settings.PlayfieldRotation;
+        _originalPlayfieldApplyOrientationToVideos = settings.PlayfieldApplyOrientationToVideos;
         _originalBackglassBlobPattern = settings.BackglassBlobPattern;
         _originalBackglassBlobCount = settings.BackglassBlobCount;
         _originalBackglassBlobSizeOffset = settings.BackglassBlobSizeOffset;
@@ -3572,6 +3578,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.PlayfieldBlobCount = (int)SliderBlobCountPlayfield.Value;
         _settings.PlayfieldBlobSizeOffset = (int)SliderBlobSizePlayfield.Value;
         _settings.PlayfieldRotation = CbPlayfieldRotation.SelectedIndex switch { 1 => 90, 2 => 180, 3 => 270, _ => 0 };
+        _settings.PlayfieldApplyOrientationToVideos = CbApplyOrientationToVideos.IsChecked == true;
         _settings.BackglassBlobPattern = CbBlobPatternBackglass.SelectedIndex >= 0 ? blobPatternsSorted[CbBlobPatternBackglass.SelectedIndex] : BlobPattern.Random;
         _settings.BackglassBlobCount = (int)SliderBlobCountBackglass.Value;
         _settings.BackglassBlobSizeOffset = (int)SliderBlobSizeBackglass.Value;
@@ -3728,6 +3735,7 @@ public partial class SettingsWindow : JukeboxWindow
         _originalPlayfieldBlobCount = _settings.PlayfieldBlobCount;
         _originalPlayfieldBlobSizeOffset = _settings.PlayfieldBlobSizeOffset;
         _originalPlayfieldRotation = _settings.PlayfieldRotation;
+        _originalPlayfieldApplyOrientationToVideos = _settings.PlayfieldApplyOrientationToVideos;
         _originalBackglassBlobPattern = _settings.BackglassBlobPattern;
         _originalBackglassBlobCount = _settings.BackglassBlobCount;
         _originalBackglassBlobSizeOffset = _settings.BackglassBlobSizeOffset;
