@@ -59,6 +59,11 @@ public partial class PlayfieldWindow : JukeboxWindow
     private bool _videoMode;
     private string? _playingVideoPath;
     private int _videoRotation;
+    // Playfield video audio: muted by default (silent ambient loop). When enabled, the
+    // player is unmuted and set to _videoVolume. Stored so it's reapplied when the VLC
+    // instance is rebuilt (e.g. on rotation change).
+    private bool _videoAudioEnabled;
+    private int _videoVolume = 50;
     // Folder-mode crossfade: a position timer starts the fade-to-black slightly
     // BEFORE a clip ends (while it's still rendering) so the dip is actually
     // visible; _videoTransitioning guards against the timer, EndReached, and the
@@ -764,6 +769,32 @@ public partial class PlayfieldWindow : JukeboxWindow
 
         _libVLC = vlc;
         _mediaPlayer = mp;
+        ApplyAudioToPlayer();
+    }
+
+    /// <summary>
+    /// Sets whether playfield video audio plays and at what volume (0–100). Applies to all
+    /// video modes. Stored so the state survives a VLC instance rebuild (rotation change).
+    /// </summary>
+    public void SetVideoAudio(bool enabled, int volume)
+    {
+        _videoAudioEnabled = enabled;
+        _videoVolume = Math.Clamp(volume, 0, 100);
+        ApplyAudioToPlayer();
+    }
+
+    /// <summary>Applies the current audio enable/volume state to the live media player.</summary>
+    private void ApplyAudioToPlayer()
+    {
+        var mp = _mediaPlayer;
+        if (mp == null)
+            return;
+        try
+        {
+            mp.Mute = !_videoAudioEnabled;
+            mp.Volume = _videoAudioEnabled ? _videoVolume : 0;
+        }
+        catch { /* volume can be rejected before a vout exists; reapplied on next play */ }
     }
 
     /// <summary>
@@ -1253,6 +1284,7 @@ public partial class PlayfieldWindow : JukeboxWindow
             mp.Play(media);
             _playingVideoPath = pick;
             _clipStartUtc = DateTime.UtcNow;
+            ApplyAudioToPlayer();
             return;
         }
 
@@ -1267,6 +1299,7 @@ public partial class PlayfieldWindow : JukeboxWindow
         // when the vout is created, not from per-media options.
         mp.Play(single);
         _playingVideoPath = _videoPath;
+        ApplyAudioToPlayer();
     }
 
     /// <summary>

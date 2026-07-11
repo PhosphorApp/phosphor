@@ -55,6 +55,15 @@ public class AppSettings
     /// Maximum runtime (seconds) for a Pinup Playlist clip before advancing. 0 = no maximum.
     /// </summary>
     public int PlayfieldPinupMaxDurationSeconds { get; set; }
+    /// <summary>
+    /// When true, playfield video audio is played (all video modes). Default false — the
+    /// playfield video is normally a silent ambient loop that shouldn't fight the backglass music.
+    /// </summary>
+    public bool PlayfieldVideoAudioEnabled { get; set; }
+    /// <summary>
+    /// Playfield video audio volume (0–100) when <see cref="PlayfieldVideoAudioEnabled"/> is true.
+    /// </summary>
+    public int PlayfieldVideoAudioVolume { get; set; } = 50;
     public bool ShowVideoInfo { get; set; }
     public bool ShowBackglass { get; set; } = true;
     public bool ShowPlayfield { get; set; } = true;

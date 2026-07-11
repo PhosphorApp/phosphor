@@ -387,6 +387,11 @@ public partial class SettingsWindow : JukeboxWindow
         TbStaticImagePath.Text = settings.PlayfieldStaticImagePath;
         TbVideoPath.Text = settings.PlayfieldVideoPath;
 
+        // Playfield video audio (applies to all video modes)
+        CbVideoAudioEnabled.IsChecked = settings.PlayfieldVideoAudioEnabled;
+        SliderVideoAudioVolume.Value = Math.Clamp(settings.PlayfieldVideoAudioVolume, 0, 100);
+        UpdateVideoAudioControls();
+
         // Pinup Popper integration (persisted separately in pinup_integration.json)
         _pinupSettings = PinupSettings.Load();
         TbPopperDbPath.Text = _pinupSettings.PopperDbPath;
@@ -1653,6 +1658,25 @@ public partial class SettingsWindow : JukeboxWindow
                 ? "No Maximum"
                 : $"{(int)SliderVideoFolderMaxDuration.Value}s";
         }
+    }
+
+    private void CbVideoAudioEnabled_Changed(object sender, RoutedEventArgs e)
+    {
+        UpdateVideoAudioControls();
+    }
+
+    private void SliderVideoAudioVolume_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        UpdateVideoAudioControls();
+    }
+
+    /// <summary>Updates the volume label and enables the slider only when audio is on.</summary>
+    private void UpdateVideoAudioControls()
+    {
+        if (TxtVideoAudioVolume != null)
+            TxtVideoAudioVolume.Text = $"{(int)SliderVideoAudioVolume.Value}%";
+        if (SliderVideoAudioVolume != null)
+            SliderVideoAudioVolume.IsEnabled = CbVideoAudioEnabled.IsChecked == true;
     }
 
     private void SliderPinupMinDuration_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -3323,6 +3347,9 @@ public partial class SettingsWindow : JukeboxWindow
             SliderPinupMaxDuration.Value >= VideoFolderMaxNoLimitTick
                 ? 0
                 : (int)SliderPinupMaxDuration.Value;
+
+        _settings.PlayfieldVideoAudioEnabled = CbVideoAudioEnabled.IsChecked == true;
+        _settings.PlayfieldVideoAudioVolume = (int)SliderVideoAudioVolume.Value;
 
         // Persist Pinup Popper integration settings to pinup_integration.json (separate
         // file to avoid bloating settings.json on large Pinup installs).

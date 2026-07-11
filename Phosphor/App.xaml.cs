@@ -131,6 +131,9 @@ public partial class App : Application
                 _settings.PlayfieldVideoFolderPlayMode,
                 _settings.PlayfieldVideoFolderMinDurationSeconds,
                 _settings.PlayfieldVideoFolderMaxDurationSeconds);
+            _playfieldProxy.SetVideoAudio(
+                _settings.PlayfieldVideoAudioEnabled,
+                _settings.PlayfieldVideoAudioVolume);
             _playfieldProxy.SetMode(_settings.PlayfieldDisplayMode);
 
             // Always initialize backglass so its visual tree and media player are ready.

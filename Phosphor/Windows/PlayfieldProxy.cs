@@ -142,6 +142,9 @@ public sealed class PlayfieldProxy
     public void SetPinupOptions(int minDurationSec, int maxDurationSec) =>
         _dispatcher.BeginInvoke(() => _window.SetPinupOptions(minDurationSec, maxDurationSec));
 
+    public void SetVideoAudio(bool enabled, int volume) =>
+        _dispatcher.BeginInvoke(() => _window.SetVideoAudio(enabled, volume));
+
     public void SetMode(PlayfieldMode mode) =>
         _dispatcher.BeginInvoke(() => _window.SetMode(mode));
 

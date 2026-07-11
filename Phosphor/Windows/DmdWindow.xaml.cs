@@ -2061,6 +2061,9 @@ public partial class DmdWindow : JukeboxWindow
             _appSettings.PlayfieldVideoFolderPlayMode,
             _appSettings.PlayfieldVideoFolderMinDurationSeconds,
             _appSettings.PlayfieldVideoFolderMaxDurationSeconds);
+        _playfieldProxy?.SetVideoAudio(
+            _appSettings.PlayfieldVideoAudioEnabled,
+            _appSettings.PlayfieldVideoAudioVolume);
         _playfieldProxy?.SetMode(settingsWindow.SelectedPlayfieldMode);
         // Pinup Playlist: apply durations and (re)load the resolved file list on a
         // background task when the feature is active.
