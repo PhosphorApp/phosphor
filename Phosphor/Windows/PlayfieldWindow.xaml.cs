@@ -32,6 +32,7 @@ public partial class PlayfieldWindow : JukeboxWindow
     private int _blobCount = 10;
     private int _blobSizeOffset;
     private bool _blobsInitialized;
+    private bool _screensaverActive;
     private double[] _blobHueOffsets = [];
     private ColorAnalysis? _lastColorAnalysis;
     private bool _pulseDominantBlobs;
@@ -170,6 +171,13 @@ public partial class PlayfieldWindow : JukeboxWindow
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // Only spin up the screensaver here if it's actually the active mode. If the app
+        // started in a video/image/blank mode, SetMode has already run and the canvas is
+        // collapsed — creating blobs (and starting their render loop) here would leave a
+        // hidden screensaver burning CPU/GPU behind the video.
+        if (!_screensaverActive)
+            return;
+
         if (!_blobsInitialized && ScreensaverCanvas.ActualWidth > 0)
         {
             CreateBlobs();
@@ -555,6 +563,11 @@ public partial class PlayfieldWindow : JukeboxWindow
             pattern = BlobTransition.CurrentRandomPattern;
 
         _blobPattern = pattern;
+
+        // Don't build/run a pattern while the screensaver isn't the active mode, otherwise
+        // a settings-apply during video mode would resurrect a hidden pattern's render loop.
+        if (!_screensaverActive)
+            return;
 
         // If the canvas isn't laid out yet
         // OnLoaded/CreateBlobs will create the blobs once Loaded fires.
@@ -1129,6 +1142,13 @@ public partial class PlayfieldWindow : JukeboxWindow
             StopVideoPlayback();
         }
 
+        // Tear down the screensaver whenever it isn't the active mode. Self-rendering
+        // patterns (Game of Life, ProjectM) drive their own render loops that keep
+        // burning CPU/GPU while merely hidden, so a collapsed canvas isn't enough —
+        // the pattern must actually be disposed.
+        if (mode != PlayfieldMode.Screensaver)
+            StopScreensaver();
+
         switch (mode)
         {
             case PlayfieldMode.Blank:
@@ -1136,8 +1156,7 @@ public partial class PlayfieldWindow : JukeboxWindow
                 break;
 
             case PlayfieldMode.Screensaver:
-                ScreensaverCanvas.Visibility = Visibility.Visible;
-                SyncColorTimer();
+                StartScreensaver();
                 break;
 
             case PlayfieldMode.StaticImage:
@@ -1169,6 +1188,60 @@ public partial class PlayfieldWindow : JukeboxWindow
                 StartVideoPlayback();
                 break;
         }
+    }
+
+    /// <summary>
+    /// Shows the screensaver canvas and ensures a blob pattern is running. When the canvas
+    /// has just become visible it may not have a layout size yet, so pattern creation is
+    /// deferred to <see cref="DispatcherPriority.Loaded"/> (after the layout pass) — this is
+    /// what fixes the "black screen" when switching to Screensaver from a video mode that
+    /// started with the canvas collapsed.
+    /// </summary>
+    private void StartScreensaver()
+    {
+        ScreensaverCanvas.Visibility = Visibility.Visible;
+        _screensaverActive = true;
+
+        if (_blobsInitialized)
+        {
+            SyncColorTimer();
+            return;
+        }
+
+        if (ScreensaverCanvas.ActualWidth > 0)
+        {
+            CreateBlobs();
+            SyncColorTimer();
+        }
+        else
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (ScreensaverCanvas.Visibility != Visibility.Visible)
+                    return; // switched away again before layout completed
+                if (!_blobsInitialized && ScreensaverCanvas.ActualWidth > 0)
+                    CreateBlobs();
+                SyncColorTimer();
+            }), DispatcherPriority.Loaded);
+        }
+    }
+
+    /// <summary>
+    /// Stops the color timer and disposes the current blob pattern so its render loop
+    /// (CompositionTarget.Rendering / internal timers for self-rendering patterns) stops
+    /// consuming CPU/GPU while the screensaver isn't the active mode. The pattern is
+    /// recreated by <see cref="StartScreensaver"/> when the user returns to Screensaver.
+    /// </summary>
+    private void StopScreensaver()
+    {
+        _screensaverActive = false;
+        _colorTimer.Stop();
+        if (_currentPattern != null)
+        {
+            _currentPattern.Dispose();
+            _currentPattern = null;
+        }
+        _blobsInitialized = false;
     }
 
     /// <summary>
