@@ -31,6 +31,24 @@ public class JukeboxWindow : Window
             ResizeMode = ResizeMode.CanResize;
         else
             ResizeMode = ResizeMode.NoResize;
+
+        // Changing ResizeMode makes WPF issue a frame change, which lets DWM
+        // briefly re-evaluate the default frame (visible as a border flash).
+        // Re-strip the chrome styles and re-suppress the DWM frame so the
+        // toggle stays seamless.
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle != nint.Zero)
+        {
+            var style = GetWindowLong(handle, GWL_STYLE) & ~WS_CAPTION;
+            if (!resizable)
+                style &= ~WS_THICKFRAME;
+            else
+                style |= WS_THICKFRAME;
+            SetWindowLong(handle, GWL_STYLE, style);
+            SetWindowPos(handle, nint.Zero, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+            SuppressDwmFrame(handle);
+        }
     }
 
     public JukeboxWindow()
@@ -64,6 +82,12 @@ public class JukeboxWindow : Window
             SetWindowPos(handle, nint.Zero, 0, 0, 0, 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
 
+            // Tell DWM not to composite a default (light) frame for the
+            // reserved WS_THICKFRAME sizing border. Without this, resizable
+            // borderless windows flash a ~5-8px white border on first launch
+            // until a repaint/resize occurs. Zero margins = no glass frame.
+            SuppressDwmFrame(handle);
+
             var source = HwndSource.FromHwnd(handle);
             source?.AddHook(WndProc);
         };
@@ -78,6 +102,42 @@ public class JukeboxWindow : Window
             // Zero non-client area
             handled = true;
             return nint.Zero;
+        }
+
+        if (msg == WM_NCPAINT)
+        {
+            // Swallow non-client painting entirely. Even with the DWM frame
+            // suppressed, activation causes USER32 to repaint the classic
+            // non-client frame (drawn white), which is what reappears when the
+            // window is clicked/focused. Returning 0 without calling DefWindowProc
+            // prevents that frame from being drawn.
+            handled = true;
+            return nint.Zero;
+        }
+
+        if (msg == WM_NCACTIVATE)
+        {
+            // On activation state changes Windows repaints the non-client frame.
+            // Pass lParam = -1 to tell DefWindowProc not to repaint the frame,
+            // while still returning TRUE so activation proceeds normally.
+            handled = true;
+            return DefWindowProc(hwnd, msg, wParam, new nint(-1));
+        }
+
+        if (msg == WM_ERASEBKGND)
+        {
+            // Paint the entire window surface black the instant the HWND
+            // becomes visible. This prevents a white flash in the reserved
+            // sizing-border area before WPF composites its first (black) frame
+            // — the primary cause of the "white border on first launch" artifact.
+            var hdc = wParam;
+            if (hdc != nint.Zero && GetClientRect(hwnd, out RECT client))
+            {
+                var brush = GetStockObject(BLACK_BRUSH);
+                FillRect(hdc, ref client, brush);
+            }
+            handled = true;
+            return (nint)1;
         }
 
         if (msg == WM_NCHITTEST && !_isExpanded && _resizable)
@@ -118,11 +178,16 @@ public class JukeboxWindow : Window
     private const int WM_NCCALCSIZE = 0x0083;
     private const int WM_NCHITTEST = 0x0084;
     private const int WM_NCLBUTTONDOWN = 0x00A1;
+    private const int WM_ERASEBKGND = 0x0014;
+    private const int WM_NCPAINT = 0x0085;
+    private const int WM_NCACTIVATE = 0x0086;
     private const nint HTCAPTION = 2;
     private const uint SWP_NOMOVE = 0x0002;
     private const uint SWP_NOSIZE = 0x0001;
     private const uint SWP_NOZORDER = 0x0004;
     private const uint SWP_FRAMECHANGED = 0x0020;
+
+    private const int BLACK_BRUSH = 4;
 
     private const nint HTLEFT = 10;
     private const nint HTRIGHT = 11;
@@ -148,6 +213,74 @@ public class JukeboxWindow : Window
     private static extern nint SendMessage(nint hWnd, int msg, nint wParam, nint lParam);
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern bool ReleaseCapture();
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern nint DefWindowProc(nint hWnd, int msg, nint wParam, nint lParam);
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool GetClientRect(nint hWnd, out RECT lpRect);
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern int FillRect(nint hDC, ref RECT lprc, nint hbr);
+    [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+    private static extern nint GetStockObject(int fnObject);
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    private static extern int DwmExtendFrameIntoClientArea(nint hWnd, ref MARGINS pMarInset);
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(nint hWnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct MARGINS { public int Left, Right, Top, Bottom; }
+
+    // DWM window attributes
+    private const int DWMWA_NCRENDERING_POLICY = 2;
+    private const int DWMWA_TRANSITIONS_FORCEDISABLED = 3;
+    private const int DWMWA_BORDER_COLOR = 34;              // Win11 (build 22000+)
+    private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;  // Win11 (build 22000+)
+    private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;   // Win10 1809+ / Win11
+    private const int DWMNCRP_DISABLED = 1;
+    private const int DWMWCP_DONOTROUND = 1;
+    private const uint DWMWA_COLOR_NONE = 0xFFFFFFFE;       // suppress the border entirely
+
+    /// <summary>
+    /// Suppresses the DWM-composited window frame for a custom-chrome window.
+    /// Extending the frame with zero margins tells DWM not to draw a default
+    /// (light/glass) border in the reserved WS_THICKFRAME sizing area, which
+    /// is otherwise visible as a white border flash on first launch. Also
+    /// disables non-client rendering and the open/close transition animations
+    /// that can briefly reveal the default frame on launch/shutdown/toggle,
+    /// and (on Windows 11) removes the accent border and rounded-corner
+    /// rendering that shows up as lingering white corner brackets / edge lines.
+    /// </summary>
+    private static void SuppressDwmFrame(nint handle)
+    {
+        try
+        {
+            var margins = new MARGINS { Left = 0, Right = 0, Top = 0, Bottom = 0 };
+            DwmExtendFrameIntoClientArea(handle, ref margins);
+
+            int ncrp = DWMNCRP_DISABLED;
+            DwmSetWindowAttribute(handle, DWMWA_NCRENDERING_POLICY, ref ncrp, sizeof(int));
+
+            int disableTransitions = 1;
+            DwmSetWindowAttribute(handle, DWMWA_TRANSITIONS_FORCEDISABLED, ref disableTransitions, sizeof(int));
+
+            // Windows 11: remove the 1px accent border and square off the
+            // corners. The anti-aliased rounded corners composited against the
+            // frame are what appear as the white L-shaped brackets. These
+            // attributes are silently ignored on Windows 10 and earlier.
+            int noRound = DWMWCP_DONOTROUND;
+            DwmSetWindowAttribute(handle, DWMWA_WINDOW_CORNER_PREFERENCE, ref noRound, sizeof(int));
+
+            int borderColor = unchecked((int)DWMWA_COLOR_NONE);
+            DwmSetWindowAttribute(handle, DWMWA_BORDER_COLOR, ref borderColor, sizeof(int));
+
+            // Force DWM to use the dark frame palette for this window so any
+            // residual frame the compositor draws (e.g. the first frame before
+            // suppression takes effect) is dark rather than white, regardless
+            // of the user's current theme. Ignored on Windows 10 < 1809.
+            int darkMode = 1;
+            DwmSetWindowAttribute(handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
+        }
+        catch (DllNotFoundException) { /* DWM unavailable (very old OS) */ }
+    }
 
     /// <summary>
     /// Initiate a window drag via Win32. Works even when WinForms airspace
