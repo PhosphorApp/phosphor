@@ -122,6 +122,17 @@ public class VideoItem : ObservableObject
                 ? Author
                 : $"{Author} \u00B7 {DurationText}";
 
+    /// <summary>
+    /// "duration · author" ordering for the compact two-row result layout.
+    /// Falls back gracefully when either part is missing.
+    /// </summary>
+    public string DetailTextDurationThenAuthor =>
+        string.IsNullOrEmpty(DurationText)
+            ? Author
+            : string.IsNullOrWhiteSpace(Author)
+                ? DurationText
+                : $"{DurationText} \u00B7 {Author}";
+
     public string DetailTextDurationFirst
     {
         get
