@@ -220,6 +220,8 @@ public partial class BackglassWindow : JukeboxWindow
 
         InitializeComponent();
 
+        IsVisibleChanged += OnIsVisibleChanged;
+
         SourceInitialized += (_, _) =>
         {
             // Add WS_EX_NOACTIVATE so the WinForms-hosted VLC surface
@@ -1490,6 +1492,39 @@ public partial class BackglassWindow : JukeboxWindow
 
         DrawRecordOverlay(RecordOverlay, _logoRings);
         DrawCircularTitle(TitleCanvas, _logoSpin);
+    }
+
+    /// <summary>
+    /// Pauses only the idle blob screensaver when the window is hidden so its
+    /// self-rendering render loop (Game of Life, ProjectM) stops consuming
+    /// CPU/GPU. Any playing video/audio is intentionally left running — a user
+    /// may want to hear the backglass media without seeing it. Resumes the
+    /// screensaver on show, but only if the window is currently in idle mode
+    /// (IdleOverlay visible), not mid-video.
+    /// </summary>
+    private void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is not bool visible || !_idleAnimStarted)
+            return;
+
+        if (visible)
+        {
+            if (IdleOverlay.Visibility == Visibility.Visible)
+            {
+                if (_currentPattern == null)
+                {
+                    _currentPattern = BlobTransition.Create(_blobPattern, MakeConfig());
+                    _currentPattern.Enter(() => { });
+                }
+                _colorTimer.Start();
+            }
+        }
+        else
+        {
+            _colorTimer.Stop();
+            _currentPattern?.Dispose();
+            _currentPattern = null;
+        }
     }
 
     public void SetLogoSpin(bool spin)

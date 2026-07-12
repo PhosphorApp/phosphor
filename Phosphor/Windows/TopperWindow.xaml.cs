@@ -47,6 +47,44 @@ public partial class TopperWindow : JukeboxWindow
 
         ContentRendered += (_, _) => StartAnimation();
         SizeChanged += OnSizeChanged;
+        IsVisibleChanged += OnIsVisibleChanged;
+    }
+
+    /// <summary>
+    /// Pauses the blob screensaver when the window is hidden (e.g. the topper is
+    /// turned off in settings, or starts hidden) so self-rendering patterns
+    /// (Game of Life, ProjectM) don't keep consuming CPU/GPU. Resumes when shown.
+    /// </summary>
+    private void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is not bool visible)
+            return;
+
+        if (visible)
+            ResumeScreensaver();
+        else
+            PauseScreensaver();
+    }
+
+    private void PauseScreensaver()
+    {
+        if (!_animStarted)
+            return;
+        _colorTimer.Stop();
+        _currentPattern?.Dispose();
+        _currentPattern = null;
+    }
+
+    private void ResumeScreensaver()
+    {
+        if (!_animStarted)
+            return;
+        if (_currentPattern == null && BlobCanvas.ActualWidth > 0)
+        {
+            _currentPattern = BlobTransition.Create(_blobPattern, MakeConfig());
+            _currentPattern.Enter(() => { });
+        }
+        _colorTimer.Start();
     }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)

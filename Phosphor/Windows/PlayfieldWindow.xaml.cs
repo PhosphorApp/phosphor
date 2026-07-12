@@ -33,6 +33,7 @@ public partial class PlayfieldWindow : JukeboxWindow
     private int _blobSizeOffset;
     private bool _blobsInitialized;
     private bool _screensaverActive;
+    private PlayfieldMode _currentMode = PlayfieldMode.Blank;
     private double[] _blobHueOffsets = [];
     private ColorAnalysis? _lastColorAnalysis;
     private bool _pulseDominantBlobs;
@@ -138,6 +139,7 @@ public partial class PlayfieldWindow : JukeboxWindow
 
         Loaded += OnLoaded;
         SizeChanged += OnSizeChanged;
+        IsVisibleChanged += OnIsVisibleChanged;
 
         //added to try to prevent window from stealing focus
         SourceInitialized += (_, _) =>
@@ -152,6 +154,35 @@ public partial class PlayfieldWindow : JukeboxWindow
             var source = HwndSource.FromHwnd(handle);
             source?.AddHook(PlayfieldWndProc);
         };
+    }
+
+    /// <summary>
+    /// Ties expensive rendering to window visibility. When the window is hidden
+    /// (e.g. the user turns off the playfield window in settings, or it starts
+    /// hidden), stop video playback and tear down the screensaver pattern so a
+    /// looping clip doesn't keep playing and self-rendering patterns (Game of
+    /// Life, ProjectM) don't keep consuming CPU/GPU. When shown again, resume
+    /// whatever the current mode requires.
+    /// </summary>
+    private void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is not bool visible)
+            return;
+
+        if (visible)
+        {
+            if (_currentMode == PlayfieldMode.Screensaver)
+                StartScreensaver();
+            else if (_videoMode)
+                StartVideoPlayback();
+        }
+        else
+        {
+            if (_videoMode)
+                StopVideoPlayback();
+            if (_screensaverActive)
+                StopScreensaver();
+        }
     }
 
     private nint PlayfieldWndProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
@@ -1134,6 +1165,7 @@ public partial class PlayfieldWindow : JukeboxWindow
 
     public void SetMode(PlayfieldMode mode)
     {
+        _currentMode = mode;
         _colorTimer.Stop();
         StaticImage.Visibility = Visibility.Collapsed;
 
@@ -1154,6 +1186,13 @@ public partial class PlayfieldWindow : JukeboxWindow
         if (mode != PlayfieldMode.Screensaver)
             StopScreensaver();
 
+        // When the window is hidden (e.g. the playfield window is turned off in
+        // settings, or hidden at startup), don't start any expensive rendering
+        // — screensaver patterns (Game of Life, ProjectM) and video playback are
+        // deferred until the window becomes visible (see OnIsVisibleChanged).
+        // Mode flags are still recorded so the correct mode resumes on show.
+        bool visible = IsVisible;
+
         switch (mode)
         {
             case PlayfieldMode.Blank:
@@ -1161,7 +1200,8 @@ public partial class PlayfieldWindow : JukeboxWindow
                 break;
 
             case PlayfieldMode.Screensaver:
-                StartScreensaver();
+                if (visible)
+                    StartScreensaver();
                 break;
 
             case PlayfieldMode.StaticImage:
@@ -1174,7 +1214,8 @@ public partial class PlayfieldWindow : JukeboxWindow
                 _videoMode = true;
                 _folderMode = false;
                 _pinupMode = false;
-                StartVideoPlayback();
+                if (visible)
+                    StartVideoPlayback();
                 break;
 
             case PlayfieldMode.VideoFolders:
@@ -1182,7 +1223,8 @@ public partial class PlayfieldWindow : JukeboxWindow
                 _videoMode = true;
                 _folderMode = true;
                 _pinupMode = false;
-                StartVideoPlayback();
+                if (visible)
+                    StartVideoPlayback();
                 break;
 
             case PlayfieldMode.PinupPlaylist:
@@ -1190,7 +1232,8 @@ public partial class PlayfieldWindow : JukeboxWindow
                 _videoMode = true;
                 _folderMode = false;
                 _pinupMode = true;
-                StartVideoPlayback();
+                if (visible)
+                    StartVideoPlayback();
                 break;
         }
     }
