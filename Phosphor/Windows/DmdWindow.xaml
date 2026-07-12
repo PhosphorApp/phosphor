@@ -21,6 +21,7 @@
         <sys:Double x:Key="QueueThumbnailWidth">38</sys:Double>
         <sys:Double x:Key="QueueThumbnailHeight">38</sys:Double>
         <sys:Double x:Key="ResultThumbnailHeight">45</sys:Double>
+        <sys:Double x:Key="ResultContentHeight">55</sys:Double>
         <sys:Double x:Key="NowPlayingLabelFontSize">12</sys:Double>
         <sys:Double x:Key="NowPlayingTimeFontSize">15</sys:Double>
         <sys:Double x:Key="NowPlayingSpeakerFontSize">11</sys:Double>
@@ -339,10 +340,10 @@
                                 </Grid.ColumnDefinitions>
                                 <Image Grid.Column="0" Source="{Binding ThumbnailUrl, Converter={StaticResource ThumbnailCacheConverter}}"
                                        RenderOptions.BitmapScalingMode="LowQuality"
-                                       Margin="0,0,8,0" VerticalAlignment="Top">
+                                       Margin="0,0,8,0" VerticalAlignment="Top"
+                                       Height="{Binding ActualHeight, ElementName=ItemContentPanel}">
                                     <Image.Style>
                                         <Style TargetType="Image">
-                                            <Setter Property="Height" Value="{DynamicResource ResultThumbnailHeight}"/>
                                             <Setter Property="Stretch" Value="Uniform"/>
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding PlexItemType}" Value="Hub">
@@ -376,9 +377,30 @@
                                         </Style>
                                     </TextBlock.Style>
                                 </TextBlock>
-                                <DockPanel Grid.Column="1">
-                                    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
-                                                HorizontalAlignment="Right" Margin="0,3,0,0">
+                                <Grid Grid.Column="1" x:Name="ItemContentPanel"
+                                      Height="{DynamicResource ResultContentHeight}">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <!-- Row 1: Title -->
+                                    <TextBlock Grid.Row="0" Text="{Binding Title}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                               FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" FontSize="{DynamicResource ResultTitleFontSize}"/>
+
+                                    <!-- Row 2: duration/author on the left, buttons justified right -->
+                                    <Grid Grid.Row="1" Margin="0,1,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Grid.Column="0" Text="{Binding DetailTextDurationThenAuthor}"
+                                                   VerticalAlignment="Top" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{StaticResource TextDimBrush}" FontSize="{DynamicResource ResultDetailFontSize}"/>
+
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom"
+                                                    HorizontalAlignment="Right" Margin="8,8,0,5">
                                         <Button Padding="{DynamicResource TrackButtonPadding}" FontSize="{DynamicResource TrackButtonFontSize}"
                                                 Command="{Binding DataContext.PlayNowCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding}">
@@ -421,13 +443,9 @@
                                                 Command="{Binding DataContext.FindSimilarCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding}"
                                                 Visibility="{Binding DataContext.ShouldHideFindSimilar, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource BoolVis}, ConverterParameter=Invert}"/>
-                                    </StackPanel>
-                                    <StackPanel VerticalAlignment="Top">
-                                        <TextBlock Text="{Binding Title}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
-                                                   FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" FontSize="{DynamicResource ResultTitleFontSize}"/>
-                                        <TextBlock Text="{Binding DetailText}" Foreground="{StaticResource TextDimBrush}" FontSize="{DynamicResource ResultDetailFontSize}" Margin="0,1,0,0"/>
-                                    </StackPanel>
-                                </DockPanel>
+                                        </StackPanel>
+                                    </Grid>
+                                </Grid>
                             </Grid>
                         </Border>
                     </DataTemplate>
