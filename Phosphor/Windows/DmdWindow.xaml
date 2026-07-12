@@ -377,6 +377,11 @@
                                         </Style>
                                     </TextBlock.Style>
                                 </TextBlock>
+                                <!-- Height is set deterministically from the configured title font size and
+                                     track button size via UpdateResultContentHeight() in code-behind. This keeps
+                                     every cell a uniform, compact height (so a portrait poster can't inflate the
+                                     VirtualizingWrapPanel cell) while still growing/shrinking with the user's
+                                     configurable TrackButtonFontSize/TrackButtonPadding so buttons never clip. -->
                                 <Grid Grid.Column="1" x:Name="ItemContentPanel"
                                       Height="{DynamicResource ResultContentHeight}">
                                     <Grid.RowDefinitions>
@@ -400,7 +405,7 @@
                                                    Foreground="{StaticResource TextDimBrush}" FontSize="{DynamicResource ResultDetailFontSize}"/>
 
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom"
-                                                    HorizontalAlignment="Right" Margin="8,8,0,5">
+                                                    HorizontalAlignment="Right" Margin="8,8,0,0">
                                         <Button Padding="{DynamicResource TrackButtonPadding}" FontSize="{DynamicResource TrackButtonFontSize}"
                                                 Command="{Binding DataContext.PlayNowCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding}">

@@ -1839,6 +1839,7 @@ public partial class DmdWindow : JukeboxWindow
         Resources["QueueFontSize"] = (double)Math.Clamp(20 + (_queuePosition == QueuePosition.Right ? -2 : 2) + queueMod, 8, 44);
         UpdateQueueThumbnailHeight();
         UpdateResultThumbnailHeight();
+        UpdateResultContentHeight();
         UpdateResultItemWidth();
     }
 
@@ -1898,6 +1899,47 @@ public partial class DmdWindow : JukeboxWindow
 
         double h = ft1.Height + ft2.Height + 1;
         Resources["ResultThumbnailHeight"] = h;
+    }
+
+    /// <summary>
+    /// Deterministically computes the fixed height of a result item's content column
+    /// (title row + duration/author + buttons row) from the configured title font size
+    /// and track button size. Using a measured fixed height keeps every VirtualizingWrapPanel
+    /// cell uniform (so a portrait poster can't inflate the row) while still adapting to the
+    /// user's configurable TrackButtonFontSize/TrackButtonPadding so buttons are never clipped.
+    /// </summary>
+    private void UpdateResultContentHeight()
+    {
+        double titleFontSize = (double)Resources["ResultTitleFontSize"];
+        double buttonFontSize = Resources["TrackButtonFontSize"] is double bfs ? bfs : 18.0;
+        double buttonPaddingV = Resources["TrackButtonPadding"] is Thickness tp ? tp.Top + tp.Bottom : 6.0;
+
+        double pixelsPerDip = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+
+        var titleFt = new FormattedText(
+            "Xg", System.Globalization.CultureInfo.CurrentCulture,
+            System.Windows.FlowDirection.LeftToRight,
+            new Typeface("Segoe UI"),
+            titleFontSize, System.Windows.Media.Brushes.White,
+            pixelsPerDip);
+
+        var buttonGlyphFt = new FormattedText(
+            "Xg", System.Globalization.CultureInfo.CurrentCulture,
+            System.Windows.FlowDirection.LeftToRight,
+            new Typeface("Segoe UI"),
+            buttonFontSize, System.Windows.Media.Brushes.White,
+            pixelsPerDip);
+
+        // Row 2 height is dominated by the buttons: glyph + vertical padding + border/chrome.
+        // The buttons carry a top margin (8) and no bottom margin in the template.
+        const double buttonBorderChrome = 4;   // ~2px border top+bottom
+        const double buttonMarginV = 8;
+        double buttonRowHeight = buttonGlyphFt.Height + buttonPaddingV + buttonBorderChrome + buttonMarginV;
+
+        // Row 1 is the title; a couple px of breathing room between the rows.
+        double titleRowHeight = titleFt.Height + 1;
+
+        Resources["ResultContentHeight"] = Math.Ceiling(titleRowHeight + buttonRowHeight);
     }
 
     private void UpdateResultItemWidth()
@@ -2715,6 +2757,7 @@ public partial class DmdWindow : JukeboxWindow
         double padding = Math.Max(4, 12 + modifier / 2.0);
         Resources["TrackButtonFontSize"] = fontSize;
         Resources["TrackButtonPadding"] = new Thickness(padding, padding / 2, padding, padding / 2);
+        UpdateResultContentHeight();
     }
 
     public void SetMinorButtonLocation(MinorButtonLocation location)
