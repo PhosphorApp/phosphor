@@ -47,11 +47,17 @@ public sealed class YtDlpSearchEngine : ISearchEngine
         if (LooksLikePlaylistId(nameIdOrUrl))
             return ExtractPlaylistId(nameIdOrUrl);
 
-        // Otherwise search for the playlist by name and take the first match.
+        // Otherwise search for the playlist by name. yt-dlp has no first-class
+        // playlist search (its ytsearch: prefix only returns videos), so query
+        // YouTube's results page with the "playlists" filter (sp=EgIQAw) and take
+        // the first playlist entry. Flat-playlist entries for this URL are of
+        // _type=url with ie_key=YoutubeTab and a playlist id in the id field.
+        var searchUrl =
+            $"https://www.youtube.com/results?search_query={Uri.EscapeDataString(nameIdOrUrl)}&sp=EgIQAw";
         var (code, stdout, _) = await YtDlpVideoEngine.RunYtDlpAsync(
             _ytDlpPath,
             new[] { "--no-warnings", "--flat-playlist", "--dump-json", "--playlist-items", "1",
-                    $"ytsearch1:{nameIdOrUrl}" },
+                    searchUrl },
             ct);
 
         if (code != 0) return null;
@@ -61,11 +67,15 @@ public sealed class YtDlpSearchEngine : ISearchEngine
         try
         {
             var dto = JsonSerializer.Deserialize<YtDlpEntryJson>(line);
-            // A playlist name-search returns video entries, not playlists; yt-dlp's search
-            // doesn't expose playlist entities cleanly, so fall back to treating the query
-            // as a playlist id/URL is not possible here. Return null → caller reports
-            // "could not find". (Direct id/URL is the reliable path for yt-dlp search.)
-            _ = dto;
+            // Only accept a genuine playlist entry (YoutubeTab), and only when the
+            // id looks like a playlist id (not a stray video result).
+            if (dto?.Id != null
+                && string.Equals(dto.IeKey, "YoutubeTab", StringComparison.OrdinalIgnoreCase)
+                && LooksLikePlaylistId(dto.Id))
+            {
+                onFoundByName?.Invoke(dto.Title ?? nameIdOrUrl);
+                return dto.Id;
+            }
             return null;
         }
         catch
@@ -159,6 +169,7 @@ public sealed class YtDlpSearchEngine : ISearchEngine
         [JsonPropertyName("channel")] public string? Channel { get; set; }
         [JsonPropertyName("duration")] public double? Duration { get; set; }
         [JsonPropertyName("thumbnails")] public List<YtDlpThumbJson>? Thumbnails { get; set; }
+        [JsonPropertyName("ie_key")] public string? IeKey { get; set; }
     }
 
     private sealed class YtDlpThumbJson

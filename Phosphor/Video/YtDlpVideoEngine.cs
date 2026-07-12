@@ -266,6 +266,8 @@ public sealed class YtDlpVideoEngine : IVideoEngine
             };
             foreach (var a in args) psi.ArgumentList.Add(a);
 
+            DebugLog.Log("yt-dlp", FormatCommand(ytDlpPath, args));
+
             using var proc = new Process { StartInfo = psi };
             proc.Start();
 
@@ -305,6 +307,8 @@ public sealed class YtDlpVideoEngine : IVideoEngine
 
         using var proc = new Process { StartInfo = psi };
 
+        DebugLog.Log("yt-dlp", FormatCommand(ytDlpPath, args));
+
         await ProcessGate.WaitAsync(ct);
         try
         {
@@ -314,7 +318,6 @@ public sealed class YtDlpVideoEngine : IVideoEngine
         {
             ProcessGate.Release();
         }
-
         try
         {
             // Loop purely on the async ReadLineAsync (null = end of stream). Do NOT gate on
@@ -335,6 +338,28 @@ public sealed class YtDlpVideoEngine : IVideoEngine
     }
 
     // ── helpers ──
+
+    /// <summary>
+    /// Formats a yt-dlp invocation as a copy-pasteable command line for the debug
+    /// log. Arguments containing whitespace are quoted so the logged line can be
+    /// re-run verbatim in a shell.
+    /// </summary>
+    private static string FormatCommand(string ytDlpPath, IReadOnlyList<string> args)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append(Quote(ytDlpPath));
+        foreach (var a in args)
+        {
+            sb.Append(' ');
+            sb.Append(Quote(a));
+        }
+        return sb.ToString();
+
+        static string Quote(string s) =>
+            s.Length == 0 || s.IndexOfAny([' ', '\t', '"']) >= 0
+                ? "\"" + s.Replace("\"", "\\\"") + "\""
+                : s;
+    }
 
     /// <summary>Maps the quality ceiling onto a yt-dlp height filter (mirrors StreamSelector).</summary>
     private static string HeightCap(VideoQualityPreference pref) => pref switch
