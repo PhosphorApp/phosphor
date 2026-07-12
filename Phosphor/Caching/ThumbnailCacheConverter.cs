@@ -23,101 +23,63 @@ public class ThumbnailCacheConverter : IValueConverter
     // In-memory cache of already-decoded, frozen BitmapImages keyed by file path.
     private static readonly ConcurrentDictionary<string, BitmapImage> _decodedCache = new();
 
-    // Tracks paths currently being decoded to avoid duplicate background work.
-    private static readonly ConcurrentDictionary<string, byte> _decodingInProgress = new();
-
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         if (value is not string url || string.IsNullOrWhiteSpace(url))
             return null;
 
         var cache = Cache;
-        if (cache == null || !cache.Enabled)
-            return new Uri(url, UriKind.Absolute);
 
-        // Fast path: already cached on disk
-        var cachedPath = cache.TryGet(url);
-        if (cachedPath != null)
+        // Fast path: already decoded in memory
+        if (cache != null && cache.Enabled)
         {
-            // Already decoded in memory — return immediately, no UI-thread work
-            if (_decodedCache.TryGetValue(cachedPath, out var cached))
-                return cached;
-
-            // Decode off the UI thread for future instant hits;
-            // return file URI so WPF can display it now
-            _ = DecodeAndRefreshAsync(cachedPath, url);
-            return new Uri(cachedPath, UriKind.Absolute);
-        }
-
-        // Cache miss: kick off background download, return URL as-is for WPF to load
-        // Once downloaded, we notify the source property to re-evaluate the binding
-        _ = DownloadAndRefreshAsync(url);
-
-        return new Uri(url, UriKind.Absolute);
-    }
-
-    private static async Task DecodeAndRefreshAsync(string filePath, string url)
-    {
-        if (!_decodingInProgress.TryAdd(filePath, 0))
-            return;
-
-        try
-        {
-            var bi = await Task.Run(() => CreateLocalBitmapImage(filePath));
-            if (bi != null)
+            var cachedPath = cache.TryGet(url);
+            if (cachedPath != null)
             {
-                _decodedCache[filePath] = bi;
-                await Application.Current.Dispatcher.InvokeAsync(() => RefreshBindingsForUrl(url));
+                if (_decodedCache.TryGetValue(cachedPath, out var cachedBi))
+                    return cachedBi;
+
+                // Decode synchronously from disk at a downscaled size and return it now.
+                // A 160px decode is cheap and produces a small texture, so it does NOT
+                // stall the shared render thread the way handing WPF a raw full-size
+                // image did.
+                var localBi = CreateLocalBitmapImage(cachedPath);
+                if (localBi != null)
+                {
+                    _decodedCache[cachedPath] = localBi;
+                    return localBi;
+                }
+            }
+            else
+            {
+                // Not on disk yet — start caching it for next time.
+                _ = cache.GetOrDownloadAsync(url);
             }
         }
-        finally
-        {
-            _decodingInProgress.TryRemove(filePath, out _);
-        }
+
+        // Cache miss (or caching disabled): load directly from the remote URL, but
+        // decode at a downscaled size so WPF only uploads a small texture to the
+        // shared render thread. This is what prevents the large-Plex-thumbnail
+        // stutter while still always returning something displayable.
+        return CreateRemoteBitmapImage(url);
     }
 
-    private static async Task DownloadAndRefreshAsync(string url)
+    private static BitmapImage? CreateRemoteBitmapImage(string url)
     {
-        var cache = Cache;
-        if (cache == null) return;
-
-        var path = await cache.GetOrDownloadAsync(url);
-        if (path == null) return;
-
-        // Pre-decode off UI thread
-        var bi = await Task.Run(() => CreateLocalBitmapImage(path));
-        if (bi != null)
-            _decodedCache[path] = bi;
-
-        // Force all active bindings with this URL to re-evaluate by
-        // touching the ThumbnailUrl property on any VideoItem that uses it.
-        await Application.Current.Dispatcher.InvokeAsync(() =>
+        try
         {
-            RefreshBindingsForUrl(url);
-        });
-    }
-
-    /// <summary>
-    /// Finds all VideoItem instances in the current view model that reference
-    /// this thumbnail URL and raises PropertyChanged so bindings re-evaluate.
-    /// </summary>
-    private static void RefreshBindingsForUrl(string url)
-    {
-        var window = Application.Current.MainWindow;
-        if (window?.DataContext is not JukeboxViewModel vm) return;
-
-        foreach (var item in vm.SearchResults)
-        {
-            if (item.ThumbnailUrl == url)
-                item.NotifyPropertyChanged(nameof(VideoItem.ThumbnailUrl));
+            var bi = new BitmapImage();
+            bi.BeginInit();
+            bi.CacheOption = BitmapCacheOption.OnDemand;
+            bi.DecodePixelWidth = 160;
+            bi.UriSource = new Uri(url, UriKind.Absolute);
+            bi.EndInit();
+            return bi;
         }
-        foreach (var item in vm.Queue)
+        catch
         {
-            if (item.ThumbnailUrl == url)
-                item.NotifyPropertyChanged(nameof(VideoItem.ThumbnailUrl));
+            return null;
         }
-        if (vm.CurrentlyPlaying?.ThumbnailUrl == url)
-            vm.CurrentlyPlaying.NotifyPropertyChanged(nameof(VideoItem.ThumbnailUrl));
     }
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)

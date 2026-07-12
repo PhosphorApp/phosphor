@@ -17,6 +17,27 @@ public class PlexService
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_serverUrl) && !string.IsNullOrWhiteSpace(_token);
 
+    /// <summary>
+    /// Builds a thumbnail URL that uses Plex's server-side photo transcoder to return a
+    /// small, pre-resized image. This keeps the client from downloading and decoding the
+    /// full-resolution original (Plex posters can be very large), which otherwise causes
+    /// large-object-heap allocations and GC pauses that stutter the render thread.
+    /// </summary>
+    private string BuildThumbnailUrl(string? thumbPath, int size = 320)
+    {
+        if (string.IsNullOrEmpty(thumbPath))
+            return "";
+
+        // The transcoder wants the (relative) original thumb path plus a token.
+        var original = $"{thumbPath}?X-Plex-Token={_token}";
+        var encoded = Uri.EscapeDataString(original);
+        return $"{_serverUrl}/photo/:/transcode"
+            + $"?width={size}&height={size}"
+            + $"&minSize=1&upscale=0"
+            + $"&url={encoded}"
+            + $"&X-Plex-Token={_token}";
+    }
+
     private static void DiagLog(string message)
     {
         DebugLog.Log("Plex", message);
@@ -366,7 +387,7 @@ public class PlexService
                     PlaylistType = m.TryGetProperty("playlistType", out var pt) ? pt.GetString() ?? "" : "",
                     Smart = m.TryGetProperty("smart", out var s) && s.ValueKind == System.Text.Json.JsonValueKind.True,
                     LeafCount = m.TryGetProperty("leafCount", out var lc) ? lc.GetInt32() : 0,
-                    Thumb = !string.IsNullOrEmpty(thumbPath) ? $"{_serverUrl}{thumbPath}?X-Plex-Token={_token}" : ""
+                    Thumb = BuildThumbnailUrl(thumbPath)
                 });
             }
         }
@@ -764,7 +785,7 @@ public class PlexService
 
         string thumbUrl = "";
         if (m.TryGetProperty("thumb", out var thumb))
-            thumbUrl = $"{_serverUrl}{thumb.GetString()}?X-Plex-Token={_token}";
+            thumbUrl = BuildThumbnailUrl(thumb.GetString());
 
         var ratingKey = m.TryGetProperty("ratingKey", out var rkVal) ? rkVal.GetString() ?? "" : "";
         var streamUrl = GetStreamUrl(partKey, stereoStreamId, audioChannels, ratingKey);
@@ -843,7 +864,7 @@ public class PlexService
 
         string thumbUrl = "";
         if (m.TryGetProperty("thumb", out var thumb))
-            thumbUrl = $"{_serverUrl}{thumb.GetString()}?X-Plex-Token={_token}";
+            thumbUrl = BuildThumbnailUrl(thumb.GetString());
 
         return new VideoItem
         {
