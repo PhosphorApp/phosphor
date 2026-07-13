@@ -1,0 +1,142 @@
+using System.Net.Http;
+using System.Runtime.CompilerServices;
+using Phosphor.Plugin.Abstractions;
+using Phosphor.Search;
+using Phosphor.Video;
+
+namespace Phosphor.Plugins.YouTube;
+
+/// <summary>
+/// In-box YouTube source. Composes the existing discovery (<see cref="ISearchEngine"/>)
+/// and video (<see cref="IVideoEngine"/>) seams and presents them through the plug-in
+/// contract. The YoutubeExplode-vs-yt-dlp engine choice is an internal detail driven by
+/// settings — the host sees a single source. Engines are created via the existing
+/// factories, which keep the "fall back to an available engine" safety net.
+/// </summary>
+/// <remarks>
+/// This is statically referenced (in-box), not scanned, so it may use the host's
+/// YoutubeExplode package and existing engine code directly. It is a pure data producer:
+/// it never touches UI or assumes a thread.
+/// </remarks>
+public sealed class YouTubeSource : IPhosphorSource, ITextSearchCapable, IPlayableResolver, IDownloadable
+{
+    private readonly HttpClient? _http;
+    private IPluginHost? _host;
+
+    private SearchEngineKind _searchKind = SearchEngineKind.YoutubeExplode;
+    private VideoEngineKind _videoKind = VideoEngineKind.YoutubeExplode;
+    private VideoQualityPreference _quality = VideoQualityPreference.High;
+    private bool _preferStereo = true;
+
+    private ISearchEngine _search;
+    private IVideoEngine _video;
+
+    public YouTubeSource(string instanceId, IReadOnlyDictionary<string, string?> settings, HttpClient? http = null)
+    {
+        InstanceId = instanceId;
+        _http = http;
+        ApplySettingsInternal(settings);
+        // ApplySettingsInternal builds the engines; the fields are assigned there.
+        _search ??= SearchEngineFactory.Create(_searchKind, _http);
+        _video ??= VideoEngineFactory.Create(_videoKind);
+    }
+
+    public string InstanceId { get; }
+    public string TypeId => YouTubeSourceProvider.YouTubeTypeId;
+    public string DisplayName { get; set; } = "YouTube";
+
+    /// <summary>YouTube needs no credentials — it is always considered configured.</summary>
+    public bool IsConfigured => true;
+
+    public bool IsEnabled { get; set; } = true;
+
+    public Task InitializeAsync(IPluginHost host, CancellationToken ct = default)
+    {
+        _host = host;
+        return Task.CompletedTask;
+    }
+
+    public void ApplySettings(IReadOnlyDictionary<string, string?> values) => ApplySettingsInternal(values);
+
+    private void ApplySettingsInternal(IReadOnlyDictionary<string, string?> values)
+    {
+        _searchKind = ParseEnum(values, YouTubeSourceProvider.KeySearchEngine, SearchEngineKind.YoutubeExplode);
+        _videoKind = ParseEnum(values, YouTubeSourceProvider.KeyVideoEngine, VideoEngineKind.YoutubeExplode);
+        _quality = ParseEnum(values, YouTubeSourceProvider.KeyVideoQuality, VideoQualityPreference.High);
+        _preferStereo = ParseBool(values, YouTubeSourceProvider.KeyPreferStereo, true);
+
+        // Re-create engines through the existing factories (which keep the availability
+        // fallback), so a settings change takes effect immediately.
+        _search = SearchEngineFactory.Create(_searchKind, _http);
+        _video = VideoEngineFactory.Create(_videoKind);
+        _host?.Log($"YouTubeSource: search={_searchKind} video={_videoKind} quality={_quality} stereo={_preferStereo}");
+    }
+
+    // ── ITextSearchCapable ─────────────────────────────────────────────────────
+
+    public async IAsyncEnumerable<SourceItem> SearchAsync(
+        string query, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await foreach (var v in _search.SearchVideosAsync(query, ct).WithCancellation(ct))
+            yield return YouTubeMappings.ToSourceItem(v, InstanceId);
+    }
+
+    // ── IPlayableResolver ──────────────────────────────────────────────────────
+
+    public async Task<ResolvedStream?> ResolveAsync(
+        SourceItem item, PlaybackPreferences prefs, CancellationToken ct = default)
+    {
+        var streams = await _video.ResolveStreamsAsync(
+            YouTubeMappings.VideoIdOf(item),
+            MapQuality(prefs.MaxQuality),
+            prefs.PreferStereo || _preferStereo,
+            prefs.AudioOnly,
+            ct);
+
+        return streams == null ? null : YouTubeMappings.ToResolvedStream(streams);
+    }
+
+    public async Task<SourceMetadata?> GetMetadataAsync(SourceItem item, CancellationToken ct = default)
+    {
+        var meta = await _video.GetMetadataAsync(YouTubeMappings.VideoIdOf(item), ct);
+        return meta == null ? null : YouTubeMappings.ToSourceMetadata(meta);
+    }
+
+    // ── IDownloadable ──────────────────────────────────────────────────────────
+
+    public async Task<SourceDownload?> DownloadAsync(
+        SourceItem item,
+        PlaybackPreferences prefs,
+        string destinationDir,
+        IProgress<double>? progress = null,
+        CancellationToken ct = default)
+    {
+        // The existing engine does not surface incremental progress; report start/finish
+        // so callers relying on the hook still see terminal states.
+        progress?.Report(0);
+        var download = await _video.DownloadStreamsAsync(
+            YouTubeMappings.VideoIdOf(item),
+            MapQuality(prefs.MaxQuality),
+            prefs.PreferStereo || _preferStereo,
+            destinationDir,
+            ct);
+        progress?.Report(1);
+
+        return download == null ? null : YouTubeMappings.ToSourceDownload(download);
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+
+    // The plug-in's quality preference wins when the caller supplied a real ceiling;
+    // otherwise fall back to the configured default.
+    private VideoQualityPreference MapQuality(VideoQuality q) => YouTubeMappings.ToQualityPreference(q);
+
+    private static T ParseEnum<T>(IReadOnlyDictionary<string, string?> values, string key, T fallback)
+        where T : struct, Enum
+        => values.TryGetValue(key, out var raw) && Enum.TryParse<T>(raw, ignoreCase: true, out var parsed)
+            ? parsed
+            : fallback;
+
+    private static bool ParseBool(IReadOnlyDictionary<string, string?> values, string key, bool fallback)
+        => values.TryGetValue(key, out var raw) && bool.TryParse(raw, out var parsed) ? parsed : fallback;
+}

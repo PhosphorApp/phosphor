@@ -383,7 +383,16 @@ Each phase is independently shippable and reversible.
    it yet, so there is no behavior change.
 2. **Adapter, no loader.** Wrap the *existing* YouTube engines behind an in-box
    `YouTubeSource : IPhosphorSource` (statically referenced, not scanned). Route the
-   VM's YouTube calls through it. Prove the contract fits YouTube.
+   VM's YouTube calls through it. Prove the contract fits YouTube. — ✅ **DONE**
+   (build-only, not yet wired into the VM; that routing is Phase 4). Lives in
+   `Phosphor/Plugins/YouTube/`: `YouTubeSourceProvider` (single-instance, exposes the
+   YoutubeExplode-vs-yt-dlp engine choice + quality/stereo as declarative settings),
+   `YouTubeSource` (implements `ITextSearchCapable` + `IPlayableResolver` +
+   `IDownloadable` by composing the existing `SearchEngineFactory` / `VideoEngineFactory`
+   — engine selection stays an internal detail with the same availability fallback), and
+   `YouTubeMappings` (pure `VideoItem`/`VideoStreams`/`VideoDownload`/`VideoMetadata` ↔
+   abstraction adapters). Also added `IPluginHost.GetToolPath(...)` so a source can locate
+   host-bundled native tools (yt-dlp/ffmpeg) without hard-coded paths.
 3. **Wrap Plex** behind an in-box `PlexSource : IPhosphorSource` implementing
    `IBrowsable`. This is the hard one — it forces the `SourceCategory`/`SourceItem`
    model to be adequate and untangles `PlexService` from the VM.

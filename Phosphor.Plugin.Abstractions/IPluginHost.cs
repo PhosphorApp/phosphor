@@ -30,6 +30,14 @@ public interface IPluginHost
     void SetSecret(string key, string? value);
 
     /// <summary>
+    /// Resolves the full path to a bundled native tool the host ships (e.g. "yt-dlp",
+    /// "ffmpeg"), or <c>null</c> if the host does not provide it. Lets a plug-in shell out
+    /// to host-managed executables without hard-coding app-relative paths or reaching into
+    /// host internals. The name is the logical tool name without extension.
+    /// </summary>
+    string? GetToolPath(string toolName);
+
+    /// <summary>
     /// Reports a human-readable status message for the UI (e.g. "Found playlist: X").
     /// The host marshals this onto the UI thread; the plug-in must not assume a thread.
     /// </summary>
