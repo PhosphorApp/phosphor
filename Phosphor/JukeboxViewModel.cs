@@ -1829,7 +1829,7 @@ public partial class JukeboxViewModel : ObservableObject
 
         try
         {
-            var page = await _plex.GetHubItemsPageAsync(hubKey, hubType ?? "", 0, PlexPageSize, token);
+            var page = await PlexBrowseHubPageViaPluginOrLegacy(hubKey, hubType ?? "", 0, PlexPageSize, token);
             if (token.IsCancellationRequested) return;
 
             _plexTotalSize = page.TotalSize;
@@ -2004,7 +2004,7 @@ public partial class JukeboxViewModel : ObservableObject
                 }
             }
 
-            var page = await _plex.GetPlaylistItemsPageAsync(ratingKey, 0, PlexPageSize, token);
+            var page = await PlexBrowsePlaylistPageViaPluginOrLegacy(ratingKey, 0, PlexPageSize, token);
             if (token.IsCancellationRequested) return;
 
             _plexTotalSize = page.TotalSize;

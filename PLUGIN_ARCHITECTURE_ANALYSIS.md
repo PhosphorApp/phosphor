@@ -451,9 +451,14 @@ Each phase is independently shippable and reversible.
    "load more" scroll paths (hub/library/playlist) are now flag-routed while preserving the
    existing playlist-page caching. The remaining direct `...PageAsync` calls are the initial
    first-page browse loads (`BrowsePlexHubContentAsync` / `BrowsePlexPlaylistContentAsync`),
-   a separate entry path. **Phase 4g+ (todo):** adopt those initial-browse first-page loads,
-   plus live stream resolution + download and playlist/channel discovery, then retire the
-   legacy `if (IsPlex)` branches a few at a time.
+   a separate entry path. **Phase 4g (done):** routed those initial first-page hub/playlist
+   loads through the same `IPagedBrowsable` helpers (offset 0), so **every** Plex
+   browse-by-page path — initial load and load-more, across hub/library/playlist — now goes
+   through the capability. The only remaining direct `...PageAsync` calls are the legacy
+   fallbacks *inside* the guarded helpers. **Phase 4h+ (todo):** adopt live stream resolution
+   + download (in `BackglassWindow`, on its own thread — the thread-sensitive one) and
+   playlist/channel discovery (needs a contract extension), then retire the legacy
+   `if (IsPlex)` branches a few at a time.
 5. **Per-plug-in settings bag.** Migrate flat Plex/engine fields in `AppSettings`
    into a keyed settings dictionary, with a one-time migration from old fields.
 6. **Dynamic loader (opt-in).** Add the `plug-ins` folder scan using a collectible
