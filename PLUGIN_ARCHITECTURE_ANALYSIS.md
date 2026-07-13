@@ -459,6 +459,25 @@ Each phase is independently shippable and reversible.
    + download (in `BackglassWindow`, on its own thread — the thread-sensitive one) and
    playlist/channel discovery (needs a contract extension), then retire the legacy
    `if (IsPlex)` branches a few at a time.
+
+   **Consolidation baseline (after 4g).** Before tackling the two remaining (riskier)
+   migrations, the branch was hardened to a clean, known-good state:
+   - **Deduped the guarded helpers.** The three near-identical Plex paged-browse helpers
+     (`PlexBrowse{Hub,Library,Playlist}PageViaPluginOrLegacy`) now delegate to one shared
+     `PlexBrowsePageViaPluginOrLegacy(node, offset, count, legacyFallback, ct)` core;
+     each is a one-line wrapper supplying its `PlexNode` + legacy call. ~90 lines of
+     duplication collapsed, and there's now a single place the plug-in/legacy switch,
+     item mapping, cancellation, and logging live.
+   - **Mapping-fidelity audit (verified, no code change needed).** The Plex
+     `VideoItem → SourceItem → VideoItem` round-trip is lossless because the original
+     `VideoItem` rides in `SourceItem.SourceState` and `PlexMappings.ToVideoItem` unwraps
+     it (falling back to a field copy only if absent). The YouTube search mapping
+     (`MapPluginSearch`) produces the same fields the legacy `YoutubeExplodeSearchEngine`
+     did (`Title/Author/ThumbnailUrl/VideoId/Duration`).
+   - **Remaining TODOs (explicit):** (a) live stream resolution + download in
+     `BackglassWindow` — thread-sensitive, deserves a dedicated session; (b)
+     playlist/channel discovery — needs a new capability interface on the contract;
+     (c) once trusted, flip the flag default on and delete the legacy branches.
 5. **Per-plug-in settings bag.** Migrate flat Plex/engine fields in `AppSettings`
    into a keyed settings dictionary, with a one-time migration from old fields.
 6. **Dynamic loader (opt-in).** Add the `plug-ins` folder scan using a collectible

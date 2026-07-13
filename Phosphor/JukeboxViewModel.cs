@@ -807,93 +807,60 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Fetches one page of a Plex hub's items. When the plug-in path is enabled and the Plex
-    /// source supports paged browsing, routes through <c>IPagedBrowsable.BrowsePageAsync</c>
-    /// (converting items back to <see cref="VideoItem"/>s); otherwise uses the legacy
-    /// <c>_plex.GetHubItemsPageAsync</c>. Returns the page's items and the total size so the
-    /// caller's "load more" logic is unchanged. Behavior is identical with the flag off.
+    /// Shared core for the paginated Plex browse helpers. When the plug-in path is enabled and
+    /// the Plex source supports paged browsing, wraps <paramref name="node"/> in a
+    /// <see cref="Phosphor.Plugin.Abstractions.SourceCategory"/> and routes through
+    /// <c>IPagedBrowsable.BrowsePageAsync</c> (unwrapping items back to <see cref="VideoItem"/>);
+    /// otherwise invokes <paramref name="legacy"/>. Returns the page's items and total size so
+    /// callers' "load more" logic is unchanged. Behavior is identical with the flag off.
     /// </summary>
-    private async Task<(List<VideoItem> Items, int TotalSize)> PlexBrowseHubPageViaPluginOrLegacy(
+    private async Task<(List<VideoItem> Items, int TotalSize)> PlexBrowsePageViaPluginOrLegacy(
+        Phosphor.Plugins.Plex.PlexNode node, int offset, int count,
+        Func<Task<PlexPage>> legacy, CancellationToken ct = default)
+    {
+        var plex = _sourceRegistry?.PlexInstances.FirstOrDefault();
+        if (_usePluginSources && plex is Phosphor.Plugin.Abstractions.IPagedBrowsable paged)
+        {
+            var category = new Phosphor.Plugin.Abstractions.SourceCategory
+            {
+                SourceInstanceId = plex.InstanceId,
+                CategoryId = node.Key,
+                SourceState = node,
+            };
+
+            var page = await paged.BrowsePageAsync(category, offset, count, ct);
+            DebugLog.Log("SourceRegistry", $"Plex {node.Kind} page routed through plug-in (offset={offset})");
+            var items = page.Items.Select(Phosphor.Plugins.Plex.PlexMappings.ToVideoItem).ToList();
+            return (items, page.TotalSize);
+        }
+
+        var result = await legacy();
+        return (result.Items, result.TotalSize);
+    }
+
+    /// <summary>Fetches one page of a Plex hub's items (plug-in or legacy). See <see cref="PlexBrowsePageViaPluginOrLegacy"/>.</summary>
+    private Task<(List<VideoItem> Items, int TotalSize)> PlexBrowseHubPageViaPluginOrLegacy(
         string hubKey, string hubType, int offset, int count, CancellationToken ct)
-    {
-        var plex = _sourceRegistry?.PlexInstances.FirstOrDefault();
-        if (_usePluginSources && plex is Phosphor.Plugin.Abstractions.IPagedBrowsable paged)
-        {
-            var category = new Phosphor.Plugin.Abstractions.SourceCategory
-            {
-                SourceInstanceId = plex.InstanceId,
-                CategoryId = hubKey,
-                SourceState = new Phosphor.Plugins.Plex.PlexNode(
-                    Phosphor.Plugins.Plex.PlexNodeKind.Hub, hubKey, hubType),
-            };
+        => PlexBrowsePageViaPluginOrLegacy(
+            new Phosphor.Plugins.Plex.PlexNode(Phosphor.Plugins.Plex.PlexNodeKind.Hub, hubKey, hubType),
+            offset, count,
+            () => _plex.GetHubItemsPageAsync(hubKey, hubType, offset, count, ct), ct);
 
-            var page = await paged.BrowsePageAsync(category, offset, count, ct);
-            DebugLog.Log("SourceRegistry", $"Plex hub page routed through plug-in (offset={offset})");
-            var items = page.Items.Select(Phosphor.Plugins.Plex.PlexMappings.ToVideoItem).ToList();
-            return (items, page.TotalSize);
-        }
-
-        var legacy = await _plex.GetHubItemsPageAsync(hubKey, hubType, offset, count, ct);
-        return (legacy.Items, legacy.TotalSize);
-    }
-
-    /// <summary>
-    /// Fetches one page of a Plex library's items (artists at music top-level, else videos).
-    /// Routes through <c>IPagedBrowsable</c> when the plug-in path is enabled, else the legacy
-    /// <c>_plex.GetLibraryVideosPageAsync</c>. Returns items + total size. Identical with flag off.
-    /// </summary>
-    private async Task<(List<VideoItem> Items, int TotalSize)> PlexBrowseLibraryPageViaPluginOrLegacy(
+    /// <summary>Fetches one page of a Plex library's items (artists at music top-level, else videos).</summary>
+    private Task<(List<VideoItem> Items, int TotalSize)> PlexBrowseLibraryPageViaPluginOrLegacy(
         string libraryKey, string? browseType, int offset, int count, CancellationToken ct)
-    {
-        var plex = _sourceRegistry?.PlexInstances.FirstOrDefault();
-        if (_usePluginSources && plex is Phosphor.Plugin.Abstractions.IPagedBrowsable paged)
-        {
-            var category = new Phosphor.Plugin.Abstractions.SourceCategory
-            {
-                SourceInstanceId = plex.InstanceId,
-                CategoryId = libraryKey,
-                SourceState = new Phosphor.Plugins.Plex.PlexNode(
-                    Phosphor.Plugins.Plex.PlexNodeKind.Library, libraryKey, browseType),
-            };
+        => PlexBrowsePageViaPluginOrLegacy(
+            new Phosphor.Plugins.Plex.PlexNode(Phosphor.Plugins.Plex.PlexNodeKind.Library, libraryKey, browseType),
+            offset, count,
+            () => _plex.GetLibraryVideosPageAsync(libraryKey, offset, count, browseType, ct), ct);
 
-            var page = await paged.BrowsePageAsync(category, offset, count, ct);
-            DebugLog.Log("SourceRegistry", $"Plex library page routed through plug-in (offset={offset})");
-            var items = page.Items.Select(Phosphor.Plugins.Plex.PlexMappings.ToVideoItem).ToList();
-            return (items, page.TotalSize);
-        }
-
-        var legacy = await _plex.GetLibraryVideosPageAsync(libraryKey, offset, count, browseType, ct);
-        return (legacy.Items, legacy.TotalSize);
-    }
-
-    /// <summary>
-    /// Fetches one page of a Plex playlist's items. Routes through <c>IPagedBrowsable</c> when the
-    /// plug-in path is enabled, else the legacy <c>_plex.GetPlaylistItemsPageAsync</c>. Returns
-    /// items + total size. Identical with flag off.
-    /// </summary>
-    private async Task<(List<VideoItem> Items, int TotalSize)> PlexBrowsePlaylistPageViaPluginOrLegacy(
+    /// <summary>Fetches one page of a Plex playlist's items (plug-in or legacy).</summary>
+    private Task<(List<VideoItem> Items, int TotalSize)> PlexBrowsePlaylistPageViaPluginOrLegacy(
         string playlistKey, int offset, int count, CancellationToken ct)
-    {
-        var plex = _sourceRegistry?.PlexInstances.FirstOrDefault();
-        if (_usePluginSources && plex is Phosphor.Plugin.Abstractions.IPagedBrowsable paged)
-        {
-            var category = new Phosphor.Plugin.Abstractions.SourceCategory
-            {
-                SourceInstanceId = plex.InstanceId,
-                CategoryId = playlistKey,
-                SourceState = new Phosphor.Plugins.Plex.PlexNode(
-                    Phosphor.Plugins.Plex.PlexNodeKind.Playlist, playlistKey),
-            };
-
-            var page = await paged.BrowsePageAsync(category, offset, count, ct);
-            DebugLog.Log("SourceRegistry", $"Plex playlist page routed through plug-in (offset={offset})");
-            var items = page.Items.Select(Phosphor.Plugins.Plex.PlexMappings.ToVideoItem).ToList();
-            return (items, page.TotalSize);
-        }
-
-        var legacy = await _plex.GetPlaylistItemsPageAsync(playlistKey, offset, count, ct);
-        return (legacy.Items, legacy.TotalSize);
-    }
+        => PlexBrowsePageViaPluginOrLegacy(
+            new Phosphor.Plugins.Plex.PlexNode(Phosphor.Plugins.Plex.PlexNodeKind.Playlist, playlistKey),
+            offset, count,
+            () => _plex.GetPlaylistItemsPageAsync(playlistKey, offset, count, ct), ct);
 
     /// <summary>
     /// Number of results to fetch per "load more" page. The out-of-process yt-dlp search
