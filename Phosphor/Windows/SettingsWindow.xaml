@@ -2770,6 +2770,7 @@
 
             <!-- ═══ TAB: About ═══ -->
             <TabItem Header="ABOUT">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,5,0">
                 <Border Background="{StaticResource SurfaceBrush}" CornerRadius="6"
                         Padding="12" Margin="0,8,0,0">
                         <StackPanel>
@@ -2838,6 +2839,7 @@
                                  TextWrapping="Wrap"/>
                     </StackPanel>
                 </Border>
+                </ScrollViewer>
             </TabItem>
 
         </TabControl>
