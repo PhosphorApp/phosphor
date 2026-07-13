@@ -50,6 +50,7 @@ public partial class JukeboxViewModel : ObservableObject
             await registry.BuildAsync(settings);
             _sourceRegistry = registry;
             DebugLog.Log("SourceRegistry", $"Built {registry.Sources.Count} source(s); enabled={_usePluginSources}");
+            WireCacheDownloadOverride();
         }
         catch (Exception ex)
         {
@@ -858,6 +859,59 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Downloads raw streams for the disk caches. When the plug-in path is enabled and the
+    /// YouTube source supports downloading, routes through <c>IDownloadable.DownloadAsync</c>
+    /// (mapping the result back to the host <see cref="Video.VideoDownload"/>); otherwise, or if
+    /// the plug-in yields an incomplete result, falls back to the legacy video engine. Returns
+    /// plain data / no UI, so it is safe to await from the caches' background download threads.
+    /// </summary>
+    private async Task<Video.VideoDownload?> DownloadStreamsViaPluginOrLegacy(
+        string videoId, VideoQualityPreference quality, bool preferStereo, string destinationDir, CancellationToken ct)
+    {
+        if (_sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IDownloadable dl)
+        {
+            var probe = new Phosphor.Plugin.Abstractions.SourceItem
+            {
+                SourceInstanceId = _sourceRegistry.YouTube!.InstanceId,
+                ItemId = videoId,
+                SourceState = videoId,
+            };
+            var prefs = new Phosphor.Plugin.Abstractions.PlaybackPreferences
+            {
+                MaxQuality = MapQualityToPlugin(quality),
+                PreferStereo = preferStereo,
+            };
+            var result = await dl.DownloadAsync(probe, prefs, destinationDir, null, ct);
+
+            // The caches mux separate video+audio; use the plug-in result only when fully
+            // populated, otherwise fall through to the legacy engine so caching never breaks.
+            if (result?.VideoFilePath is { } vp && result.AudioFilePath is { } ap)
+            {
+                DebugLog.Log("SourceRegistry", "Stream download routed through plug-in YouTube source");
+                return new Video.VideoDownload(
+                    vp, ap, result.VideoContainer ?? "", result.AudioContainer ?? "", result.Resolution ?? "");
+            }
+        }
+
+        return await _videoEngine.DownloadStreamsAsync(videoId, quality, preferStereo, destinationDir, ct);
+    }
+
+    /// <summary>
+    /// Wires (or clears) the plug-in download override on the given caches based on whether the
+    /// plug-in source path is active. Called after the caches or registry are (re)built.
+    /// </summary>
+    private void WireCacheDownloadOverride()
+    {
+        Func<string, VideoQualityPreference, bool, string, CancellationToken, Task<Video.VideoDownload?>>? over =
+            (_usePluginSources && _sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IDownloadable)
+                ? DownloadStreamsViaPluginOrLegacy
+                : null;
+
+        if (_cache != null) _cache.DownloadOverride = over;
+        if (_prefetch != null) _prefetch.DownloadOverride = over;
+    }
+
+    /// <summary>
     /// Drills into a Plex container (artist→albums or album→tracks). When the plug-in path is
     /// enabled and the Plex source supports browsing, routes through <c>IBrowsable.BrowseAsync</c>
     /// (converting the result back to <see cref="VideoItem"/>s); otherwise uses the legacy
@@ -987,6 +1041,7 @@ public partial class JukeboxViewModel : ObservableObject
     public void SetupCache(bool enabled, double maxSizeGb, int maxClipLengthMinutes = 0)
     {
         _cache = new VideoCache(enabled, maxSizeGb, maxClipLengthMinutes) { VideoEngine = _videoEngine };
+        WireCacheDownloadOverride();
     }
 
     /// <summary>
@@ -1061,6 +1116,7 @@ public partial class JukeboxViewModel : ObservableObject
             _prefetch?.PurgeAll();
             _prefetch = null;
         }
+        WireCacheDownloadOverride();
     }
 
     /// <summary>

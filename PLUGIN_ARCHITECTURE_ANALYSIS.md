@@ -468,10 +468,16 @@ Each phase is independently shippable and reversible.
    (`ResolveStreamsViaPluginOrLegacy`) that returns the host `VideoStreams` and touches no
    UI/dispatcher — so awaiting it from BackglassWindow's own thread is safe and the
    window's threading model is unchanged (honoring the repo guideline against marshaling
-   its work). **Phase 4j+ (todo):** the raw stream **download** seam (`VideoCache` /
-   `PrefetchCache`, which call `vm.VideoEngine.DownloadStreamsAsync` directly) is a separate
-   cache-owned path still on legacy; adopt it via `IDownloadable`, then flip the flag
-   default on and retire the legacy `if (IsPlex)` / engine branches.
+   its work). **Phase 4j (done):** adopted the raw stream **download** seam — added an
+   optional `DownloadOverride` delegate to `VideoCache` and `PrefetchCache` that the VM
+   wires (via `WireCacheDownloadOverride`) to a guarded `DownloadStreamsViaPluginOrLegacy`
+   helper (`IDownloadable.DownloadAsync` → host `VideoDownload`, falling back to the legacy
+   engine if the plug-in yields an incomplete result). The override is null when the flag is
+   off, so caching behavior is byte-identical. **This completes the functional migration —
+   every runtime source path (search, discovery, browse, metadata, live resolution, and
+   download) now routes through the plug-in registry when the flag is on.** **Remaining
+   (cleanup only):** once trusted in the wild, flip `UsePluginSources` default on and delete
+   the legacy `if (IsPlex)` / engine branches.
 
    **Consolidation baseline (after 4g).** Before tackling the two remaining (riskier)
    migrations, the branch was hardened to a clean, known-good state:

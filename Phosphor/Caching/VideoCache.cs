@@ -28,6 +28,13 @@ public class VideoCache
     /// </summary>
     public IVideoEngine VideoEngine { get; set; } = new YoutubeExplodeVideoEngine();
 
+    /// <summary>
+    /// Optional download override. When set (by the ViewModel when the plug-in source path is
+    /// enabled), it is used instead of <see cref="VideoEngine"/> to fetch raw streams. Null
+    /// means use the engine directly — the default, byte-identical legacy behavior.
+    /// </summary>
+    public Func<string, VideoQualityPreference, bool, string, CancellationToken, Task<VideoDownload?>>? DownloadOverride { get; set; }
+
     public bool Enabled => _enabled;
 
     public VideoCache(bool enabled, double maxSizeGb, int maxClipLengthMinutes = 0)
@@ -112,7 +119,9 @@ public class VideoCache
 
         try
         {
-            var download = await VideoEngine.DownloadStreamsAsync(videoId, quality, preferStereo, CacheDir, ct);
+            var download = DownloadOverride != null
+                ? await DownloadOverride(videoId, quality, preferStereo, CacheDir, ct)
+                : await VideoEngine.DownloadStreamsAsync(videoId, quality, preferStereo, CacheDir, ct);
             if (download == null) return;
 
             var videoPath = download.VideoFilePath;
