@@ -838,6 +838,64 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Fetches one page of a Plex library's items (artists at music top-level, else videos).
+    /// Routes through <c>IPagedBrowsable</c> when the plug-in path is enabled, else the legacy
+    /// <c>_plex.GetLibraryVideosPageAsync</c>. Returns items + total size. Identical with flag off.
+    /// </summary>
+    private async Task<(List<VideoItem> Items, int TotalSize)> PlexBrowseLibraryPageViaPluginOrLegacy(
+        string libraryKey, string? browseType, int offset, int count, CancellationToken ct)
+    {
+        var plex = _sourceRegistry?.PlexInstances.FirstOrDefault();
+        if (_usePluginSources && plex is Phosphor.Plugin.Abstractions.IPagedBrowsable paged)
+        {
+            var category = new Phosphor.Plugin.Abstractions.SourceCategory
+            {
+                SourceInstanceId = plex.InstanceId,
+                CategoryId = libraryKey,
+                SourceState = new Phosphor.Plugins.Plex.PlexNode(
+                    Phosphor.Plugins.Plex.PlexNodeKind.Library, libraryKey, browseType),
+            };
+
+            var page = await paged.BrowsePageAsync(category, offset, count, ct);
+            DebugLog.Log("SourceRegistry", $"Plex library page routed through plug-in (offset={offset})");
+            var items = page.Items.Select(Phosphor.Plugins.Plex.PlexMappings.ToVideoItem).ToList();
+            return (items, page.TotalSize);
+        }
+
+        var legacy = await _plex.GetLibraryVideosPageAsync(libraryKey, offset, count, browseType, ct);
+        return (legacy.Items, legacy.TotalSize);
+    }
+
+    /// <summary>
+    /// Fetches one page of a Plex playlist's items. Routes through <c>IPagedBrowsable</c> when the
+    /// plug-in path is enabled, else the legacy <c>_plex.GetPlaylistItemsPageAsync</c>. Returns
+    /// items + total size. Identical with flag off.
+    /// </summary>
+    private async Task<(List<VideoItem> Items, int TotalSize)> PlexBrowsePlaylistPageViaPluginOrLegacy(
+        string playlistKey, int offset, int count, CancellationToken ct)
+    {
+        var plex = _sourceRegistry?.PlexInstances.FirstOrDefault();
+        if (_usePluginSources && plex is Phosphor.Plugin.Abstractions.IPagedBrowsable paged)
+        {
+            var category = new Phosphor.Plugin.Abstractions.SourceCategory
+            {
+                SourceInstanceId = plex.InstanceId,
+                CategoryId = playlistKey,
+                SourceState = new Phosphor.Plugins.Plex.PlexNode(
+                    Phosphor.Plugins.Plex.PlexNodeKind.Playlist, playlistKey),
+            };
+
+            var page = await paged.BrowsePageAsync(category, offset, count, ct);
+            DebugLog.Log("SourceRegistry", $"Plex playlist page routed through plug-in (offset={offset})");
+            var items = page.Items.Select(Phosphor.Plugins.Plex.PlexMappings.ToVideoItem).ToList();
+            return (items, page.TotalSize);
+        }
+
+        var legacy = await _plex.GetPlaylistItemsPageAsync(playlistKey, offset, count, ct);
+        return (legacy.Items, legacy.TotalSize);
+    }
+
+    /// <summary>
     /// Number of results to fetch per "load more" page. The out-of-process yt-dlp search
     /// engine has higher per-page latency (a process spawn), so it uses a larger page to
     /// reduce how often the user hits a fetch while scrolling.
@@ -2118,8 +2176,8 @@ public partial class JukeboxViewModel : ObservableObject
             var browseType = (_activePlexLibraryType == "artist" && _plexDrillArtistKey == null)
                 ? "artist" : _activePlexLibraryType;
 
-            var page = await _plex.GetLibraryVideosPageAsync(
-                _activePlexLibraryKey, SearchResults.Count, PlexPageSize, browseType, token);
+            var page = await PlexBrowseLibraryPageViaPluginOrLegacy(
+                _activePlexLibraryKey, browseType, SearchResults.Count, PlexPageSize, token);
 
             if (token.IsCancellationRequested) return;
 
@@ -2228,7 +2286,7 @@ public partial class JukeboxViewModel : ObservableObject
                 }
             }
 
-            var page = await _plex.GetPlaylistItemsPageAsync(
+            var page = await PlexBrowsePlaylistPageViaPluginOrLegacy(
                 _activePlexPlaylistKey, SearchResults.Count, PlexPageSize, token);
             if (token.IsCancellationRequested) return;
 
