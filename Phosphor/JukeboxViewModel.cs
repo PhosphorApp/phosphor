@@ -803,6 +803,61 @@ public partial class JukeboxViewModel : ObservableObject
             m.PublishedAt);
 
     /// <summary>
+    /// Resolves live YouTube stream URLs for playback. When the plug-in path is enabled and the
+    /// YouTube source resolves streams, routes through <c>IPlayableResolver.ResolveAsync</c>
+    /// (mapping the result back to the host <see cref="Video.VideoStreams"/>); otherwise uses the
+    /// legacy in-VM video engine. Behavior is identical with the flag off.
+    /// </summary>
+    /// <remarks>
+    /// Returns plain data and touches no UI/dispatcher, so it is safe to await from the
+    /// BackglassWindow's own thread (unlike work that must marshal to a UI thread).
+    /// </remarks>
+    public async Task<Video.VideoStreams?> ResolveStreamsViaPluginOrLegacy(
+        string videoId, VideoQualityPreference quality, bool preferStereo, bool audioOnly, CancellationToken ct = default)
+    {
+        if (_usePluginSources &&
+            _sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IPlayableResolver resolver)
+        {
+            var probe = new Phosphor.Plugin.Abstractions.SourceItem
+            {
+                SourceInstanceId = _sourceRegistry.YouTube!.InstanceId,
+                ItemId = videoId,
+                SourceState = videoId,
+            };
+            var prefs = new Phosphor.Plugin.Abstractions.PlaybackPreferences
+            {
+                MaxQuality = MapQualityToPlugin(quality),
+                PreferStereo = preferStereo,
+                AudioOnly = audioOnly,
+            };
+            var resolved = await resolver.ResolveAsync(probe, prefs, ct);
+            DebugLog.Log("SourceRegistry", "Stream resolution routed through plug-in YouTube source");
+            return resolved == null ? null : MapResolvedStream(resolved);
+        }
+
+        return await _videoEngine.ResolveStreamsAsync(videoId, quality, preferStereo, audioOnly, ct);
+    }
+
+    private static Phosphor.Plugin.Abstractions.VideoQuality MapQualityToPlugin(VideoQualityPreference q) => q switch
+    {
+        VideoQualityPreference.Low => Phosphor.Plugin.Abstractions.VideoQuality.Low,
+        VideoQualityPreference.Medium => Phosphor.Plugin.Abstractions.VideoQuality.Medium,
+        VideoQualityPreference.High => Phosphor.Plugin.Abstractions.VideoQuality.High,
+        _ => Phosphor.Plugin.Abstractions.VideoQuality.Max,
+    };
+
+    private static Video.VideoStreams MapResolvedStream(Phosphor.Plugin.Abstractions.ResolvedStream s)
+    {
+        var kind = s.Layout switch
+        {
+            Phosphor.Plugin.Abstractions.StreamLayout.SeparateVideoAudio => Video.VideoStreamKind.SeparateVideoAudio,
+            Phosphor.Plugin.Abstractions.StreamLayout.Muxed => Video.VideoStreamKind.Muxed,
+            _ => Video.VideoStreamKind.AudioOnly,
+        };
+        return new Video.VideoStreams(kind, s.PrimaryUri, s.AudioSlaveUri, s.Resolution ?? "");
+    }
+
+    /// <summary>
     /// Drills into a Plex container (artist→albums or album→tracks). When the plug-in path is
     /// enabled and the Plex source supports browsing, routes through <c>IBrowsable.BrowseAsync</c>
     /// (converting the result back to <see cref="VideoItem"/>s); otherwise uses the legacy

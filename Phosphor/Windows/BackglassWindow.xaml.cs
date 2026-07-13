@@ -748,9 +748,14 @@ public partial class BackglassWindow : JukeboxWindow
                 {
                     var quality = vm?.VideoQuality ?? VideoQualityPreference.High;
                     var stereo = vm?.StereoAudio ?? false;
-                    var engine = vm?.VideoEngine ?? new Phosphor.Video.YoutubeExplodeVideoEngine();
 
-                    var streams = await engine.ResolveStreamsAsync(videoId, quality, stereo, isAudioOnly, ct);
+                    // Route through the VM so the plug-in source path is honored when enabled.
+                    // The helper returns plain data (no UI/dispatcher), so awaiting it from this
+                    // window's own thread is safe. Falls back to a local engine if there's no VM.
+                    var streams = vm != null
+                        ? await vm.ResolveStreamsViaPluginOrLegacy(videoId, quality, stereo, isAudioOnly, ct)
+                        : await new Phosphor.Video.YoutubeExplodeVideoEngine()
+                            .ResolveStreamsAsync(videoId, quality, stereo, isAudioOnly, ct);
                     if (ct.IsCancellationRequested) { _mediaPlayer.Vout -= OnVout; return; }
 
                     if (streams == null)

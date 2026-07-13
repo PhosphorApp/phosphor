@@ -462,9 +462,16 @@ Each phase is independently shippable and reversible.
    sites (quoted playlist, unquoted playlist, channel) through it behind the flag. The
    YouTube-specific filter/`PlaylistId.Parse` logic stayed in the VM; only the engine calls
    moved. The `SourceItem → VideoItem` converter was extracted and shared across search +
-   playlist + channel. **Phase 4i+ (todo):** adopt live stream resolution + download (in
-   `BackglassWindow`, on its own thread — the thread-sensitive one), then retire the legacy
-   `if (IsPlex)` / `_searchEngine` branches a few at a time.
+   playlist + channel. **Phase 4i (done):** adopted live stream resolution — routed
+   BackglassWindow's single `ResolveStreamsAsync` call through the registry's YouTube
+   `IPlayableResolver.ResolveAsync` behind the flag, via a VM helper
+   (`ResolveStreamsViaPluginOrLegacy`) that returns the host `VideoStreams` and touches no
+   UI/dispatcher — so awaiting it from BackglassWindow's own thread is safe and the
+   window's threading model is unchanged (honoring the repo guideline against marshaling
+   its work). **Phase 4j+ (todo):** the raw stream **download** seam (`VideoCache` /
+   `PrefetchCache`, which call `vm.VideoEngine.DownloadStreamsAsync` directly) is a separate
+   cache-owned path still on legacy; adopt it via `IDownloadable`, then flip the flag
+   default on and retire the legacy `if (IsPlex)` / engine branches.
 
    **Consolidation baseline (after 4g).** Before tackling the two remaining (riskier)
    migrations, the branch was hardened to a clean, known-good state:
