@@ -628,6 +628,8 @@ public partial class App : Application
         ShowCrashDialog("Fatal Exception", e.ExceptionObject as Exception);
     }
 
+    private static int _crashDialogShown;
+
     private static void ShowCrashDialog(string context, Exception? ex)
     {
         var message = $"[{context}]\n\n{ex?.GetType().Name}: {ex?.Message}\n\n{ex?.StackTrace}";
@@ -642,8 +644,15 @@ public partial class App : Application
             System.IO.File.AppendAllText(logPath,
                 $"\n\n=== {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===\n{message}");
 
-            MessageBox.Show(message, $"Phosphor — {context}",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+            // Show at most ONE crash dialog for the process lifetime. A cascading failure
+            // (e.g. a cross-thread collection edit that then throws on every render tick)
+            // would otherwise open an unbounded storm of dialogs. Every exception is still
+            // logged above; we just stop stacking popups once things have clearly gone wrong.
+            if (System.Threading.Interlocked.Exchange(ref _crashDialogShown, 1) == 0)
+            {
+                MessageBox.Show(message, $"Phosphor — {context}",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
         catch { /* last resort — nothing we can do */ }
     }

@@ -682,6 +682,22 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Runs <paramref name="action"/> on the UI (dispatcher) thread. A no-op marshal when the
+    /// caller is already on the UI thread, so it is safe and cheap on any path. Needed because
+    /// async continuations can resume on a threadpool thread (e.g. the plug-in search path),
+    /// and mutating UI-bound <see cref="ObservableCollection{T}"/>s like <see cref="Queue"/>
+    /// off the dispatcher throws.
+    /// </summary>
+    private static async Task RunOnUiAsync(Action action)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher != null && !dispatcher.CheckAccess())
+            await dispatcher.InvokeAsync(action);
+        else
+            action();
+    }
+
+    /// <summary>
     /// Free-text video search. When the experimental plug-in path is enabled and a YouTube
     /// source is available, routes through <c>ITextSearchCapable</c> (mapping results back to
     /// <see cref="VideoItem"/>); otherwise uses the legacy in-VM search engine. Phase 4 proof
@@ -3129,21 +3145,24 @@ public partial class JukeboxViewModel : ObservableObject
             // Shuffle and pick items not already queued/played
             var shuffled = results.OrderBy(_ => _autoDjRng.Next()).ToList();
 
-            foreach (var item in shuffled)
+            await RunOnUiAsync(() =>
             {
-                if (Queue.Count >= targetSize) break;
-                var videoId = item.VideoId;
-                if (_autoDjUsedIds.Contains(videoId)) continue;
-                if (Queue.Any(q => q.VideoId == videoId)) continue;
-                if (CurrentlyPlaying?.VideoId == videoId) continue;
+                foreach (var item in shuffled)
+                {
+                    if (Queue.Count >= targetSize) break;
+                    var videoId = item.VideoId;
+                    if (_autoDjUsedIds.Contains(videoId)) continue;
+                    if (Queue.Any(q => q.VideoId == videoId)) continue;
+                    if (CurrentlyPlaying?.VideoId == videoId) continue;
 
-                Queue.Add(item);
-                _autoDjUsedIds.Add(videoId);
-                StatusText = $"AutoDJ queued: {item.Title}";
+                    Queue.Add(item);
+                    _autoDjUsedIds.Add(videoId);
+                    StatusText = $"AutoDJ queued: {item.Title}";
 
-                if (CurrentlyPlaying == null)
-                    PlayNext();
-            }
+                    if (CurrentlyPlaying == null)
+                        PlayNext();
+                }
+            });
         }
         catch (Exception ex)
         {
@@ -3194,21 +3213,24 @@ public partial class JukeboxViewModel : ObservableObject
 
             var shuffled = pool.OrderBy(_ => _autoDjRng.Next()).ToList();
 
-            foreach (var item in shuffled)
+            await RunOnUiAsync(() =>
             {
-                if (Queue.Count >= targetSize) break;
-                var videoId = item.VideoId;
-                if (_autoDjUsedIds.Contains(videoId)) continue;
-                if (Queue.Any(q => q.VideoId == videoId)) continue;
-                if (CurrentlyPlaying?.VideoId == videoId) continue;
+                foreach (var item in shuffled)
+                {
+                    if (Queue.Count >= targetSize) break;
+                    var videoId = item.VideoId;
+                    if (_autoDjUsedIds.Contains(videoId)) continue;
+                    if (Queue.Any(q => q.VideoId == videoId)) continue;
+                    if (CurrentlyPlaying?.VideoId == videoId) continue;
 
-                Queue.Add(item);
-                _autoDjUsedIds.Add(videoId);
-                StatusText = $"AutoDJ queued: {item.Title}";
+                    Queue.Add(item);
+                    _autoDjUsedIds.Add(videoId);
+                    StatusText = $"AutoDJ queued: {item.Title}";
 
-                if (CurrentlyPlaying == null)
-                    PlayNext();
-            }
+                    if (CurrentlyPlaying == null)
+                        PlayNext();
+                }
+            });
         }
         catch (Exception ex)
         {
