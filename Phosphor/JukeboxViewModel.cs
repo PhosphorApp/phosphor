@@ -21,6 +21,43 @@ public partial class JukeboxViewModel : ObservableObject
     private PrefetchCache? _prefetch;
     private readonly PlexService _plex = new();
 
+    // ── Plug-in sources (experimental; runs alongside the legacy engines) ──
+    private Phosphor.Plugins.SourceRegistry? _sourceRegistry;
+    private bool _usePluginSources;
+
+    /// <summary>
+    /// Whether the experimental plug-in source path is enabled. When false (default) the VM
+    /// behaves exactly as before; the registry is ignored.
+    /// </summary>
+    public bool UsePluginSources
+    {
+        get => _usePluginSources;
+        set => _usePluginSources = value;
+    }
+
+    /// <summary>
+    /// Builds (or rebuilds) the plug-in <see cref="Phosphor.Plugins.SourceRegistry"/> from the
+    /// given settings. Additive in Phase 4 — the registry runs alongside the legacy engines and
+    /// is only consulted on paths guarded by <see cref="UsePluginSources"/>.
+    /// </summary>
+    public async Task BuildSourceRegistryAsync(AppSettings settings)
+    {
+        _usePluginSources = settings.UsePluginSources;
+        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(YouTubeTimeoutSeconds) };
+        var registry = new Phosphor.Plugins.SourceRegistry(http);
+        try
+        {
+            await registry.BuildAsync(settings);
+            _sourceRegistry = registry;
+            DebugLog.Log("SourceRegistry", $"Built {registry.Sources.Count} source(s); enabled={_usePluginSources}");
+        }
+        catch (Exception ex)
+        {
+            DebugLog.LogException("SourceRegistry build", ex);
+            _sourceRegistry = null;
+        }
+    }
+
     // ── Genre categories (loaded from categories.json) ──
     private List<GenreCategoryEntry> _genreCategories = [];
 
@@ -642,6 +679,42 @@ public partial class JukeboxViewModel : ObservableObject
     {
         var http = new HttpClient { Timeout = TimeSpan.FromSeconds(YouTubeTimeoutSeconds) };
         _searchEngine = SearchEngineFactory.Create(_searchEngineKind, http);
+    }
+
+    /// <summary>
+    /// Free-text video search. When the experimental plug-in path is enabled and a YouTube
+    /// source is available, routes through <c>ITextSearchCapable</c> (mapping results back to
+    /// <see cref="VideoItem"/>); otherwise uses the legacy in-VM search engine. Phase 4 proof
+    /// point — behavior is identical with the flag off.
+    /// </summary>
+    private IAsyncEnumerable<VideoItem> SearchVideosViaPluginOrLegacy(string query)
+    {
+        if (_usePluginSources &&
+            _sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.ITextSearchCapable yt)
+        {
+            DebugLog.Log("SourceRegistry", "Search routed through plug-in YouTube source");
+            return MapPluginSearch(yt, query);
+        }
+
+        return _searchEngine.SearchVideosAsync(query);
+    }
+
+    private static async IAsyncEnumerable<VideoItem> MapPluginSearch(
+        Phosphor.Plugin.Abstractions.ITextSearchCapable source,
+        string query,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await foreach (var item in source.SearchAsync(query, ct).WithCancellation(ct))
+        {
+            yield return new VideoItem
+            {
+                Title = item.Title,
+                Author = item.Subtitle ?? "",
+                ThumbnailUrl = item.ThumbnailUrl ?? "",
+                VideoId = item.ItemId,
+                Duration = item.Duration,
+            };
+        }
     }
 
     /// <summary>
@@ -1281,7 +1354,7 @@ public partial class JukeboxViewModel : ObservableObject
         }
         else
         {
-            _searchEnumerator = _searchEngine.SearchVideosAsync(query).GetAsyncEnumerator();
+            _searchEnumerator = SearchVideosViaPluginOrLegacy(query).GetAsyncEnumerator();
         }
 
         _hasMoreResults = true;

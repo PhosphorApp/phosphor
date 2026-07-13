@@ -411,7 +411,20 @@ Each phase is independently shippable and reversible.
    `ResolvedStream(Http, …)`), so no transcode logic moved.
 4. **Introduce a `SourceRegistry`** in the VM replacing the direct `_plex` field and
    engine factories. All dispatch goes through the registry; delete `if (IsPlex)`
-   branches.
+   branches. — 🟡 **IN PROGRESS (scoped down).** A codebase survey found **~102**
+   source-coupling sites in `JukeboxViewModel` (32 direct `_plex.` calls, 13 `IsPlex`,
+   13 `_searchEngine`, 9 `_video`, plus gapless/cache paths reading `VideoItem`), so a
+   single big-bang rip-out was rejected as too risky. **Phase 4a (done):** stood up the
+   runtime infrastructure — `Phosphor/Plugins/Host/PluginHost.cs` (implements
+   `IPluginHost` over `DebugLog`, a shared `HttpClient`, app-relative tool/cache paths,
+   in-memory secrets) and `Phosphor/Plugins/SourceRegistry.cs` (builds + initializes the
+   YouTube and Plex sources from `AppSettings`). Wired into `App.xaml.cs` and adopted in
+   **one narrow path** — free-text search now routes through the registry's YouTube
+   `ITextSearchCapable` — gated by a new `AppSettings.UsePluginSources` flag that
+   **defaults off**, so default behavior is byte-identical. The registry runs *alongside*
+   the legacy engines. **Phase 4b+ (todo):** incrementally migrate the remaining paths
+   (Plex browse/playback, video resolve/download) onto the registry and retire the legacy
+   `if (IsPlex)` branches a few at a time.
 5. **Per-plug-in settings bag.** Migrate flat Plex/engine fields in `AppSettings`
    into a keyed settings dictionary, with a one-time migration from old fields.
 6. **Dynamic loader (opt-in).** Add the `plug-ins` folder scan using a collectible

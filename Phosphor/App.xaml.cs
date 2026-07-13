@@ -77,6 +77,11 @@ public partial class App : Application
         if (!string.IsNullOrWhiteSpace(_settings.PlexServerUrl) && !string.IsNullOrWhiteSpace(_settings.PlexToken))
             viewModel.ConfigurePlex(_settings.PlexServerUrl, _settings.PlexToken, _settings.PlexLibraries, _settings.PlexStereoAudio);
 
+        // Build the experimental plug-in source registry (runs alongside the legacy engines;
+        // only consulted on paths guarded by UsePluginSources). Fire-and-forget: failure is
+        // logged and simply leaves the registry unused.
+        _ = viewModel.BuildSourceRegistryAsync(_settings);
+
         MaybeAutoUpdateYtDlp();
 
         // Create and show DMD first — it's the primary window

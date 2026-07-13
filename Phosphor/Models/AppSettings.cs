@@ -385,6 +385,11 @@ public class AppSettings
     public bool StereoAudio { get; set; } = true;
     public int Volume { get; set; } = 100;
 
+    // Plug-in sources (experimental). When true, the app routes supported paths through
+    // the new source plug-in registry instead of the legacy built-in engines. Defaults
+    // off so behavior is unchanged until explicitly opted in.
+    public bool UsePluginSources { get; set; }
+
     // Network
     public int NetworkCachingMs { get; set; } = 2000;
     public int LiveCachingMs { get; set; } = 1000;
