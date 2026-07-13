@@ -2381,7 +2381,9 @@ public partial class DmdWindow : JukeboxWindow
             LogStep("ReloadGenreCategories");
             vm.SetVideoEngine(_appSettings.VideoEngine);
             vm.SetSearchEngine(_appSettings.SearchEngine);
-            vm.Cache?.UpdateSettings(_appSettings.CacheEnabled, _appSettings.CacheMaxSizeGb, _appSettings.CacheMaxClipLengthMinutes);
+            // Rebuild the plug-in source registry so the Dev/Test "Use plug-in sources" toggle
+            // (and any Plex/engine changes) take effect without a restart.
+            _ = vm.BuildSourceRegistryAsync(_appSettings);
             vm.SetupPrefetch(_appSettings.PrefetchEnabled);
             vm.SetupThumbnailCache(_appSettings.ThumbnailCacheEnabled, _appSettings.ThumbnailCacheMaxSizeMb);
             vm.SetupCategoryCache(_appSettings.CategoryCacheEnabled, _appSettings.CategoryCacheMaxAgeHours);
