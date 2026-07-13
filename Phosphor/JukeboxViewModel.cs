@@ -3110,7 +3110,7 @@ public partial class JukeboxViewModel : ObservableObject
         {
             // Load a larger pool from this genre to pick randomly from
             var results = new List<VideoItem>();
-            var enumerator = _searchEngine.SearchVideosAsync(genre.SearchTerm).GetAsyncEnumerator();
+            var enumerator = SearchVideosViaPluginOrLegacy(genre.SearchTerm).GetAsyncEnumerator();
             try
             {
                 int fetched = 0;
@@ -3176,7 +3176,7 @@ public partial class JukeboxViewModel : ObservableObject
         {
             // Fetch a page of results and randomize so we don't always pick the same top results
             var pool = new List<VideoItem>();
-            var enumerator = _searchEngine.SearchVideosAsync(query).GetAsyncEnumerator();
+            var enumerator = SearchVideosViaPluginOrLegacy(query).GetAsyncEnumerator();
             try
             {
                 int fetched = 0;
