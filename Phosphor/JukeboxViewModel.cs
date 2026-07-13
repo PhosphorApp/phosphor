@@ -734,6 +734,42 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Fetches YouTube video metadata. When the plug-in path is enabled and the YouTube source
+    /// resolves metadata, routes through <c>IPlayableResolver.GetMetadataAsync</c> (mapping the
+    /// result back to the host <see cref="Video.VideoMetadata"/>); otherwise uses the legacy
+    /// in-VM video engine. Behavior is identical with the flag off.
+    /// </summary>
+    private async Task<Video.VideoMetadata?> GetYouTubeMetadataViaPluginOrLegacy(string videoId)
+    {
+        if (_usePluginSources &&
+            _sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IPlayableResolver resolver)
+        {
+            var probe = new Phosphor.Plugin.Abstractions.SourceItem
+            {
+                SourceInstanceId = _sourceRegistry.YouTube!.InstanceId,
+                ItemId = videoId,
+                SourceState = videoId,
+            };
+            var meta = await resolver.GetMetadataAsync(probe);
+            return meta == null ? null : MapPluginMetadata(meta);
+        }
+
+        return await _videoEngine.GetMetadataAsync(videoId);
+    }
+
+    private static Video.VideoMetadata MapPluginMetadata(Phosphor.Plugin.Abstractions.SourceMetadata m) =>
+        new(
+            m.Duration,
+            m.Description,
+            m.Chapters.Select(c => new ChapterMarker
+            {
+                Title = c.Title,
+                StartTime = c.Start,
+                EndTime = c.End ?? TimeSpan.Zero,
+            }).ToList(),
+            m.PublishedAt);
+
+    /// <summary>
     /// Number of results to fetch per "load more" page. The out-of-process yt-dlp search
     /// engine has higher per-page latency (a process spawn), so it uses a larger page to
     /// reduce how often the user hits a fetch while scrolling.
@@ -3307,7 +3343,7 @@ public partial class JukeboxViewModel : ObservableObject
     {
         try
         {
-            var meta = await _videoEngine.GetMetadataAsync(videoId);
+            var meta = await GetYouTubeMetadataViaPluginOrLegacy(videoId);
             return meta?.Duration;
         }
         catch (Exception ex)
@@ -3326,7 +3362,7 @@ public partial class JukeboxViewModel : ObservableObject
     {
         try
         {
-            var meta = await _videoEngine.GetMetadataAsync(item.VideoId);
+            var meta = await GetYouTubeMetadataViaPluginOrLegacy(item.VideoId);
             if (meta == null) return;
 
             // Native chapters (yt-dlp) take precedence; otherwise parse the description.

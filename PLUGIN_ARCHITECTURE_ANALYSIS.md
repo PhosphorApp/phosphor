@@ -425,9 +425,14 @@ Each phase is independently shippable and reversible.
    the legacy engines. **Phase 4b (done):** routed the two remaining free-text search call
    sites (AutoDJ genre-fill and video-fill) through the same guarded helper, so **all**
    free-text video search is now flag-adopted — search is the first fully-migrated
-   capability. **Phase 4c+ (todo):** incrementally migrate the remaining paths
-   (Plex browse/playback, video resolve/download, playlist/channel discovery) onto the
-   registry and retire the legacy `if (IsPlex)` branches a few at a time.
+   capability. **Phase 4c (done):** routed the VM's YouTube metadata fetches
+   (`GetAccurateDurationAsync`, `FetchYouTubeChaptersAsync`) through the registry's YouTube
+   `IPlayableResolver.GetMetadataAsync` behind the same flag — exercising the resolver
+   capability. Live stream resolution (`ResolveStreamsAsync`) lives in `BackglassWindow`
+   (its own thread) and is deferred to a dedicated increment. **Phase 4d+ (todo):**
+   incrementally migrate the remaining paths (Plex browse/playback, live stream resolve +
+   download, playlist/channel discovery) onto the registry and retire the legacy
+   `if (IsPlex)` branches a few at a time.
 5. **Per-plug-in settings bag.** Migrate flat Plex/engine fields in `AppSettings`
    into a keyed settings dictionary, with a one-time migration from old fields.
 6. **Dynamic loader (opt-in).** Add the `plug-ins` folder scan using a collectible
