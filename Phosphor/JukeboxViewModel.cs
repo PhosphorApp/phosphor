@@ -770,6 +770,43 @@ public partial class JukeboxViewModel : ObservableObject
             m.PublishedAt);
 
     /// <summary>
+    /// Drills into a Plex container (artist→albums or album→tracks). When the plug-in path is
+    /// enabled and the Plex source supports browsing, routes through <c>IBrowsable.BrowseAsync</c>
+    /// (converting the result back to <see cref="VideoItem"/>s); otherwise uses the legacy
+    /// <c>_plex.GetChildrenAsync</c>. Behavior is identical with the flag off.
+    /// </summary>
+    private async Task<List<VideoItem>> PlexBrowseChildrenViaPluginOrLegacy(
+        string ratingKey, PlexItemType childType, CancellationToken ct)
+    {
+        var plex = _sourceRegistry?.PlexInstances.FirstOrDefault();
+        if (_usePluginSources && plex is Phosphor.Plugin.Abstractions.IBrowsable browsable)
+        {
+            // The parent node kind is one level above the requested children: album-children
+            // hang off an Artist node, track-children off an Album node.
+            var parentKind = childType == PlexItemType.Track
+                ? Phosphor.Plugins.Plex.PlexNodeKind.Album
+                : Phosphor.Plugins.Plex.PlexNodeKind.Artist;
+
+            var category = new Phosphor.Plugin.Abstractions.SourceCategory
+            {
+                SourceInstanceId = plex.InstanceId,
+                CategoryId = ratingKey,
+                SourceState = new Phosphor.Plugins.Plex.PlexNode(parentKind, ratingKey),
+            };
+
+            var result = await browsable.BrowseAsync(category, ct);
+            DebugLog.Log("SourceRegistry", $"Plex drill routed through plug-in ({childType} children)");
+
+            var mapped = new List<VideoItem>();
+            mapped.AddRange(result.Categories.Select(Phosphor.Plugins.Plex.PlexMappings.ToContainerVideoItem));
+            mapped.AddRange(result.Items.Select(Phosphor.Plugins.Plex.PlexMappings.ToVideoItem));
+            return mapped;
+        }
+
+        return await _plex.GetChildrenAsync(ratingKey, childType, ct);
+    }
+
+    /// <summary>
     /// Number of results to fetch per "load more" page. The out-of-process yt-dlp search
     /// engine has higher per-page latency (a process spawn), so it uses a larger page to
     /// reduce how often the user hits a fetch while scrolling.
@@ -1929,7 +1966,7 @@ public partial class JukeboxViewModel : ObservableObject
 
         try
         {
-            var items = await _plex.GetChildrenAsync(ratingKey, PlexItemType.Album, _searchCts.Token);
+            var items = await PlexBrowseChildrenViaPluginOrLegacy(ratingKey, PlexItemType.Album, _searchCts.Token);
             foreach (var v in items)
                 SearchResults.Add(v);
             CanLoadMore = false;
@@ -1959,7 +1996,7 @@ public partial class JukeboxViewModel : ObservableObject
 
         try
         {
-            var items = await _plex.GetChildrenAsync(ratingKey, PlexItemType.Track, _searchCts.Token);
+            var items = await PlexBrowseChildrenViaPluginOrLegacy(ratingKey, PlexItemType.Track, _searchCts.Token);
             foreach (var v in items)
                 SearchResults.Add(v);
             CanLoadMore = false;

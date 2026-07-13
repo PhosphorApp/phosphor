@@ -429,9 +429,19 @@ Each phase is independently shippable and reversible.
    (`GetAccurateDurationAsync`, `FetchYouTubeChaptersAsync`) through the registry's YouTube
    `IPlayableResolver.GetMetadataAsync` behind the same flag — exercising the resolver
    capability. Live stream resolution (`ResolveStreamsAsync`) lives in `BackglassWindow`
-   (its own thread) and is deferred to a dedicated increment. **Phase 4d+ (todo):**
-   incrementally migrate the remaining paths (Plex browse/playback, live stream resolve +
-   download, playlist/channel discovery) onto the registry and retire the legacy
+   (its own thread) and is deferred to a dedicated increment. **Phase 4d (done):** routed
+   the two non-paginated Plex drill-down sites (`PlexDrillIntoArtistAsync` → albums,
+   `PlexDrillIntoAlbumAsync` → tracks) through the registry's Plex `IBrowsable.BrowseAsync`
+   behind the flag — the first end-to-end exercise of the browse contract in the live VM,
+   with new `PlexMappings` reverse adapters (`SourceItem`/`SourceCategory` → `VideoItem`).
+   **Contract finding:** most *other* Plex browse in the VM is **pagination-based**
+   (`GetHubItemsPageAsync` / `GetLibraryVideosPageAsync` / `GetPlaylistItemsPageAsync` with
+   start/count + incremental "load more"), which the single-shot `IBrowsable.BrowseAsync`
+   does not model. Those paths stay on the legacy engine until `IBrowsable` grows a
+   pagination story (e.g. a continuation token or a paged browse overload) — a concrete
+   abstraction gap to address before fully retiring the Plex branches. **Phase 4e+ (todo):**
+   add browse pagination to the contract, migrate the paginated Plex paths, adopt live
+   stream resolution + download and playlist/channel discovery, then retire the legacy
    `if (IsPlex)` branches a few at a time.
 5. **Per-plug-in settings bag.** Migrate flat Plex/engine fields in `AppSettings`
    into a keyed settings dictionary, with a one-time migration from old fields.
