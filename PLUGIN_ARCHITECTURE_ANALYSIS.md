@@ -372,10 +372,15 @@ This also gives "not configured" and "failed to load" states one consistent home
 
 Each phase is independently shippable and reversible.
 
-1. **Create `Phosphor.Plugin.Abstractions`** — a small class library holding the
-   contract (`IPhosphorSource`, capability interfaces, `SourceItem`,
-   `ResolvedStream`, `PlaybackPreferences`, `IPluginHost`, `PluginSettingDescriptor`).
-   No behavior change; nothing implements it yet.
+1. **Create `Phosphor.Plugin.Abstractions`** — ✅ **DONE.** A small, dependency-free
+   `net8.0` class library holding the contract: `IPhosphorSourceProvider` /
+   `IPhosphorSource`, capability interfaces (`ITextSearchCapable`, `IBrowsable`,
+   `IPlayableResolver`, `IDownloadable`, `IConfigurable`), data types (`SourceItem`,
+   `SourceCategory`/`BrowseResult`, `ResolvedStream`, `SourceDownload`,
+   `SourceMetadata`, `PlaybackPreferences`), settings types
+   (`PluginSettingDescriptor`, `ConfigAction`/`ConfigSelection`), `IPluginHost`, and
+   `PluginApi.Current` for version checks. Referenced by the host; nothing implements
+   it yet, so there is no behavior change.
 2. **Adapter, no loader.** Wrap the *existing* YouTube engines behind an in-box
    `YouTubeSource : IPhosphorSource` (statically referenced, not scanned). Route the
    VM's YouTube calls through it. Prove the contract fits YouTube.
@@ -426,7 +431,21 @@ Stop after any phase and still have a working app. Phases 1–4 deliver most of 
   resolve-per-play does not), so it is genuinely a per-source property. Open point:
   if enough sources support it, a shared core gapless pipeline might be worth
   generalizing later — revisit once a second gapless-capable source exists.
+- **Stream transport is open-ended (decided).** A resolved stream is not always an
+  HTTP URL. YouTube and Plex return short-lived HTTP(S) URLs today, but a
+  local-folder source resolves to a **file path**, and other transports may appear
+  later. `ResolvedStream` therefore carries a `StreamTransport` discriminator
+  (`Http` / `File` / `Other`) so the host knows how to hand the URI to the media
+  engine and cache pipeline, plus optional per-stream `HttpHeaders` for the HTTP
+  case. The contract stays agnostic to *where* the media lives.
 - Minimum supported plug-in author toolchain / target framework (host is .NET 8)?
+
+> **Footnote — visualizations as plug-ins (out of scope for now).** The same
+> provider/instance + capability pattern could eventually apply to the audio-reactive
+> **visualizations** (`IBlobPattern` and friends), letting third parties drop in new
+> patterns. It is deliberately *not* part of this effort — sources are the priority
+> and visuals already have their own `IBlobPattern` seam and pattern factory. Worth
+> revisiting only after the source plug-in model is proven.
 
 ---
 

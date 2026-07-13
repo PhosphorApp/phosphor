@@ -84,5 +84,9 @@
     </Content>
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Phosphor.Plugin.Abstractions\Phosphor.Plugin.Abstractions.csproj" />
+  </ItemGroup>
+
 
   </Project>
