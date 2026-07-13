@@ -395,7 +395,20 @@ Each phase is independently shippable and reversible.
    host-bundled native tools (yt-dlp/ffmpeg) without hard-coded paths.
 3. **Wrap Plex** behind an in-box `PlexSource : IPhosphorSource` implementing
    `IBrowsable`. This is the hard one — it forces the `SourceCategory`/`SourceItem`
-   model to be adequate and untangles `PlexService` from the VM.
+   model to be adequate and untangles `PlexService` from the VM. — ✅ **DONE**
+   (build-only, not wired into the VM; that's Phase 4). Lives in
+   `Phosphor/Plugins/Plex/`: `PlexSourceProvider` (**multi-instance** — supports two
+   Plex servers — with server/token/stereo declarative settings + a `libraries` blob),
+   `PlexSource` (implements `ITextSearchCapable` + `IBrowsable` + `IPlayableResolver` +
+   `IConfigurable`), `PlexNode` (internal browse-tree descriptor carried in
+   `SourceCategory.SourceState`), and `PlexMappings` (item/category/stream/metadata
+   adapters). **Model validation result:** the generic `SourceCategory` /
+   `BrowseResult` shape absorbed Plex's full hierarchy (library → artists → albums →
+   tracks, plus Hubs and Playlists grouping nodes) **without requiring any change to
+   the abstractions** — the provider/instance split, `IConfigurable` "browse
+   libraries" action, and `SourceState` payloads all held up. Playback reuses the
+   ready-to-play `StreamUrl` already built into each Plex `VideoItem` (mapped to
+   `ResolvedStream(Http, …)`), so no transcode logic moved.
 4. **Introduce a `SourceRegistry`** in the VM replacing the direct `_plex` field and
    engine factories. All dispatch goes through the registry; delete `if (IsPlex)`
    branches.
