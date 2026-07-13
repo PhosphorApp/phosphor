@@ -18,7 +18,7 @@ namespace Phosphor.Plugins.YouTube;
 /// YoutubeExplode package and existing engine code directly. It is a pure data producer:
 /// it never touches UI or assumes a thread.
 /// </remarks>
-public sealed class YouTubeSource : IPhosphorSource, ITextSearchCapable, IPlayableResolver, IDownloadable
+public sealed class YouTubeSource : IPhosphorSource, ITextSearchCapable, IPlaylistChannelDiscovery, IPlayableResolver, IDownloadable
 {
     private readonly HttpClient? _http;
     private IPluginHost? _host;
@@ -78,6 +78,26 @@ public sealed class YouTubeSource : IPhosphorSource, ITextSearchCapable, IPlayab
         string query, [EnumeratorCancellation] CancellationToken ct = default)
     {
         await foreach (var v in _search.SearchVideosAsync(query, ct).WithCancellation(ct))
+            yield return YouTubeMappings.ToSourceItem(v, InstanceId);
+    }
+
+    // ── IPlaylistChannelDiscovery ──────────────────────────────────────────────
+
+    public Task<string?> ResolvePlaylistIdAsync(
+        string nameIdOrUrl, Action<string>? onFoundByName = null, CancellationToken ct = default)
+        => _search.ResolvePlaylistIdAsync(nameIdOrUrl, onFoundByName, ct);
+
+    public async IAsyncEnumerable<SourceItem> GetPlaylistItemsAsync(
+        string playlistId, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await foreach (var v in _search.GetPlaylistVideosAsync(playlistId, ct).WithCancellation(ct))
+            yield return YouTubeMappings.ToSourceItem(v, InstanceId);
+    }
+
+    public async IAsyncEnumerable<SourceItem> GetChannelUploadsAsync(
+        string handleOrUser, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await foreach (var v in _search.GetChannelUploadsAsync(handleOrUser, ct).WithCancellation(ct))
             yield return YouTubeMappings.ToSourceItem(v, InstanceId);
     }
 

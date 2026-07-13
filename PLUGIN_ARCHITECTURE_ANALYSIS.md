@@ -455,10 +455,16 @@ Each phase is independently shippable and reversible.
    loads through the same `IPagedBrowsable` helpers (offset 0), so **every** Plex
    browse-by-page path — initial load and load-more, across hub/library/playlist — now goes
    through the capability. The only remaining direct `...PageAsync` calls are the legacy
-   fallbacks *inside* the guarded helpers. **Phase 4h+ (todo):** adopt live stream resolution
-   + download (in `BackglassWindow`, on its own thread — the thread-sensitive one) and
-   playlist/channel discovery (needs a contract extension), then retire the legacy
-   `if (IsPlex)` branches a few at a time.
+   fallbacks *inside* the guarded helpers. **Phase 4h (done):** added an
+   `IPlaylistChannelDiscovery` capability (playlist-id resolution + playlist items + channel
+   uploads) to the abstractions (contract bumped to **0.3.0**), implemented it in
+   `YouTubeSource` over the existing `ISearchEngine`, and routed all three VM discovery call
+   sites (quoted playlist, unquoted playlist, channel) through it behind the flag. The
+   YouTube-specific filter/`PlaylistId.Parse` logic stayed in the VM; only the engine calls
+   moved. The `SourceItem → VideoItem` converter was extracted and shared across search +
+   playlist + channel. **Phase 4i+ (todo):** adopt live stream resolution + download (in
+   `BackglassWindow`, on its own thread — the thread-sensitive one), then retire the legacy
+   `if (IsPlex)` / `_searchEngine` branches a few at a time.
 
    **Consolidation baseline (after 4g).** Before tackling the two remaining (riskier)
    migrations, the branch was hardened to a clean, known-good state:
@@ -476,7 +482,7 @@ Each phase is independently shippable and reversible.
      did (`Title/Author/ThumbnailUrl/VideoId/Duration`).
    - **Remaining TODOs (explicit):** (a) live stream resolution + download in
      `BackglassWindow` — thread-sensitive, deserves a dedicated session; (b)
-     playlist/channel discovery — needs a new capability interface on the contract;
+     playlist/channel discovery — ✅ done in Phase 4h (`IPlaylistChannelDiscovery`);
      (c) once trusted, flip the flag default on and delete the legacy branches.
 5. **Per-plug-in settings bag.** Migrate flat Plex/engine fields in `AppSettings`
    into a keyed settings dictionary, with a one-time migration from old fields.

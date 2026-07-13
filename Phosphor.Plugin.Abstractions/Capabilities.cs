@@ -44,6 +44,30 @@ public interface IPagedBrowsable
 }
 
 /// <summary>
+/// Capability: discovery of a source's playlists and channels/uploads (a YouTube-shaped
+/// surface, but open to any source with the same notions). Implemented alongside
+/// <see cref="ITextSearchCapable"/> by sources that expose playlists addressable by
+/// id/URL/name and channels addressable by handle/user.
+/// </summary>
+public interface IPlaylistChannelDiscovery
+{
+    /// <summary>
+    /// Resolves a playlist id from a raw id, URL, or a name to search for. Returns the
+    /// canonical id, or <c>null</c> if a name search found nothing.
+    /// <paramref name="onFoundByName"/> is invoked with the matched playlist's title when
+    /// resolution happened via name search (so the host can surface "Found playlist: X").
+    /// </summary>
+    Task<string?> ResolvePlaylistIdAsync(
+        string nameIdOrUrl, Action<string>? onFoundByName = null, CancellationToken ct = default);
+
+    /// <summary>Incrementally yields the items of a playlist (by resolved id).</summary>
+    IAsyncEnumerable<SourceItem> GetPlaylistItemsAsync(string playlistId, CancellationToken ct = default);
+
+    /// <summary>Incrementally yields a channel's uploads (by handle or user name).</summary>
+    IAsyncEnumerable<SourceItem> GetChannelUploadsAsync(string handleOrUser, CancellationToken ct = default);
+}
+
+/// <summary>
 /// Capability: resolve an item into a playable stream for live playback. The returned
 /// <see cref="ResolvedStream"/> may be HTTP, a file path, or another transport
 /// (see <see cref="StreamTransport"/>), so the host stays agnostic to where media lives.

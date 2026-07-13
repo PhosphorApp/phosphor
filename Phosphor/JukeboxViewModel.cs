@@ -721,17 +721,50 @@ public partial class JukeboxViewModel : ObservableObject
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
     {
         await foreach (var item in source.SearchAsync(query, ct).WithCancellation(ct))
-        {
-            yield return new VideoItem
-            {
-                Title = item.Title,
-                Author = item.Subtitle ?? "",
-                ThumbnailUrl = item.ThumbnailUrl ?? "",
-                VideoId = item.ItemId,
-                Duration = item.Duration,
-            };
-        }
+            yield return ToVideoItem(item);
     }
+
+    /// <summary>Maps a plug-in <see cref="Phosphor.Plugin.Abstractions.SourceItem"/> to a host
+    /// <see cref="VideoItem"/> for the YouTube discovery paths (search / playlist / channel).</summary>
+    private static VideoItem ToVideoItem(Phosphor.Plugin.Abstractions.SourceItem item) => new()
+    {
+        Title = item.Title,
+        Author = item.Subtitle ?? "",
+        ThumbnailUrl = item.ThumbnailUrl ?? "",
+        VideoId = item.ItemId,
+        Duration = item.Duration,
+    };
+
+    private static async IAsyncEnumerable<VideoItem> MapPluginItems(
+        IAsyncEnumerable<Phosphor.Plugin.Abstractions.SourceItem> source,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await foreach (var item in source.WithCancellation(ct))
+            yield return ToVideoItem(item);
+    }
+
+    /// <summary>The YouTube discovery capability if the plug-in path is enabled and available, else null.</summary>
+    private Phosphor.Plugin.Abstractions.IPlaylistChannelDiscovery? PluginDiscovery =>
+        _usePluginSources && _sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IPlaylistChannelDiscovery d
+            ? d : null;
+
+    /// <summary>Resolves a playlist id via the plug-in discovery capability when enabled, else the legacy engine.</summary>
+    private Task<string?> ResolvePlaylistIdViaPluginOrLegacy(string nameIdOrUrl, Action<string>? onFoundByName)
+        => PluginDiscovery is { } d
+            ? d.ResolvePlaylistIdAsync(nameIdOrUrl, onFoundByName)
+            : _searchEngine.ResolvePlaylistIdAsync(nameIdOrUrl, onFoundByName);
+
+    /// <summary>Yields a playlist's videos via the plug-in discovery capability when enabled, else the legacy engine.</summary>
+    private IAsyncEnumerable<VideoItem> GetPlaylistVideosViaPluginOrLegacy(string playlistId)
+        => PluginDiscovery is { } d
+            ? MapPluginItems(d.GetPlaylistItemsAsync(playlistId))
+            : _searchEngine.GetPlaylistVideosAsync(playlistId);
+
+    /// <summary>Yields a channel's uploads via the plug-in discovery capability when enabled, else the legacy engine.</summary>
+    private IAsyncEnumerable<VideoItem> GetChannelUploadsViaPluginOrLegacy(string handleOrUser)
+        => PluginDiscovery is { } d
+            ? MapPluginItems(d.GetChannelUploadsAsync(handleOrUser))
+            : _searchEngine.GetChannelUploadsAsync(handleOrUser);
 
     /// <summary>
     /// Fetches YouTube video metadata. When the plug-in path is enabled and the YouTube source
@@ -1417,7 +1450,7 @@ public partial class JukeboxViewModel : ObservableObject
             try
             {
                 // Resolve id / URL, or search by name (engine encapsulates the fallback).
-                var playlistId = await _searchEngine.ResolvePlaylistIdAsync(
+                var playlistId = await ResolvePlaylistIdViaPluginOrLegacy(
                     playlistIdOrName, title => StatusText = $"Found playlist: {title}");
                 if (playlistId == null)
                 {
@@ -1426,7 +1459,7 @@ public partial class JukeboxViewModel : ObservableObject
                     return;
                 }
 
-                var videos = _searchEngine.GetPlaylistVideosAsync(playlistId);
+                var videos = GetPlaylistVideosViaPluginOrLegacy(playlistId);
                 _searchEnumerator = string.IsNullOrEmpty(filterTerms)
                     ? videos.GetAsyncEnumerator()
                     : FilterVideosAsync(videos, filterTerms).GetAsyncEnumerator();
@@ -1454,7 +1487,7 @@ public partial class JukeboxViewModel : ObservableObject
                 if (parsedAsId)
                     filterTerms = Regex.Replace(query, @"playlist:\S+", "", RegexOptions.IgnoreCase).Trim();
 
-                var playlistId = await _searchEngine.ResolvePlaylistIdAsync(
+                var playlistId = await ResolvePlaylistIdViaPluginOrLegacy(
                     playlistIdOrName, title => StatusText = $"Found playlist: {title}");
                 if (playlistId == null)
                 {
@@ -1463,7 +1496,7 @@ public partial class JukeboxViewModel : ObservableObject
                     return;
                 }
 
-                var videos = _searchEngine.GetPlaylistVideosAsync(playlistId);
+                var videos = GetPlaylistVideosViaPluginOrLegacy(playlistId);
                 _searchEnumerator = string.IsNullOrEmpty(filterTerms)
                     ? videos.GetAsyncEnumerator()
                     : FilterVideosAsync(videos, filterTerms).GetAsyncEnumerator();
@@ -1484,7 +1517,7 @@ public partial class JukeboxViewModel : ObservableObject
             try
             {
                 // Engine encapsulates the handle→user fallback.
-                var videos = _searchEngine.GetChannelUploadsAsync(channelName);
+                var videos = GetChannelUploadsViaPluginOrLegacy(channelName);
                 _searchEnumerator = string.IsNullOrEmpty(filterTerms)
                     ? videos.GetAsyncEnumerator()
                     : FilterVideosAsync(videos, filterTerms).GetAsyncEnumerator();
