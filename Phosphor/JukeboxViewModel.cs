@@ -807,6 +807,37 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Fetches one page of a Plex hub's items. When the plug-in path is enabled and the Plex
+    /// source supports paged browsing, routes through <c>IPagedBrowsable.BrowsePageAsync</c>
+    /// (converting items back to <see cref="VideoItem"/>s); otherwise uses the legacy
+    /// <c>_plex.GetHubItemsPageAsync</c>. Returns the page's items and the total size so the
+    /// caller's "load more" logic is unchanged. Behavior is identical with the flag off.
+    /// </summary>
+    private async Task<(List<VideoItem> Items, int TotalSize)> PlexBrowseHubPageViaPluginOrLegacy(
+        string hubKey, string hubType, int offset, int count, CancellationToken ct)
+    {
+        var plex = _sourceRegistry?.PlexInstances.FirstOrDefault();
+        if (_usePluginSources && plex is Phosphor.Plugin.Abstractions.IPagedBrowsable paged)
+        {
+            var category = new Phosphor.Plugin.Abstractions.SourceCategory
+            {
+                SourceInstanceId = plex.InstanceId,
+                CategoryId = hubKey,
+                SourceState = new Phosphor.Plugins.Plex.PlexNode(
+                    Phosphor.Plugins.Plex.PlexNodeKind.Hub, hubKey, hubType),
+            };
+
+            var page = await paged.BrowsePageAsync(category, offset, count, ct);
+            DebugLog.Log("SourceRegistry", $"Plex hub page routed through plug-in (offset={offset})");
+            var items = page.Items.Select(Phosphor.Plugins.Plex.PlexMappings.ToVideoItem).ToList();
+            return (items, page.TotalSize);
+        }
+
+        var legacy = await _plex.GetHubItemsPageAsync(hubKey, hubType, offset, count, ct);
+        return (legacy.Items, legacy.TotalSize);
+    }
+
+    /// <summary>
     /// Number of results to fetch per "load more" page. The out-of-process yt-dlp search
     /// engine has higher per-page latency (a process spawn), so it uses a larger page to
     /// reduce how often the user hits a fetch while scrolling.
@@ -2142,7 +2173,7 @@ public partial class JukeboxViewModel : ObservableObject
 
         try
         {
-            var page = await _plex.GetHubItemsPageAsync(
+            var page = await PlexBrowseHubPageViaPluginOrLegacy(
                 _activePlexHubKey, _activePlexHubType ?? "", SearchResults.Count, PlexPageSize, token);
             if (token.IsCancellationRequested) return;
 

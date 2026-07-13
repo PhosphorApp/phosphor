@@ -36,3 +36,16 @@ public sealed class BrowseResult
     public IReadOnlyList<SourceCategory> Categories { get; init; } = [];
     public IReadOnlyList<SourceItem> Items { get; init; } = [];
 }
+
+/// <summary>
+/// One page of a paginated browse (<see cref="IPagedBrowsable"/>). <see cref="Items"/> are the
+/// leaf items for the requested offset window; <see cref="TotalSize"/> is the full count so the
+/// caller can decide whether more pages remain (<c>offset + Items.Count &lt; TotalSize</c>).
+/// Paged browse yields items only — hierarchical sub-categories use the single-shot
+/// <see cref="IBrowsable.BrowseAsync"/> path.
+/// </summary>
+public sealed class BrowsePage
+{
+    public IReadOnlyList<SourceItem> Items { get; init; } = [];
+    public int TotalSize { get; init; }
+}

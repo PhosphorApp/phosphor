@@ -16,7 +16,7 @@ namespace Phosphor.Plugins.Plex;
 /// In-box, so it uses <see cref="PlexService"/>, <see cref="VideoItem"/>, and the Plex enums
 /// directly. Pure data producer: no UI, no thread assumptions.
 /// </remarks>
-public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable, IPlayableResolver, IConfigurable
+public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable, IPagedBrowsable, IPlayableResolver, IConfigurable
 {
     private readonly PlexService _plex = new();
     private IPluginHost? _host;
@@ -182,6 +182,31 @@ public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable
     {
         var items = await _plex.GetPlaylistItemsAsync(node.Key, ct);
         return new BrowseResult { Items = items.Select(v => PlexMappings.ToSourceItem(v, InstanceId)).ToList() };
+    }
+
+    // ── IPagedBrowsable ────────────────────────────────────────────────────────
+
+    public async Task<BrowsePage> BrowsePageAsync(
+        SourceCategory category, int offset, int count, CancellationToken ct = default)
+    {
+        if (category.SourceState is not PlexNode node)
+            return new BrowsePage();
+
+        // Route to the paginated Plex endpoint matching the node kind. Hubs, libraries, and
+        // playlists all page by offset/count and report a total size.
+        PlexPage page = node.Kind switch
+        {
+            PlexNodeKind.Hub => await _plex.GetHubItemsPageAsync(node.Key, node.LibraryType ?? "", offset, count, ct),
+            PlexNodeKind.Library => await _plex.GetLibraryVideosPageAsync(node.Key, offset, count, node.LibraryType, ct),
+            PlexNodeKind.Playlist => await _plex.GetPlaylistItemsPageAsync(node.Key, offset, count, ct),
+            _ => new PlexPage(),
+        };
+
+        return new BrowsePage
+        {
+            Items = page.Items.Select(v => PlexMappings.ToSourceItem(v, InstanceId)).ToList(),
+            TotalSize = page.TotalSize,
+        };
     }
 
     // ── IPlayableResolver ──────────────────────────────────────────────────────

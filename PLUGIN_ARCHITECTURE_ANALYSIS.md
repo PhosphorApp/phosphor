@@ -439,10 +439,16 @@ Each phase is independently shippable and reversible.
    start/count + incremental "load more"), which the single-shot `IBrowsable.BrowseAsync`
    does not model. Those paths stay on the legacy engine until `IBrowsable` grows a
    pagination story (e.g. a continuation token or a paged browse overload) — a concrete
-   abstraction gap to address before fully retiring the Plex branches. **Phase 4e+ (todo):**
-   add browse pagination to the contract, migrate the paginated Plex paths, adopt live
-   stream resolution + download and playlist/channel discovery, then retire the legacy
-   `if (IsPlex)` branches a few at a time.
+   abstraction gap to address before fully retiring the Plex branches. **Phase 4e (done):**
+   closed that gap — added an `IPagedBrowsable` capability (offset/count → `BrowsePage`
+   with `Items` + `TotalSize`) to the abstractions (contract bumped to **0.2.0**),
+   implemented it in `PlexSource` (node-kind switch over the paginated Plex endpoints), and
+   adopted the Plex **hub** "load more" path (`LoadMorePlexHubResultsAsync`) through it
+   behind the flag. The offset model matched Plex's `PlexPage` exactly, so no continuation
+   token was needed. **Phase 4f+ (todo):** adopt the remaining paginated Plex paths
+   (library + playlist "load more") via the same capability, adopt live stream resolution +
+   download and playlist/channel discovery, then retire the legacy `if (IsPlex)` branches a
+   few at a time.
 5. **Per-plug-in settings bag.** Migrate flat Plex/engine fields in `AppSettings`
    into a keyed settings dictionary, with a one-time migration from old fields.
 6. **Dynamic loader (opt-in).** Add the `plug-ins` folder scan using a collectible

@@ -26,6 +26,24 @@ public interface IBrowsable
 }
 
 /// <summary>
+/// Capability: paginated browsing for large, flat item lists (e.g. a Plex hub, library, or
+/// playlist with thousands of tracks). Complements <see cref="IBrowsable"/>: sources that can
+/// serve arbitrary offset windows implement this so the host can lazily "load more" as the user
+/// scrolls, instead of fetching everything up front. Offset-based to match how most media servers
+/// page (a start index + count), with a total-size so the host knows when it has reached the end.
+/// </summary>
+public interface IPagedBrowsable
+{
+    /// <summary>
+    /// Returns the items in the window <c>[offset, offset + count)</c> for the given category,
+    /// plus the total item count. Callers page by passing an increasing <paramref name="offset"/>
+    /// (typically the number of items already loaded) until they have <c>TotalSize</c> items.
+    /// </summary>
+    Task<BrowsePage> BrowsePageAsync(
+        SourceCategory category, int offset, int count, CancellationToken ct = default);
+}
+
+/// <summary>
 /// Capability: resolve an item into a playable stream for live playback. The returned
 /// <see cref="ResolvedStream"/> may be HTTP, a file path, or another transport
 /// (see <see cref="StreamTransport"/>), so the host stays agnostic to where media lives.
