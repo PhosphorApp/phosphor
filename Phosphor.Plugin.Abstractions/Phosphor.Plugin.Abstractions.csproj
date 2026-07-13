@@ -23,4 +23,33 @@
 	<NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
+  <!--
+	NuGet packaging metadata. Inert until `dotnet pack` is run — building/using the
+	project is unaffected. When you're ready to onboard external plug-in authors,
+	`dotnet pack -c Release` produces the package. Plug-in authors reference it as
+	compile-only (<Private>false</Private> / <ExcludeAssets>runtime</ExcludeAssets>)
+	so the host supplies the single shared copy at runtime (see the plug-in loading
+	notes in PLUGIN_ARCHITECTURE_ANALYSIS.md).
+  -->
+  <PropertyGroup>
+	<PackageId>Phosphor.Plugin.Abstractions</PackageId>
+	<Title>Phosphor Plugin Abstractions</Title>
+	<Authors>Phosphor</Authors>
+	<Description>The stable contract for authoring Phosphor source plug-ins (YouTube, Plex, and third-party music/video sources). Reference this package compile-only; the Phosphor host supplies the shared runtime copy.</Description>
+	<PackageTags>phosphor;plugin;jukebox;pinball;music;video</PackageTags>
+	<PackageProjectUrl>https://github.com/bhitney/phosphor</PackageProjectUrl>
+	<RepositoryUrl>https://github.com/bhitney/phosphor</RepositoryUrl>
+	<RepositoryType>git</RepositoryType>
+	<PackageReadmeFile>README.md</PackageReadmeFile>
+	<PackageLicenseExpression>MIT</PackageLicenseExpression>
+	<IncludeSymbols>true</IncludeSymbols>
+	<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+	<!-- Package version tracks the contract version (PluginApi.Current). -->
+	<PackageVersion>0.1.0</PackageVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+	<None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
 </Project>
