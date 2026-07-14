@@ -3853,6 +3853,9 @@ public partial class SettingsWindow : JukeboxWindow
         _pluginEnabledBoxes.Clear();
         _pluginCachingBoxes.Clear();
         _pluginCustomFieldGetters.Clear();
+        // Re-parse the inline Plex-library editor state from the (rebuilt) working configs so an
+        // add/remove is reflected instead of a stale cached list.
+        _pluginLibraryState.Clear();
 
         // Edit a working copy so cancelling the dialog doesn't mutate settings.
         _pluginWorkingConfigs.Clear();
@@ -4531,9 +4534,11 @@ public partial class SettingsWindow : JukeboxWindow
             if (combo.SelectedItem is System.Windows.Controls.ComboBoxItem item && item.Tag is PlexLibraryMapping lib
                 && !added.Any(l => l.Key == lib.Key))
             {
-                HarvestPluginSourcesTab();
+                // Mutate + save the library list first, THEN harvest, so the addition reaches
+                // _settings.PluginInstances (Populate rebuilds the working configs from there).
                 added.Add(new PlexLibraryMapping { Key = lib.Key, Title = lib.Title, Type = lib.Type });
                 SaveInstanceLibraries(instId);
+                HarvestPluginSourcesTab();
                 PopulatePluginSourcesTab();
             }
         };
@@ -4561,9 +4566,11 @@ public partial class SettingsWindow : JukeboxWindow
             System.Windows.Controls.DockPanel.SetDock(removeBtn, System.Windows.Controls.Dock.Right);
             removeBtn.Click += (_, _) =>
             {
-                HarvestPluginSourcesTab();
+                // Update the library list first, THEN harvest, so the removal is included when the
+                // working configs are pushed to _settings.PluginInstances (Populate rebuilds from there).
                 added.RemoveAll(l => l.Key == libKey);
                 SaveInstanceLibraries(instId);
+                HarvestPluginSourcesTab();
                 PopulatePluginSourcesTab();
             };
             row.Children.Add(removeBtn);
