@@ -269,6 +269,34 @@ public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable
         return new ConfigSelection(options, AllowMultiple: true, Title: "Plex libraries");
     }
 
+    public async Task<IReadOnlyDictionary<string, string?>> ApplyConfigActionAsync(
+        string actionId,
+        IReadOnlyList<string> selectedOptionIds,
+        IReadOnlyDictionary<string, string?> currentSettings,
+        CancellationToken ct = default)
+    {
+        var result = new Dictionary<string, string?>(currentSettings);
+        if (actionId != PlexSourceProvider.ActionBrowseLibraries)
+            return result;
+
+        // Turn selected library keys into the rich libraries mapping, preserving each library's
+        // Title/Type from the server and any existing Hubs/Playlists flags the user had set.
+        var existing = ParseLibraries(Get(currentSettings, PlexSourceProvider.KeyLibraries))
+            .ToDictionary(l => l.Key, l => l);
+        var selected = new HashSet<string>(selectedOptionIds);
+        var libs = await _plex.GetLibrariesAsync();
+
+        var mapped = libs
+            .Where(l => selected.Contains(l.Key))
+            .Select(l => existing.TryGetValue(l.Key, out var prev)
+                ? new PlexLibraryMapping { Key = l.Key, Title = l.Title, Type = l.Type, HubsEnabled = prev.HubsEnabled, PlaylistsEnabled = prev.PlaylistsEnabled }
+                : new PlexLibraryMapping { Key = l.Key, Title = l.Title, Type = l.Type })
+            .ToList();
+
+        result[PlexSourceProvider.KeyLibraries] = JsonSerializer.Serialize(mapped);
+        return result;
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     private static string? Get(IReadOnlyDictionary<string, string?> values, string key)

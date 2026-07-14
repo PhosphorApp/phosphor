@@ -4021,6 +4021,9 @@ public partial class SettingsWindow : JukeboxWindow
     // value. On harvest, a field still equal to the sentinel is left unchanged.
     private const string SecretSentinel = "\u0001\u0001SECRET-UNCHANGED\u0001\u0001";
 
+    // Shared HttpClient for transient sources built to invoke config actions.
+    private readonly System.Net.Http.HttpClient _pluginHttp = new() { Timeout = TimeSpan.FromSeconds(15) };
+
     // Standardized editor sizing so text/combo/password fields line up.
     private const double EditorHeight = 28;
     private const double EditorMinWidth = 320;
@@ -4083,9 +4086,10 @@ public partial class SettingsWindow : JukeboxWindow
             };
             var panel = new System.Windows.Controls.StackPanel();
 
-            // ── Header row: title left, Enabled right-justified ──
+            // ── Header row: title left, Enabled + Remove right-justified ──
             var headerGrid = new System.Windows.Controls.Grid { Margin = new Thickness(0, 0, 0, 4) };
             headerGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) });
+            headerGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = System.Windows.GridLength.Auto });
             headerGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = System.Windows.GridLength.Auto });
 
             var title = new System.Windows.Controls.TextBlock
@@ -4106,10 +4110,27 @@ public partial class SettingsWindow : JukeboxWindow
                 Foreground = text,
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+                Margin = new Thickness(0, 0, 10, 0),
             };
             _pluginEnabledBoxes[cfg.InstanceId] = enabledBox;
             System.Windows.Controls.Grid.SetColumn(enabledBox, 1);
             headerGrid.Children.Add(enabledBox);
+
+            // Remove button — only for providers that support multiple instances.
+            if (info?.SupportsMultipleInstances == true)
+            {
+                var removeBtn = new System.Windows.Controls.Button
+                {
+                    Content = "🗑 Remove",
+                    Padding = new Thickness(6, 2, 6, 2),
+                    FontSize = 10,
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                var removeId = cfg.InstanceId;
+                removeBtn.Click += (_, _) => RemovePluginInstance(removeId);
+                System.Windows.Controls.Grid.SetColumn(removeBtn, 2);
+                headerGrid.Children.Add(removeBtn);
+            }
             panel.Children.Add(headerGrid);
 
             // Description
@@ -4203,9 +4224,201 @@ public partial class SettingsWindow : JukeboxWindow
             }
 
             panel.Children.Add(grid);
+
+            // ── Interactive config actions (e.g. Plex "Browse libraries") ──
+            var transient = Phosphor.Plugins.PluginSettingsFactory.BuildTransientSource(cfg, _pluginHttp);
+            if (transient is Phosphor.Plugin.Abstractions.IConfigurable configurable)
+            {
+                foreach (var action in configurable.GetConfigActions())
+                {
+                    var actionRow = new System.Windows.Controls.StackPanel
+                    {
+                        Orientation = System.Windows.Controls.Orientation.Horizontal,
+                        Margin = new Thickness(0, 6, 0, 0),
+                    };
+                    var actionBtn = new System.Windows.Controls.Button
+                    {
+                        Content = action.Label,
+                        Padding = new Thickness(8, 3, 8, 3),
+                    };
+                    if (!string.IsNullOrWhiteSpace(action.Description))
+                        actionBtn.ToolTip = action.Description;
+                    var instId = cfg.InstanceId;
+                    var actId = action.Id;
+                    actionBtn.Click += async (_, _) => await InvokePluginConfigActionAsync(instId, actId);
+                    actionRow.Children.Add(actionBtn);
+                    panel.Children.Add(actionRow);
+                }
+            }
+
             card.Child = panel;
             PanelPluginSources.Children.Add(card);
         }
+
+        // ── "Add source" row for multi-instance providers ──
+        var addable = Phosphor.Plugins.PluginSettingsFactory.AddableProviders();
+        if (addable.Count > 0)
+        {
+            var addRow = new System.Windows.Controls.StackPanel
+            {
+                Orientation = System.Windows.Controls.Orientation.Horizontal,
+                Margin = new Thickness(0, 8, 0, 0),
+            };
+            addRow.Children.Add(new System.Windows.Controls.TextBlock
+            {
+                Text = "Add source:", Foreground = dim, VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0),
+            });
+            var addCombo = new System.Windows.Controls.ComboBox
+            {
+                Height = EditorHeight, MinWidth = 160, VerticalContentAlignment = VerticalAlignment.Center,
+            };
+            foreach (var (typeId, dn) in addable)
+                addCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = dn, Tag = typeId });
+            addCombo.SelectedIndex = 0;
+            addRow.Children.Add(addCombo);
+
+            var addBtn = new System.Windows.Controls.Button
+            {
+                Content = "＋ Add", Padding = new Thickness(8, 2, 8, 2), Margin = new Thickness(8, 0, 0, 0),
+            };
+            addBtn.Click += (_, _) =>
+            {
+                if (addCombo.SelectedItem is System.Windows.Controls.ComboBoxItem item && item.Tag is string typeId)
+                    AddPluginInstance(typeId);
+            };
+            addRow.Children.Add(addBtn);
+            PanelPluginSources.Children.Add(addRow);
+        }
+    }
+
+    /// <summary>Adds a new instance of a multi-instance provider and re-renders the tab.</summary>
+    private void AddPluginInstance(string typeId)
+    {
+        HarvestPluginSourcesTab(); // preserve current edits before re-render
+
+        var info = Phosphor.Plugins.PluginSettingsFactory.DescribeProvider(typeId);
+        var baseName = info?.DisplayName ?? typeId;
+
+        // Unique instance id: typeId, typeId-2, typeId-3, …
+        var existing = new HashSet<string>(_settings.PluginInstances.Select(c => c.InstanceId), StringComparer.OrdinalIgnoreCase);
+        var instanceId = typeId;
+        for (int n = 2; existing.Contains(instanceId); n++)
+            instanceId = $"{typeId}-{n}";
+
+        // Count existing instances of this type for a friendly default name.
+        int typeCount = _settings.PluginInstances.Count(c => c.TypeId == typeId);
+        var displayName = typeCount > 0 ? $"{baseName} {typeCount + 1}" : baseName;
+
+        _settings.PluginInstances.Add(new Phosphor.Plugins.PluginInstanceConfig
+        {
+            TypeId = typeId,
+            InstanceId = instanceId,
+            DisplayName = displayName,
+            Enabled = true,
+            Settings = new Dictionary<string, string?>(),
+        });
+
+        PopulatePluginSourcesTab();
+    }
+
+    /// <summary>Removes an instance and re-renders the tab.</summary>
+    private void RemovePluginInstance(string instanceId)
+    {
+        HarvestPluginSourcesTab(); // preserve current edits before re-render
+        _settings.PluginInstances.RemoveAll(c => c.InstanceId == instanceId);
+        PopulatePluginSourcesTab();
+    }
+
+    /// <summary>
+    /// Invokes an <see cref="Phosphor.Plugin.Abstractions.IConfigurable"/> action for an instance
+    /// (e.g. Plex "browse libraries"): harvests current edits, builds a transient source from the
+    /// instance config, runs the action, shows a checkbox selection dialog, applies the result via
+    /// the source, and merges the returned settings back into the instance. Re-renders the tab.
+    /// </summary>
+    private async Task InvokePluginConfigActionAsync(string instanceId, string actionId)
+    {
+        HarvestPluginSourcesTab();
+        var cfg = _settings.PluginInstances.FirstOrDefault(c => c.InstanceId == instanceId);
+        if (cfg == null) return;
+
+        var source = Phosphor.Plugins.PluginSettingsFactory.BuildTransientSource(cfg, _pluginHttp);
+        if (source is not Phosphor.Plugin.Abstractions.IConfigurable configurable) return;
+
+        try
+        {
+            var selection = await configurable.InvokeConfigActionAsync(actionId);
+            if (selection.Options.Count == 0)
+            {
+                MessageBox.Show(this, "Nothing to configure (no items returned).", "Phosphor",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var chosen = ShowConfigSelectionDialog(selection);
+            if (chosen == null) return; // cancelled
+
+            var updated = await configurable.ApplyConfigActionAsync(actionId, chosen, cfg.Settings);
+            cfg.Settings = new Dictionary<string, string?>(updated);
+            PopulatePluginSourcesTab();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Action failed: {ex.Message}", "Phosphor",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    /// <summary>
+    /// Shows a minimal checkbox-list dialog for a <see cref="Phosphor.Plugin.Abstractions.ConfigSelection"/>.
+    /// Returns the selected option ids, or null if cancelled.
+    /// </summary>
+    private List<string>? ShowConfigSelectionDialog(Phosphor.Plugin.Abstractions.ConfigSelection selection)
+    {
+        var dlg = new Window
+        {
+            Title = selection.Title ?? "Select",
+            Owner = this,
+            Width = 380,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Background = (System.Windows.Media.Brush)FindResource("SurfaceBrush"),
+        };
+        var text = (System.Windows.Media.Brush)FindResource("TextBrush");
+
+        var root = new System.Windows.Controls.StackPanel { Margin = new Thickness(12) };
+        var boxes = new List<(System.Windows.Controls.CheckBox Box, string Id)>();
+        foreach (var opt in selection.Options)
+        {
+            var cb = new System.Windows.Controls.CheckBox
+            {
+                Content = opt.Label, IsChecked = opt.IsSelected, Foreground = text,
+                Margin = new Thickness(0, 3, 0, 3),
+            };
+            boxes.Add((cb, opt.Id));
+            root.Children.Add(cb);
+        }
+
+        var buttons = new System.Windows.Controls.StackPanel
+        {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+            Margin = new Thickness(0, 12, 0, 0),
+        };
+        bool ok = false;
+        var okBtn = new System.Windows.Controls.Button { Content = "OK", Padding = new Thickness(12, 3, 12, 3), Margin = new Thickness(0, 0, 8, 0), IsDefault = true };
+        okBtn.Click += (_, _) => { ok = true; dlg.Close(); };
+        var cancelBtn = new System.Windows.Controls.Button { Content = "Cancel", Padding = new Thickness(12, 3, 12, 3), IsCancel = true };
+        cancelBtn.Click += (_, _) => dlg.Close();
+        buttons.Children.Add(okBtn);
+        buttons.Children.Add(cancelBtn);
+        root.Children.Add(buttons);
+
+        dlg.Content = root;
+        dlg.ShowDialog();
+
+        if (!ok) return null;
+        return boxes.Where(b => b.Box.IsChecked == true).Select(b => b.Id).ToList();
     }
 
     /// <summary>Adds a two-column row (label | editor) to a settings grid.</summary>

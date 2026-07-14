@@ -549,9 +549,17 @@ Each phase is independently shippable and reversible.
    from `PluginInstances`** (seeded once from the flat fields for older files) so edits take
    effect on the existing settings-apply rebuild. The legacy Plex tab still drives the flag-off
    `_plex` path (the two separate paths we've kept throughout); it retires at cutover.
-   **7c-2 (todo):** add/remove instances (real multi-Plex — "Bob's Plex" + "Work Plex"),
-   enable/disable UX, `AllowCaching` toggle, and invoking `IConfigurable` actions (Plex
-   "browse libraries" from inside the Plug-ins tab, so the `libraries` blob becomes editable here).
+   **7c-2 (done):** the Plug-ins tab now supports **add/remove of multi-instance sources**
+   (an "Add source" picker for providers advertising `SupportsMultipleInstances`, unique
+   instance ids like `plex-2`, a per-card Remove button) and **invoking `IConfigurable`
+   actions** in-tab: an action button (e.g. Plex "Browse libraries") harvests current edits,
+   builds a **transient** source from the config, invokes the action, shows a generic
+   checkbox-list dialog, and applies the result. This surfaced a real contract gap —
+   `ConfigSelection` was display-only with no way to write a selection back — so the contract
+   gained `IConfigurable.ApplyConfigActionAsync(actionId, selectedIds, currentSettings)`
+   (0.7.0): the source owns turning the selection into its settings shape (PlexSource rebuilds
+   its rich `libraries` mapping from the chosen keys, preserving Hubs/Playlists flags). The
+   `AllowCaching` toggle UI remains a small follow-up; multi-instance + config actions are done.
 8. **Reference third source (validation).** Prototype Jellyfin or a local-folder
    source to confirm no core changes are needed.
 

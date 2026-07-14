@@ -56,4 +56,20 @@ public interface IConfigurable
 
     /// <summary>Runs a config action and returns a pick-list for the host to render.</summary>
     Task<ConfigSelection> InvokeConfigActionAsync(string actionId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Applies the user's selection from a config action back into this instance's settings. The
+    /// source owns the translation (e.g. turning chosen library ids into its rich <c>libraries</c>
+    /// blob) since only it knows the settings shape. Returns the updated settings dictionary the
+    /// host should persist for the instance.
+    /// </summary>
+    /// <param name="actionId">The action whose selection is being applied.</param>
+    /// <param name="selectedOptionIds">The <see cref="ConfigOption.Id"/>s the user selected.</param>
+    /// <param name="currentSettings">The instance's current settings (as edited so far).</param>
+    /// <param name="ct">Cancellation token.</param>
+    Task<IReadOnlyDictionary<string, string?>> ApplyConfigActionAsync(
+        string actionId,
+        IReadOnlyList<string> selectedOptionIds,
+        IReadOnlyDictionary<string, string?> currentSettings,
+        CancellationToken ct = default);
 }

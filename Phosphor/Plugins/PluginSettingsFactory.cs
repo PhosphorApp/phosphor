@@ -59,18 +59,42 @@ public static class PluginSettingsFactory
     }
 
     /// <summary>
-    /// Returns the declarative settings schema for a provider type id, plus its display name and
-    /// description — for the settings UI to render editable fields without a live registry. Returns
-    /// null for an unknown type id.
+    /// Returns provider metadata for a type id — display name, description, whether multiple
+    /// instances are allowed, and the settings schema — for the settings UI to render editable
+    /// fields without a live registry. Returns null for an unknown type id.
     /// </summary>
-    public static (string DisplayName, string? Description, IReadOnlyList<PluginSettingDescriptor> Schema)? DescribeProvider(string typeId)
+    public static (string DisplayName, string? Description, bool SupportsMultipleInstances, IReadOnlyList<PluginSettingDescriptor> Schema)? DescribeProvider(string typeId)
     {
-        IPhosphorSourceProvider? p = typeId switch
+        var p = CreateProvider(typeId);
+        return p == null ? null : (p.DisplayName, p.Description, p.SupportsMultipleInstances, p.GetSettingsSchema());
+    }
+
+    /// <summary>Provider type ids that can be added by the user (i.e. support multiple instances).</summary>
+    public static IReadOnlyList<(string TypeId, string DisplayName)> AddableProviders() =>
+        new[] { PlexSourceProvider.PlexTypeId }
+            .Select(id => (id, CreateProvider(id)!.DisplayName))
+            .ToList();
+
+    private static IPhosphorSourceProvider? CreateProvider(string typeId) => typeId switch
+    {
+        YouTubeSourceProvider.YouTubeTypeId => new YouTubeSourceProvider(),
+        PlexSourceProvider.PlexTypeId => new PlexSourceProvider(),
+        _ => null,
+    };
+
+    /// <summary>
+    /// Builds a transient (non-registered) source instance from a config, for the settings UI to
+    /// query capabilities and invoke <see cref="IConfigurable"/> actions (e.g. Plex "browse
+    /// libraries") without touching the live registry. Returns null for unknown providers.
+    /// </summary>
+    public static IPhosphorSource? BuildTransientSource(PluginInstanceConfig cfg, System.Net.Http.HttpClient http)
+    {
+        var provider = cfg.TypeId switch
         {
-            YouTubeSourceProvider.YouTubeTypeId => new YouTubeSourceProvider(),
+            YouTubeSourceProvider.YouTubeTypeId => (IPhosphorSourceProvider)new YouTubeSourceProvider(http),
             PlexSourceProvider.PlexTypeId => new PlexSourceProvider(),
             _ => null,
         };
-        return p == null ? null : (p.DisplayName, p.Description, p.GetSettingsSchema());
+        return provider?.CreateInstance(cfg.InstanceId, cfg.Settings);
     }
 }
