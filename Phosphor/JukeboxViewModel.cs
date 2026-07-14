@@ -1062,15 +1062,24 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>Maps a plug-in <see cref="Phosphor.Plugin.Abstractions.SourceItem"/> to a host
-    /// <see cref="VideoItem"/> for the YouTube discovery paths (search / playlist / channel).</summary>
-    private static VideoItem ToVideoItem(Phosphor.Plugin.Abstractions.SourceItem item) => new()
+    /// <see cref="VideoItem"/>. When the source stashed a full <see cref="VideoItem"/> in
+    /// <see cref="Phosphor.Plugin.Abstractions.SourceItem.SourceState"/> (as Plex does, carrying its
+    /// rich <c>plex:</c> id / rating key / audio stream), it is unwrapped directly so playback and
+    /// caching route correctly; otherwise the flat fields are copied (YouTube discovery shape).</summary>
+    private static VideoItem ToVideoItem(Phosphor.Plugin.Abstractions.SourceItem item)
     {
-        Title = item.Title,
-        Author = item.Subtitle ?? "",
-        ThumbnailUrl = item.ThumbnailUrl ?? "",
-        VideoId = item.ItemId,
-        Duration = item.Duration,
-    };
+        if (item.SourceState is VideoItem carried)
+            return carried;
+
+        return new VideoItem
+        {
+            Title = item.Title,
+            Author = item.Subtitle ?? "",
+            ThumbnailUrl = item.ThumbnailUrl ?? "",
+            VideoId = item.ItemId,
+            Duration = item.Duration,
+        };
+    }
 
     private static async IAsyncEnumerable<VideoItem> MapPluginItems(
         IAsyncEnumerable<Phosphor.Plugin.Abstractions.SourceItem> source,

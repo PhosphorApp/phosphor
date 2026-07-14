@@ -159,20 +159,16 @@
             <Button x:Name="HomeButton" Content="&#x1F3E0;" DockPanel.Dock="Right" Padding="14,8" FontSize="16"
                      Command="{Binding ShowCategoryListCommand}" Click="HomeButton_Click" Margin="6,0,0,0"
                      ToolTip="Back to Categories"/>
-            <Button x:Name="BackNavButton" Content="&#x2190;" DockPanel.Dock="Left" Padding="14,8" FontSize="18"
-                     Click="BackNavButton_Click" Margin="0,0,6,0"
-                     ToolTip="Go Back" IsEnabled="False"/>
-            <!-- Search source selector (only shown when more than one searchable source exists). -->
-            <ComboBox x:Name="SearchSourceBox" DockPanel.Dock="Left" Margin="0,0,6,0"
+            <!-- Search source selector — between the text box and Home. Only shown when more than
+                 one searchable source exists. Themed via the app's dark ComboBox style. -->
+            <ComboBox x:Name="SearchSourceBox" DockPanel.Dock="Right" Margin="6,0,0,0"
                       MinWidth="110" FontSize="14" VerticalContentAlignment="Center"
-                      Background="{StaticResource Surface2Brush}" Foreground="{StaticResource TextBrush}"
-                      BorderBrush="#333"
                       ItemsSource="{Binding SearchSources}"
                       SelectedValuePath="InstanceId"
                       SelectedValue="{Binding ActiveSearchSourceId, Mode=TwoWay}"
                       ToolTip="Which source the search box queries">
                 <ComboBox.Style>
-                    <Style TargetType="ComboBox">
+                    <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
                         <Setter Property="Visibility" Value="Visible"/>
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding SearchSources.Count}" Value="1">
@@ -185,6 +181,9 @@
                     </Style>
                 </ComboBox.Style>
             </ComboBox>
+            <Button x:Name="BackNavButton" Content="&#x2190;" DockPanel.Dock="Left" Padding="14,8" FontSize="18"
+                     Click="BackNavButton_Click" Margin="0,0,6,0"
+                     ToolTip="Go Back" IsEnabled="False"/>
             <Grid>
                 <ComboBox x:Name="SearchBox" IsEditable="True"
                           Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
