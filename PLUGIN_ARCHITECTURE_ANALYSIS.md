@@ -800,6 +800,16 @@ Each phase is independently shippable and reversible.
      the duplication is host-side legacy machinery, and the only real gap is that the generic host
      path ignores `BrowseResult.Categories` (sub-tiles) and pagination. Unifying is mostly enriching
      the generic path, then retiring the Plex-specific branches. Highest-value structural cleanup.
+     **Increment A (done):** the generic browse path now has a **source-agnostic navigation stack** —
+     `BrowseNode { Title, SourceInstanceId, CategoryId, SourceState }` frames in `_browseStack`, a
+     `BrowseBreadcrumb`, and `IsGenericBrowsing`. `EnterBrowseNodeAsync` renders `BrowseResult.Categories`
+     as drill-in container items (`VideoItem.IsGenericContainer` + carried `GenericSourceState`) and
+     leaf items; `PlayNow`/keyboard/double-click route a container to `DrillIntoGenericContainerAsync`
+     (push) and the DMD Back button to `GenericBrowseBackAsync` (pop + re-browse). A generic breadcrumb
+     bar mirrors the Plex ones. The local-folder source now returns per-folder sub-categories when it
+     has >1 folder, exercising drill-down/back/breadcrumb. **Plex still uses its own path** (untouched)
+     — Increments B (generic tiles join the sortable model) and C (retire Plex's bespoke path) follow.
+     Pagination for the generic path deferred to when Plex migrates (C).
    - **Deferred #B — play-time chapters/metadata.** The play path branches on `item.IsPlex` to call
      `FetchPlexChaptersAsync` vs `FetchYouTubeChaptersAsync`, and `GetPlexAudioTag` is Plex-shaped
      (cosmetic status text). The capability already exists (`IPlayableResolver.GetMetadataAsync`

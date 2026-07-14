@@ -1207,7 +1207,20 @@ public partial class DmdWindow : JukeboxWindow
     {
         if (DataContext is not JukeboxViewModel vm) return;
 
-        if (vm.IsViewingPlexMusic)
+        if (vm.IsGenericBrowsing)
+        {
+            Dispatcher.BeginInvoke(async () =>
+            {
+                if (!await vm.GenericBrowseBackAsync())
+                {
+                    vm.ShowCategoryListCommand.Execute(null);
+                    ClearSearchBar();
+                    ApplyNavHighlight(vm);
+                }
+                UpdateBackNavButton(vm);
+            });
+        }
+        else if (vm.IsViewingPlexMusic)
         {
             Dispatcher.BeginInvoke(async () =>
             {
@@ -1609,6 +1622,12 @@ public partial class DmdWindow : JukeboxWindow
             if (_resultsIndex >= 0 && _resultsIndex < vm.SearchResults.Count)
             {
                 var item = vm.SearchResults[_resultsIndex];
+                // Generic plug-in browse container → drill in (PlayNow routes it to the nav stack).
+                if (item.IsGenericContainer)
+                {
+                    vm.PlayNowCommand.Execute(item);
+                    return;
+                }
                 if (item.PlexItemType is PlexItemType.Artist or PlexItemType.Album or PlexItemType.Hub or PlexItemType.Playlist)
                 {
                     vm.PlayNowCommand.Execute(item);

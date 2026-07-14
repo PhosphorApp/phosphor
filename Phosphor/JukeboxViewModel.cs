@@ -201,9 +201,53 @@ public partial class JukeboxViewModel : ObservableObject
     /// <c>StreamUrl</c> (via the source's <c>IPlayableResolver</c>) so the existing player path plays
     /// them directly — no source-specific playback wiring needed.
     /// </summary>
+    /// <summary>
+    /// Enters a generic plug-in browse from a home-screen tile: resets the navigation stack to this
+    /// root node and renders it. Sub-categories become drill-in container items; leaf items play.
+    /// </summary>
     private async Task BrowsePluginCategoryAsync(Category category)
     {
-        var source = _sourceRegistry?.ByInstance(category.SourceInstanceId!);
+        _browseStack.Clear();
+        var root = new BrowseNode(
+            category.Name,
+            category.SourceInstanceId!,
+            category.SourceCategoryId ?? category.Name,
+            category.SourceState);
+        await EnterBrowseNodeAsync(root, pushOntoStack: true);
+    }
+
+    /// <summary>
+    /// Drills into a generic browse container item (pushes its node) — invoked when the user
+    /// activates an <see cref="VideoItem.IsGenericContainer"/> result.
+    /// </summary>
+    public Task DrillIntoGenericContainerAsync(VideoItem item)
+    {
+        var node = new BrowseNode(
+            item.Title,
+            item.GenericSourceInstanceId!,
+            item.GenericCategoryId ?? item.Title,
+            item.GenericSourceState);
+        return EnterBrowseNodeAsync(node, pushOntoStack: true);
+    }
+
+    /// <summary>Navigates one level back in the generic browse stack; returns false if already at root.</summary>
+    public async Task<bool> GenericBrowseBackAsync()
+    {
+        if (_browseStack.Count <= 1) return false;
+        _browseStack.RemoveAt(_browseStack.Count - 1);  // pop current
+        var parent = _browseStack[^1];
+        await EnterBrowseNodeAsync(parent, pushOntoStack: false);
+        return true;
+    }
+
+    /// <summary>
+    /// Core generic browse: calls the source's <c>IBrowsable.BrowseAsync</c> for <paramref name="node"/>,
+    /// renders sub-categories as drill-in container items and leaf items (with resolved StreamUrl) for
+    /// playback, and maintains the nav stack + breadcrumb. Source-agnostic — no per-source logic.
+    /// </summary>
+    private async Task EnterBrowseNodeAsync(BrowseNode node, bool pushOntoStack)
+    {
+        var source = _sourceRegistry?.ByInstance(node.SourceInstanceId);
         if (source is not Phosphor.Plugin.Abstractions.IBrowsable browsable)
         {
             StatusText = "This source can't be browsed.";
@@ -215,21 +259,29 @@ public partial class JukeboxViewModel : ObservableObject
         var ct = _searchCts.Token;
 
         IsSearching = true;
-        StatusText = $"Loading {category.Name}...";
+        IsGenericBrowsing = true;
+        StatusText = $"Loading {node.Title}...";
         SearchResults.Clear();
 
         try
         {
-            var node = new Phosphor.Plugin.Abstractions.SourceCategory
+            var sourceCategory = new Phosphor.Plugin.Abstractions.SourceCategory
             {
-                SourceInstanceId = category.SourceInstanceId!,
-                CategoryId = category.SourceCategoryId ?? category.Name,
-                Title = category.Name,
-                SourceState = category.SourceState,
+                SourceInstanceId = node.SourceInstanceId,
+                CategoryId = node.CategoryId,
+                Title = node.Title,
+                SourceState = node.SourceState,
             };
 
-            var result = await browsable.BrowseAsync(node, ct);
+            var result = await browsable.BrowseAsync(sourceCategory, ct);
             if (ct.IsCancellationRequested) return;
+
+            if (pushOntoStack) _browseStack.Add(node);
+            UpdateBrowseBreadcrumb();
+
+            // Sub-categories first (drill-in containers), then leaf items (playable).
+            foreach (var cat in result.Categories)
+                SearchResults.Add(ToGenericContainerItem(cat));
 
             var resolver = source as Phosphor.Plugin.Abstractions.IPlayableResolver;
             foreach (var item in result.Items)
@@ -254,11 +306,11 @@ public partial class JukeboxViewModel : ObservableObject
                 SearchResults.Add(vi);
             }
 
-            StatusText = $"{SearchResults.Count} item(s) in {category.Name}";
+            StatusText = $"{SearchResults.Count} item(s) in {node.Title}";
         }
         catch (Exception ex)
         {
-            DebugLog.LogException($"Plugin browse '{category.SourceInstanceId}'", ex);
+            DebugLog.LogException($"Plugin browse '{node.SourceInstanceId}'", ex);
             StatusText = "Failed to load this source.";
         }
         finally
@@ -266,6 +318,18 @@ public partial class JukeboxViewModel : ObservableObject
             IsSearching = false;
         }
     }
+
+    /// <summary>Maps a browse sub-category into a drill-in container <see cref="VideoItem"/>.</summary>
+    private static VideoItem ToGenericContainerItem(Phosphor.Plugin.Abstractions.SourceCategory cat) => new()
+    {
+        Title = cat.Title,
+        ThumbnailUrl = cat.ThumbnailUrl ?? "",
+        VideoId = cat.CategoryId,
+        IsGenericContainer = true,
+        GenericSourceInstanceId = cat.SourceInstanceId,
+        GenericSourceState = cat.SourceState,
+        GenericCategoryId = cat.CategoryId,
+    };
 
     // ── Genre categories (loaded from categories.json) ──
     private List<GenreCategoryEntry> _genreCategories = [];
@@ -1812,6 +1876,10 @@ public partial class JukeboxViewModel : ObservableObject
         _activePlexPlaylistKey = null;
         _activePlexInstanceId = null;
         _plexHubCategories.Clear();
+        // Reset generic plug-in browse navigation.
+        IsGenericBrowsing = false;
+        _browseStack.Clear();
+        UpdateBrowseBreadcrumb();
         ActiveCategory = "";
         SearchResults.Clear();
         CanLoadMore = false;
@@ -2325,6 +2393,33 @@ public partial class JukeboxViewModel : ObservableObject
         get => _plexBreadcrumb;
         set => SetProperty(ref _plexBreadcrumb, value);
     }
+
+    // ── Generic plug-in browse navigation stack (source-agnostic drill-down + breadcrumb + back) ──
+    // Each frame is one browse level; the top of the stack is the currently-displayed node. Used by
+    // any IBrowsable source (local-folder, future Jellyfin, …) so drill-down/back/breadcrumb work
+    // without source-specific state. Plex keeps its own path for now (retired in a later increment).
+    private readonly List<BrowseNode> _browseStack = new();
+
+    private string _browseBreadcrumb = "";
+    /// <summary>Breadcrumb for the generic plug-in browse path (e.g. "Folder › Subfolder").</summary>
+    public string BrowseBreadcrumb
+    {
+        get => _browseBreadcrumb;
+        private set => SetProperty(ref _browseBreadcrumb, value);
+    }
+
+    private bool _isGenericBrowsing;
+    /// <summary>True while viewing a generic plug-in browse node (enables Back + breadcrumb).</summary>
+    public bool IsGenericBrowsing
+    {
+        get => _isGenericBrowsing;
+        private set => SetProperty(ref _isGenericBrowsing, value);
+    }
+
+    private void UpdateBrowseBreadcrumb()
+        => BrowseBreadcrumb = _browseStack.Count > 0
+            ? string.Join(" › ", _browseStack.Select(n => n.Title))
+            : "";
 
     private async Task BrowsePlexLibraryAsync(string libraryKey, string? libraryType = null, string? displayName = null)
     {
@@ -3236,6 +3331,13 @@ public partial class JukeboxViewModel : ObservableObject
     private void PlayNow(VideoItem? item)
     {
         if (item == null) return;
+
+        // Generic plug-in browse container — drill in via the nav stack instead of playing.
+        if (item.IsGenericContainer)
+        {
+            _ = SafeFireAndForget(DrillIntoGenericContainerAsync(item));
+            return;
+        }
 
         // Non-playable Plex items trigger drill-down via event
         if (item.PlexItemType is PlexItemType.Artist or PlexItemType.Album or PlexItemType.Hub or PlexItemType.Playlist)
@@ -4191,3 +4293,10 @@ public sealed record SearchSourceOption(string InstanceId, string DisplayName)
     // Shown in the ComboBox.
     public override string ToString() => DisplayName;
 }
+
+/// <summary>
+/// One level in the generic plug-in browse navigation stack. Carries the opaque
+/// <see cref="SourceState"/> the source hands back on browse, so drill-down and back-navigation are
+/// fully source-agnostic (the host never interprets it).
+/// </summary>
+public sealed record BrowseNode(string Title, string SourceInstanceId, string CategoryId, object? SourceState);

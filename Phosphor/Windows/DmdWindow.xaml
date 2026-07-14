@@ -330,6 +330,15 @@
                            VerticalAlignment="Center" Margin="0,0,12,0"/>
             </DockPanel>
 
+            <!-- Generic plug-in browse bar (source-agnostic drill-down breadcrumb) -->
+            <DockPanel Grid.Row="1" Margin="0,0,0,4"
+                       Visibility="{Binding IsGenericBrowsing, Converter={StaticResource BoolVis}}">
+
+                <TextBlock x:Name="BrowseBreadcrumbText" Text="{Binding BrowseBreadcrumb}" DockPanel.Dock="Left"
+                           Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="12" Tag="NavText"
+                           VerticalAlignment="Center" Margin="0,0,12,0"/>
+            </DockPanel>
+
             <ListBox Grid.Row="2" ItemsSource="{Binding SearchResults}"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          ScrollViewer.IsDeferredScrollingEnabled="True"
@@ -452,6 +461,10 @@
                                                         <DataTrigger Binding="{Binding PlexItemType}" Value="Playlist">
                                                             <Setter Property="Content" Value="⏎"/>
                                                             <Setter Property="ToolTip" Value="Browse Playlist"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsGenericContainer}" Value="True">
+                                                            <Setter Property="Content" Value="⏎"/>
+                                                            <Setter Property="ToolTip" Value="Open"/>
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
