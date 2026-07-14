@@ -179,6 +179,19 @@ public partial class JukeboxViewModel : ObservableObject
                 _plexStereoAudio = bool.TryParse(GetSetting(first, Phosphor.Plugins.Plex.PlexSourceProvider.KeyStereoAudio), out var s2) && s2;
             }
 
+            // Build a per-instance PlexService for each enabled instance so multi-server browse
+            // (hub/playlist lists, in-library search, GetAllTracks, chapters) targets the right server.
+            _plexServiceByInstance.Clear();
+            foreach (var c in plexInstances)
+            {
+                var svc = new PlexService();
+                svc.Configure(
+                    GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyServerUrl) ?? "",
+                    GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyToken) ?? "",
+                    bool.TryParse(GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyStereoAudio), out var cs) && cs);
+                _plexServiceByInstance[c.InstanceId] = svc;
+            }
+
             // Build tiles from ALL enabled instances, tagged with their instance id.
             var instLibs = plexInstances
                 .Select(c => new GenreCategoryStore.PlexInstanceLibraries(
@@ -213,6 +226,26 @@ public partial class JukeboxViewModel : ObservableObject
         }
         catch { return []; }
     }
+
+    /// <summary>
+    /// Returns the <see cref="PlexService"/> for the currently-active browse instance (multi-server).
+    /// On the plug-in path this is the per-instance service configured in
+    /// <see cref="ConfigurePlexFromSettings"/>; falls back to the single legacy <c>_plex</c> when
+    /// there is no active/keyed instance (single-server or flag-off).
+    /// </summary>
+    private PlexService ActivePlex =>
+        _activePlexInstanceId != null && _plexServiceByInstance.TryGetValue(_activePlexInstanceId, out var svc)
+            ? svc
+            : _plex;
+
+    /// <summary>
+    /// Resolves the plug-in Plex source for the current browse session (multi-server). Prefers the
+    /// instance keyed by <see cref="_activePlexInstanceId"/>; falls back to the first Plex instance
+    /// so single-server / not-yet-scoped browses behave exactly as before.
+    /// </summary>
+    private Phosphor.Plugin.Abstractions.IPhosphorSource? ActivePlexSource =>
+        (_activePlexInstanceId != null ? _sourceRegistry?.ByInstance(_activePlexInstanceId) : null)
+            ?? _sourceRegistry?.PlexInstances.FirstOrDefault();
 
     // ── Categories (playlists + genres, rebuilt dynamically) ──
     public BulkObservableCollection<Category> Categories { get; } = new();
@@ -1042,7 +1075,7 @@ public partial class JukeboxViewModel : ObservableObject
     private async Task<List<VideoItem>> PlexBrowseChildrenViaPluginOrLegacy(
         string ratingKey, PlexItemType childType, CancellationToken ct)
     {
-        var plex = _sourceRegistry?.PlexInstances.FirstOrDefault();
+        var plex = ActivePlexSource;
         if (_usePluginSources && plex is Phosphor.Plugin.Abstractions.IBrowsable browsable)
         {
             // The parent node kind is one level above the requested children: album-children
@@ -1082,7 +1115,7 @@ public partial class JukeboxViewModel : ObservableObject
         Phosphor.Plugins.Plex.PlexNode node, int offset, int count,
         Func<Task<PlexPage>> legacy, CancellationToken ct = default)
     {
-        var plex = _sourceRegistry?.PlexInstances.FirstOrDefault();
+        var plex = ActivePlexSource;
         if (_usePluginSources && plex is Phosphor.Plugin.Abstractions.IPagedBrowsable paged)
         {
             var category = new Phosphor.Plugin.Abstractions.SourceCategory
@@ -1474,6 +1507,7 @@ public partial class JukeboxViewModel : ObservableObject
 
         if (category.IsPlexHub && _plex.IsConfigured)
         {
+            _activePlexInstanceId = category.PlexInstanceId;
             IsViewingPlaylist = false;
             _hasMoreResults = false;
             CanLoadMore = false;
@@ -1485,6 +1519,7 @@ public partial class JukeboxViewModel : ObservableObject
 
         if (category.IsPlexPlaylist && _plex.IsConfigured)
         {
+            _activePlexInstanceId = category.PlexInstanceId;
             IsViewingPlaylist = false;
             _hasMoreResults = false;
             CanLoadMore = false;
@@ -1496,6 +1531,7 @@ public partial class JukeboxViewModel : ObservableObject
 
         if (category.IsPlexHubList && _plex.IsConfigured)
         {
+            _activePlexInstanceId = category.PlexInstanceId;
             IsViewingPlaylist = false;
             _hasMoreResults = false;
             CanLoadMore = false;
@@ -1507,6 +1543,7 @@ public partial class JukeboxViewModel : ObservableObject
 
         if (category.IsPlexPlaylistList && _plex.IsConfigured)
         {
+            _activePlexInstanceId = category.PlexInstanceId;
             IsViewingPlaylist = false;
             _hasMoreResults = false;
             CanLoadMore = false;
@@ -1518,6 +1555,7 @@ public partial class JukeboxViewModel : ObservableObject
 
         if (category.IsPlex && _plex.IsConfigured)
         {
+            _activePlexInstanceId = category.PlexInstanceId;
             IsViewingPlaylist = false;
             _hasMoreResults = false;
             CanLoadMore = false;
@@ -1557,6 +1595,7 @@ public partial class JukeboxViewModel : ObservableObject
         IsViewingPlexHubOrPlaylist = false;
         _activePlexHubKey = null;
         _activePlexPlaylistKey = null;
+        _activePlexInstanceId = null;
         _plexHubCategories.Clear();
         ActiveCategory = "";
         SearchResults.Clear();
@@ -1659,7 +1698,7 @@ public partial class JukeboxViewModel : ObservableObject
             try
             {
                 var searchType = _activePlexLibraryType == "artist" ? _plexSearchMode : (PlexSearchMode?)null;
-                var results = await _plex.SearchLibraryAsync(
+                var results = await ActivePlex.SearchLibraryAsync(
                     _activePlexLibraryKey, query, _activePlexLibraryType, searchType, _searchCts.Token);
 
                 foreach (var v in results)
@@ -1966,6 +2005,14 @@ public partial class JukeboxViewModel : ObservableObject
 
     private string? _activePlexLibraryType;
 
+    // The Plex instance id the current browse session targets (multi-server). Null = first/legacy.
+    private string? _activePlexInstanceId;
+
+    // Per-instance PlexService cache for legacy-style calls (hub/playlist lists, in-library search,
+    // GetAllTracks, chapters) that the plug-in path still routes through a PlexService. Configured
+    // from each instance's settings so multi-server calls hit the right server.
+    private readonly Dictionary<string, PlexService> _plexServiceByInstance = new(StringComparer.Ordinal);
+
     // Active hub/playlist browsing state for pagination
     private string? _activePlexHubKey;
     private string? _activePlexHubType;
@@ -2140,7 +2187,7 @@ public partial class JukeboxViewModel : ObservableObject
 
         try
         {
-            var hubs = await _plex.GetLibraryHubsAsync(libraryKey, token);
+            var hubs = await ActivePlex.GetLibraryHubsAsync(libraryKey, token);
             if (token.IsCancellationRequested) return;
 
             foreach (var hub in hubs)
@@ -2195,7 +2242,7 @@ public partial class JukeboxViewModel : ObservableObject
         try
         {
             var playlistType = libraryType == "artist" ? "audio" : "video";
-            var playlists = await _plex.GetPlaylistsAsync(playlistType, token);
+            var playlists = await ActivePlex.GetPlaylistsAsync(playlistType, token);
             if (token.IsCancellationRequested) return;
 
             foreach (var pl in playlists)
@@ -2842,7 +2889,7 @@ public partial class JukeboxViewModel : ObservableObject
             StatusText = $"Loading tracks from {item.Title}...";
             try
             {
-                var tracks = await _plex.GetAllTracksAsync(item.PlexRatingKey, item.PlexItemType);
+                var tracks = await ActivePlex.GetAllTracksAsync(item.PlexRatingKey, item.PlexItemType);
                 int added = 0;
                 foreach (var track in tracks)
                 {
@@ -2923,7 +2970,7 @@ public partial class JukeboxViewModel : ObservableObject
             if (vi.PlexItemType is PlexItemType.Artist or PlexItemType.Album
                 && vi.PlexRatingKey != null && _plex.IsConfigured)
             {
-                var tracks = await _plex.GetAllTracksAsync(vi.PlexRatingKey, vi.PlexItemType);
+                var tracks = await ActivePlex.GetAllTracksAsync(vi.PlexRatingKey, vi.PlexItemType);
                 foreach (var track in tracks)
                 {
                     if (Queue.Count >= MaxQueueSize) break;
@@ -3014,7 +3061,7 @@ public partial class JukeboxViewModel : ObservableObject
 
     private async Task FetchPlexChaptersAsync(VideoItem item)
     {
-        var chapters = await _plex.GetChaptersAsync(item.PlexRatingKey!);
+        var chapters = await ActivePlex.GetChaptersAsync(item.PlexRatingKey!);
         if (chapters != null && chapters.Count > 0)
         {
             item.Chapters = chapters;
@@ -3345,7 +3392,7 @@ public partial class JukeboxViewModel : ObservableObject
             StatusText = $"Loading tracks from {item.Title}...";
             try
             {
-                var tracks = await _plex.GetAllTracksAsync(item.PlexRatingKey, item.PlexItemType);
+                var tracks = await ActivePlex.GetAllTracksAsync(item.PlexRatingKey, item.PlexItemType);
                 foreach (var track in tracks)
                 {
                     _playlists.AddToPlaylist(ActivePlaylistName, track);

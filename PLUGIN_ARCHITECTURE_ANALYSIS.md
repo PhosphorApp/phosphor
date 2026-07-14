@@ -587,11 +587,14 @@ Each phase is independently shippable and reversible.
    Added `PlexInstanceId` to `Category` + `GenreCategoryEntry`, a `GenreCategoryStore.SyncAllPlexLibraries`
    (keyed by (instanceId, libraryKey), name-disambiguated when >1 instance), and rewired
    `ConfigurePlexFromSettings` to gather all enabled+configured Plex instances and sync every one's
-   libraries into tiles (each tile tagged with its instance id). **Sub-step B (todo):** browse
-   routing still targets the single legacy `_plex` (configured from the first instance) — clicking a
-   second server's tile currently queries the first. B threads each tile's `PlexInstanceId` into the
-   `PlexBrowse...ViaPluginOrLegacy` helpers (→ `registry.ByInstance(id)` instead of `First()`) and
-   into the drill-down/pagination state, so tiles route to their own server.
+   libraries into tiles (each tile tagged with its instance id). **Sub-step B (done):** browse
+   routing now targets the selected tile's own server. Added `_activePlexInstanceId` browse-session
+   state (set from `category.PlexInstanceId` in every Plex branch of `SelectCategoryAsync`, cleared
+   on home), an `ActivePlexSource` resolver (`registry.ByInstance(id)` ?? `PlexInstances.First()`)
+   feeding the `PlexBrowse...ViaPluginOrLegacy` helpers, and a per-instance `PlexService` cache
+   (`_plexServiceByInstance`, built in `ConfigurePlexFromSettings`) exposed via `ActivePlex` so the
+   remaining runtime `_plex`-direct calls (in-library search, hub/playlist lists, `GetAllTracks`,
+   `GetChapters`) hit the right server. Flag-off stays byte-identical (resolvers fall back to `_plex`).
 8. **Reference third source (validation).** Prototype Jellyfin or a local-folder
    source to confirm no core changes are needed.
 
