@@ -694,6 +694,31 @@ Each phase is independently shippable and reversible.
      the provider is discovered, `ApiVersion=0.10.0` is compatible, and its type is assignable to the
      host's `IPhosphorSourceProvider` (types unify).
 
+   **Folder-picker + multi-value settings (0.11.0, done).** Two composable, orthogonal additions —
+   a **render kind** and a **multiplicity hint** — that keep storage flat:
+   - `PluginSettingType.FolderPath` — a render kind (like `Secret`→PasswordBox): a text field + a
+     "Browse…" folder picker (`System.Windows.Forms.FolderBrowserDialog`; the host is net8.0-windows).
+   - `PluginSettingDescriptor.AllowMultiple` — a render hint: the host draws an add/remove **list
+     editor** (each row using the `Type`'s editor — folder picker per row for `FolderPath`), and
+     persists the rows as **newline-joined text in the single settings key**. Storage is unchanged
+     (`Dictionary<string,string?>`); the plug-in still reads the key and splits on newlines. This
+     avoids both a combinatorial enum (`FolderList`/`FileList`/`TextList`) and a storage-model change.
+     The local-folder schema now declares `Folders` as `FolderPath { AllowMultiple = true }` with no
+     change to its parsing. Harvested via a `_pluginCustomFieldGetters` list (editors that don't fit
+     the standard control switch supply a value getter).
+
+   **Generic source tiles (done).** The home screen now builds tiles for *any* `IBrowsable` plug-in,
+   not just Plex's bespoke path. After each registry build, `BuildPluginBrowseTilesAsync` pre-fetches
+   `GetRootCategoriesAsync` for every non-built-in `IBrowsable` source into `_pluginBrowseTiles`
+   (failure-isolated per source), and `RebuildCategories` (sync) appends them. `Category` gained
+   `SourceInstanceId`/`SourceCategoryId`/`SourceState`/`IsPluginBrowse`. Selecting such a tile routes
+   through a generic branch in `SelectCategoryAsync` → `BrowsePluginCategoryAsync`, which calls the
+   source's `BrowseAsync`, maps `SourceItem`→`VideoItem`, and sets each item's `StreamUrl` via the
+   source's `IPlayableResolver` — so the existing player path (which checks `StreamUrl` first) plays
+   local files directly with **no source-specific playback wiring**. Built-in YouTube (not browsable)
+   and Plex (own tile path) are skipped, so no double-tiling. Plex's bespoke path can later collapse
+   into this generic one.
+
    **Deferred — Settings consolidation (cleanup phase).** The General→VIDEO section (quality, video
    engine, search engine, prefer stereo) and the standalone PLEX tab are now **redundant** with the
    Plug-ins tab, but they can't just be deleted: the flat `AppSettings` fields (`VideoEngine`,

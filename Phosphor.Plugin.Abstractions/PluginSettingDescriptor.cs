@@ -8,6 +8,7 @@ public enum PluginSettingType
     Bool,
     Number,
     Enum,
+    FolderPath, // rendered as a text field with a "Browse…" folder picker
 }
 
 /// <summary>
@@ -25,6 +26,15 @@ public sealed record PluginSettingDescriptor(
 {
     /// <summary>Allowed values when <see cref="Type"/> is <see cref="PluginSettingType.Enum"/>.</summary>
     public IReadOnlyList<string>? EnumValues { get; init; }
+
+    /// <summary>
+    /// When true, this setting holds a <em>list</em> of values rather than one. The host renders an
+    /// add/remove list editor (each row using the <see cref="Type"/>'s editor — e.g. a folder picker
+    /// per row) and persists the list as newline-separated text in the single settings string. The
+    /// plug-in reads the value and splits on newlines. Not for values that can themselves contain a
+    /// newline (fine for paths, URLs, ids).
+    /// </summary>
+    public bool AllowMultiple { get; init; }
 }
 
 /// <summary>An interactive configuration action a source exposes (Tier 2 config).</summary>

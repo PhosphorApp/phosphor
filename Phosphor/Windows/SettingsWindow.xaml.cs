@@ -3988,6 +3988,10 @@ public partial class SettingsWindow : JukeboxWindow
     // Per-instance caching-policy selector (Default / Always / Never → AllowCaching null/true/false).
     private readonly Dictionary<string, System.Windows.Controls.ComboBox> _pluginCachingBoxes = new();
 
+    // Custom field harvesters for editors that don't fit the standard control switch (e.g. the
+    // FolderPath/AllowMultiple list editor). Each returns the field's current value on save.
+    private readonly List<(string InstanceId, string Key, Func<string?> GetValue)> _pluginCustomFieldGetters = new();
+
     // Sentinel used to pre-fill a secret field so it looks populated without exposing the real
     // value. On harvest, a field still equal to the sentinel is left unchanged.
     private const string SecretSentinel = "\u0001\u0001SECRET-UNCHANGED\u0001\u0001";
@@ -4021,6 +4025,7 @@ public partial class SettingsWindow : JukeboxWindow
         _pluginDisplayNameBoxes.Clear();
         _pluginEnabledBoxes.Clear();
         _pluginCachingBoxes.Clear();
+        _pluginCustomFieldGetters.Clear();
 
         // Edit a working copy so cancelling the dialog doesn't mutate settings.
         _pluginWorkingConfigs.Clear();
@@ -4286,6 +4291,21 @@ public partial class SettingsWindow : JukeboxWindow
                     continue;
                 }
 
+                // Multi-valued settings (e.g. a list of folders) render an add/remove list editor,
+                // storing the rows as newline-joined text. FolderPath rows use a folder picker.
+                if (d.AllowMultiple)
+                {
+                    BuildMultiValueEditor(grid, cfg, d, current, text, dim, surface2);
+                    continue;
+                }
+
+                // Single folder path: text field + a "Browse…" folder picker.
+                if (d.Type == Phosphor.Plugin.Abstractions.PluginSettingType.FolderPath)
+                {
+                    BuildFolderPathEditor(grid, cfg, d, current, text, dim, surface2);
+                    continue;
+                }
+
                 System.Windows.Controls.Control editor = d.Type switch
                 {
                     Phosphor.Plugin.Abstractions.PluginSettingType.Bool => new System.Windows.Controls.CheckBox
@@ -4486,6 +4506,135 @@ public partial class SettingsWindow : JukeboxWindow
         var cfg = _pluginWorkingConfigs.FirstOrDefault(c => c.InstanceId == instanceId);
         if (cfg == null || !_pluginLibraryState.TryGetValue(instanceId, out var libs)) return;
         cfg.Settings["libraries"] = System.Text.Json.JsonSerializer.Serialize(libs);
+    }
+
+    /// <summary>
+    /// Renders a single <c>FolderPath</c> setting: a read-only-ish text box plus a "Browse…" button
+    /// that opens a folder picker. Harvests via a custom getter (newline is irrelevant for one path).
+    /// </summary>
+    private void BuildFolderPathEditor(
+        System.Windows.Controls.Grid grid, Phosphor.Plugins.PluginInstanceConfig cfg,
+        Phosphor.Plugin.Abstractions.PluginSettingDescriptor d, string? current,
+        System.Windows.Media.Brush text, System.Windows.Media.Brush dim, System.Windows.Media.Brush surface2)
+    {
+        var row = new System.Windows.Controls.DockPanel();
+        var browseBtn = new System.Windows.Controls.Button
+        {
+            Content = "Browse…", Padding = new Thickness(8, 3, 8, 3), Margin = new Thickness(8, 0, 0, 0),
+        };
+        System.Windows.Controls.DockPanel.SetDock(browseBtn, System.Windows.Controls.Dock.Right);
+        var box = new System.Windows.Controls.TextBox
+        {
+            Text = current ?? "", Foreground = text, Background = surface2, Height = EditorHeight,
+            Padding = EditorPadding, VerticalContentAlignment = VerticalAlignment.Center,
+        };
+        browseBtn.Click += (_, _) =>
+        {
+            var picked = PickFolder(box.Text);
+            if (picked != null) box.Text = picked;
+        };
+        row.Children.Add(browseBtn);
+        row.Children.Add(box);
+
+        if (!string.IsNullOrWhiteSpace(d.HelpText)) box.ToolTip = d.HelpText;
+        _pluginCustomFieldGetters.Add((cfg.InstanceId, d.Key, () => box.Text));
+        AddSettingRow(grid, d.Label, d.HelpText, row, text, dim);
+    }
+
+    /// <summary>
+    /// Renders a multi-valued setting as an add/remove list editor: each configured value is a row
+    /// (with a Remove button), plus an "Add" affordance. For <c>FolderPath</c> the Add opens a folder
+    /// picker; otherwise it adds an editable text row. Values are harvested newline-joined.
+    /// </summary>
+    private void BuildMultiValueEditor(
+        System.Windows.Controls.Grid grid, Phosphor.Plugins.PluginInstanceConfig cfg,
+        Phosphor.Plugin.Abstractions.PluginSettingDescriptor d, string? current,
+        System.Windows.Media.Brush text, System.Windows.Media.Brush dim, System.Windows.Media.Brush surface2)
+    {
+        var isFolder = d.Type == Phosphor.Plugin.Abstractions.PluginSettingType.FolderPath;
+
+        // Backing list of the current values (one per non-empty line).
+        var values = new System.Collections.ObjectModel.ObservableCollection<string>(
+            (current ?? "").Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+        var container = new System.Windows.Controls.StackPanel { Margin = new Thickness(0, 2, 0, 0) };
+
+        var listPanel = new System.Windows.Controls.StackPanel();
+        container.Children.Add(listPanel);
+
+        void Rebuild()
+        {
+            listPanel.Children.Clear();
+            if (values.Count == 0)
+            {
+                listPanel.Children.Add(new System.Windows.Controls.TextBlock
+                {
+                    Text = isFolder ? "No folders added yet." : "No entries yet.",
+                    Foreground = dim, FontSize = 11, Margin = new Thickness(0, 0, 0, 4),
+                });
+            }
+            for (int i = 0; i < values.Count; i++)
+            {
+                int index = i;
+                var rowDock = new System.Windows.Controls.DockPanel { Margin = new Thickness(0, 2, 0, 2) };
+                var removeBtn = new System.Windows.Controls.Button
+                {
+                    Content = "✕", Padding = new Thickness(6, 1, 6, 1), Margin = new Thickness(8, 0, 0, 0), FontSize = 12,
+                };
+                System.Windows.Controls.DockPanel.SetDock(removeBtn, System.Windows.Controls.Dock.Right);
+                removeBtn.Click += (_, _) => { values.RemoveAt(index); Rebuild(); };
+                rowDock.Children.Add(removeBtn);
+
+                var valueBox = new System.Windows.Controls.TextBox
+                {
+                    Text = values[index], Foreground = text, Background = surface2, Height = EditorHeight,
+                    Padding = EditorPadding, VerticalContentAlignment = VerticalAlignment.Center,
+                    IsReadOnly = isFolder, // folders are set via the picker; free text otherwise
+                };
+                valueBox.TextChanged += (_, _) => values[index] = valueBox.Text;
+                rowDock.Children.Add(valueBox);
+                listPanel.Children.Add(rowDock);
+            }
+        }
+        Rebuild();
+
+        var addBtn = new System.Windows.Controls.Button
+        {
+            Content = isFolder ? "＋ Add folder…" : "＋ Add",
+            Padding = new Thickness(8, 3, 8, 3), Margin = new Thickness(0, 4, 0, 0),
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+        };
+        addBtn.Click += (_, _) =>
+        {
+            if (isFolder)
+            {
+                var picked = PickFolder(null);
+                if (picked != null && !values.Contains(picked, StringComparer.OrdinalIgnoreCase))
+                {
+                    values.Add(picked);
+                    Rebuild();
+                }
+            }
+            else
+            {
+                values.Add("");
+                Rebuild();
+            }
+        };
+        container.Children.Add(addBtn);
+
+        _pluginCustomFieldGetters.Add((cfg.InstanceId, d.Key,
+            () => string.Join("\n", values.Where(v => !string.IsNullOrWhiteSpace(v)))));
+        AddSettingRow(grid, d.Label, d.HelpText, container, text, dim);
+    }
+
+    /// <summary>Opens a folder picker seeded with <paramref name="initial"/>; returns the chosen path or null.</summary>
+    private static string? PickFolder(string? initial)
+    {
+        using var dlg = new System.Windows.Forms.FolderBrowserDialog();
+        if (!string.IsNullOrWhiteSpace(initial) && System.IO.Directory.Exists(initial))
+            dlg.SelectedPath = initial;
+        return dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK ? dlg.SelectedPath : null;
     }
 
     /// <summary>
@@ -5066,6 +5215,14 @@ public partial class SettingsWindow : JukeboxWindow
                     cfg.Settings[key] = tb.Text;
                     break;
             }
+        }
+
+        // Custom editors (folder-path / multi-value list) harvest via their getter.
+        foreach (var (instanceId, key, getValue) in _pluginCustomFieldGetters)
+        {
+            var cfg = _pluginWorkingConfigs.FirstOrDefault(c => c.InstanceId == instanceId);
+            if (cfg == null) continue;
+            cfg.Settings[key] = getValue();
         }
 
         _settings.PluginInstances = _pluginWorkingConfigs

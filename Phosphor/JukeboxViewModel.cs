@@ -24,6 +24,9 @@ public partial class JukeboxViewModel : ObservableObject
     // ── Plug-in sources (the source path — YouTube and Plex run through the registry) ──
     private Phosphor.Plugins.SourceRegistry? _sourceRegistry;
     private bool _pluginsDiscovered;
+    // Pre-fetched root-category tiles for generic IBrowsable plug-in sources (local-folder, future
+    // Jellyfin, …), keyed by instance id. Built after each registry build; read by RebuildCategories.
+    private readonly List<Category> _pluginBrowseTiles = new();
 
     /// <summary>
     /// Read-only summaries of the configured plug-in sources (for the Plug-ins settings tab).
@@ -85,6 +88,7 @@ public partial class JukeboxViewModel : ObservableObject
             _sourceRegistry = registry;
             DebugLog.Log("SourceRegistry", $"Built {registry.Sources.Count} source(s)");
             WireCacheDownloadOverride();
+            await BuildPluginBrowseTilesAsync(registry);
         }
         catch (Exception ex)
         {
@@ -96,6 +100,120 @@ public partial class JukeboxViewModel : ObservableObject
         {
             try { await previous.DisposeAsync(); }
             catch (Exception ex) { DebugLog.LogException("SourceRegistry dispose (previous)", ex); }
+        }
+    }
+
+    /// <summary>
+    /// Pre-fetches root-category tiles for every generic <c>IBrowsable</c> plug-in source (local-folder,
+    /// future Jellyfin, …) into <see cref="_pluginBrowseTiles"/>, so the synchronous
+    /// <see cref="RebuildCategories"/> can emit them without an async call. Built-in YouTube/Plex are
+    /// skipped — YouTube isn't browsable and Plex has its own tile path (GenreCategoryStore). Failures
+    /// per source are logged and skipped so one bad plug-in never blocks the home screen.
+    /// </summary>
+    private async Task BuildPluginBrowseTilesAsync(Phosphor.Plugins.SourceRegistry registry)
+    {
+        var tiles = new List<Category>();
+        foreach (var source in registry.Sources)
+        {
+            if (source.TypeId == Phosphor.Plugins.YouTube.YouTubeSourceProvider.YouTubeTypeId) continue;
+            if (source.TypeId == Phosphor.Plugins.Plex.PlexSourceProvider.PlexTypeId) continue;
+            if (source is not Phosphor.Plugin.Abstractions.IBrowsable browsable) continue;
+
+            try
+            {
+                await foreach (var cat in browsable.GetRootCategoriesAsync())
+                {
+                    tiles.Add(new Category
+                    {
+                        Name = cat.Title,
+                        Icon = "📁",
+                        IsPluginBrowse = true,
+                        SourceInstanceId = source.InstanceId,
+                        SourceCategoryId = cat.CategoryId,
+                        SourceState = cat.SourceState,
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLog.LogException($"Plugin browse tiles '{source.InstanceId}'", ex);
+            }
+        }
+
+        _pluginBrowseTiles.Clear();
+        _pluginBrowseTiles.AddRange(tiles);
+        DebugLog.Log("SourceRegistry", $"Built {tiles.Count} plug-in browse tile(s).");
+    }
+
+    /// <summary>
+    /// Expands a generic plug-in browse tile by calling its source's <c>IBrowsable.BrowseAsync</c>
+    /// and rendering the returned items in the results list. Leaf items carry a resolved playable
+    /// <c>StreamUrl</c> (via the source's <c>IPlayableResolver</c>) so the existing player path plays
+    /// them directly — no source-specific playback wiring needed.
+    /// </summary>
+    private async Task BrowsePluginCategoryAsync(Category category)
+    {
+        var source = _sourceRegistry?.ByInstance(category.SourceInstanceId!);
+        if (source is not Phosphor.Plugin.Abstractions.IBrowsable browsable)
+        {
+            StatusText = "This source can't be browsed.";
+            return;
+        }
+
+        _searchCts.Cancel();
+        _searchCts = new CancellationTokenSource();
+        var ct = _searchCts.Token;
+
+        IsSearching = true;
+        StatusText = $"Loading {category.Name}...";
+        SearchResults.Clear();
+
+        try
+        {
+            var node = new Phosphor.Plugin.Abstractions.SourceCategory
+            {
+                SourceInstanceId = category.SourceInstanceId!,
+                CategoryId = category.SourceCategoryId ?? category.Name,
+                Title = category.Name,
+                SourceState = category.SourceState,
+            };
+
+            var result = await browsable.BrowseAsync(node, ct);
+            if (ct.IsCancellationRequested) return;
+
+            var resolver = source as Phosphor.Plugin.Abstractions.IPlayableResolver;
+            foreach (var item in result.Items)
+            {
+                var vi = ToVideoItem(item);
+                // Resolve a playable URL now (local files are a cheap path check); the player checks
+                // VideoItem.StreamUrl first and plays it directly.
+                if (resolver != null)
+                {
+                    try
+                    {
+                        var stream = await resolver.ResolveAsync(
+                            item, new Phosphor.Plugin.Abstractions.PlaybackPreferences(), ct);
+                        if (stream != null) vi.StreamUrl = stream.PrimaryUri;
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLog.LogException($"Plugin resolve '{item.ItemId}'", ex);
+                    }
+                }
+                vi.IsAudioOnly = item.IsAudioOnly;
+                SearchResults.Add(vi);
+            }
+
+            StatusText = $"{SearchResults.Count} item(s) in {category.Name}";
+        }
+        catch (Exception ex)
+        {
+            DebugLog.LogException($"Plugin browse '{category.SourceInstanceId}'", ex);
+            StatusText = "Failed to load this source.";
+        }
+        finally
+        {
+            IsSearching = false;
         }
     }
 
@@ -1447,6 +1565,9 @@ public partial class JukeboxViewModel : ObservableObject
         // Merge by SortOrder (stable sort preserves relative order for ties)
         var items = sortable.OrderBy(s => s.SortOrder).SelectMany(s => s.Items).ToList();
 
+        // Generic plug-in browse tiles (local-folder, future third-party sources).
+        items.AddRange(_pluginBrowseTiles);
+
         // "New Playlist" action tile at the end
         items.Add(new Category { Name = "New Playlist", Icon = "＋", IsNewPlaylist = true });
 
@@ -1501,6 +1622,17 @@ public partial class JukeboxViewModel : ObservableObject
             SearchResults.ReplaceAll(playlist?.Videos ?? []);
             StatusText = $"{SearchResults.Count} videos in {category.Name}";
             ShowCategories = false;
+            return;
+        }
+
+        // Generic plug-in browse tile (local-folder, future third-party sources).
+        if (category.IsPluginBrowse && category.SourceInstanceId != null)
+        {
+            IsViewingPlaylist = false;
+            _hasMoreResults = false;
+            CanLoadMore = false;
+            ShowCategories = false;
+            await BrowsePluginCategoryAsync(category);
             return;
         }
 
