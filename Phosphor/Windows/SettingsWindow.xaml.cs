@@ -4403,18 +4403,12 @@ public partial class SettingsWindow : JukeboxWindow
         var added = GetInstanceLibraries(cfg);
         var instId = cfg.InstanceId;
 
-        // Container spanning both grid columns for the whole library editor.
+        // Container for the added-libraries list (spans both columns, below the add row).
         var container = new System.Windows.Controls.StackPanel { Margin = new Thickness(0, 4, 0, 0) };
 
-        // Section label
-        container.Children.Add(new System.Windows.Controls.TextBlock
-        {
-            Text = "Library tiles", Foreground = dim, FontSize = 10, FontWeight = FontWeights.Bold,
-            Margin = new Thickness(0, 0, 0, 4),
-        });
-
-        // ── Add row: dropdown of not-yet-added libraries + Add button ──
-        var addRow = new System.Windows.Controls.DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+        // ── Add row: dropdown of not-yet-added libraries + Add button (rendered as the editor in
+        // column 1, with a "Libraries" label in column 0 so the whole thing is one line). ──
+        var addRow = new System.Windows.Controls.DockPanel();
         var addBtn = new System.Windows.Controls.Button
         {
             Content = "＋ Add", Padding = new Thickness(8, 3, 8, 3), Margin = new Thickness(8, 0, 0, 0),
@@ -4470,7 +4464,7 @@ public partial class SettingsWindow : JukeboxWindow
         };
         addRow.Children.Add(addBtn);
         addRow.Children.Add(combo);
-        container.Children.Add(addRow);
+        AddSettingRow(grid, "Libraries", "Add a library to show as a browsable tile.", addRow, text, dim);
 
         // ── Added libraries list: Title + Hubs + Playlists + Remove ──
         if (added.Count == 0)
