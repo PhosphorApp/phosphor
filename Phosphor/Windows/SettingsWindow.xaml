@@ -180,9 +180,6 @@
                                         <CheckBox x:Name="CbStereoAudio" Content="Prefer stereo audio (instead of 5.1 surround)"
                                                   Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
                                                   Margin="0,0,0,4"/>
-                                        <CheckBox x:Name="CbPrefetchEnabled" Content="Prefetch next track for instant transitions"
-                                                  Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
-                                                  Margin="0,0,0,0"/>
 
                                         <!-- ═══ SECTION: Network ═══ -->
                                         <TextBlock Text="NETWORK" FontSize="12" FontWeight="Bold"
@@ -2584,9 +2581,17 @@
                                           FontSize="12" BorderBrush="#333"/>
                             </DockPanel>
                             <CheckBox x:Name="CbPreemptiveCache" Content="Preemptively cache next queue item"
+                                      IsEnabled="{Binding IsChecked, ElementName=CbCacheEnabled}"
                                       Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
                                       Margin="0,0,0,2"/>
                             <TextBlock Text="Starts downloading the next track as soon as the current one starts playing (requires Cache enabled). Makes transitions instant and the next track fully seekable."
+                                       FontSize="11" Foreground="{StaticResource TextDimBrush}"
+                                       Margin="22,0,0,8" TextWrapping="Wrap"/>
+                            <CheckBox x:Name="CbPrefetchEnabled" Content="Prefetch next track for instant transitions"
+                                      IsEnabled="{Binding IsChecked, ElementName=CbCacheEnabled}"
+                                      Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
+                                      Margin="0,0,0,2"/>
+                            <TextBlock Text="Downloads the upcoming track's stream ahead of time so playback starts instantly (requires Cache enabled; only applies to cacheable sources)."
                                        FontSize="11" Foreground="{StaticResource TextDimBrush}"
                                        Margin="22,0,0,8" TextWrapping="Wrap"/>
                             <CheckBox x:Name="CbPurgeCacheOnShutdown" Content="Purge cache on shutdown"
