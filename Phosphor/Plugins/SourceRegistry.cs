@@ -1,5 +1,4 @@
 using System.Net.Http;
-using System.Text.Json;
 using Phosphor.Plugin.Abstractions;
 using Phosphor.Plugins.Host;
 using Phosphor.Plugins.Plex;
@@ -48,39 +47,42 @@ public sealed class SourceRegistry
         _sources.OfType<T>();
 
     /// <summary>
-    /// Builds and initializes the source instances from the given app settings. Safe to call
-    /// again to rebuild after settings change; existing instances are discarded.
+    /// Builds and initializes the source instances from the given per-instance configs. Safe to
+    /// call again to rebuild after settings change; existing instances are discarded. Disabled
+    /// configs are skipped. Unknown provider type ids are logged and ignored.
     /// </summary>
-    public async Task BuildAsync(AppSettings settings, CancellationToken ct = default)
+    public async Task BuildAsync(IEnumerable<PluginInstanceConfig> configs, CancellationToken ct = default)
     {
         _sources.Clear();
 
-        // ── YouTube (single instance) ──
-        var ytProvider = new YouTubeSourceProvider(_http);
-        var ytSettings = new Dictionary<string, string?>
+        foreach (var cfg in configs)
         {
-            [YouTubeSourceProvider.KeySearchEngine] = settings.SearchEngine.ToString(),
-            [YouTubeSourceProvider.KeyVideoEngine] = settings.VideoEngine.ToString(),
-            [YouTubeSourceProvider.KeyVideoQuality] = settings.VideoQuality.ToString(),
-            [YouTubeSourceProvider.KeyPreferStereo] = settings.StereoAudio.ToString(),
-        };
-        await AddAsync(ytProvider.CreateInstance("youtube", ytSettings), ct);
+            if (!cfg.Enabled) continue;
 
-        // ── Plex (multi-instance; today the app models a single server) ──
-        if (!string.IsNullOrWhiteSpace(settings.PlexServerUrl) &&
-            !string.IsNullOrWhiteSpace(settings.PlexToken))
-        {
-            var plexProvider = new PlexSourceProvider();
-            var plexSettings = new Dictionary<string, string?>
+            var provider = CreateProvider(cfg.TypeId);
+            if (provider == null)
             {
-                [PlexSourceProvider.KeyServerUrl] = settings.PlexServerUrl,
-                [PlexSourceProvider.KeyToken] = settings.PlexToken,
-                [PlexSourceProvider.KeyStereoAudio] = settings.PlexStereoAudio.ToString(),
-                [PlexSourceProvider.KeyLibraries] = JsonSerializer.Serialize(settings.PlexLibraries),
-            };
-            await AddAsync(plexProvider.CreateInstance("plex", plexSettings), ct);
+                DebugLog.Log("SourceRegistry", $"Unknown provider type '{cfg.TypeId}' — skipping instance '{cfg.InstanceId}'");
+                continue;
+            }
+
+            var source = provider.CreateInstance(cfg.InstanceId, cfg.Settings);
+            if (!string.IsNullOrEmpty(cfg.DisplayName))
+                source.DisplayName = cfg.DisplayName!;
+            await AddAsync(source, ct);
         }
     }
+
+    /// <summary>
+    /// Creates the in-box provider for a type id. This is the single registry of known providers;
+    /// when the dynamic loader lands, discovered providers are added here alongside the built-ins.
+    /// </summary>
+    private IPhosphorSourceProvider? CreateProvider(string typeId) => typeId switch
+    {
+        YouTubeSourceProvider.YouTubeTypeId => new YouTubeSourceProvider(_http),
+        PlexSourceProvider.PlexTypeId => new PlexSourceProvider(),
+        _ => null,
+    };
 
     private async Task AddAsync(IPhosphorSource source, CancellationToken ct)
     {

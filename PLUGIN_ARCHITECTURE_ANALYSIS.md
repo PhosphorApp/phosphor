@@ -499,6 +499,22 @@ Each phase is independently shippable and reversible.
      (c) once trusted, flip the flag default on and delete the legacy branches.
 5. **Per-plug-in settings bag.** Migrate flat Plex/engine fields in `AppSettings`
    into a keyed settings dictionary, with a one-time migration from old fields.
+   — 🟡 **Decoupling done (Phase 5a).** Introduced a typed `PluginInstanceConfig`
+   (TypeId, InstanceId, DisplayName, Enabled, `Settings` dict, and an `AllowCaching`
+   policy field) and a `PluginSettingsFactory.FromAppSettings` that is now the single
+   place the flat settings are translated into per-instance config. `SourceRegistry.BuildAsync`
+   consumes `IEnumerable<PluginInstanceConfig>` (skips disabled, applies display name,
+   ignores unknown type ids via a `CreateProvider` map) and no longer reaches into
+   `AppSettings`. No runtime behavior change — the factory produces the same dicts the
+   registry built inline before. **Deferred to avoid drift:** actually *persisting* a
+   per-instance store, and letting users edit it, lands with the generic Plug-ins UI
+   (Phase 7) — until the UI edits configs directly, the flat fields stay the editing
+   surface and the factory derives configs each build.
+   **Cacheability follow-up (decided):** model "can it be cached" as a *capability*
+   (source implements `IDownloadable`) rather than the hardcoded `!item.IsPlex` gates in
+   the VM, with the per-instance `AllowCaching` config as the *policy* layer on top
+   (default = capability default). The `AllowCaching` field exists on the config now but is
+   not yet consumed; replacing the cache gates with a capability check is a small follow-up.
 6. **Dynamic loader (opt-in).** Add the `plug-ins` folder scan using a collectible
    `AssemblyLoadContext`, `ApiVersion` checks, failure isolation, and a manifest.
    Gate behind a setting initially.

@@ -47,7 +47,8 @@ public partial class JukeboxViewModel : ObservableObject
         var registry = new Phosphor.Plugins.SourceRegistry(http);
         try
         {
-            await registry.BuildAsync(settings);
+            var configs = Phosphor.Plugins.PluginSettingsFactory.FromAppSettings(settings);
+            await registry.BuildAsync(configs);
             _sourceRegistry = registry;
             DebugLog.Log("SourceRegistry", $"Built {registry.Sources.Count} source(s); enabled={_usePluginSources}");
             WireCacheDownloadOverride();
