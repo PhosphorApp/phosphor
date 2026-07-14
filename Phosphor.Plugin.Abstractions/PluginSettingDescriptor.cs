@@ -31,7 +31,30 @@ public sealed record PluginSettingDescriptor(
 public sealed record ConfigAction(string Id, string Label, string? Description = null);
 
 /// <summary>A single option in a <see cref="ConfigSelection"/>.</summary>
-public sealed record ConfigOption(string Id, string Label, bool IsSelected = false);
+/// <param name="Id">Stable option id.</param>
+/// <param name="Label">Display label.</param>
+/// <param name="IsSelected">Whether the option is initially selected.</param>
+/// <param name="SubOptions">
+/// Optional per-option sub-flags rendered as indented checkboxes under the option (e.g. a Plex
+/// library's "Hubs" and "Playlists" extras). Null/empty for a plain checkbox option.
+/// </param>
+public sealed record ConfigOption(
+    string Id,
+    string Label,
+    bool IsSelected = false,
+    IReadOnlyList<ConfigSubOption>? SubOptions = null);
+
+/// <summary>A sub-flag under a <see cref="ConfigOption"/> (e.g. "Hubs", "Playlists").</summary>
+public sealed record ConfigSubOption(string Id, string Label, bool IsSelected = false);
+
+/// <summary>
+/// The user's decision for one <see cref="ConfigOption"/> after a config action: whether the option
+/// itself is selected, plus the ids of any selected sub-options.
+/// </summary>
+public sealed record ConfigOptionResult(
+    string OptionId,
+    bool IsSelected,
+    IReadOnlyList<string> SelectedSubOptionIds);
 
 /// <summary>
 /// The result of invoking a <see cref="ConfigAction"/>: a set of options the host renders
@@ -59,17 +82,17 @@ public interface IConfigurable
 
     /// <summary>
     /// Applies the user's selection from a config action back into this instance's settings. The
-    /// source owns the translation (e.g. turning chosen library ids into its rich <c>libraries</c>
-    /// blob) since only it knows the settings shape. Returns the updated settings dictionary the
-    /// host should persist for the instance.
+    /// source owns the translation (e.g. turning chosen library ids + their sub-flags into its rich
+    /// <c>libraries</c> blob) since only it knows the settings shape. Returns the updated settings
+    /// dictionary the host should persist for the instance.
     /// </summary>
     /// <param name="actionId">The action whose selection is being applied.</param>
-    /// <param name="selectedOptionIds">The <see cref="ConfigOption.Id"/>s the user selected.</param>
+    /// <param name="results">Per-option results (selected + chosen sub-options) from the dialog.</param>
     /// <param name="currentSettings">The instance's current settings (as edited so far).</param>
     /// <param name="ct">Cancellation token.</param>
     Task<IReadOnlyDictionary<string, string?>> ApplyConfigActionAsync(
         string actionId,
-        IReadOnlyList<string> selectedOptionIds,
+        IReadOnlyList<ConfigOptionResult> results,
         IReadOnlyDictionary<string, string?> currentSettings,
         CancellationToken ct = default);
 }

@@ -560,6 +560,17 @@ Each phase is independently shippable and reversible.
    (0.7.0): the source owns turning the selection into its settings shape (PlexSource rebuilds
    its rich `libraries` mapping from the chosen keys, preserving Hubs/Playlists flags). The
    `AllowCaching` toggle UI remains a small follow-up; multi-instance + config actions are done.
+   **Nested config options (0.8.0).** The Plex library picker needs per-library sub-flags
+   (Hubs / Playlists), which the flat `ConfigOption` couldn't express — so `ConfigOption` gained
+   `SubOptions` (+ `ConfigSubOption`), and `ApplyConfigActionAsync` now takes structured
+   `ConfigOptionResult`s (option selected + chosen sub-option ids). The selection dialog renders
+   each option with indented sub-checkboxes; `PlexSource` emits Hubs/Playlists per library and
+   rebuilds its mapping from the result. Also themed the generated editors to match the app.
+   **Known gap (deferred to its own increment):** category **tiles are still built from the flat
+   `AppSettings.PlexLibraries`** (via `ConfigurePlex`/`GenreCategoryStore.SyncPlexLibraries`), not
+   from `PluginInstances` — so libraries edited in the Plug-ins tab don't yet appear as tiles.
+   Migrating tile-building to read plugin config is a separate, deliberate step (touches core
+   navigation).
 8. **Reference third source (validation).** Prototype Jellyfin or a local-folder
    source to confirm no core changes are needed.
 

@@ -4071,6 +4071,7 @@ public partial class SettingsWindow : JukeboxWindow
         var accent = (System.Windows.Media.Brush)FindResource("AccentBrush");
         var text = (System.Windows.Media.Brush)FindResource("TextBrush");
         var dim = (System.Windows.Media.Brush)FindResource("TextDimBrush");
+        var surface2 = (System.Windows.Media.Brush)FindResource("Surface2Brush");
 
         foreach (var cfg in _pluginWorkingConfigs)
         {
@@ -4156,6 +4157,7 @@ public partial class SettingsWindow : JukeboxWindow
             {
                 Text = cfg.DisplayName ?? typeName,
                 Foreground = text,
+                Background = surface2,
                 Height = EditorHeight,
                 Padding = EditorPadding,
                 MinWidth = EditorMinWidth,
@@ -4179,7 +4181,7 @@ public partial class SettingsWindow : JukeboxWindow
                         ? 0 : System.Text.RegularExpressions.Regex.Matches(current, "\"Key\"").Count;
                     var summary = new System.Windows.Controls.TextBlock
                     {
-                        Text = count > 0 ? $"{count} libraries mapped (edit via Plex tab for now)" : "none mapped",
+                        Text = count > 0 ? $"{count} libraries mapped" : "none mapped — use “Browse libraries” below",
                         Foreground = text, FontSize = 11, VerticalAlignment = VerticalAlignment.Center,
                     };
                     AddSettingRow(grid, d.Label, d.HelpText, summary, text, dim);
@@ -4195,11 +4197,13 @@ public partial class SettingsWindow : JukeboxWindow
                         VerticalAlignment = VerticalAlignment.Center,
                         HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
                     },
-                    Phosphor.Plugin.Abstractions.PluginSettingType.Enum => MakeEnumCombo(d, current),
+                    Phosphor.Plugin.Abstractions.PluginSettingType.Enum => MakeEnumCombo(d, current, text, surface2),
                     Phosphor.Plugin.Abstractions.PluginSettingType.Secret => new System.Windows.Controls.PasswordBox
                     {
                         // Pre-fill with a sentinel so it looks populated (dots) when a secret exists.
                         Password = string.IsNullOrEmpty(current) ? "" : SecretSentinel,
+                        Foreground = text,
+                        Background = surface2,
                         Height = EditorHeight,
                         Padding = EditorPadding,
                         MinWidth = EditorMinWidth,
@@ -4209,6 +4213,7 @@ public partial class SettingsWindow : JukeboxWindow
                     _ => new System.Windows.Controls.TextBox
                     {
                         Text = current ?? "", Foreground = text,
+                        Background = surface2,
                         Height = EditorHeight,
                         Padding = EditorPadding,
                         MinWidth = EditorMinWidth,
@@ -4370,41 +4375,64 @@ public partial class SettingsWindow : JukeboxWindow
     }
 
     /// <summary>
-    /// Shows a minimal checkbox-list dialog for a <see cref="Phosphor.Plugin.Abstractions.ConfigSelection"/>.
-    /// Returns the selected option ids, or null if cancelled.
+    /// Shows a checkbox-list dialog for a <see cref="Phosphor.Plugin.Abstractions.ConfigSelection"/>,
+    /// rendering each option with any indented sub-option checkboxes. Returns the per-option results
+    /// (selected + chosen sub-option ids), or null if cancelled.
     /// </summary>
-    private List<string>? ShowConfigSelectionDialog(Phosphor.Plugin.Abstractions.ConfigSelection selection)
+    private List<Phosphor.Plugin.Abstractions.ConfigOptionResult>? ShowConfigSelectionDialog(
+        Phosphor.Plugin.Abstractions.ConfigSelection selection)
     {
         var dlg = new Window
         {
             Title = selection.Title ?? "Select",
             Owner = this,
-            Width = 380,
+            Width = 420,
             SizeToContent = SizeToContent.Height,
+            MaxHeight = 640,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             Background = (System.Windows.Media.Brush)FindResource("SurfaceBrush"),
         };
         var text = (System.Windows.Media.Brush)FindResource("TextBrush");
+        var dim = (System.Windows.Media.Brush)FindResource("TextDimBrush");
 
-        var root = new System.Windows.Controls.StackPanel { Margin = new Thickness(12) };
-        var boxes = new List<(System.Windows.Controls.CheckBox Box, string Id)>();
-        foreach (var opt in selection.Options)
-        {
-            var cb = new System.Windows.Controls.CheckBox
-            {
-                Content = opt.Label, IsChecked = opt.IsSelected, Foreground = text,
-                Margin = new Thickness(0, 3, 0, 3),
-            };
-            boxes.Add((cb, opt.Id));
-            root.Children.Add(cb);
-        }
+        var root = new System.Windows.Controls.DockPanel { Margin = new Thickness(12) };
 
+        // Buttons docked at the bottom so the list scrolls independently.
         var buttons = new System.Windows.Controls.StackPanel
         {
             Orientation = System.Windows.Controls.Orientation.Horizontal,
             HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
             Margin = new Thickness(0, 12, 0, 0),
         };
+        System.Windows.Controls.DockPanel.SetDock(buttons, System.Windows.Controls.Dock.Bottom);
+
+        var list = new System.Windows.Controls.StackPanel();
+        var rows = new List<(System.Windows.Controls.CheckBox Main, string OptId,
+            List<(System.Windows.Controls.CheckBox Box, string SubId)> Subs)>();
+
+        foreach (var opt in selection.Options)
+        {
+            var main = new System.Windows.Controls.CheckBox
+            {
+                Content = opt.Label, IsChecked = opt.IsSelected, Foreground = text,
+                Margin = new Thickness(0, 5, 0, 2), FontWeight = FontWeights.SemiBold,
+            };
+            list.Children.Add(main);
+
+            var subBoxes = new List<(System.Windows.Controls.CheckBox, string)>();
+            foreach (var sub in opt.SubOptions ?? [])
+            {
+                var subCb = new System.Windows.Controls.CheckBox
+                {
+                    Content = sub.Label, IsChecked = sub.IsSelected, Foreground = dim,
+                    Margin = new Thickness(22, 1, 0, 1), FontSize = 12,
+                };
+                subBoxes.Add((subCb, sub.Id));
+                list.Children.Add(subCb);
+            }
+            rows.Add((main, opt.Id, subBoxes));
+        }
+
         bool ok = false;
         var okBtn = new System.Windows.Controls.Button { Content = "OK", Padding = new Thickness(12, 3, 12, 3), Margin = new Thickness(0, 0, 8, 0), IsDefault = true };
         okBtn.Click += (_, _) => { ok = true; dlg.Close(); };
@@ -4412,13 +4440,23 @@ public partial class SettingsWindow : JukeboxWindow
         cancelBtn.Click += (_, _) => dlg.Close();
         buttons.Children.Add(okBtn);
         buttons.Children.Add(cancelBtn);
+
         root.Children.Add(buttons);
+        root.Children.Add(new System.Windows.Controls.ScrollViewer
+        {
+            VerticalScrollBarVisibility = System.Windows.Controls.ScrollBarVisibility.Auto,
+            Content = list,
+        });
 
         dlg.Content = root;
         dlg.ShowDialog();
 
         if (!ok) return null;
-        return boxes.Where(b => b.Box.IsChecked == true).Select(b => b.Id).ToList();
+        return rows.Select(r => new Phosphor.Plugin.Abstractions.ConfigOptionResult(
+            r.OptId,
+            r.Main.IsChecked == true,
+            r.Subs.Where(s => s.Box.IsChecked == true).Select(s => s.SubId).ToList()))
+            .ToList();
     }
 
     /// <summary>Adds a two-column row (label | editor) to a settings grid.</summary>
@@ -4452,10 +4490,13 @@ public partial class SettingsWindow : JukeboxWindow
     }
 
     private System.Windows.Controls.ComboBox MakeEnumCombo(
-        Phosphor.Plugin.Abstractions.PluginSettingDescriptor d, string? current)
+        Phosphor.Plugin.Abstractions.PluginSettingDescriptor d, string? current,
+        System.Windows.Media.Brush text, System.Windows.Media.Brush background)
     {
         var combo = new System.Windows.Controls.ComboBox
         {
+            Foreground = text,
+            Background = background,
             Height = EditorHeight,
             Padding = EditorPadding,
             MinWidth = EditorMinWidth,

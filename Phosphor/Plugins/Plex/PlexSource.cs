@@ -260,10 +260,19 @@ public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable
         if (actionId != PlexSourceProvider.ActionBrowseLibraries)
             return new ConfigSelection([]);
 
-        var enabled = _libraries.Select(l => l.Key).ToHashSet();
+        var enabled = _libraries.ToDictionary(l => l.Key, l => l);
         var libs = await _plex.GetLibrariesAsync();
         var options = libs
-            .Select(l => new ConfigOption(l.Key, $"{l.Title} ({l.Type})", enabled.Contains(l.Key)))
+            .Select(l =>
+            {
+                enabled.TryGetValue(l.Key, out var prev);
+                return new ConfigOption(l.Key, $"{l.Title} ({l.Type})", prev != null,
+                    new[]
+                    {
+                        new ConfigSubOption("hubs", "Hubs", prev?.HubsEnabled ?? false),
+                        new ConfigSubOption("playlists", "Playlists", prev?.PlaylistsEnabled ?? false),
+                    });
+            })
             .ToList();
 
         return new ConfigSelection(options, AllowMultiple: true, Title: "Plex libraries");
@@ -271,7 +280,7 @@ public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable
 
     public async Task<IReadOnlyDictionary<string, string?>> ApplyConfigActionAsync(
         string actionId,
-        IReadOnlyList<string> selectedOptionIds,
+        IReadOnlyList<ConfigOptionResult> results,
         IReadOnlyDictionary<string, string?> currentSettings,
         CancellationToken ct = default)
     {
@@ -279,19 +288,22 @@ public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable
         if (actionId != PlexSourceProvider.ActionBrowseLibraries)
             return result;
 
-        // Turn selected library keys into the rich libraries mapping, preserving each library's
-        // Title/Type from the server and any existing Hubs/Playlists flags the user had set.
-        var existing = ParseLibraries(Get(currentSettings, PlexSourceProvider.KeyLibraries))
-            .ToDictionary(l => l.Key, l => l);
-        var selected = new HashSet<string>(selectedOptionIds);
-        var libs = await _plex.GetLibrariesAsync();
-
-        var mapped = libs
-            .Where(l => selected.Contains(l.Key))
-            .Select(l => existing.TryGetValue(l.Key, out var prev)
-                ? new PlexLibraryMapping { Key = l.Key, Title = l.Title, Type = l.Type, HubsEnabled = prev.HubsEnabled, PlaylistsEnabled = prev.PlaylistsEnabled }
-                : new PlexLibraryMapping { Key = l.Key, Title = l.Title, Type = l.Type })
-            .ToList();
+        // Turn selected libraries + their sub-flags into the rich mapping, taking Title/Type from
+        // the server and Hubs/Playlists from the user's per-library sub-option choices.
+        var libs = (await _plex.GetLibrariesAsync()).ToDictionary(l => l.Key, l => l);
+        var mapped = new List<PlexLibraryMapping>();
+        foreach (var r in results)
+        {
+            if (!r.IsSelected || !libs.TryGetValue(r.OptionId, out var lib)) continue;
+            mapped.Add(new PlexLibraryMapping
+            {
+                Key = lib.Key,
+                Title = lib.Title,
+                Type = lib.Type,
+                HubsEnabled = r.SelectedSubOptionIds.Contains("hubs"),
+                PlaylistsEnabled = r.SelectedSubOptionIds.Contains("playlists"),
+            });
+        }
 
         result[PlexSourceProvider.KeyLibraries] = JsonSerializer.Serialize(mapped);
         return result;
