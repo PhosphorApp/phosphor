@@ -12,6 +12,7 @@ Phosphor is a WPF (.NET 8) music jukebox for virtual pinball cabinets. It plays 
 - `DofBridge` / `DofBridge.x86` must stay on .NET Framework 4.8; do not add .NET 8-only APIs there.
 - When adding a new blob/visual pattern, implement `IBlobPattern`, add to the `BlobPattern` enum, and register in the pattern factory.
 - `AppSettings` is saved once on exit; do not save inside property setters or event handlers.
+- The Phosphor user base is testers only — do not add legacy support or settings migration/backward-compatibility shims; clean renames/breaking changes are acceptable.
 
 ## Git Workflow
 - At the start of a working session, do a `git pull` to ensure the local repo is up to date.

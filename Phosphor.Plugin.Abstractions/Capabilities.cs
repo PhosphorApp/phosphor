@@ -181,3 +181,35 @@ public interface IConnectionTestable
 /// <param name="Message">A concise, user-facing status line (e.g. "Connected — 3 libraries" or "401 Unauthorized").</param>
 /// <param name="Latency">Optional round-trip time, for display.</param>
 public sealed record ConnectionTestResult(bool Success, string Message, TimeSpan? Latency = null);
+
+/// <summary>
+/// Capability: rescan the source's backing content and rebuild its searchable catalog/index — a
+/// local-folder source re-walking its media directories, a Plex "Update Libraries", etc. This is
+/// about the <em>content</em>, and is deliberately distinct from <see cref="IUpdatable"/> (which
+/// updates the source's software/engine, not what it indexes). The host surfaces a "Rescan" action
+/// with progress; the source owns the walk and the catalog it builds.
+/// </summary>
+public interface IRefreshable
+{
+    /// <summary>Whether a rescan can run right now (e.g. at least one folder configured/reachable).</summary>
+    bool CanRefresh { get; }
+
+    /// <summary>
+    /// Rescans the backing content and rebuilds the catalog. Reports coarse progress for a UI bar.
+    /// Must not throw for expected failures (missing folder, permission denied) — return a failed
+    /// <see cref="RefreshResult"/> with a human-readable message instead.
+    /// </summary>
+    Task<RefreshResult> RefreshAsync(
+        IProgress<RefreshProgress>? progress = null, CancellationToken ct = default);
+}
+
+/// <summary>Coarse progress for an <see cref="IRefreshable.RefreshAsync"/> pass.</summary>
+/// <param name="Fraction">Completion in [0, 1], or a value &lt; 0 when indeterminate.</param>
+/// <param name="CurrentItem">Optional label for what's being scanned (e.g. a file or folder name).</param>
+public sealed record RefreshProgress(double Fraction, string? CurrentItem = null);
+
+/// <summary>Outcome of an <see cref="IRefreshable.RefreshAsync"/> pass.</summary>
+/// <param name="Success">True when the rescan completed and the catalog was rebuilt.</param>
+/// <param name="ItemCount">Total items in the catalog after the rescan.</param>
+/// <param name="Message">A concise, user-facing status line (e.g. "Scanned 1,204 files in 3 folders").</param>
+public sealed record RefreshResult(bool Success, int ItemCount, string Message);

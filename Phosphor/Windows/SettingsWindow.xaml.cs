@@ -4210,6 +4210,42 @@ public partial class SettingsWindow : JukeboxWindow
                     panel.Children.Add(autoUpdate);
                 }
 
+                // ── "Rescan library" — for sources that build a catalog from backing content
+                // (e.g. a local-folder source, or Plex "Update Libraries"). ──
+                if (capSource is Phosphor.Plugin.Abstractions.IRefreshable)
+                {
+                    var rescanInstanceId = cfg.InstanceId;
+                    var rescanRow = new System.Windows.Controls.StackPanel
+                    {
+                        Orientation = System.Windows.Controls.Orientation.Horizontal,
+                        Margin = new Thickness(0, 0, 0, 4),
+                    };
+                    var rescanBtn = new System.Windows.Controls.Button
+                    {
+                        Content = "Rescan library", Padding = new Thickness(8, 3, 8, 3),
+                        VerticalAlignment = VerticalAlignment.Center,
+                    };
+                    var rescanProgress = new System.Windows.Controls.ProgressBar
+                    {
+                        Width = 120, Height = 6, Margin = new Thickness(10, 0, 0, 0),
+                        VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed,
+                        Minimum = 0, Maximum = 1,
+                    };
+                    var rescanResult = new System.Windows.Controls.TextBlock
+                    {
+                        Foreground = dim, FontSize = 11, VerticalAlignment = VerticalAlignment.Center,
+                        Margin = new Thickness(10, 0, 0, 0), TextWrapping = TextWrapping.Wrap,
+                    };
+                    rescanBtn.Click += async (_, _) =>
+                    {
+                        await RescanPluginLibraryAsync(rescanInstanceId, rescanBtn, rescanProgress, rescanResult);
+                    };
+                    rescanRow.Children.Add(rescanBtn);
+                    rescanRow.Children.Add(rescanProgress);
+                    rescanRow.Children.Add(rescanResult);
+                    panel.Children.Add(rescanRow);
+                }
+
                 // The transient built for capability display is no longer needed — dispose it so any
                 // resources it opened during construction are released.
                 DisposeTransientSource(capSource);
@@ -4680,6 +4716,81 @@ public partial class SettingsWindow : JukeboxWindow
         }
         finally
         {
+            button.IsEnabled = true;
+            DisposeTransientSource(source);
+        }
+    }
+
+    /// <summary>
+    /// Runs a source's <see cref="Phosphor.Plugin.Abstractions.IRefreshable"/> rescan using the
+    /// current (harvested) settings, showing a progress bar and the result inline. Builds and
+    /// disposes a transient source for the pass (the source persists its own catalog to disk).
+    /// </summary>
+    private async Task RescanPluginLibraryAsync(
+        string instanceId,
+        System.Windows.Controls.Button button,
+        System.Windows.Controls.ProgressBar progressBar,
+        System.Windows.Controls.TextBlock result)
+    {
+        HarvestPluginSourcesTab();
+        var cfg = _settings.PluginInstances.FirstOrDefault(c => c.InstanceId == instanceId);
+        if (cfg == null) return;
+
+        var source = Phosphor.Plugins.PluginSettingsFactory.BuildTransientSource(cfg, _pluginHttp);
+        if (source is not Phosphor.Plugin.Abstractions.IRefreshable refreshable)
+        {
+            DisposeTransientSource(source);
+            return;
+        }
+        if (!refreshable.CanRefresh)
+        {
+            result.Text = "Nothing to rescan (no folders configured).";
+            result.Foreground = System.Windows.Media.Brushes.Gray;
+            DisposeTransientSource(source);
+            return;
+        }
+
+        button.IsEnabled = false;
+        progressBar.Visibility = Visibility.Visible;
+        progressBar.IsIndeterminate = false;
+        progressBar.Value = 0;
+        result.Text = "Scanning…";
+        result.Foreground = System.Windows.Media.Brushes.Gray;
+
+        var progress = new Progress<Phosphor.Plugin.Abstractions.RefreshProgress>(p =>
+        {
+            if (p.Fraction < 0)
+            {
+                progressBar.IsIndeterminate = true;
+            }
+            else
+            {
+                progressBar.IsIndeterminate = false;
+                progressBar.Value = Math.Clamp(p.Fraction, 0, 1);
+            }
+            if (!string.IsNullOrEmpty(p.CurrentItem))
+                result.Text = "Scanning: " + p.CurrentItem;
+        });
+
+        try
+        {
+            if (source is Phosphor.Plugin.Abstractions.IPhosphorSource ps)
+                await ps.InitializeAsync(new Phosphor.Plugins.Host.PluginHost(cfg.InstanceId, _pluginHttp));
+
+            var r = await refreshable.RefreshAsync(progress);
+            result.Text = (r.Success ? "✓ " : "✗ ") + r.Message;
+            result.Foreground = r.Success
+                ? System.Windows.Media.Brushes.MediumSeaGreen
+                : System.Windows.Media.Brushes.IndianRed;
+        }
+        catch (Exception ex)
+        {
+            result.Text = "✗ " + ex.Message;
+            result.Foreground = System.Windows.Media.Brushes.IndianRed;
+        }
+        finally
+        {
+            progressBar.Visibility = Visibility.Collapsed;
             button.IsEnabled = true;
             DisposeTransientSource(source);
         }

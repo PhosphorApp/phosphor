@@ -115,6 +115,7 @@ public static class PluginSettingsFactory
         if (source is IGaplessCapable) caps.Add("Gapless");
         if (source is IUpdatable) caps.Add("Self-update");
         if (source is IConnectionTestable) caps.Add("Connection test");
+        if (source is IRefreshable) caps.Add("Rescan/catalog");
         if (source is IConfigurable) caps.Add("Setup actions");
         return caps;
     }

@@ -10,8 +10,9 @@ public static class PluginApi
 {
     /// <summary>The contract version this build of the abstractions defines.</summary>
     /// <remarks>
+    /// 0.10.0 — added <see cref="IRefreshable"/> (rescan content / rebuild catalog).
     /// 0.9.0 — added <see cref="IConnectionTestable"/> (optional "test connection" capability).
     /// 0.8.0 — nested config sub-options (<c>ConfigOption.SubOptions</c>).
     /// </remarks>
-    public static readonly Version Current = new(0, 9, 0);
+    public static readonly Version Current = new(0, 10, 0);
 }

@@ -644,6 +644,27 @@ Each phase is independently shippable and reversible.
      `SetYouTubeTimeout`/`YouTubeTimeoutSeconds` were renamed to `Network…` (clean rename — the
      tester-only user base needs no settings migration).
 
+   **`IRefreshable` — rescan/catalog capability (0.10.0, done; implementor pending).** Added ahead of
+   its first real consumer (the planned local-folder source, which walks configured directories and
+   builds a searchable catalog). Deliberately **separate from `IUpdatable`**: update = change the
+   source's software/engine (yt-dlp); refresh = re-read the source's *content* and rebuild its index
+   (a folder rescan, Plex "Update Libraries"). `bool CanRefresh` +
+   `Task<RefreshResult> RefreshAsync(IProgress<RefreshProgress>?, ct)` with `RefreshProgress(double
+   Fraction, string? CurrentItem)` and `RefreshResult(bool Success, int ItemCount, string Message)` —
+   progress + cancellation because a big NAS walk is slow. The Plug-ins tab already renders a gated
+   "Rescan library" button with a progress bar (parallel to Test/Update); it stays hidden until a
+   source implements the capability. Plex *could* adopt it (real "Update Libraries") but isn't
+   required to. First implementation lands with the local-folder plug-in.
+
+   **Design decision — built-ins stay compiled-in (Model A).** YouTube and Plex remain statically
+   referenced, not extracted to DLLs: they *are* the product (must work with an empty `plugins/`
+   folder), the legacy fallback resilience net depends on them being in-process, and they use host
+   internals (`ISearchEngine`/`IVideoEngine`, `PlexService`, `VideoItem`) that would require deep
+   surgery to sever. The dynamic loader only adds **third-party** DLLs from a `plugins/` folder via
+   the existing `SourceRegistry.CreateProvider` seam (built-in switch first, scanned providers
+   appended). The contract is validated by a *new* reference source (the local-folder plug-in) loaded
+   as a DLL — not by extracting the in-box ones.
+
    **Deferred — Settings consolidation (cleanup phase).** The General→VIDEO section (quality, video
    engine, search engine, prefer stereo) and the standalone PLEX tab are now **redundant** with the
    Plug-ins tab, but they can't just be deleted: the flat `AppSettings` fields (`VideoEngine`,
