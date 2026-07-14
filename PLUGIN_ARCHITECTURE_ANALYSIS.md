@@ -665,6 +665,35 @@ Each phase is independently shippable and reversible.
    appended). The contract is validated by a *new* reference source (the local-folder plug-in) loaded
    as a DLL — not by extracting the in-box ones.
 
+   **Dynamic loader + local-folder reference source (done).** The `plugins/` folder scan is live.
+   - **Compat policy.** `PluginApi` gained `MinimumSupported` + `IsCompatible(Version)` — a plug-in
+     loads when `MinimumSupported <= plugin.ApiVersion <= Current`, compared by **major.minor** (patch
+     bumps are always additive). While pre-1.0, `MinimumSupported` tracks `Current`.
+   - **`PluginLoader`** (`Phosphor/Plugins/Loader/`). Scans `plugins/<Name>/*.dll`; loads each in its
+     own **collectible `AssemblyLoadContext`** (`PluginLoadContext`) that resolves the plug-in's
+     private deps from its folder but **delegates the shared contract assembly to the default
+     context** so `IPhosphorSourceProvider` unifies across the boundary (no second copy → casts
+     work). Discovers `IPhosphorSourceProvider` implementors, version-gates them, and captures every
+     failure (bad TFM, missing dep, throwing ctor, incompatible version) on a `LoadedPlugin`
+     descriptor — a bad DLL is logged and skipped, never fatal.
+   - **Integration.** `DiscoveredProviders` is a process-wide cache populated once per run (built-in
+     type ids are reserved so a plug-in can't shadow YouTube/Plex). `SourceRegistry.CreateProvider`
+     and `PluginSettingsFactory` (`CreateProvider`/`AddableProviders`/`BuildTransientSource`) consult
+     built-ins first, then discovered providers — so a loaded plug-in is addable, configurable, and
+     buildable through the same paths as the in-box sources.
+   - **Reference source.** `Phosphor.Plugins.LocalFolder` is a **separate project** referencing only
+     the abstractions **compile-only** (`Private=false`/`ExcludeAssets=runtime`) — the
+     contract-completeness proof: it plays media from user folders using *zero* host internals. It
+     implements `IBrowsable` (folder tiles → files), `ITextSearchCapable` (catalog title match),
+     `IPlayableResolver` (`StreamTransport.File`), `IGaplessCapable` (audio direct path), and
+     `IRefreshable` (the folder walk that builds the catalog, with progress + cancellation). Phase-2
+     metadata extraction (tags/durations/thumbnails) can enrich `GetMetadataAsync` later without a
+     contract change. Deployed via a build-order-only `ProjectReference`
+     (`ReferenceOutputAssembly=false`) + an `AfterBuild` copy target that drops **only** the plug-in
+     DLL into `plugins/LocalFolder/` (the host supplies the shared contract at runtime). Validated:
+     the provider is discovered, `ApiVersion=0.10.0` is compatible, and its type is assignable to the
+     host's `IPhosphorSourceProvider` (types unify).
+
    **Deferred — Settings consolidation (cleanup phase).** The General→VIDEO section (quality, video
    engine, search engine, prefer stereo) and the standalone PLEX tab are now **redundant** with the
    Plug-ins tab, but they can't just be deleted: the flat `AppSettings` fields (`VideoEngine`,

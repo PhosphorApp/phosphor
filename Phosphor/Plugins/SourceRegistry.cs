@@ -121,14 +121,15 @@ public sealed class SourceRegistry : IAsyncDisposable
     }
 
     /// <summary>
-    /// Creates the in-box provider for a type id. This is the single registry of known providers;
-    /// when the dynamic loader lands, discovered providers are added here alongside the built-ins.
+    /// Creates the provider for a type id: built-in YouTube/Plex first, then any third-party
+    /// provider discovered from the <c>plugins/</c> folder (<see cref="DiscoveredProviders"/>).
+    /// Returns <c>null</c> for an unknown type id.
     /// </summary>
     private IPhosphorSourceProvider? CreateProvider(string typeId) => typeId switch
     {
         YouTubeSourceProvider.YouTubeTypeId => new YouTubeSourceProvider(_http),
         PlexSourceProvider.PlexTypeId => new PlexSourceProvider(),
-        _ => null,
+        _ => DiscoveredProviders.Get(typeId),
     };
 
     private async Task AddAsync(IPhosphorSource source, CancellationToken ct)

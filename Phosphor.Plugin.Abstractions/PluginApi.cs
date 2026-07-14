@@ -15,4 +15,26 @@ public static class PluginApi
     /// 0.8.0 — nested config sub-options (<c>ConfigOption.SubOptions</c>).
     /// </remarks>
     public static readonly Version Current = new(0, 10, 0);
+
+    /// <summary>
+    /// The oldest contract version this host still accepts. A plug-in built against an older
+    /// contract than this is rejected (a capability it relies on may have changed shape). While the
+    /// contract is pre-1.0 and evolving, this tracks <see cref="Current"/>; once it stabilizes, this
+    /// can lag behind so older plug-ins keep loading.
+    /// </summary>
+    public static readonly Version MinimumSupported = new(0, 10, 0);
+
+    /// <summary>
+    /// Whether a plug-in built against <paramref name="pluginApiVersion"/> is compatible with this
+    /// host: it must not be newer than <see cref="Current"/> (host predates the plug-in's contract)
+    /// nor older than <see cref="MinimumSupported"/> (contract drifted too far). Compares by
+    /// major.minor only — patch bumps are always additive/compatible.
+    /// </summary>
+    public static bool IsCompatible(Version pluginApiVersion)
+    {
+        var plugin = new Version(pluginApiVersion.Major, pluginApiVersion.Minor);
+        var current = new Version(Current.Major, Current.Minor);
+        var minimum = new Version(MinimumSupported.Major, MinimumSupported.Minor);
+        return plugin >= minimum && plugin <= current;
+    }
 }

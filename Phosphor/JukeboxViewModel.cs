@@ -23,6 +23,7 @@ public partial class JukeboxViewModel : ObservableObject
 
     // ── Plug-in sources (the source path — YouTube and Plex run through the registry) ──
     private Phosphor.Plugins.SourceRegistry? _sourceRegistry;
+    private bool _pluginsDiscovered;
 
     /// <summary>
     /// Read-only summaries of the configured plug-in sources (for the Plug-ins settings tab).
@@ -54,6 +55,18 @@ public partial class JukeboxViewModel : ObservableObject
     /// </summary>
     public async Task BuildSourceRegistryAsync(AppSettings settings)
     {
+        // Discover third-party plug-ins from the plugins/ folder once per app run (built-in type ids
+        // are reserved so a plug-in can't shadow YouTube/Plex). Cheap to guard; the scan touches disk.
+        if (!_pluginsDiscovered)
+        {
+            Phosphor.Plugins.DiscoveredProviders.Initialize(new[]
+            {
+                Phosphor.Plugins.YouTube.YouTubeSourceProvider.YouTubeTypeId,
+                Phosphor.Plugins.Plex.PlexSourceProvider.PlexTypeId,
+            });
+            _pluginsDiscovered = true;
+        }
+
         // Dispose the previous registry so its sources release any connections/watchers/timers
         // before we replace them (this method runs on every settings save).
         var previous = _sourceRegistry;

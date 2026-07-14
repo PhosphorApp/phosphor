@@ -70,16 +70,23 @@ public static class PluginSettingsFactory
     }
 
     /// <summary>Provider type ids that can be added by the user (i.e. support multiple instances).</summary>
-    public static IReadOnlyList<(string TypeId, string DisplayName)> AddableProviders() =>
-        new[] { PlexSourceProvider.PlexTypeId }
-            .Select(id => (id, CreateProvider(id)!.DisplayName))
-            .ToList();
+    public static IReadOnlyList<(string TypeId, string DisplayName)> AddableProviders()
+    {
+        var list = new List<(string TypeId, string DisplayName)>
+        {
+            (PlexSourceProvider.PlexTypeId, CreateProvider(PlexSourceProvider.PlexTypeId)!.DisplayName),
+        };
+        // Any discovered third-party provider can be added by the user (single- or multi-instance).
+        foreach (var p in DiscoveredProviders.All)
+            list.Add((p.TypeId, p.DisplayName));
+        return list;
+    }
 
     private static IPhosphorSourceProvider? CreateProvider(string typeId) => typeId switch
     {
         YouTubeSourceProvider.YouTubeTypeId => new YouTubeSourceProvider(),
         PlexSourceProvider.PlexTypeId => new PlexSourceProvider(),
-        _ => null,
+        _ => DiscoveredProviders.Get(typeId),
     };
 
     /// <summary>
@@ -93,7 +100,7 @@ public static class PluginSettingsFactory
         {
             YouTubeSourceProvider.YouTubeTypeId => (IPhosphorSourceProvider)new YouTubeSourceProvider(http),
             PlexSourceProvider.PlexTypeId => new PlexSourceProvider(),
-            _ => null,
+            _ => DiscoveredProviders.Get(cfg.TypeId),
         };
         return provider?.CreateInstance(cfg.InstanceId, cfg.Settings);
     }

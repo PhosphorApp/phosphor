@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="DofBridge/DofBridge.csproj" />
   <Project Path="Phosphor.Plugin.Abstractions/Phosphor.Plugin.Abstractions.csproj" />
+  <Project Path="Phosphor.Plugins.LocalFolder/Phosphor.Plugins.LocalFolder.csproj" />
   <Project Path="Phosphor/Phosphor.csproj" />
 </Solution>
