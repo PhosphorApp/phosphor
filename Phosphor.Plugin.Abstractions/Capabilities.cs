@@ -85,6 +85,50 @@ public interface IPlayableResolver
 }
 
 /// <summary>
+/// Capability: the source (or its underlying engine/tool) can report its version and update itself
+/// at runtime. Implemented by sources backed by an updatable external tool (e.g. yt-dlp); in-process
+/// libraries that ship compiled-in report <see cref="SupportsUpdate"/> = <c>false</c>. Lets the host
+/// offer an "update now" action and an optional periodic auto-update without hard-coding a specific tool.
+/// </summary>
+public interface IUpdatable
+{
+    /// <summary>Whether an update can actually be performed right now (e.g. the yt-dlp engine is active).</summary>
+    bool SupportsUpdate { get; }
+
+    /// <summary>Returns the current version string (e.g. "2026.07.04"), or <c>null</c> if unavailable.</summary>
+    Task<string?> GetVersionAsync(CancellationToken ct = default);
+
+    /// <summary>Updates to the latest version. No-ops (reports already-current) when up to date.</summary>
+    Task<UpdateResult> UpdateAsync(CancellationToken ct = default);
+}
+
+/// <summary>Outcome of an <see cref="IUpdatable.UpdateAsync"/> attempt.</summary>
+public enum UpdateStatus
+{
+    AlreadyCurrent,
+    Updated,
+    Failed,
+    NotSupported,
+}
+
+/// <summary>Result of an update attempt, with a ready-to-display status line.</summary>
+public sealed record UpdateResult(
+    UpdateStatus Status,
+    string? OldVersion,
+    string? NewVersion,
+    string? Error)
+{
+    /// <summary>A concise, user-facing status line for the settings UI.</summary>
+    public string DisplayString => Status switch
+    {
+        UpdateStatus.Updated => $"Updated {OldVersion} → {NewVersion}",
+        UpdateStatus.AlreadyCurrent => $"Already current ({NewVersion ?? OldVersion ?? "unknown"})",
+        UpdateStatus.NotSupported => "Update not supported by the active engine",
+        _ => $"Update failed{(string.IsNullOrEmpty(Error) ? "" : $": {Error}")}",
+    };
+}
+
+/// <summary>
 /// Capability: download raw streams into the host's disk cache. Optional — a source that
 /// only supports live playback need not implement it. The source writes raw files into
 /// <c>destinationDir</c> and reports their paths/containers; the host muxes/indexes/evicts.

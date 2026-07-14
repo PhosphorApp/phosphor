@@ -9,5 +9,5 @@ namespace Phosphor.Plugin.Abstractions;
 public static class PluginApi
 {
     /// <summary>The contract version this build of the abstractions defines.</summary>
-    public static readonly Version Current = new(0, 4, 0);
+    public static readonly Version Current = new(0, 5, 0);
 }

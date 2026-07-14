@@ -43,6 +43,24 @@ public partial class JukeboxViewModel : ObservableObject
         _sourceRegistry?.DescribeSources() ?? [];
 
     /// <summary>
+    /// Updates the active YouTube engine tool (yt-dlp) and returns a user-facing status line.
+    /// Routes through the plug-in source's <c>IUpdatable</c> when the plug-in path is on and the
+    /// source supports updating; otherwise uses the legacy <see cref="Video.YtDlpUpdater"/>.
+    /// </summary>
+    public async Task<string> UpdatePluginEngineOrLegacyAsync(CancellationToken ct = default)
+    {
+        if (_usePluginSources &&
+            _sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IUpdatable u && u.SupportsUpdate)
+        {
+            var result = await u.UpdateAsync(ct);
+            return result.DisplayString;
+        }
+
+        var legacy = await new Video.YtDlpUpdater().UpdateAsync(ct);
+        return legacy.ToDisplayString();
+    }
+
+    /// <summary>
     /// Builds (or rebuilds) the plug-in <see cref="Phosphor.Plugins.SourceRegistry"/> from the
     /// given settings. Additive in Phase 4 — the registry runs alongside the legacy engines and
     /// is only consulted on paths guarded by <see cref="UsePluginSources"/>.

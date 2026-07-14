@@ -3904,8 +3904,12 @@ public partial class SettingsWindow : JukeboxWindow
         YtDlpUpdateStatusText.Text = "Checking…";
         try
         {
-            var result = await new YtDlpUpdater().UpdateAsync();
-            YtDlpUpdateStatusText.Text = result.ToDisplayString();
+            // Route through the plug-in IUpdatable when available, else the legacy updater.
+            var vm = Owner?.DataContext as JukeboxViewModel;
+            var status = vm != null
+                ? await vm.UpdatePluginEngineOrLegacyAsync()
+                : (await new YtDlpUpdater().UpdateAsync()).ToDisplayString();
+            YtDlpUpdateStatusText.Text = status;
             if (_settings != null)
                 _settings.YtDlpLastUpdateCheck = DateTime.UtcNow;
         }

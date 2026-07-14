@@ -18,7 +18,7 @@ namespace Phosphor.Plugins.YouTube;
 /// YoutubeExplode package and existing engine code directly. It is a pure data producer:
 /// it never touches UI or assumes a thread.
 /// </remarks>
-public sealed class YouTubeSource : IPhosphorSource, ITextSearchCapable, IPlaylistChannelDiscovery, IPlayableResolver, IDownloadable
+public sealed class YouTubeSource : IPhosphorSource, ITextSearchCapable, IPlaylistChannelDiscovery, IPlayableResolver, IDownloadable, IUpdatable
 {
     private readonly HttpClient? _http;
     private IPluginHost? _host;
@@ -150,6 +150,33 @@ public sealed class YouTubeSource : IPhosphorSource, ITextSearchCapable, IPlayli
     // The plug-in's quality preference wins when the caller supplied a real ceiling;
     // otherwise fall back to the configured default.
     private VideoQualityPreference MapQuality(VideoQuality q) => YouTubeMappings.ToQualityPreference(q);
+
+    // ── IUpdatable (yt-dlp self-update) ────────────────────────────────────────
+
+    /// <summary>Only the external yt-dlp tool is updatable; YoutubeExplode is compiled-in.</summary>
+    public bool SupportsUpdate =>
+        _searchKind == SearchEngineKind.YtDlp || _videoKind == VideoEngineKind.YtDlp;
+
+    public async Task<string?> GetVersionAsync(CancellationToken ct = default)
+    {
+        if (!SupportsUpdate) return null;
+        return await new YtDlpUpdater().GetVersionAsync(ct);
+    }
+
+    public async Task<UpdateResult> UpdateAsync(CancellationToken ct = default)
+    {
+        if (!SupportsUpdate)
+            return new UpdateResult(UpdateStatus.NotSupported, null, null, null);
+
+        var r = await new YtDlpUpdater().UpdateAsync(ct);
+        var status = r.Status switch
+        {
+            YtDlpUpdateStatus.Updated => UpdateStatus.Updated,
+            YtDlpUpdateStatus.AlreadyCurrent => UpdateStatus.AlreadyCurrent,
+            _ => UpdateStatus.Failed,
+        };
+        return new UpdateResult(status, r.OldVersion, r.NewVersion, r.Error);
+    }
 
     private static T ParseEnum<T>(IReadOnlyDictionary<string, string?> values, string key, T fallback)
         where T : struct, Enum

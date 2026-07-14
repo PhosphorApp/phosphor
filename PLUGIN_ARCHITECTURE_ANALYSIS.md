@@ -571,7 +571,25 @@ Stop after any phase and still have a working app. Phases 1–4 deliver most of 
   producing back-to-back, pre-buffered streams (Plex music tracks do; a YouTube
   resolve-per-play does not), so it is genuinely a per-source property. Open point:
   if enough sources support it, a shared core gapless pipeline might be worth
-  generalizing later — revisit once a second gapless-capable source exists.
+  generalizing later — revisit once a second gapless-capable source exists. **Update:**
+  decided this direction — model gapless as an `IPreloadableStream`/`IGaplessCapable`
+  capability (replacing the `GetNextGaplessTrack` `IsPlex` gate). Deferred as its own
+  increment because it touches the thread-sensitive audio-playback path (`GaplessAudioPlayer`).
+- **Runtime self-update is a capability (done).** `IUpdatable` (`SupportsUpdate`,
+  `GetVersionAsync`, `UpdateAsync` → `UpdateResult`) added to the contract (0.5.0),
+  implemented by `YouTubeSource` (delegating to `YtDlpUpdater`, `SupportsUpdate` true only
+  when its active engine is yt-dlp; YoutubeExplode is compiled-in). Both the startup
+  auto-update and the settings "check for update" button now route through it via a VM
+  helper (legacy `YtDlpUpdater` fallback when the flag is off). This is the "engine feature
+  as capability" pattern that gapless will follow.
+- **Network settings ownership (decided, mostly relocation).** Split by *who consumes the
+  value*: LibVLC media options (`NetworkCachingMs`, `LiveCachingMs`, `FileCachingMs`,
+  `HttpReconnect`) are **player-owned** — they govern buffering of any resolved URL
+  regardless of source, so they stay in `AppSettings`/the player. `YouTubeTimeoutSeconds` is
+  a **source** concern (how long the engine waits to resolve) and belongs in the YouTube
+  plug-in's schema. Sources needing special buffering can express it per-stream (Plex's
+  transcode path already adds `:network-caching` on the resolved media; `ResolvedStream`
+  also carries `HttpHeaders`), so global defaults stay player-owned with no conflict.
 - **Stream transport is open-ended (decided).** A resolved stream is not always an
   HTTP URL. YouTube and Plex return short-lived HTTP(S) URLs today, but a
   local-folder source resolves to a **file path**, and other transports may appear

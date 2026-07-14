@@ -82,7 +82,7 @@ public partial class App : Application
         // logged and simply leaves the registry unused.
         _ = viewModel.BuildSourceRegistryAsync(_settings);
 
-        MaybeAutoUpdateYtDlp();
+        MaybeAutoUpdateYtDlp(viewModel);
 
         // Create and show DMD first — it's the primary window
         _dmdWindow = new DmdWindow { DataContext = viewModel };
@@ -422,7 +422,7 @@ public partial class App : Application
     /// self-update in the background (at most once per week). Fire-and-forget: never blocks
     /// startup and swallows failures. The last-check timestamp is persisted on exit.
     /// </summary>
-    private void MaybeAutoUpdateYtDlp()
+    private void MaybeAutoUpdateYtDlp(JukeboxViewModel viewModel)
     {
         if (!_settings.YtDlpAutoUpdate) return;
         if (_settings.VideoEngine != VideoEngineKind.YtDlp
@@ -437,8 +437,9 @@ public partial class App : Application
         {
             try
             {
-                var result = await new Phosphor.Video.YtDlpUpdater().UpdateAsync();
-                DebugLog.Log("YtDlpUpdater", $"Startup auto-update: {result.ToDisplayString()}");
+                // Routes through the plug-in IUpdatable when the plug-in path is enabled, else legacy.
+                var status = await viewModel.UpdatePluginEngineOrLegacyAsync();
+                DebugLog.Log("YtDlpUpdater", $"Startup auto-update: {status}");
             }
             catch (Exception ex)
             {
