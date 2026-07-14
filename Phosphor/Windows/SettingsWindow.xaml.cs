@@ -4017,6 +4017,16 @@ public partial class SettingsWindow : JukeboxWindow
     private readonly Dictionary<string, System.Windows.Controls.TextBox> _pluginDisplayNameBoxes = new();
     private readonly Dictionary<string, System.Windows.Controls.CheckBox> _pluginEnabledBoxes = new();
 
+    // Sentinel used to pre-fill a secret field so it looks populated without exposing the real
+    // value. On harvest, a field still equal to the sentinel is left unchanged.
+    private const string SecretSentinel = "\u0001\u0001SECRET-UNCHANGED\u0001\u0001";
+
+    // Standardized editor sizing so text/combo/password fields line up.
+    private const double EditorHeight = 28;
+    private const double EditorMinWidth = 320;
+    private static readonly Thickness EditorPadding = new(6, 2, 6, 2);
+    private static readonly Thickness RowMargin = new(0, 3, 0, 3);
+
     /// <summary>
     /// Populates the Plug-ins tab with editable controls over a working copy of
     /// <c>settings.PluginInstances</c>. Values are harvested back and persisted on save
@@ -4068,21 +4078,41 @@ public partial class SettingsWindow : JukeboxWindow
             {
                 BorderBrush = accent,
                 BorderThickness = new Thickness(0, 0, 0, 1),
-                Padding = new Thickness(0, 6, 0, 12),
-                Margin = new Thickness(0, 0, 0, 10),
+                Padding = new Thickness(0, 8, 0, 14),
+                Margin = new Thickness(0, 0, 0, 12),
             };
             var panel = new System.Windows.Controls.StackPanel();
 
-            // Header: provider type name
-            panel.Children.Add(new System.Windows.Controls.TextBlock
+            // ── Header row: title left, Enabled right-justified ──
+            var headerGrid = new System.Windows.Controls.Grid { Margin = new Thickness(0, 0, 0, 4) };
+            headerGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) });
+            headerGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = System.Windows.GridLength.Auto });
+
+            var title = new System.Windows.Controls.TextBlock
             {
                 Text = $"{typeName}  ({cfg.TypeId})",
                 Foreground = accent,
                 FontWeight = FontWeights.Bold,
                 FontSize = 12,
-                Margin = new Thickness(0, 0, 0, 4),
-            });
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            System.Windows.Controls.Grid.SetColumn(title, 0);
+            headerGrid.Children.Add(title);
 
+            var enabledBox = new System.Windows.Controls.CheckBox
+            {
+                Content = "Enabled",
+                IsChecked = cfg.Enabled,
+                Foreground = text,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+            };
+            _pluginEnabledBoxes[cfg.InstanceId] = enabledBox;
+            System.Windows.Controls.Grid.SetColumn(enabledBox, 1);
+            headerGrid.Children.Add(enabledBox);
+            panel.Children.Add(headerGrid);
+
+            // Description
             if (!string.IsNullOrWhiteSpace(info?.Description))
             {
                 panel.Children.Add(new System.Windows.Controls.TextBlock
@@ -4091,36 +4121,28 @@ public partial class SettingsWindow : JukeboxWindow
                     Foreground = dim,
                     FontSize = 11,
                     TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 0, 0, 6),
+                    Margin = new Thickness(0, 0, 0, 8),
                 });
             }
 
-            // Enabled toggle
-            var enabledBox = new System.Windows.Controls.CheckBox
-            {
-                Content = "Enabled",
-                IsChecked = cfg.Enabled,
-                Foreground = text,
-                Margin = new Thickness(0, 0, 0, 6),
-            };
-            _pluginEnabledBoxes[cfg.InstanceId] = enabledBox;
-            panel.Children.Add(enabledBox);
+            // ── Settings table: column 0 = label, column 1 = editor ──
+            var grid = new System.Windows.Controls.Grid();
+            grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new System.Windows.GridLength(130) });
+            grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) });
 
-            // Display name
-            panel.Children.Add(new System.Windows.Controls.TextBlock
-            {
-                Text = "Display name", Foreground = dim, FontSize = 10,
-            });
+            // Display name row
             var nameBox = new System.Windows.Controls.TextBox
             {
                 Text = cfg.DisplayName ?? typeName,
                 Foreground = text,
-                Margin = new Thickness(0, 0, 0, 6),
-                MaxWidth = 360,
+                Height = EditorHeight,
+                Padding = EditorPadding,
+                MinWidth = EditorMinWidth,
+                VerticalContentAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
             };
             _pluginDisplayNameBoxes[cfg.InstanceId] = nameBox;
-            panel.Children.Add(nameBox);
+            AddSettingRow(grid, "Display name", null, nameBox, text, dim);
 
             // Declarative settings fields
             var schema = info?.Schema ?? [];
@@ -4129,11 +4151,19 @@ public partial class SettingsWindow : JukeboxWindow
                 cfg.Settings.TryGetValue(d.Key, out var current);
                 current ??= d.DefaultValue;
 
-                panel.Children.Add(new System.Windows.Controls.TextBlock
+                // The Plex "libraries" blob isn't hand-editable here; show a read-only summary.
+                if (d.Key == "libraries")
                 {
-                    Text = d.Label + (string.IsNullOrWhiteSpace(d.HelpText) ? "" : $"  — {d.HelpText}"),
-                    Foreground = dim, FontSize = 10, TextWrapping = TextWrapping.Wrap,
-                });
+                    var count = string.IsNullOrWhiteSpace(current)
+                        ? 0 : System.Text.RegularExpressions.Regex.Matches(current, "\"Key\"").Count;
+                    var summary = new System.Windows.Controls.TextBlock
+                    {
+                        Text = count > 0 ? $"{count} libraries mapped (edit via Plex tab for now)" : "none mapped",
+                        Foreground = text, FontSize = 11, VerticalAlignment = VerticalAlignment.Center,
+                    };
+                    AddSettingRow(grid, d.Label, d.HelpText, summary, text, dim);
+                    continue;
+                }
 
                 System.Windows.Controls.Control editor = d.Type switch
                 {
@@ -4141,48 +4171,83 @@ public partial class SettingsWindow : JukeboxWindow
                     {
                         IsChecked = bool.TryParse(current, out var b) && b,
                         Foreground = text,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
                     },
-                    Phosphor.Plugin.Abstractions.PluginSettingType.Enum => MakeEnumCombo(d, current, text),
+                    Phosphor.Plugin.Abstractions.PluginSettingType.Enum => MakeEnumCombo(d, current),
                     Phosphor.Plugin.Abstractions.PluginSettingType.Secret => new System.Windows.Controls.PasswordBox
                     {
-                        MaxWidth = 360, HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+                        // Pre-fill with a sentinel so it looks populated (dots) when a secret exists.
+                        Password = string.IsNullOrEmpty(current) ? "" : SecretSentinel,
+                        Height = EditorHeight,
+                        Padding = EditorPadding,
+                        MinWidth = EditorMinWidth,
+                        VerticalContentAlignment = VerticalAlignment.Center,
+                        HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
                     },
                     _ => new System.Windows.Controls.TextBox
                     {
                         Text = current ?? "", Foreground = text,
-                        MaxWidth = 360, HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+                        Height = EditorHeight,
+                        Padding = EditorPadding,
+                        MinWidth = EditorMinWidth,
+                        VerticalContentAlignment = VerticalAlignment.Center,
+                        HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
                     },
                 };
-                editor.Margin = new Thickness(0, 0, 0, 6);
-
-                // The Plex "libraries" blob isn't hand-editable here; show a read-only summary.
-                if (d.Key == "libraries")
-                {
-                    var count = string.IsNullOrWhiteSpace(current)
-                        ? 0 : System.Text.RegularExpressions.Regex.Matches(current, "\"Key\"").Count;
-                    panel.Children.Add(new System.Windows.Controls.TextBlock
-                    {
-                        Text = count > 0 ? $"{count} libraries mapped (edit via Plex tab for now)" : "none mapped",
-                        Foreground = text, FontSize = 11, Margin = new Thickness(0, 0, 0, 6),
-                    });
-                    continue;
-                }
+                if (!string.IsNullOrWhiteSpace(d.HelpText))
+                    editor.ToolTip = d.HelpText;
 
                 _pluginFieldControls.Add((editor, cfg.InstanceId, d.Key));
-                panel.Children.Add(editor);
+                AddSettingRow(grid, d.Label, d.HelpText, editor, text, dim);
             }
 
+            panel.Children.Add(grid);
             card.Child = panel;
             PanelPluginSources.Children.Add(card);
         }
     }
 
+    /// <summary>Adds a two-column row (label | editor) to a settings grid.</summary>
+    private static void AddSettingRow(
+        System.Windows.Controls.Grid grid, string label, string? helpText,
+        System.Windows.UIElement editor, System.Windows.Media.Brush text, System.Windows.Media.Brush dim)
+    {
+        int row = grid.RowDefinitions.Count;
+        grid.RowDefinitions.Add(new System.Windows.Controls.RowDefinition { Height = System.Windows.GridLength.Auto });
+
+        var labelBlock = new System.Windows.Controls.TextBlock
+        {
+            Text = label,
+            Foreground = text,
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 10, 0),
+        };
+        if (!string.IsNullOrWhiteSpace(helpText))
+            labelBlock.ToolTip = helpText;
+        System.Windows.Controls.Grid.SetRow(labelBlock, row);
+        System.Windows.Controls.Grid.SetColumn(labelBlock, 0);
+        grid.Children.Add(labelBlock);
+
+        if (editor is System.Windows.FrameworkElement fe)
+            fe.Margin = RowMargin;
+        System.Windows.Controls.Grid.SetRow(editor, row);
+        System.Windows.Controls.Grid.SetColumn(editor, 1);
+        grid.Children.Add(editor);
+    }
+
     private System.Windows.Controls.ComboBox MakeEnumCombo(
-        Phosphor.Plugin.Abstractions.PluginSettingDescriptor d, string? current, System.Windows.Media.Brush text)
+        Phosphor.Plugin.Abstractions.PluginSettingDescriptor d, string? current)
     {
         var combo = new System.Windows.Controls.ComboBox
         {
-            MaxWidth = 360, HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+            Height = EditorHeight,
+            Padding = EditorPadding,
+            MinWidth = EditorMinWidth,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
         };
         foreach (var v in d.EnumValues ?? [])
             combo.Items.Add(v);
@@ -4217,8 +4282,9 @@ public partial class SettingsWindow : JukeboxWindow
             switch (control)
             {
                 case System.Windows.Controls.PasswordBox pb:
-                    // Overwrite the stored secret only when the user typed something.
-                    if (!string.IsNullOrEmpty(pb.Password))
+                    // Overwrite the stored secret only when the user actually changed it (a value
+                    // still equal to the pre-filled sentinel means "unchanged").
+                    if (!string.IsNullOrEmpty(pb.Password) && pb.Password != SecretSentinel)
                         cfg.Settings[key] = pb.Password;
                     break;
                 case System.Windows.Controls.CheckBox cb:
