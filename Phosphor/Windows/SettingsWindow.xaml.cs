@@ -27,6 +27,7 @@ public class CategoryVisibilityItem
     public int SortOrder { get; set; }
     public string? PlexLibraryKey { get; set; }
     public string? PlexLibraryType { get; set; }
+    public string? PlexInstanceId { get; set; }
     public bool PlexHubsEnabled { get; set; }
     public bool PlexPlaylistsEnabled { get; set; }
     // Generic plug-in source tile identity (round-tripped so sort/visibility persist for these too).
@@ -879,6 +880,7 @@ public partial class SettingsWindow : JukeboxWindow
                 IsPlex = entry.IsPlex,
                 PlexLibraryKey = entry.PlexLibraryKey,
                 PlexLibraryType = entry.PlexLibraryType,
+                PlexInstanceId = entry.PlexInstanceId,
                 PlexHubsEnabled = entry.PlexHubsEnabled,
                 PlexPlaylistsEnabled = entry.PlexPlaylistsEnabled,
                 SourceInstanceId = entry.SourceInstanceId,
@@ -3442,6 +3444,7 @@ public partial class SettingsWindow : JukeboxWindow
             IsLineBreak = i.IsLineBreak,
             PlexLibraryKey = i.PlexLibraryKey,
             PlexLibraryType = i.PlexLibraryType,
+            PlexInstanceId = i.PlexInstanceId,
             PlexHubsEnabled = i.PlexHubsEnabled,
             PlexPlaylistsEnabled = i.PlexPlaylistsEnabled,
             SourceInstanceId = i.SourceInstanceId,
