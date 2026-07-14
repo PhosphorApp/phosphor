@@ -4246,22 +4246,25 @@ public partial class SettingsWindow : JukeboxWindow
                 AddSettingRow(grid, d.Label, d.HelpText, editor, text, dim);
             }
 
-            // ── Caching policy selector (Default / Always / Never) ──
-            var cachingCombo = new System.Windows.Controls.ComboBox
+            // ── Caching policy selector — only meaningful for sources that can download/cache.
+            // Non-downloadable sources (e.g. Plex, which streams live) have nothing to configure. ──
+            if (capSource is Phosphor.Plugin.Abstractions.IDownloadable)
             {
-                Foreground = text, Background = surface2, Height = EditorHeight,
-                MinWidth = EditorMinWidth,
-                VerticalContentAlignment = VerticalAlignment.Center,
-                HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
-            };
-            cachingCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = "Default (based on source)", Tag = "default" });
-            cachingCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = "Always cache", Tag = "true" });
-            cachingCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = "Never cache", Tag = "false" });
-            cachingCombo.SelectedIndex = cfg.AllowCaching switch { true => 1, false => 2, null => 0 };
-            cachingCombo.ToolTip = "Whether videos from this source are downloaded to the disk cache. " +
-                "Default uses the source's capability (YouTube caches, Plex streams live).";
-            _pluginCachingBoxes[cfg.InstanceId] = cachingCombo;
-            AddSettingRow(grid, "Caching", cachingCombo.ToolTip as string, cachingCombo, text, dim);
+                var cachingCombo = new System.Windows.Controls.ComboBox
+                {
+                    Foreground = text, Background = surface2, Height = EditorHeight,
+                    MinWidth = EditorMinWidth,
+                    VerticalContentAlignment = VerticalAlignment.Center,
+                    HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+                };
+                cachingCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = "Cache (default)", Tag = "default" });
+                cachingCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = "Never cache", Tag = "false" });
+                // true (force-on) collapses to the default for a downloadable source, so map it to "Cache".
+                cachingCombo.SelectedIndex = cfg.AllowCaching == false ? 1 : 0;
+                cachingCombo.ToolTip = "Whether videos from this source are downloaded to the disk cache.";
+                _pluginCachingBoxes[cfg.InstanceId] = cachingCombo;
+                AddSettingRow(grid, "Caching", cachingCombo.ToolTip as string, cachingCombo, text, dim);
+            }
 
             panel.Children.Add(grid);
 
