@@ -583,6 +583,15 @@ Each phase is independently shippable and reversible.
    call sites (App startup, DmdWindow settings-apply) use it, so Plug-ins-tab library edits now
    become tiles. **Still single-server for tiles:** only the first enabled Plex instance drives
    tiles (the `_plex`/category model is single-server); true multi-server tiles is a later change.
+   **Multi-server tiles — Sub-step A (done):** tiles now build from **all** enabled Plex instances.
+   Added `PlexInstanceId` to `Category` + `GenreCategoryEntry`, a `GenreCategoryStore.SyncAllPlexLibraries`
+   (keyed by (instanceId, libraryKey), name-disambiguated when >1 instance), and rewired
+   `ConfigurePlexFromSettings` to gather all enabled+configured Plex instances and sync every one's
+   libraries into tiles (each tile tagged with its instance id). **Sub-step B (todo):** browse
+   routing still targets the single legacy `_plex` (configured from the first instance) — clicking a
+   second server's tile currently queries the first. B threads each tile's `PlexInstanceId` into the
+   `PlexBrowse...ViaPluginOrLegacy` helpers (→ `registry.ByInstance(id)` instead of `First()`) and
+   into the drill-down/pagination state, so tiles route to their own server.
 8. **Reference third source (validation).** Prototype Jellyfin or a local-folder
    source to confirm no core changes are needed.
 

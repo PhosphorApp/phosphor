@@ -18,6 +18,8 @@ public class GenreCategoryEntry
     // Plex fields (when set, this entry represents a Plex library tile)
     public string? PlexLibraryKey { get; set; }
     public string? PlexLibraryType { get; set; }
+    /// <summary>The Plex source instance this entry belongs to (multi-server). Null = legacy/first server.</summary>
+    public string? PlexInstanceId { get; set; }
     public bool PlexHubsEnabled { get; set; }
     public bool PlexPlaylistsEnabled { get; set; }
     public bool IsPlex => PlexLibraryKey != null;
@@ -121,6 +123,64 @@ public static class GenreCategoryStore
                     PlexPlaylistsEnabled = lib.PlaylistsEnabled,
                     IsVisible = true
                 });
+            }
+        }
+    }
+
+    /// <summary>One configured Plex instance's libraries, for multi-server tile sync.</summary>
+    public sealed record PlexInstanceLibraries(string InstanceId, string DisplayName, IReadOnlyList<PlexLibraryMapping> Libraries);
+
+    /// <summary>
+    /// Instance-aware version of <see cref="SyncPlexLibraries"/> for the multi-server plug-in path.
+    /// Rebuilds Plex tile entries across all given instances, keyed by (instanceId, libraryKey) so
+    /// two servers sharing a library key don't collide. Entries whose instance is no longer present,
+    /// or whose library was removed, are pruned. Preserves user customizations (icon/position) for
+    /// surviving entries. When more than one instance is configured, tile names are prefixed with
+    /// the instance display name (e.g. "Home Plex: Movies") to disambiguate.
+    /// </summary>
+    public static void SyncAllPlexLibraries(List<GenreCategoryEntry> entries, IReadOnlyList<PlexInstanceLibraries> instances)
+    {
+        // Valid (instanceId, libraryKey) pairs across all instances.
+        var validPairs = new HashSet<(string, string)>();
+        foreach (var inst in instances)
+            foreach (var lib in inst.Libraries)
+                validPairs.Add((inst.InstanceId, lib.Key));
+
+        // Prune Plex entries that no longer correspond to a configured (instance, library). This
+        // also removes legacy instance-less Plex entries (PlexInstanceId == null) — on the plug-in
+        // path all Plex tiles are instance-tagged.
+        entries.RemoveAll(e => e.IsPlex && (e.PlexInstanceId == null || !validPairs.Contains((e.PlexInstanceId!, e.PlexLibraryKey!))));
+
+        bool multi = instances.Count > 1;
+        foreach (var inst in instances)
+        {
+            foreach (var lib in inst.Libraries)
+            {
+                var name = multi ? $"{inst.DisplayName}: {lib.Title}" : $"Plex {lib.Title}";
+                var existing = entries.FirstOrDefault(e =>
+                    e.PlexInstanceId == inst.InstanceId && e.PlexLibraryKey == lib.Key);
+                if (existing != null)
+                {
+                    existing.Name = name;
+                    existing.PlexHubsEnabled = lib.HubsEnabled;
+                    existing.PlexPlaylistsEnabled = lib.PlaylistsEnabled;
+                    existing.PlexLibraryType = lib.Type;
+                }
+                else
+                {
+                    entries.Add(new GenreCategoryEntry
+                    {
+                        Id = Guid.NewGuid().ToString("N"),
+                        Name = name,
+                        Icon = "\U0001f7e0",
+                        PlexInstanceId = inst.InstanceId,
+                        PlexLibraryKey = lib.Key,
+                        PlexLibraryType = lib.Type,
+                        PlexHubsEnabled = lib.HubsEnabled,
+                        PlexPlaylistsEnabled = lib.PlaylistsEnabled,
+                        IsVisible = true
+                    });
+                }
             }
         }
     }

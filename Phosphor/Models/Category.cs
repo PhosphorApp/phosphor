@@ -11,6 +11,8 @@ public class Category
     public bool IsNewPlaylist { get; set; }
     public string? PlexLibraryKey { get; set; }
     public string? PlexLibraryType { get; set; }
+    /// <summary>The Plex source instance this tile belongs to (multi-server). Null = legacy/first server.</summary>
+    public string? PlexInstanceId { get; set; }
     public string? PlexHubKey { get; set; }
     public string? PlexHubType { get; set; }
     public string? PlexPlaylistKey { get; set; }

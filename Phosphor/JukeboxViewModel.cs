@@ -146,18 +146,14 @@ public partial class JukeboxViewModel : ObservableObject
 
     /// <summary>
     /// Configures Plex (and its category tiles) from settings, choosing the source of truth based
-    /// on <see cref="UsePluginSources"/>: when the plug-in path is on, the server/token/libraries
-    /// come from the first enabled Plex instance in <see cref="AppSettings.PluginInstances"/> (so
-    /// libraries edited in the Plug-ins tab become tiles); otherwise the legacy flat Plex fields.
-    /// Only a single active Plex drives tiles today — multi-server tiles are a later increment.
+    /// on <see cref="UsePluginSources"/>. When the plug-in path is on, tiles are built from <em>all</em>
+    /// enabled Plex instances in <see cref="AppSettings.PluginInstances"/> (each tile tagged with its
+    /// instance id); the single legacy <c>_plex</c> service is still configured from the first enabled
+    /// instance (browse routing per-instance lands in a follow-up). When off, the legacy flat Plex
+    /// fields drive a single server.
     /// </summary>
     public void ConfigurePlexFromSettings(AppSettings settings, bool skipRebuild = false)
     {
-        string url = settings.PlexServerUrl;
-        string token = settings.PlexToken;
-        bool stereo = settings.PlexStereoAudio;
-        List<PlexLibraryMapping> libraries = settings.PlexLibraries;
-
         if (settings.UsePluginSources)
         {
             // Seed the instance list on first run so a fresh flag-on install still gets Plex tiles
@@ -165,25 +161,42 @@ public partial class JukeboxViewModel : ObservableObject
             if (settings.PluginInstances.Count == 0)
                 settings.PluginInstances = Phosphor.Plugins.PluginSettingsFactory.FromAppSettings(settings);
 
-            var plexCfg = settings.PluginInstances
-                .FirstOrDefault(c => c.Enabled && c.TypeId == Phosphor.Plugins.Plex.PlexSourceProvider.PlexTypeId);
-            if (plexCfg != null)
+            var plexInstances = settings.PluginInstances
+                .Where(c => c.Enabled && c.TypeId == Phosphor.Plugins.Plex.PlexSourceProvider.PlexTypeId)
+                .Where(c => !string.IsNullOrWhiteSpace(GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyServerUrl))
+                         && !string.IsNullOrWhiteSpace(GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyToken)))
+                .ToList();
+
+            // Configure the single legacy _plex service from the first enabled instance (browse
+            // still targets this until per-instance routing lands in Sub-step B).
+            var first = plexInstances.FirstOrDefault();
+            if (first != null)
             {
-                url = GetSetting(plexCfg, Phosphor.Plugins.Plex.PlexSourceProvider.KeyServerUrl) ?? "";
-                token = GetSetting(plexCfg, Phosphor.Plugins.Plex.PlexSourceProvider.KeyToken) ?? "";
-                stereo = bool.TryParse(GetSetting(plexCfg, Phosphor.Plugins.Plex.PlexSourceProvider.KeyStereoAudio), out var s) && s;
-                libraries = ParsePlexLibraries(GetSetting(plexCfg, Phosphor.Plugins.Plex.PlexSourceProvider.KeyLibraries));
+                _plex.Configure(
+                    GetSetting(first, Phosphor.Plugins.Plex.PlexSourceProvider.KeyServerUrl) ?? "",
+                    GetSetting(first, Phosphor.Plugins.Plex.PlexSourceProvider.KeyToken) ?? "",
+                    bool.TryParse(GetSetting(first, Phosphor.Plugins.Plex.PlexSourceProvider.KeyStereoAudio), out var s) && s);
+                _plexStereoAudio = bool.TryParse(GetSetting(first, Phosphor.Plugins.Plex.PlexSourceProvider.KeyStereoAudio), out var s2) && s2;
             }
-            else
-            {
-                // Flag on but no configured Plex instance — no Plex tiles.
-                url = token = "";
-                libraries = [];
-            }
+
+            // Build tiles from ALL enabled instances, tagged with their instance id.
+            var instLibs = plexInstances
+                .Select(c => new GenreCategoryStore.PlexInstanceLibraries(
+                    c.InstanceId,
+                    c.DisplayName ?? "Plex",
+                    ParsePlexLibraries(GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyLibraries))))
+                .ToList();
+            _plexLibraries = instLibs.SelectMany(i => i.Libraries).ToList();
+            GenreCategoryStore.SyncAllPlexLibraries(_genreCategories, instLibs);
+            GenreCategoryStore.SaveInBackground(_genreCategories);
+            if (!skipRebuild)
+                RebuildCategories();
+            return;
         }
 
-        if (!string.IsNullOrWhiteSpace(url) && !string.IsNullOrWhiteSpace(token))
-            ConfigurePlex(url, token, libraries, stereo, skipRebuild);
+        // Legacy flat-field path (single server).
+        if (!string.IsNullOrWhiteSpace(settings.PlexServerUrl) && !string.IsNullOrWhiteSpace(settings.PlexToken))
+            ConfigurePlex(settings.PlexServerUrl, settings.PlexToken, settings.PlexLibraries, settings.PlexStereoAudio, skipRebuild);
         else if (!skipRebuild)
             RebuildCategories();
     }
@@ -1379,14 +1392,14 @@ public partial class JukeboxViewModel : ObservableObject
             if (entry.IsPlex)
             {
                 var group = new List<Category>();
-                group.Add(new Category { Name = entry.Name, Icon = entry.Icon, PlexLibraryKey = entry.PlexLibraryKey, PlexLibraryType = entry.PlexLibraryType });
+                group.Add(new Category { Name = entry.Name, Icon = entry.Icon, PlexLibraryKey = entry.PlexLibraryKey, PlexLibraryType = entry.PlexLibraryType, PlexInstanceId = entry.PlexInstanceId });
 
                 var title = entry.Name.StartsWith("Plex ") ? entry.Name[5..] : entry.Name;
                 if (entry.PlexHubsEnabled)
-                    group.Add(new Category { Name = $"{title}: Hubs", Icon = "📡", PlexLibraryKey = entry.PlexLibraryKey, PlexLibraryType = entry.PlexLibraryType, IsPlexHubList = true });
+                    group.Add(new Category { Name = $"{title}: Hubs", Icon = "📡", PlexLibraryKey = entry.PlexLibraryKey, PlexLibraryType = entry.PlexLibraryType, PlexInstanceId = entry.PlexInstanceId, IsPlexHubList = true });
 
                 if (entry.PlexPlaylistsEnabled)
-                    group.Add(new Category { Name = $"{title}: Playlists", Icon = "📋", PlexLibraryKey = entry.PlexLibraryKey, PlexLibraryType = entry.PlexLibraryType, IsPlexPlaylistList = true });
+                    group.Add(new Category { Name = $"{title}: Playlists", Icon = "📋", PlexLibraryKey = entry.PlexLibraryKey, PlexLibraryType = entry.PlexLibraryType, PlexInstanceId = entry.PlexInstanceId, IsPlexPlaylistList = true });
 
                 sortable.Add((entry.SortOrder, group));
             }
