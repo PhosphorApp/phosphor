@@ -56,8 +56,13 @@ public partial class App : Application
             }
         });
         var viewModel = new JukeboxViewModel();
-        viewModel.SetVideoEngine(_settings.VideoEngine);
-        viewModel.SetSearchEngine(_settings.SearchEngine);
+        // Engine/quality/stereo come from the YouTube plug-in config (single source of truth). Seed
+        // the instance list first so a fresh install still has YouTube defaults to read.
+        if (_settings.PluginInstances.Count == 0)
+            _settings.PluginInstances = Phosphor.Plugins.PluginSettingsFactory.FromAppSettings(_settings);
+        var ytPlayback = Phosphor.Plugins.PluginSettingsFactory.ReadYouTubePlayback(_settings.PluginInstances);
+        viewModel.SetVideoEngine(ytPlayback.Video);
+        viewModel.SetSearchEngine(ytPlayback.Search);
         viewModel.SetupCache(_settings.CacheEnabled, _settings.CacheMaxSizeGb, _settings.CacheMaxClipLengthMinutes);
         viewModel.SetupPrefetch(_settings.PrefetchEnabled);
         viewModel.SetupThumbnailCache(_settings.ThumbnailCacheEnabled, _settings.ThumbnailCacheMaxSizeMb);
@@ -65,8 +70,8 @@ public partial class App : Application
         viewModel.SetupYtPlaylistCache(_settings.YtPlaylistCacheEnabled, _settings.YtPlaylistCacheMaxAgeHours);
         viewModel.SetupPlexPlaylistCache(_settings.PlexPlaylistCacheEnabled, _settings.PlexPlaylistCacheMaxAgeHours);
         ThumbnailCacheConverter.Cache = viewModel.ThumbnailCache;
-        viewModel.VideoQuality = _settings.VideoQuality;
-        viewModel.StereoAudio = _settings.StereoAudio;
+        viewModel.VideoQuality = ytPlayback.Quality;
+        viewModel.StereoAudio = ytPlayback.PreferStereo;
         viewModel.CacheMode = _settings.CacheMode;
         viewModel.PreemptiveCache = _settings.PreemptiveCache;
         viewModel.GaplessPlayback = _settings.PlexGaplessPlayback;
@@ -429,8 +434,9 @@ public partial class App : Application
             DebugLog.Log("YtDlpUpdater", "Startup auto-update skipped: auto-update disabled");
             return;
         }
-        if (_settings.VideoEngine != VideoEngineKind.YtDlp
-            && _settings.SearchEngine != SearchEngineKind.YtDlp)
+        var ytEngines = Phosphor.Plugins.PluginSettingsFactory.ReadYouTubePlayback(_settings.PluginInstances);
+        if (ytEngines.Video != VideoEngineKind.YtDlp
+            && ytEngines.Search != SearchEngineKind.YtDlp)
         {
             DebugLog.Log("YtDlpUpdater", "Startup auto-update skipped: yt-dlp is not the active engine");
             return;

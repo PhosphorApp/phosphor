@@ -2379,8 +2379,11 @@ public partial class DmdWindow : JukeboxWindow
             LogStep("ConfigurePlex");
             vm.ReloadGenreCategories();
             LogStep("ReloadGenreCategories");
-            vm.SetVideoEngine(_appSettings.VideoEngine);
-            vm.SetSearchEngine(_appSettings.SearchEngine);
+            // Engine/quality/stereo come from the YouTube plug-in config (the Plug-ins tab is the
+            // single source of truth now that the General→Video section is retired).
+            var ytPlayback = Phosphor.Plugins.PluginSettingsFactory.ReadYouTubePlayback(_appSettings.PluginInstances);
+            vm.SetVideoEngine(ytPlayback.Video);
+            vm.SetSearchEngine(ytPlayback.Search);
             // Rebuild the plug-in source registry so Plex/engine changes take effect without a restart.
             _ = vm.BuildSourceRegistryAsync(_appSettings);
             vm.SetupPrefetch(_appSettings.PrefetchEnabled);
@@ -2390,8 +2393,8 @@ public partial class DmdWindow : JukeboxWindow
             vm.SetupPlexPlaylistCache(_appSettings.PlexPlaylistCacheEnabled, _appSettings.PlexPlaylistCacheMaxAgeHours);
             LogStep("CacheSetup");
             ThumbnailCacheConverter.Cache = vm.ThumbnailCache;
-            vm.VideoQuality = _appSettings.VideoQuality;
-            vm.StereoAudio = _appSettings.StereoAudio;
+            vm.VideoQuality = ytPlayback.Quality;
+            vm.StereoAudio = ytPlayback.PreferStereo;
             vm.NetworkCachingMs = _appSettings.NetworkCachingMs;
             vm.LiveCachingMs = _appSettings.LiveCachingMs;
             vm.FileCachingMs = _appSettings.FileCachingMs;

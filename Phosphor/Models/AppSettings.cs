@@ -377,12 +377,8 @@ public class AppSettings
     public string TitleText { get; set; } = "\uD83C\uDFB5 PHOSPHOR";
     public string LogoText { get; set; } = "\u2022 PHOSPHOR \u2022 PHOSPHOR ";
     public bool PrefetchEnabled { get; set; } = true;
-    public VideoQualityPreference VideoQuality { get; set; } = VideoQualityPreference.High;
-    public VideoEngineKind VideoEngine { get; set; } = VideoEngineKind.YoutubeExplode;
-    public SearchEngineKind SearchEngine { get; set; } = SearchEngineKind.YoutubeExplode;
     public bool YtDlpAutoUpdate { get; set; }
     public DateTime YtDlpLastUpdateCheck { get; set; } = DateTime.MinValue;
-    public bool StereoAudio { get; set; } = true;
     public int Volume { get; set; } = 100;
 
     // Network
@@ -397,11 +393,11 @@ public class AppSettings
     /// </summary>
     public int NetworkTimeoutSeconds { get; set; } = 30;
 
-    // Plex integration
-    public string PlexServerUrl { get; set; } = "";
-    public string PlexToken { get; set; } = "";
-    public List<PlexLibraryMapping> PlexLibraries { get; set; } = [];
-    public bool PlexStereoAudio { get; set; }
+    /// <summary>
+    /// Gapless playback for audio-only tracks (pre-loads the next track's stream). App-owned
+    /// playback-pipeline behavior — not per-source config. (YouTube/Plex/engine config now lives
+    /// per-source on the Plug-ins tab.)
+    /// </summary>
     public bool PlexGaplessPlayback { get; set; }
 
     /// <summary>

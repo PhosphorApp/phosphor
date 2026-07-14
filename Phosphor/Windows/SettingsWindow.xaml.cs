@@ -162,7 +162,6 @@ public partial class SettingsWindow : JukeboxWindow
     private string _originalProjectMTexturePath;
     private List<string> _originalProjectMEnabledFolders;
     private bool _originalProjectMSoftwareRender;
-    private readonly ObservableCollection<PlexLibraryMapping> _plexLibraries = new();
     private readonly List<CategoryVisibilityItem> _categoryVisibilityItems = new();
     private readonly ObservableCollection<PinupPlaylist> _pinupPlaylists = new();
     private readonly ObservableCollection<PinupPlaylist> _pinupActive = new();
@@ -1118,21 +1117,6 @@ public partial class SettingsWindow : JukeboxWindow
         _originalDofColorBand = settings.DofColorBand;
         _originalDofPresetChanged = settings.DofPresetChanged;
         _originalDofRomName = settings.DofRomName;
-        CbVideoQuality.Items.Add("Low (480p)");
-        CbVideoQuality.Items.Add("Medium (720p)");
-        CbVideoQuality.Items.Add("High (1080p)");
-        CbVideoQuality.Items.Add("Max (4k)");
-        CbVideoQuality.SelectedIndex = (int)settings.VideoQuality;
-        UpdateQualityHint(settings.VideoQuality);
-        CbVideoEngine.Items.Add("YoutubeExplode");
-        CbVideoEngine.Items.Add("yt-dlp");
-        CbVideoEngine.SelectedIndex = (int)settings.VideoEngine;
-        UpdateEngineHint(settings.VideoEngine);
-        CbSearchEngine.Items.Add("YoutubeExplode");
-        CbSearchEngine.Items.Add("yt-dlp");
-        CbSearchEngine.SelectedIndex = (int)settings.SearchEngine;
-        UpdateSearchEngineHint(settings.SearchEngine);
-        CbStereoAudio.IsChecked = settings.StereoAudio;
 
         // Network
         SliderNetworkCaching.Value = settings.NetworkCachingMs;
@@ -1145,18 +1129,8 @@ public partial class SettingsWindow : JukeboxWindow
         FileCachingValueText.Text = settings.FileCachingMs.ToString();
         NetworkTimeoutValueText.Text = settings.NetworkTimeoutSeconds.ToString();
 
-        // Plex
-        TbPlexUrl.Text = settings.PlexServerUrl;
-        TbPlexToken.Text = settings.PlexToken;
-        CbPlexStereo.IsChecked = settings.PlexStereoAudio;
+        // Playback (gapless is app-owned; engine/quality/stereo moved to the Plug-ins tab).
         CbPlexGapless.IsChecked = settings.PlexGaplessPlayback;
-        foreach (var lib in settings.PlexLibraries)
-            _plexLibraries.Add(new PlexLibraryMapping { Key = lib.Key, Title = lib.Title, Type = lib.Type, HubsEnabled = lib.HubsEnabled, PlaylistsEnabled = lib.PlaylistsEnabled });
-        PlexLibraryList.ItemsSource = _plexLibraries;
-
-        // Auto-load Plex libraries if configured
-        if (!string.IsNullOrWhiteSpace(settings.PlexServerUrl) && !string.IsNullOrWhiteSpace(settings.PlexToken))
-            Loaded += async (_, _) => await TryLoadPlexLibrariesAsync();
 
         // Populate the Plug-ins tab from the live source registry once the window is loaded
         // (Owner/DataContext is available by then).
@@ -3437,38 +3411,6 @@ public partial class SettingsWindow : JukeboxWindow
         }
         _LogStep("InvalidateCache");
 
-        // Sync Plex library additions/removals into _categoryVisibilityItems
-        // so the category save below reflects the current Plex library state
-        var plexKeys = new HashSet<string>(_plexLibraries.Select(l => l.Key));
-        _categoryVisibilityItems.RemoveAll(i => i.IsPlex && !plexKeys.Contains(i.PlexLibraryKey!));
-        foreach (var lib in _plexLibraries)
-        {
-            var existing = _categoryVisibilityItems.FirstOrDefault(i => i.PlexLibraryKey == lib.Key);
-            if (existing != null)
-            {
-                existing.Name = $"Plex {lib.Title}";
-                existing.PlexLibraryType = lib.Type;
-                existing.PlexHubsEnabled = lib.HubsEnabled;
-                existing.PlexPlaylistsEnabled = lib.PlaylistsEnabled;
-            }
-            else
-            {
-                _categoryVisibilityItems.Add(new CategoryVisibilityItem
-                {
-                    Id = Guid.NewGuid().ToString("N"),
-                    Name = $"Plex {lib.Title}",
-                    Icon = "\U0001f7e0",
-                    IsPlex = true,
-                    PlexLibraryKey = lib.Key,
-                    PlexLibraryType = lib.Type,
-                    PlexHubsEnabled = lib.HubsEnabled,
-                    PlexPlaylistsEnabled = lib.PlaylistsEnabled,
-                    IsVisible = true,
-                    SortOrder = _categoryVisibilityItems.Count
-                });
-            }
-        }
-
         // Assign sequential SortOrder based on current list position
         for (int i = 0; i < _categoryVisibilityItems.Count; i++)
             _categoryVisibilityItems[i].SortOrder = i;
@@ -3693,20 +3635,12 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.TopperLogoColorMode = RbTopperLogoColorReactive.IsChecked == true ? LogoColorMode.Reactive
             : RbTopperLogoColorMorph.IsChecked == true ? LogoColorMode.SlowMorph
             : LogoColorMode.Off;
-        _settings.VideoQuality = (VideoQualityPreference)CbVideoQuality.SelectedIndex;
-        _settings.VideoEngine = (VideoEngineKind)CbVideoEngine.SelectedIndex;
-        _settings.SearchEngine = (SearchEngineKind)CbSearchEngine.SelectedIndex;
-        _settings.StereoAudio = CbStereoAudio.IsChecked == true;
         _settings.NetworkCachingMs = (int)SliderNetworkCaching.Value;
         _settings.LiveCachingMs = (int)SliderLiveCaching.Value;
         _settings.FileCachingMs = (int)SliderFileCaching.Value;
         _settings.HttpReconnect = CbHttpReconnect.IsChecked == true;
         _settings.NetworkTimeoutSeconds = (int)SliderNetworkTimeout.Value;
-        _settings.PlexServerUrl = TbPlexUrl.Text.Trim();
-        _settings.PlexToken = TbPlexToken.Text.Trim();
-        _settings.PlexStereoAudio = CbPlexStereo.IsChecked == true;
         _settings.PlexGaplessPlayback = CbPlexGapless.IsChecked == true;
-        _settings.PlexLibraries = _plexLibraries.ToList();
         _LogStep("AllSettings");
         Saved = true;
         _ = _settings.SaveAsync();
@@ -3847,65 +3781,6 @@ public partial class SettingsWindow : JukeboxWindow
             System.Windows.Threading.DispatcherPriority.Background);
     }
 
-    private void CbVideoQuality_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-    {
-        if (CbVideoQuality.SelectedIndex >= 0)
-            UpdateQualityHint((VideoQualityPreference)CbVideoQuality.SelectedIndex);
-        // Stop the routed SelectionChanged from bubbling to the parent TabControl, whose
-        // handling would scroll the settings panel back to the top.
-        e.Handled = true;
-    }
-
-    private void CbVideoEngine_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-    {
-        if (CbVideoEngine.SelectedIndex >= 0)
-            UpdateEngineHint((VideoEngineKind)CbVideoEngine.SelectedIndex);
-        // Stop the routed SelectionChanged from bubbling to the parent TabControl, whose
-        // handling would scroll the settings panel back to the top.
-        e.Handled = true;
-    }
-
-    private void UpdateEngineHint(VideoEngineKind engine)
-    {
-        if (EngineHintText == null) return;
-        EngineHintText.Text = engine switch
-        {
-            VideoEngineKind.YtDlp => "yt-dlp — downloads via yt-dlp.exe",
-            _ => "YoutubeExplode — in-process (default)"
-        };
-    }
-
-    private void CbSearchEngine_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-    {
-        if (CbSearchEngine.SelectedIndex >= 0)
-            UpdateSearchEngineHint((SearchEngineKind)CbSearchEngine.SelectedIndex);
-        // Stop the routed SelectionChanged from bubbling to the parent TabControl, whose
-        // handling would scroll the settings panel back to the top.
-        e.Handled = true;
-    }
-
-    private void UpdateSearchEngineHint(SearchEngineKind engine)
-    {
-        if (SearchEngineHintText == null) return;
-        SearchEngineHintText.Text = engine switch
-        {
-            SearchEngineKind.YtDlp => "yt-dlp — out-of-process (larger pages)",
-            _ => "YoutubeExplode — in-process (default)"
-        };
-    }
-
-    private void UpdateQualityHint(VideoQualityPreference pref)
-    {
-        if (QualityHintText == null) return;
-        QualityHintText.Text = pref switch
-        {
-            VideoQualityPreference.Low => "Up to 480p — fastest, lowest bandwidth",
-            VideoQualityPreference.Medium => "Up to 720p — balanced",
-            VideoQualityPreference.High => "Up to 1080p — high quality",
-            _ => "Up to 4k — highest quality"
-        };
-    }
-
     private void SliderNetworkCaching_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (NetworkCachingValueText != null)
@@ -3928,54 +3803,6 @@ public partial class SettingsWindow : JukeboxWindow
     {
         if (NetworkTimeoutValueText != null)
             NetworkTimeoutValueText.Text = ((int)e.NewValue).ToString();
-    }
-
-    private async void PlexTest_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var plex = new PlexService();
-            plex.Configure(TbPlexUrl.Text.Trim(), TbPlexToken.Text.Trim());
-            PlexStatusText.Text = "Testing...";
-            var ok = await plex.TestConnectionAsync();
-            PlexStatusText.Text = ok ? "✓ Connected" : "✗ Connection failed";
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
-        {
-            PlexStatusText.Text = "✗ Connection failed (server unreachable)";
-        }
-    }
-
-    private async void PlexLoadLibraries_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var plex = new PlexService();
-            plex.Configure(TbPlexUrl.Text.Trim(), TbPlexToken.Text.Trim());
-            PlexStatusText.Text = "Loading...";
-
-            var libs = await plex.GetLibrariesAsync();
-            CbPlexLibrary.ItemsSource = libs;
-            if (libs.Count > 0)
-            {
-                CbPlexLibrary.SelectedItem = libs[0];
-                PlexStatusText.Text = $"{libs.Count} libraries found";
-            }
-            else
-            {
-                PlexStatusText.Text = "No libraries found";
-            }
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
-        {
-            PlexStatusText.Text = "✗ Connection failed (server unreachable)";
-        }
-    }
-
-    private void Hyperlink_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
-    {
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
-        e.Handled = true;
     }
 
     // Working copy of the plug-in instance configs the tab edits, plus a map from each editor
@@ -5236,37 +5063,6 @@ public partial class SettingsWindow : JukeboxWindow
                 AllowCaching = c.AllowCaching,
             })
             .ToList();
-    }
-
-    private async Task TryLoadPlexLibrariesAsync()
-    {
-        try
-        {
-            var plex = new PlexService();
-            plex.Configure(TbPlexUrl.Text.Trim(), TbPlexToken.Text.Trim());
-            var libs = await plex.GetLibrariesAsync();
-            CbPlexLibrary.ItemsSource = libs;
-            if (libs.Count > 0)
-                CbPlexLibrary.SelectedItem = libs[0];
-        }
-        catch
-        {
-            // Fail silently
-        }
-    }
-
-    private void PlexAddLibrary_Click(object sender, RoutedEventArgs e)
-    {
-        if (CbPlexLibrary.SelectedItem is not PlexLibrary selected) return;
-        if (_plexLibraries.Any(l => l.Key == selected.Key)) return;
-        _plexLibraries.Add(new PlexLibraryMapping { Key = selected.Key, Title = selected.Title, Type = selected.Type });
-        PlexStatusText.Text = $"Added: {selected.Title}";
-    }
-
-    private void PlexRemoveLibrary_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button { Tag: PlexLibraryMapping mapping })
-            _plexLibraries.Remove(mapping);
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)

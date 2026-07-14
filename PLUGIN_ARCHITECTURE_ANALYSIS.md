@@ -719,15 +719,23 @@ Each phase is independently shippable and reversible.
    and Plex (own tile path) are skipped, so no double-tiling. Plex's bespoke path can later collapse
    into this generic one.
 
-   **Deferred — Settings consolidation (cleanup phase).** The General→VIDEO section (quality, video
-   engine, search engine, prefer stereo) and the standalone PLEX tab are now **redundant** with the
-   Plug-ins tab, but they can't just be deleted: the flat `AppSettings` fields (`VideoEngine`,
-   `VideoQuality`, `StereoAudio`, `SearchEngine`, and the Plex flat fields) are still the **runtime
-   source of truth** — `DmdWindow`/`App` push them into the VM on every save, and the YouTube plug-in
-   schema *re-declares* the same four keys, so the two surfaces can drift. Consolidation requires
-   first rewiring the VM to read engine/quality/stereo from the YouTube plug-in config (and Plex from
-   its instance config), *then* removing the General VIDEO section and the PLEX tab. Coupled, so it
-   stays a deliberate later phase rather than a piecemeal delete.
+   **Settings consolidation (done).** The General→VIDEO section (quality, video engine, search
+   engine, prefer stereo) and the standalone PLEX tab — both redundant with the Plug-ins tab — are
+   removed. The coupling was that the flat `AppSettings` fields were the *runtime* source of truth
+   (pushed into the VM on every save) while the YouTube plug-in re-declared the same keys, so the two
+   could drift. Resolved by making the plug-in config authoritative:
+   - `PluginSettingsFactory.ReadYouTubePlayback(instances)` reads engine/quality/stereo from the
+     YouTube instance config; `App` startup and `DmdWindow` reload now source the VM's
+     `VideoQuality`/`StereoAudio`/engine from it instead of the flat fields.
+   - Deleted the flat fields `VideoQuality`/`VideoEngine`/`SearchEngine`/`StereoAudio` and the Plex
+     flat fields (`PlexServerUrl`/`PlexToken`/`PlexStereoAudio`/`PlexLibraries`) from `AppSettings`
+     (testers-only → no migration), plus all the General→VIDEO + PLEX-tab XAML and code-behind
+     (load/harvest/handlers, the legacy `_plexLibraries`→category-sync block, the Plex test/load/add
+     helpers). `FromAppSettings` now seeds only a default YouTube instance.
+   - **`PlexGaplessPlayback` stayed app-owned** (like the network timeout / prefetch): it's a
+     playback-pipeline behavior no source configures, so it moved to a new General→**PLAYBACK**
+     section rather than being deleted. The Plug-ins tab is now the single place to configure YouTube
+     and Plex.
 8. **Reference third source (validation).** Prototype Jellyfin or a local-folder
    source to confirm no core changes are needed.
 

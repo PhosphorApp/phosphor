@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Phosphor.Plugin.Abstractions;
 using Phosphor.Plugins.Plex;
 using Phosphor.Plugins.YouTube;
@@ -14,11 +13,17 @@ namespace Phosphor.Plugins;
 /// </summary>
 public static class PluginSettingsFactory
 {
+    /// <summary>
+    /// Produces the default seed of plug-in instances for a fresh install (or an older settings file
+    /// with no <c>PluginInstances</c>): a single YouTube instance with schema defaults. Plex and other
+    /// sources are added by the user via the Plug-ins tab — there are no flat fields to migrate from
+    /// (the General→Video and Plex tabs were retired).
+    /// </summary>
     public static List<PluginInstanceConfig> FromAppSettings(AppSettings settings)
     {
-        var configs = new List<PluginInstanceConfig>
+        return new List<PluginInstanceConfig>
         {
-            // ── YouTube (single instance) ──
+            // ── YouTube (single instance, schema defaults) ──
             new()
             {
                 TypeId = YouTubeSourceProvider.YouTubeTypeId,
@@ -27,35 +32,37 @@ public static class PluginSettingsFactory
                 Enabled = true,
                 Settings = new Dictionary<string, string?>
                 {
-                    [YouTubeSourceProvider.KeySearchEngine] = settings.SearchEngine.ToString(),
-                    [YouTubeSourceProvider.KeyVideoEngine] = settings.VideoEngine.ToString(),
-                    [YouTubeSourceProvider.KeyVideoQuality] = settings.VideoQuality.ToString(),
-                    [YouTubeSourceProvider.KeyPreferStereo] = settings.StereoAudio.ToString(),
+                    [YouTubeSourceProvider.KeySearchEngine] = SearchEngineKind.YoutubeExplode.ToString(),
+                    [YouTubeSourceProvider.KeyVideoEngine] = VideoEngineKind.YoutubeExplode.ToString(),
+                    [YouTubeSourceProvider.KeyVideoQuality] = VideoQualityPreference.High.ToString(),
+                    [YouTubeSourceProvider.KeyPreferStereo] = bool.TrueString,
                 },
             },
         };
+    }
 
-        // ── Plex (multi-instance capable; today the app models a single server) ──
-        if (!string.IsNullOrWhiteSpace(settings.PlexServerUrl) &&
-            !string.IsNullOrWhiteSpace(settings.PlexToken))
-        {
-            configs.Add(new PluginInstanceConfig
-            {
-                TypeId = PlexSourceProvider.PlexTypeId,
-                InstanceId = "plex",
-                DisplayName = "Plex",
-                Enabled = true,
-                Settings = new Dictionary<string, string?>
-                {
-                    [PlexSourceProvider.KeyServerUrl] = settings.PlexServerUrl,
-                    [PlexSourceProvider.KeyToken] = settings.PlexToken,
-                    [PlexSourceProvider.KeyStereoAudio] = settings.PlexStereoAudio.ToString(),
-                    [PlexSourceProvider.KeyLibraries] = JsonSerializer.Serialize(settings.PlexLibraries),
-                },
-            });
-        }
+    /// <summary>
+    /// Reads the YouTube instance's playback config (engine/quality/stereo) from a persisted
+    /// <see cref="PluginInstanceConfig"/> list — the single source of truth now that the flat
+    /// General→Video settings are retired. Missing keys/instance fall back to sensible defaults.
+    /// </summary>
+    public static (SearchEngineKind Search, VideoEngineKind Video, VideoQualityPreference Quality, bool PreferStereo)
+        ReadYouTubePlayback(IEnumerable<PluginInstanceConfig> instances)
+    {
+        var yt = instances.FirstOrDefault(c => c.TypeId == YouTubeSourceProvider.YouTubeTypeId);
+        var s = yt?.Settings;
 
-        return configs;
+        string? Get(string key) => s != null && s.TryGetValue(key, out var v) ? v : null;
+
+        var search = Enum.TryParse<SearchEngineKind>(Get(YouTubeSourceProvider.KeySearchEngine), out var se)
+            ? se : SearchEngineKind.YoutubeExplode;
+        var video = Enum.TryParse<VideoEngineKind>(Get(YouTubeSourceProvider.KeyVideoEngine), out var ve)
+            ? ve : VideoEngineKind.YoutubeExplode;
+        var quality = Enum.TryParse<VideoQualityPreference>(Get(YouTubeSourceProvider.KeyVideoQuality), out var vq)
+            ? vq : VideoQualityPreference.High;
+        var stereo = !bool.TryParse(Get(YouTubeSourceProvider.KeyPreferStereo), out var st) || st;
+
+        return (search, video, quality, stereo);
     }
 
     /// <summary>

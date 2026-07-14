@@ -147,39 +147,16 @@
                                                     Click="AddStartupDitti_Click"/>
                                         </StackPanel>
 
-                                        <!-- ═══ SECTION: Video ═══ -->
-                                        <TextBlock Text="VIDEO" FontSize="12" FontWeight="Bold"
+                                        <!-- ═══ SECTION: Playback ═══ -->
+                                        <TextBlock Text="PLAYBACK" FontSize="12" FontWeight="Bold"
                                                    Foreground="{StaticResource AccentBrush}" Margin="0,16,0,6"/>
-                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                            <TextBlock Text="Quality:" Foreground="{StaticResource TextBrush}"
-                                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                            <ComboBox x:Name="CbVideoQuality" Width="150"
-                                                      VerticalAlignment="Center"
-                                                      SelectionChanged="CbVideoQuality_SelectionChanged"/>
-                                            <TextBlock x:Name="QualityHintText" Foreground="{StaticResource TextDimBrush}"
-                                                       VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11"/>
-                                        </StackPanel>
-                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                            <TextBlock Text="Engine:" Foreground="{StaticResource TextBrush}"
-                                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                            <ComboBox x:Name="CbVideoEngine" Width="150"
-                                                      VerticalAlignment="Center"
-                                                      SelectionChanged="CbVideoEngine_SelectionChanged"/>
-                                            <TextBlock x:Name="EngineHintText" Foreground="{StaticResource TextDimBrush}"
-                                                       VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11"/>
-                                        </StackPanel>
-                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                            <TextBlock Text="Search:" Foreground="{StaticResource TextBrush}"
-                                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                            <ComboBox x:Name="CbSearchEngine" Width="150"
-                                                      VerticalAlignment="Center"
-                                                      SelectionChanged="CbSearchEngine_SelectionChanged"/>
-                                            <TextBlock x:Name="SearchEngineHintText" Foreground="{StaticResource TextDimBrush}"
-                                                       VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11"/>
-                                        </StackPanel>
-                                        <CheckBox x:Name="CbStereoAudio" Content="Prefer stereo audio (instead of 5.1 surround)"
+                                        <TextBlock Text="Source-specific options (search/video engine, quality, stereo) now live per-source on the Plug-ins tab."
+                                                   FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,8"
+                                                   TextWrapping="Wrap"/>
+                                        <CheckBox x:Name="CbPlexGapless" Content="Gapless playback (audio tracks)"
                                                   Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
-                                                  Margin="0,0,0,4"/>
+                                                  Margin="0,0,0,4"
+                                                  ToolTip="Eliminate silence between audio-only tracks by pre-loading the next track"/>
 
                                         <!-- ═══ SECTION: Network ═══ -->
                                         <TextBlock Text="NETWORK" FontSize="12" FontWeight="Bold"
@@ -2427,88 +2404,6 @@
                                              Foreground="{StaticResource TextBrush}" Margin="0,0,0,0"
                                              ToolTip="Logo color follows the dominant playfield color (blobs/ProjectM)."/>
                             </StackPanel>
-                        </StackPanel>
-                    </Border>
-                </ScrollViewer>
-            </TabItem>
-
-            <!-- ═══ TAB: Plex ═══ -->
-            <TabItem Header="PLEX">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,5,0">
-                    <Border Background="{StaticResource SurfaceBrush}" CornerRadius="6"
-                            Padding="12" Margin="0,8,0,0">
-                        <StackPanel>
-                            <TextBlock Text="PLEX SETUP" FontSize="12" FontWeight="Bold"
-                            Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
-                            <TextBlock FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
-                                       TextWrapping="Wrap">
-                                <Run Text="Allows you to connect to a Plex server. This requires you to know your authentication token. Once configured, you can select which libraries to add as tiles, and optionally include playlists and hubs from Plex for those libraries. "/>
-                                <Hyperlink NavigateUri="https://www.google.com/search?q=find+plex+auth+token"
-                                           RequestNavigate="Hyperlink_RequestNavigate">Here's how to find your Plex auth token.</Hyperlink>
-                            </TextBlock>
-                            <DockPanel Margin="0,0,0,6">
-                                <TextBlock Text="Server URL:"
-                                           VerticalAlignment="Center" Width="80"/>
-                                <TextBox x:Name="TbPlexUrl" VerticalAlignment="Center"
-                                         ToolTip="e.g. http://192.168.1.100:32400"/>
-                            </DockPanel>
-                            <DockPanel Margin="0,0,0,6">
-                                <TextBlock Text="Token:" Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Width="80"/>
-                                <TextBox x:Name="TbPlexToken" VerticalAlignment="Center"
-                                         ToolTip="Your Plex authentication token"/>
-                            </DockPanel>
-                            <DockPanel Margin="0,0,0,6">
-                                <TextBlock Text="Add library:" Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Width="80"/>
-                                <Button Content="＋ Add" Click="PlexAddLibrary_Click" Padding="8,4"
-                                        DockPanel.Dock="Right" Margin="8,0,0,0"/>
-                                <ComboBox x:Name="CbPlexLibrary" MinWidth="150"
-                                          VerticalAlignment="Center" DisplayMemberPath="Title"
-                                          SelectedValuePath="Key"
-                                          IsEditable="True" IsReadOnly="True"
-                                          Text="No libraries loaded"
-                                          Background="{StaticResource Surface2Brush}"
-                                          Foreground="{StaticResource TextBrush}"/>
-                            </DockPanel>
-                            <TextBlock Text="LIBRARY TILES" Foreground="{StaticResource TextDimBrush}"
-                                       FontSize="10" FontWeight="Bold" Margin="0,9,0,9"/>
-                            <ItemsControl x:Name="PlexLibraryList">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <DockPanel Margin="0,7">
-                                            <Button Content="✕" Click="PlexRemoveLibrary_Click"
-                                                    Tag="{Binding}" DockPanel.Dock="Right"
-                                                    Padding="6,2" Margin="8,0,0,0" FontSize="14"/>
-                                            <CheckBox IsChecked="{Binding PlaylistsEnabled}" Content="Playlists"
-                                                      Foreground="{StaticResource TextDimBrush}"
-                                                      DockPanel.Dock="Right" Margin="8,0,0,0"
-                                                      VerticalAlignment="Center" FontSize="14"
-                                                      ToolTip="Show a Playlists tile to browse Plex playlists"/>
-                                            <CheckBox IsChecked="{Binding HubsEnabled}" Content="Hubs"
-                                                      Foreground="{StaticResource TextDimBrush}"
-                                                      DockPanel.Dock="Right" Margin="8,0,0,0"
-                                                      VerticalAlignment="Center" FontSize="14"
-                                                      ToolTip="Show a Hubs tile (Recently Played, Recently Added, etc.)"/>
-                                            <TextBlock Text="{Binding Title}" Foreground="{StaticResource TextBrush}"
-                                                       VerticalAlignment="Center" FontSize="14"/>
-                                        </DockPanel>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                                <Button Content="Test Connection" Click="PlexTest_Click" Padding="12,6"
-                                        Margin="0,0,8,0"/>
-                                <Button Content="Load Libraries" Click="PlexLoadLibraries_Click" Padding="12,6"/>
-                                <TextBlock x:Name="PlexStatusText" Foreground="{StaticResource TextDimBrush}"
-                                           VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11"/>
-                            </StackPanel>
-                            <CheckBox x:Name="CbPlexStereo" Content="Force stereo audio (downmix surround)"
-                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
-                                      ToolTip="Request stereo audio from Plex instead of surround sound"/>
-                            <CheckBox x:Name="CbPlexGapless" Content="Gapless playback"
-                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
-                                      ToolTip="Eliminate silence between audio-only Plex tracks by pre-loading the next track"/>
                         </StackPanel>
                     </Border>
                 </ScrollViewer>
