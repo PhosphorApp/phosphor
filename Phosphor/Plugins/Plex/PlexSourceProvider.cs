@@ -21,6 +21,9 @@ public sealed class PlexSourceProvider : IPhosphorSourceProvider
 
     public string TypeId => PlexTypeId;
     public string DisplayName => "Plex";
+    public string? Description =>
+        "Browse and play from a Plex Media Server. Enter your server URL and X-Plex-Token, then use " +
+        "\"Browse libraries\" to pick which libraries appear as tiles. Multiple Plex servers can be added.";
     public Version ApiVersion => PluginApi.Current;
 
     /// <summary>Users may have access to more than one Plex server.</summary>

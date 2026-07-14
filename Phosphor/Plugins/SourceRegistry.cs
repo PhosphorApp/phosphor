@@ -58,7 +58,8 @@ public sealed class SourceRegistry
         var list = new List<SourceSummary>();
         foreach (var s in _sources)
         {
-            var schema = CreateProvider(s.TypeId)?.GetSettingsSchema() ?? [];
+            var provider = CreateProvider(s.TypeId);
+            var schema = provider?.GetSettingsSchema() ?? [];
             _configs.TryGetValue(s.InstanceId, out var cfg);
 
             var caps = new List<string>();
@@ -85,7 +86,7 @@ public sealed class SourceRegistry
             }
 
             list.Add(new SourceSummary(
-                s.TypeId, s.InstanceId, s.DisplayName, s.IsConfigured, s.IsEnabled, caps, fields));
+                s.TypeId, s.InstanceId, s.DisplayName, provider?.Description, s.IsConfigured, s.IsEnabled, caps, fields));
         }
         return list;
     }
@@ -143,6 +144,7 @@ public sealed record SourceSummary(
     string TypeId,
     string InstanceId,
     string DisplayName,
+    string? Description,
     bool IsConfigured,
     bool IsEnabled,
     IReadOnlyList<string> Capabilities,

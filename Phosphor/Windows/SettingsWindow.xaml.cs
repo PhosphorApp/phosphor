@@ -4051,6 +4051,19 @@ public partial class SettingsWindow : JukeboxWindow
                 Margin = new Thickness(0, 0, 0, 4),
             });
 
+            // Optional author-provided description (setup notes, doc links, etc.)
+            if (!string.IsNullOrWhiteSpace(s.Description))
+            {
+                panel.Children.Add(new System.Windows.Controls.TextBlock
+                {
+                    Text = s.Description,
+                    Foreground = dim,
+                    FontSize = 11,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 0, 0, 4),
+                });
+            }
+
             if (s.Capabilities.Count > 0)
             {
                 panel.Children.Add(new System.Windows.Controls.TextBlock

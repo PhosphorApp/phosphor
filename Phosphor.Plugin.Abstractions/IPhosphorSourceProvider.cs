@@ -21,6 +21,13 @@ public interface IPhosphorSourceProvider
     string DisplayName { get; }
 
     /// <summary>
+    /// Optional author-provided description shown in the settings UI: setup instructions, a link to
+    /// documentation, notes, etc. May be <c>null</c> or empty. Purely informational — the host
+    /// renders it verbatim and makes no assumptions about its content or length.
+    /// </summary>
+    string? Description => null;
+
+    /// <summary>
     /// The contract version this plug-in was built against. The host compares this to
     /// <see cref="PluginApi.Current"/> and refuses to load incompatible plug-ins.
     /// </summary>

@@ -24,6 +24,9 @@ public sealed class YouTubeSourceProvider : IPhosphorSourceProvider
 
     public string TypeId => YouTubeTypeId;
     public string DisplayName => "YouTube";
+    public string? Description =>
+        "Streams from YouTube. Search, playlists (playlist:), and channels (channel:) are supported. " +
+        "Choose the search/video backend below — yt-dlp resolves streams more reliably but requires yt-dlp.exe.";
     public Version ApiVersion => PluginApi.Current;
 
     /// <summary>Only one YouTube instance makes sense.</summary>
