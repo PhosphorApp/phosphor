@@ -73,9 +73,8 @@ public partial class App : Application
         viewModel.Volume = _settings.Volume;
         viewModel.RepeatEnabled = _settings.RepeatEnabled;
         viewModel.AutoDjEnabled = _settings.AutoDjEnabled;
-        viewModel.SetYouTubeTimeout(_settings.YouTubeTimeoutSeconds);
-        // Configure Plex + its category tiles from the appropriate source (plug-in instance config
-        // when UsePluginSources is on, else the legacy flat fields).
+        viewModel.SetNetworkTimeout(_settings.NetworkTimeoutSeconds);
+        // Configure Plex + its category tiles from the plug-in instance configs.
         viewModel.ConfigurePlexFromSettings(_settings);
 
         // Build the experimental plug-in source registry (runs alongside the legacy engines;

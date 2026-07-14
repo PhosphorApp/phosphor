@@ -58,7 +58,7 @@ public partial class JukeboxViewModel : ObservableObject
         // before we replace them (this method runs on every settings save).
         var previous = _sourceRegistry;
 
-        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(YouTubeTimeoutSeconds) };
+        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(NetworkTimeoutSeconds) };
         var registry = new Phosphor.Plugins.SourceRegistry(http);
         try
         {
@@ -773,16 +773,16 @@ public partial class JukeboxViewModel : ObservableObject
     public int FileCachingMs { get; set; } = 300;
     public bool HttpReconnect { get; set; } = true;
 
-    // ── YouTube timeout ──
-    public int YouTubeTimeoutSeconds { get; private set; } = 30;
+    // ── Network timeout (host-shared HttpClient) ──
+    public int NetworkTimeoutSeconds { get; private set; } = 30;
 
-    public void SetYouTubeTimeout(int seconds)
+    public void SetNetworkTimeout(int seconds)
     {
         seconds = Math.Clamp(seconds, 5, 120);
-        if (seconds == YouTubeTimeoutSeconds) return;
-        YouTubeTimeoutSeconds = seconds;
+        if (seconds == NetworkTimeoutSeconds) return;
+        NetworkTimeoutSeconds = seconds;
         RebuildSearchEngine();
-        DebugLog.Log("YouTube", $"Timeout set to {seconds}s");
+        DebugLog.Log("Network", $"Timeout set to {seconds}s");
     }
 
     /// <summary>
@@ -797,7 +797,7 @@ public partial class JukeboxViewModel : ObservableObject
 
     private void RebuildSearchEngine()
     {
-        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(YouTubeTimeoutSeconds) };
+        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(NetworkTimeoutSeconds) };
         _searchEngine = SearchEngineFactory.Create(_searchEngineKind, http);
     }
 

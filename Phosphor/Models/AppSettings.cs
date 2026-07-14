@@ -390,7 +390,12 @@ public class AppSettings
     public int LiveCachingMs { get; set; } = 1000;
     public int FileCachingMs { get; set; } = 300;
     public bool HttpReconnect { get; set; } = true;
-    public int YouTubeTimeoutSeconds { get; set; } = 30;
+
+    /// <summary>
+    /// Timeout (seconds) for the host's shared HttpClient used by source plug-ins for their REST
+    /// calls (search, metadata, library fetches). App-owned network infrastructure, not per-source.
+    /// </summary>
+    public int NetworkTimeoutSeconds { get; set; } = 30;
 
     // Plex integration
     public string PlexServerUrl { get; set; } = "";

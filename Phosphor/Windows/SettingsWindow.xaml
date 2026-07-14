@@ -184,23 +184,6 @@
                                                   Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
                                                   Margin="0,0,0,0"/>
 
-                                        <!-- ═══ SECTION: Updates ═══ -->
-                                        <TextBlock Text="UPDATES" FontSize="12" FontWeight="Bold"
-                                                   Foreground="{StaticResource AccentBrush}" Margin="0,16,0,6"/>
-                                        <TextBlock Text="The yt-dlp engine can update itself between app releases to keep working as YouTube changes."
-                                                    FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,8"
-                                                    TextWrapping="Wrap"/>
-                                        <StackPanel Orientation="Horizontal" Margin="0,2,0,10">
-                                            <Button x:Name="BtnCheckYtDlpUpdate" Content="Check for yt-dlp updates"
-                                                    Padding="8,4" VerticalAlignment="Center"
-                                                    Click="BtnCheckYtDlpUpdate_Click"/>
-                                            <TextBlock x:Name="YtDlpUpdateStatusText" Foreground="{StaticResource TextDimBrush}"
-                                                       VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11"/>
-                                        </StackPanel>
-                                        <CheckBox x:Name="CbYtDlpAutoUpdate" Content="Automatically check for yt-dlp updates on startup"
-                                                  Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
-                                                  Margin="0,0,0,0"/>
-
                                         <!-- ═══ SECTION: Network ═══ -->
                                         <TextBlock Text="NETWORK" FontSize="12" FontWeight="Bold"
                                                    Foreground="{StaticResource AccentBrush}" Margin="0,16,0,6"/>
@@ -209,16 +192,16 @@
                                                     TextWrapping="Wrap"/>
 
                                         <DockPanel Margin="0,4,0,0">
-                                            <TextBlock Text="YouTube Timeout (s):" Foreground="{StaticResource TextBrush}"
+                                            <TextBlock Text="Network Timeout (s):" Foreground="{StaticResource TextBrush}"
                                                        VerticalAlignment="Center" Width="160"/>
-                                            <TextBlock x:Name="YouTubeTimeoutValueText" Text="30" Foreground="{StaticResource TextDimBrush}"
+                                            <TextBlock x:Name="NetworkTimeoutValueText" Text="30" Foreground="{StaticResource TextDimBrush}"
                                                        VerticalAlignment="Center" DockPanel.Dock="Right" Width="50"
                                                        TextAlignment="Right"/>
-                                            <Slider x:Name="SliderYouTubeTimeout" Minimum="5" Maximum="120"
+                                            <Slider x:Name="SliderNetworkTimeout" Minimum="5" Maximum="120"
                                                     Value="30" TickFrequency="5" IsSnapToTickEnabled="True"
                                                     VerticalAlignment="Center" IsMoveToPointEnabled="True"
-                                                    ValueChanged="SliderYouTubeTimeout_ValueChanged"
-                                                    ToolTip="Maximum time to wait for YouTube search and playlist responses. Increase on slow connections."/>
+                                                    ValueChanged="SliderNetworkTimeout_ValueChanged"
+                                                    ToolTip="Maximum time source plug-ins wait for network responses (search, metadata, library fetches). Increase on slow connections."/>
                                         </DockPanel>
 
                                         <DockPanel Margin="0,8,0,0">

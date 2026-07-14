@@ -632,6 +632,27 @@ Each phase is independently shippable and reversible.
      Plug-ins tab renders a "Test connection" button with an inline ✓/✗ + latency result, building and
      disposing a transient source for the one-off test (transients built for capability display and
      config actions are now disposed too).
+
+   **Settings relocation — update UI + network timeout (done).** Two per-source settings moved onto
+   the plug-in cards where they belong:
+   - **"Update engine"** (yt-dlp self-update) + the auto-update-on-startup toggle moved from the
+     General→UPDATES section onto the YouTube card, gated on `IUpdatable { SupportsUpdate: true }`.
+     Pure UI relocation — still routes through `vm.UpdatePluginEngineOrLegacyAsync()`.
+   - **"YouTube Timeout" → "Network Timeout"**, kept app-owned in General→Network. It governs the
+     host's shared `HttpClient` (used by *all* sources for their REST calls), so it's host
+     infrastructure, not a per-source knob. `AppSettings.YouTubeTimeoutSeconds` and the VM's
+     `SetYouTubeTimeout`/`YouTubeTimeoutSeconds` were renamed to `Network…` (clean rename — the
+     tester-only user base needs no settings migration).
+
+   **Deferred — Settings consolidation (cleanup phase).** The General→VIDEO section (quality, video
+   engine, search engine, prefer stereo) and the standalone PLEX tab are now **redundant** with the
+   Plug-ins tab, but they can't just be deleted: the flat `AppSettings` fields (`VideoEngine`,
+   `VideoQuality`, `StereoAudio`, `SearchEngine`, and the Plex flat fields) are still the **runtime
+   source of truth** — `DmdWindow`/`App` push them into the VM on every save, and the YouTube plug-in
+   schema *re-declares* the same four keys, so the two surfaces can drift. Consolidation requires
+   first rewiring the VM to read engine/quality/stereo from the YouTube plug-in config (and Plex from
+   its instance config), *then* removing the General VIDEO section and the PLEX tab. Coupled, so it
+   stays a deliberate later phase rather than a piecemeal delete.
 8. **Reference third source (validation).** Prototype Jellyfin or a local-folder
    source to confirm no core changes are needed.
 

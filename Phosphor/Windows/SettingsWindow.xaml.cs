@@ -1132,7 +1132,6 @@ public partial class SettingsWindow : JukeboxWindow
         CbSearchEngine.Items.Add("yt-dlp");
         CbSearchEngine.SelectedIndex = (int)settings.SearchEngine;
         UpdateSearchEngineHint(settings.SearchEngine);
-        CbYtDlpAutoUpdate.IsChecked = settings.YtDlpAutoUpdate;
         CbStereoAudio.IsChecked = settings.StereoAudio;
 
         // Network
@@ -1140,11 +1139,11 @@ public partial class SettingsWindow : JukeboxWindow
         SliderLiveCaching.Value = settings.LiveCachingMs;
         SliderFileCaching.Value = settings.FileCachingMs;
         CbHttpReconnect.IsChecked = settings.HttpReconnect;
-        SliderYouTubeTimeout.Value = settings.YouTubeTimeoutSeconds;
+        SliderNetworkTimeout.Value = settings.NetworkTimeoutSeconds;
         NetworkCachingValueText.Text = settings.NetworkCachingMs.ToString();
         LiveCachingValueText.Text = settings.LiveCachingMs.ToString();
         FileCachingValueText.Text = settings.FileCachingMs.ToString();
-        YouTubeTimeoutValueText.Text = settings.YouTubeTimeoutSeconds.ToString();
+        NetworkTimeoutValueText.Text = settings.NetworkTimeoutSeconds.ToString();
 
         // Plex
         TbPlexUrl.Text = settings.PlexServerUrl;
@@ -3697,13 +3696,12 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.VideoQuality = (VideoQualityPreference)CbVideoQuality.SelectedIndex;
         _settings.VideoEngine = (VideoEngineKind)CbVideoEngine.SelectedIndex;
         _settings.SearchEngine = (SearchEngineKind)CbSearchEngine.SelectedIndex;
-        _settings.YtDlpAutoUpdate = CbYtDlpAutoUpdate.IsChecked == true;
         _settings.StereoAudio = CbStereoAudio.IsChecked == true;
         _settings.NetworkCachingMs = (int)SliderNetworkCaching.Value;
         _settings.LiveCachingMs = (int)SliderLiveCaching.Value;
         _settings.FileCachingMs = (int)SliderFileCaching.Value;
         _settings.HttpReconnect = CbHttpReconnect.IsChecked == true;
-        _settings.YouTubeTimeoutSeconds = (int)SliderYouTubeTimeout.Value;
+        _settings.NetworkTimeoutSeconds = (int)SliderNetworkTimeout.Value;
         _settings.PlexServerUrl = TbPlexUrl.Text.Trim();
         _settings.PlexToken = TbPlexToken.Text.Trim();
         _settings.PlexStereoAudio = CbPlexStereo.IsChecked == true;
@@ -3896,31 +3894,6 @@ public partial class SettingsWindow : JukeboxWindow
         };
     }
 
-    private async void BtnCheckYtDlpUpdate_Click(object sender, RoutedEventArgs e)
-    {
-        BtnCheckYtDlpUpdate.IsEnabled = false;
-        YtDlpUpdateStatusText.Text = "Checking…";
-        try
-        {
-            // Route through the plug-in IUpdatable when available, else the legacy updater.
-            var vm = Owner?.DataContext as JukeboxViewModel;
-            var status = vm != null
-                ? await vm.UpdatePluginEngineOrLegacyAsync()
-                : (await new YtDlpUpdater().UpdateAsync()).ToDisplayString();
-            YtDlpUpdateStatusText.Text = status;
-            if (_settings != null)
-                _settings.YtDlpLastUpdateCheck = DateTime.UtcNow;
-        }
-        catch (Exception ex)
-        {
-            YtDlpUpdateStatusText.Text = $"Update failed: {ex.Message}";
-        }
-        finally
-        {
-            BtnCheckYtDlpUpdate.IsEnabled = true;
-        }
-    }
-
     private void UpdateQualityHint(VideoQualityPreference pref)
     {
         if (QualityHintText == null) return;
@@ -3951,10 +3924,10 @@ public partial class SettingsWindow : JukeboxWindow
             FileCachingValueText.Text = ((int)e.NewValue).ToString();
     }
 
-    private void SliderYouTubeTimeout_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void SliderNetworkTimeout_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        if (YouTubeTimeoutValueText != null)
-            YouTubeTimeoutValueText.Text = ((int)e.NewValue).ToString();
+        if (NetworkTimeoutValueText != null)
+            NetworkTimeoutValueText.Text = ((int)e.NewValue).ToString();
     }
 
     private async void PlexTest_Click(object sender, RoutedEventArgs e)
@@ -4196,6 +4169,45 @@ public partial class SettingsWindow : JukeboxWindow
                     testRow.Children.Add(testBtn);
                     testRow.Children.Add(testResult);
                     panel.Children.Add(testRow);
+                }
+
+                // ── "Update engine" — for sources whose backing tool can self-update (e.g. yt-dlp). ──
+                if (capSource is Phosphor.Plugin.Abstractions.IUpdatable { SupportsUpdate: true })
+                {
+                    var updateRow = new System.Windows.Controls.StackPanel
+                    {
+                        Orientation = System.Windows.Controls.Orientation.Horizontal,
+                        Margin = new Thickness(0, 0, 0, 4),
+                    };
+                    var updateBtn = new System.Windows.Controls.Button
+                    {
+                        Content = "Update engine", Padding = new Thickness(8, 3, 8, 3),
+                        VerticalAlignment = VerticalAlignment.Center,
+                    };
+                    var updateResult = new System.Windows.Controls.TextBlock
+                    {
+                        Foreground = dim, FontSize = 11, VerticalAlignment = VerticalAlignment.Center,
+                        Margin = new Thickness(10, 0, 0, 0), TextWrapping = TextWrapping.Wrap,
+                    };
+                    updateBtn.Click += async (_, _) =>
+                    {
+                        await UpdatePluginEngineAsync(updateBtn, updateResult);
+                    };
+                    updateRow.Children.Add(updateBtn);
+                    updateRow.Children.Add(updateResult);
+                    panel.Children.Add(updateRow);
+
+                    // Auto-update-on-startup toggle (persists to AppSettings.YtDlpAutoUpdate).
+                    var autoUpdate = new System.Windows.Controls.CheckBox
+                    {
+                        Content = "Automatically check for updates on startup",
+                        IsChecked = _settings.YtDlpAutoUpdate,
+                        Foreground = dim, FontSize = 11,
+                        Margin = new Thickness(0, 0, 0, 8),
+                    };
+                    autoUpdate.Checked += (_, _) => _settings.YtDlpAutoUpdate = true;
+                    autoUpdate.Unchecked += (_, _) => _settings.YtDlpAutoUpdate = false;
+                    panel.Children.Add(autoUpdate);
                 }
 
                 // The transient built for capability display is no longer needed — dispose it so any
@@ -4685,6 +4697,39 @@ public partial class SettingsWindow : JukeboxWindow
             }
         }
         catch { /* best-effort teardown */ }
+    }
+
+    /// <summary>
+    /// Runs the live source's self-update (<see cref="Phosphor.Plugin.Abstractions.IUpdatable"/>,
+    /// e.g. yt-dlp) via the VM and shows the result inline. Targets the active engine, not a
+    /// transient, so the running app picks up the new version.
+    /// </summary>
+    private async Task UpdatePluginEngineAsync(
+        System.Windows.Controls.Button button,
+        System.Windows.Controls.TextBlock result)
+    {
+        button.IsEnabled = false;
+        result.Text = "Checking…";
+        result.Foreground = System.Windows.Media.Brushes.Gray;
+        try
+        {
+            var vm = Owner?.DataContext as JukeboxViewModel;
+            var status = vm != null
+                ? await vm.UpdatePluginEngineOrLegacyAsync()
+                : (await new YtDlpUpdater().UpdateAsync()).ToDisplayString();
+            result.Text = status;
+            result.Foreground = System.Windows.Media.Brushes.Gray;
+            _settings.YtDlpLastUpdateCheck = DateTime.UtcNow;
+        }
+        catch (Exception ex)
+        {
+            result.Text = $"Update failed: {ex.Message}";
+            result.Foreground = System.Windows.Media.Brushes.IndianRed;
+        }
+        finally
+        {
+            button.IsEnabled = true;
+        }
     }
 
     /// <summary>
