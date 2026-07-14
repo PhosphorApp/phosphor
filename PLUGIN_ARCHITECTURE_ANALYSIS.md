@@ -745,6 +745,21 @@ Each phase is independently shippable and reversible.
      playback-pipeline behavior no source configures, so it moved to a new General→**PLAYBACK**
      section rather than being deleted. The Plug-ins tab is now the single place to configure YouTube
      and Plex.
+
+   **Search-source selection — Phase 1 (done).** The DMD search box can target any
+   `ITextSearchCapable` source via a dropdown next to it (auto-hidden when only YouTube is searchable),
+   defaulting to YouTube. `JukeboxViewModel` exposes `SearchSources` (rebuilt from
+   `registry.Sources` implementing `ITextSearchCapable` after each registry build, YouTube-first) and
+   `ActiveSearchSourceId`; `SearchVideosViaPluginOrLegacy(query, sourceInstanceId)` resolves the
+   chosen source (YouTube + legacy-engine fallback). **Only the ad-hoc search box honors the
+   dropdown** — genre/live-playlist tiles and AutoDJ/"Find similar" pass YouTube explicitly, so
+   *tiles are source-bound artifacts* (a "Today's Top Hits" live playlist stays a YouTube search
+   forever). The genre/live-playlist result caches are attached only on the YouTube-bound path so a
+   cross-source ad-hoc search can't contaminate them. **Phase 2 (deferred):** persist a source id on
+   each tile/live-playlist so a search saved against Plex/Local re-runs against *that* source (today
+   they're implicitly YouTube — an artifact of the YouTube-only origin). **AutoDJ source (undecided):**
+   likely a global "AutoDJ uses <source>" option rather than a contract capability, since AutoDJ is
+   discovery-shaped; revisit later.
 8. **Reference third source (validation).** Prototype Jellyfin or a local-folder
    source to confirm no core changes are needed.
 

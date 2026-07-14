@@ -28,6 +28,21 @@ public partial class JukeboxViewModel : ObservableObject
     // Jellyfin, …), keyed by instance id. Built after each registry build; read by RebuildCategories.
     private readonly List<Category> _pluginBrowseTiles = new();
 
+    // ── Search source selection (the ad-hoc search box only; tiles stay source-bound) ──
+    /// <summary>Searchable sources for the search-box dropdown (rebuilt after each registry build).</summary>
+    public ObservableCollection<SearchSourceOption> SearchSources { get; } = new();
+
+    private string? _activeSearchSourceId;
+    /// <summary>
+    /// The instance id the search box targets. Defaults to YouTube. Only steers the ad-hoc search
+    /// box — genre/live-playlist tiles and AutoDJ are source-bound and ignore this.
+    /// </summary>
+    public string? ActiveSearchSourceId
+    {
+        get => _activeSearchSourceId;
+        set => SetProperty(ref _activeSearchSourceId, value);
+    }
+
     /// <summary>
     /// Read-only summaries of the configured plug-in sources (for the Plug-ins settings tab).
     /// Empty when the registry hasn't been built.
@@ -89,6 +104,7 @@ public partial class JukeboxViewModel : ObservableObject
             DebugLog.Log("SourceRegistry", $"Built {registry.Sources.Count} source(s)");
             WireCacheDownloadOverride();
             await BuildPluginBrowseTilesAsync(registry);
+            BuildSearchSources(registry);
         }
         catch (Exception ex)
         {
@@ -143,6 +159,34 @@ public partial class JukeboxViewModel : ObservableObject
         _pluginBrowseTiles.Clear();
         _pluginBrowseTiles.AddRange(tiles);
         DebugLog.Log("SourceRegistry", $"Built {tiles.Count} plug-in browse tile(s).");
+    }
+
+    /// <summary>
+    /// Rebuilds the search-box source list from every <c>ITextSearchCapable</c> source, keeping
+    /// YouTube first as the default. Preserves the current selection if it still resolves; otherwise
+    /// falls back to YouTube. UI-bound collection, so mutate on the dispatcher.
+    /// </summary>
+    private void BuildSearchSources(Phosphor.Plugins.SourceRegistry registry)
+    {
+        var options = registry.Sources
+            .Where(s => s is Phosphor.Plugin.Abstractions.ITextSearchCapable)
+            .Select(s => new SearchSourceOption(s.InstanceId, s.DisplayName))
+            // YouTube first (the default), then the rest by display name.
+            .OrderByDescending(o => o.InstanceId == Phosphor.Plugins.YouTube.YouTubeSourceProvider.YouTubeTypeId)
+            .ThenBy(o => o.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        void Apply()
+        {
+            SearchSources.Clear();
+            foreach (var o in options) SearchSources.Add(o);
+
+            // Keep the current selection if still valid; else default to YouTube (or first available).
+            if (_activeSearchSourceId == null || options.All(o => o.InstanceId != _activeSearchSourceId))
+                ActiveSearchSourceId = options.FirstOrDefault()?.InstanceId;
+        }
+
+        _ = RunOnUiAsync(Apply);
     }
 
     /// <summary>
@@ -980,10 +1024,28 @@ public partial class JukeboxViewModel : ObservableObject
     /// search engine when the registry is unavailable.
     /// </summary>
     private IAsyncEnumerable<VideoItem> SearchVideosViaPluginOrLegacy(string query)
+        => SearchVideosViaPluginOrLegacy(query, null);
+
+    /// <summary>
+    /// Runs a free-text search against a specific plug-in source. <paramref name="sourceInstanceId"/>
+    /// selects the <c>ITextSearchCapable</c> source: <c>null</c> means YouTube (the default and the
+    /// source-bound path for tiles/AutoDJ). Falls back to YouTube, then the legacy engine, when the
+    /// requested source is unavailable or not searchable.
+    /// </summary>
+    private IAsyncEnumerable<VideoItem> SearchVideosViaPluginOrLegacy(string query, string? sourceInstanceId)
     {
+        // Resolve the requested source; null => YouTube.
+        var source = sourceInstanceId != null ? _sourceRegistry?.ByInstance(sourceInstanceId) : _sourceRegistry?.YouTube;
+        if (source is Phosphor.Plugin.Abstractions.ITextSearchCapable capable)
+        {
+            DebugLog.Log("SourceRegistry", $"Search routed through plug-in source '{source.InstanceId}'");
+            return MapPluginSearch(capable, query);
+        }
+
+        // Requested source gone/not searchable — fall back to YouTube, then the legacy engine.
         if (_sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.ITextSearchCapable yt)
         {
-            DebugLog.Log("SourceRegistry", "Search routed through plug-in YouTube source");
+            DebugLog.Log("SourceRegistry", "Search fell back to plug-in YouTube source");
             return MapPluginSearch(yt, query);
         }
 
@@ -1795,7 +1857,8 @@ public partial class JukeboxViewModel : ObservableObject
         IsViewingPlaylist = false;
         ActiveCategory = "Search";
         SearchQuery = query; // Restore in case binding cleared it
-        await DoSearch(query);
+        // The ad-hoc search box honors the selected search source; tiles/live playlists don't.
+        await DoSearch(query, ActiveSearchSourceId);
     }
 
     private void RefreshSearchSuggestions()
@@ -1805,7 +1868,7 @@ public partial class JukeboxViewModel : ObservableObject
             SearchSuggestions.Add(s);
     }
 
-    private async Task DoSearch(string query)
+    private async Task DoSearch(string query, string? sourceInstanceId = null)
     {
         // Cancel any in-progress load so the new search can proceed
         _searchCts.Cancel();
@@ -1965,26 +2028,31 @@ public partial class JukeboxViewModel : ObservableObject
         }
         else
         {
-            _searchEnumerator = SearchVideosViaPluginOrLegacy(query).GetAsyncEnumerator();
+            _searchEnumerator = SearchVideosViaPluginOrLegacy(query, sourceInstanceId).GetAsyncEnumerator();
         }
 
         _hasMoreResults = true;
 
-        // Determine cache key from active category or live playlist
+        // Determine cache key from active category or live playlist. Only the YouTube-bound path
+        // (tiles/live playlists, sourceInstanceId == null) uses these caches — an ad-hoc search
+        // against another source must not attach a YouTube-shaped category/playlist cache.
         _activeResultCache = null;
         _categoryCacheName = null;
         _categoryCachePageIndex = 0;
-        var genreEntry = _genreCategories.FirstOrDefault(c =>
-            !string.IsNullOrEmpty(c.SearchTerm) && c.SearchTerm == query);
-        if (genreEntry != null)
+        if (sourceInstanceId == null)
         {
-            _categoryCacheName = genreEntry.Id;
-            _activeResultCache = CategoryCache;
-        }
-        else if (IsViewingLivePlaylist && !string.IsNullOrEmpty(_activePlaylistId))
-        {
-            _categoryCacheName = _activePlaylistId;
-            _activeResultCache = YtPlaylistCache;
+            var genreEntry = _genreCategories.FirstOrDefault(c =>
+                !string.IsNullOrEmpty(c.SearchTerm) && c.SearchTerm == query);
+            if (genreEntry != null)
+            {
+                _categoryCacheName = genreEntry.Id;
+                _activeResultCache = CategoryCache;
+            }
+            else if (IsViewingLivePlaylist && !string.IsNullOrEmpty(_activePlaylistId))
+            {
+                _categoryCacheName = _activePlaylistId;
+                _activeResultCache = YtPlaylistCache;
+            }
         }
 
         await LoadMoreResults(SearchPageSize);
@@ -4067,4 +4135,11 @@ public partial class JukeboxViewModel : ObservableObject
             DebugLog.LogException("Fire-and-forget", ex);
         }
     }
+}
+
+/// <summary>One entry in the search-box source dropdown.</summary>
+public sealed record SearchSourceOption(string InstanceId, string DisplayName)
+{
+    // Shown in the ComboBox.
+    public override string ToString() => DisplayName;
 }

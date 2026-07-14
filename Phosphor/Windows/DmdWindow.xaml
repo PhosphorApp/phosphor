@@ -155,13 +155,36 @@
                      IsEnabled="False"/>
             <Button x:Name="SearchButtonCtrl" Content="&#x1F50D;" DockPanel.Dock="Right" Padding="14,8" FontSize="16"
                      Click="SearchButton_Click" Margin="6,0,0,0"
-                     ToolTip="Search YouTube"/>
+                     ToolTip="Search"/>
             <Button x:Name="HomeButton" Content="&#x1F3E0;" DockPanel.Dock="Right" Padding="14,8" FontSize="16"
                      Command="{Binding ShowCategoryListCommand}" Click="HomeButton_Click" Margin="6,0,0,0"
                      ToolTip="Back to Categories"/>
             <Button x:Name="BackNavButton" Content="&#x2190;" DockPanel.Dock="Left" Padding="14,8" FontSize="18"
                      Click="BackNavButton_Click" Margin="0,0,6,0"
                      ToolTip="Go Back" IsEnabled="False"/>
+            <!-- Search source selector (only shown when more than one searchable source exists). -->
+            <ComboBox x:Name="SearchSourceBox" DockPanel.Dock="Left" Margin="0,0,6,0"
+                      MinWidth="110" FontSize="14" VerticalContentAlignment="Center"
+                      Background="{StaticResource Surface2Brush}" Foreground="{StaticResource TextBrush}"
+                      BorderBrush="#333"
+                      ItemsSource="{Binding SearchSources}"
+                      SelectedValuePath="InstanceId"
+                      SelectedValue="{Binding ActiveSearchSourceId, Mode=TwoWay}"
+                      ToolTip="Which source the search box queries">
+                <ComboBox.Style>
+                    <Style TargetType="ComboBox">
+                        <Setter Property="Visibility" Value="Visible"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding SearchSources.Count}" Value="1">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding SearchSources.Count}" Value="0">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ComboBox.Style>
+            </ComboBox>
             <Grid>
                 <ComboBox x:Name="SearchBox" IsEditable="True"
                           Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
@@ -173,7 +196,7 @@
                           KeyDown="SearchBox_KeyDown" SelectionChanged="SearchBox_SelectionChanged"
                           IsTextSearchEnabled="False"
                           IsKeyboardFocusWithinChanged="SearchBox_FocusChanged"
-                          ToolTip="Search YouTube &#x0a;&#x0a;Modifiers:&#x0a;  channel:&lt;name&gt;&#x0a;  playlist:&lt;name&gt;&#x0a;  min:5m  max:30m"/>
+                          ToolTip="Search the selected source &#x0a;&#x0a;Modifiers (YouTube):&#x0a;  channel:&lt;name&gt;&#x0a;  playlist:&lt;name&gt;&#x0a;  min:5m  max:30m"/>
                 <TextBlock x:Name="SearchPlaceholder"
                            FontSize="18" Foreground="#888" IsHitTestVisible="False"
                            VerticalAlignment="Center" Margin="14,0,0,0">
