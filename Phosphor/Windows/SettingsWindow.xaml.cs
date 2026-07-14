@@ -1133,8 +1133,12 @@ public partial class SettingsWindow : JukeboxWindow
         CbPlexGapless.IsChecked = settings.PlexGaplessPlayback;
 
         // Populate the Plug-ins tab from the live source registry once the window is loaded
-        // (Owner/DataContext is available by then).
-        Loaded += (_, _) => PopulatePluginSourcesTab();
+        // (Owner/DataContext is available by then). Same timing for the AutoDJ provider list.
+        Loaded += (_, _) =>
+        {
+            PopulatePluginSourcesTab();
+            PopulateAutoDjProvider(settings);
+        };
 
         HistoryCountText.Text = $"{settings.KeyBindings.ToEntries().Count} bindings configured";
 
@@ -3641,6 +3645,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.HttpReconnect = CbHttpReconnect.IsChecked == true;
         _settings.NetworkTimeoutSeconds = (int)SliderNetworkTimeout.Value;
         _settings.PlexGaplessPlayback = CbPlexGapless.IsChecked == true;
+        _settings.AutoDjProviderId = CbAutoDjProvider.SelectedValue as string;
         _LogStep("AllSettings");
         Saved = true;
         _ = _settings.SaveAsync();
@@ -3839,10 +3844,22 @@ public partial class SettingsWindow : JukeboxWindow
     private static readonly Thickness RowMargin = new(0, 3, 0, 3);
 
     /// <summary>
+    /// Populates the AutoDJ provider dropdown from the VM's searchable sources, selecting the saved
+    /// provider (or YouTube by default). Runs after Load so Owner/DataContext is available.
+    /// </summary>
+    private void PopulateAutoDjProvider(AppSettings settings)
+    {
+        if (Owner?.DataContext is not JukeboxViewModel vm) return;
+        CbAutoDjProvider.ItemsSource = vm.SearchSources;
+        CbAutoDjProvider.SelectedValue = string.IsNullOrEmpty(settings.AutoDjProviderId)
+            ? vm.SearchSources.FirstOrDefault()?.InstanceId
+            : settings.AutoDjProviderId;
+    }
+
+    /// <summary>
     /// Populates the Plug-ins tab with editable controls over a working copy of
     /// <c>settings.PluginInstances</c>. Values are harvested back and persisted on save
-    /// (<see cref="HarvestPluginSourcesTab"/>). Add/remove instances and interactive config actions
-    /// are a later increment.
+    /// (<see cref="HarvestPluginSourcesTab"/>).
     /// </summary>
     private void PopulatePluginSourcesTab()
     {

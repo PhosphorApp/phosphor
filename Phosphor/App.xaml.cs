@@ -75,6 +75,7 @@ public partial class App : Application
         viewModel.CacheMode = _settings.CacheMode;
         viewModel.PreemptiveCache = _settings.PreemptiveCache;
         viewModel.GaplessPlayback = _settings.PlexGaplessPlayback;
+        viewModel.AutoDjProviderId = _settings.AutoDjProviderId;
         viewModel.Volume = _settings.Volume;
         viewModel.RepeatEnabled = _settings.RepeatEnabled;
         viewModel.AutoDjEnabled = _settings.AutoDjEnabled;

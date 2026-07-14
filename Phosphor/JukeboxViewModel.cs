@@ -44,6 +44,12 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
+    /// The source AutoDJ uses to find/queue similar tracks (from settings). <c>null</c>/empty =
+    /// YouTube. A stop-gap steering knob until a richer AutoDJ model exists.
+    /// </summary>
+    public string? AutoDjProviderId { get; set; }
+
+    /// <summary>
     /// Read-only summaries of the configured plug-in sources (for the Plug-ins settings tab).
     /// Empty when the registry hasn't been built.
     /// </summary>
@@ -3816,7 +3822,7 @@ public partial class JukeboxViewModel : ObservableObject
         {
             // Load a larger pool from this genre to pick randomly from
             var results = new List<VideoItem>();
-            var enumerator = SearchVideosViaPluginOrLegacy(genre.SearchTerm).GetAsyncEnumerator();
+            var enumerator = SearchVideosViaPluginOrLegacy(genre.SearchTerm, AutoDjProviderId).GetAsyncEnumerator();
             try
             {
                 int fetched = 0;
@@ -3885,7 +3891,7 @@ public partial class JukeboxViewModel : ObservableObject
         {
             // Fetch a page of results and randomize so we don't always pick the same top results
             var pool = new List<VideoItem>();
-            var enumerator = SearchVideosViaPluginOrLegacy(query).GetAsyncEnumerator();
+            var enumerator = SearchVideosViaPluginOrLegacy(query, AutoDjProviderId).GetAsyncEnumerator();
             try
             {
                 int fetched = 0;

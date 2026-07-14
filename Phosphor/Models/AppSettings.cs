@@ -394,6 +394,13 @@ public class AppSettings
     public int NetworkTimeoutSeconds { get; set; } = 30;
 
     /// <summary>
+    /// The source instance id AutoDJ uses to find/queue similar tracks. <c>null</c> or empty =
+    /// YouTube (the default; its large catalog suits discovery). A stop-gap steering knob until a
+    /// richer AutoDJ model exists.
+    /// </summary>
+    public string? AutoDjProviderId { get; set; }
+
+    /// <summary>
     /// Gapless playback for audio-only tracks (pre-loads the next track's stream). App-owned
     /// playback-pipeline behavior — not per-source config. (YouTube/Plex/engine config now lives
     /// per-source on the Plug-ins tab.)

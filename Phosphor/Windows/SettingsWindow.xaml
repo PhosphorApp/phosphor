@@ -146,17 +146,25 @@
                                             <Button Content="+ Add…" Padding="10,4"
                                                     Click="AddStartupDitti_Click"/>
                                         </StackPanel>
-
-                                        <!-- ═══ SECTION: Playback ═══ -->
-                                        <TextBlock Text="PLAYBACK" FontSize="12" FontWeight="Bold"
-                                                   Foreground="{StaticResource AccentBrush}" Margin="0,16,0,6"/>
-                                        <TextBlock Text="Source-specific options (search/video engine, quality, stereo) now live per-source on the Plug-ins tab."
-                                                   FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,8"
-                                                   TextWrapping="Wrap"/>
                                         <CheckBox x:Name="CbPlexGapless" Content="Gapless playback (audio tracks)"
                                                   Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
-                                                  Margin="0,0,0,4"
+                                                  Margin="0,4,0,4"
                                                   ToolTip="Eliminate silence between audio-only tracks by pre-loading the next track"/>
+
+                                        <!-- ═══ SECTION: Search ═══ -->
+                                        <TextBlock Text="SEARCH" FontSize="12" FontWeight="Bold"
+                                                   Foreground="{StaticResource AccentBrush}" Margin="0,16,0,6"/>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                            <TextBlock Text="Default AutoDJ Provider:" Foreground="{StaticResource TextBrush}"
+                                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <ComboBox x:Name="CbAutoDjProvider" MinWidth="160"
+                                                      VerticalAlignment="Center"
+                                                      SelectedValuePath="InstanceId"
+                                                      DisplayMemberPath="DisplayName"/>
+                                        </StackPanel>
+                                        <TextBlock Text="Which source AutoDJ uses to find and queue similar tracks. Defaults to YouTube (its large catalog suits discovery). A stop-gap while a richer AutoDJ model is designed."
+                                                   FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,8"
+                                                   TextWrapping="Wrap"/>
 
                                         <!-- ═══ SECTION: Network ═══ -->
                                         <TextBlock Text="NETWORK" FontSize="12" FontWeight="Bold"

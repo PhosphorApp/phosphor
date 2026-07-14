@@ -2403,6 +2403,7 @@ public partial class DmdWindow : JukeboxWindow
             vm.CacheMode = _appSettings.CacheMode;
             vm.PreemptiveCache = _appSettings.PreemptiveCache;
             vm.GaplessPlayback = _appSettings.PlexGaplessPlayback;
+            vm.AutoDjProviderId = _appSettings.AutoDjProviderId;
             LogStep("VmProperties");
         }
         LogStep("Cache/ViewModel");
