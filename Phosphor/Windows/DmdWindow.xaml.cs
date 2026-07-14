@@ -2392,12 +2392,15 @@ public partial class DmdWindow : JukeboxWindow
         // Update cache settings
         if (DataContext is JukeboxViewModel vm)
         {
-            // Configure Plex first so SyncPlexLibraries updates categories.json before reload.
-            // Plex tiles/services are built from the enabled plug-in instances.
-            vm.ConfigurePlexFromSettings(_appSettings, skipRebuild: true);
-            LogStep("ConfigurePlex");
+            // Reload the persisted categories FIRST so the VM picks up any reorder/visibility the
+            // settings window just saved. Then Plex + source-tile sync run on that fresh list (their
+            // sync preserves user order/customizations), instead of clobbering it with a stale copy.
             vm.ReloadGenreCategories();
             LogStep("ReloadGenreCategories");
+            // Configure Plex tiles/services from the enabled plug-in instances (skips rebuild; the
+            // registry build below rebuilds once after source tiles are synced).
+            vm.ConfigurePlexFromSettings(_appSettings, skipRebuild: true);
+            LogStep("ConfigurePlex");
             // Engine/quality/stereo come from the YouTube plug-in config (the Plug-ins tab is the
             // single source of truth now that the General→Video section is retired).
             var ytPlayback = Phosphor.Plugins.PluginSettingsFactory.ReadYouTubePlayback(_appSettings.PluginInstances);
