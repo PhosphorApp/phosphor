@@ -566,6 +566,12 @@ Each phase is independently shippable and reversible.
    `ConfigOptionResult`s (option selected + chosen sub-option ids). The selection dialog renders
    each option with indented sub-checkboxes; `PlexSource` emits Hubs/Playlists per library and
    rebuilds its mapping from the result. Also themed the generated editors to match the app.
+   **Inline library editor (no popup).** Replaced the "Browse libraries" popup with an inline
+   editor mirroring the legacy Plex tab: an "add library" dropdown (lazily fetched via the
+   source's config action, excluding already-added) + Add button, and a list of added libraries
+   each with Hubs/Playlists checkboxes + Remove. Cabinet-friendly (no extra window). The generic
+   `ConfigSelection` popup path is retained for any *other* third-party config actions; the Plex
+   browse-libraries action is rendered inline and skipped in the generic loop.
    **Known gap (deferred to its own increment):** category **tiles are still built from the flat
    `AppSettings.PlexLibraries`** (via `ConfigurePlex`/`GenreCategoryStore.SyncPlexLibraries`), not
    from `PluginInstances` — so libraries edited in the Plug-ins tab don't yet appear as tiles.

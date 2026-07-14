@@ -4024,6 +4024,12 @@ public partial class SettingsWindow : JukeboxWindow
     // Shared HttpClient for transient sources built to invoke config actions.
     private readonly System.Net.Http.HttpClient _pluginHttp = new() { Timeout = TimeSpan.FromSeconds(15) };
 
+    // Inline Plex-library editor state, keyed by instance id: the added libraries (rendered as a
+    // list with per-library Hubs/Playlists) and a lazily-fetched cache of all server libraries
+    // (for the "add" dropdown). Serialized back into the instance's "libraries" setting on change.
+    private readonly Dictionary<string, List<PlexLibraryMapping>> _pluginLibraryState = new();
+    private readonly Dictionary<string, List<PlexLibraryMapping>> _pluginLibraryAvailable = new();
+
     // Standardized editor sizing so text/combo/password fields line up.
     private const double EditorHeight = 28;
     private const double EditorMinWidth = 320;
@@ -4174,17 +4180,11 @@ public partial class SettingsWindow : JukeboxWindow
                 cfg.Settings.TryGetValue(d.Key, out var current);
                 current ??= d.DefaultValue;
 
-                // The Plex "libraries" blob isn't hand-editable here; show a read-only summary.
+                // The Plex "libraries" field gets an inline editor (dropdown + Add, and a list of
+                // added libraries with Hubs/Playlists + Remove) instead of a raw text field.
                 if (d.Key == "libraries")
                 {
-                    var count = string.IsNullOrWhiteSpace(current)
-                        ? 0 : System.Text.RegularExpressions.Regex.Matches(current, "\"Key\"").Count;
-                    var summary = new System.Windows.Controls.TextBlock
-                    {
-                        Text = count > 0 ? $"{count} libraries mapped" : "none mapped — use “Browse libraries” below",
-                        Foreground = text, FontSize = 11, VerticalAlignment = VerticalAlignment.Center,
-                    };
-                    AddSettingRow(grid, d.Label, d.HelpText, summary, text, dim);
+                    BuildInlineLibraryEditor(grid, cfg, d, text, dim, surface2, accent);
                     continue;
                 }
 
@@ -4230,12 +4230,15 @@ public partial class SettingsWindow : JukeboxWindow
 
             panel.Children.Add(grid);
 
-            // ── Interactive config actions (e.g. Plex "Browse libraries") ──
+            // ── Interactive config actions (generic) — the Plex "browse libraries" action is
+            // rendered inline above, so skip it here to avoid a duplicate popup button. ──
             var transient = Phosphor.Plugins.PluginSettingsFactory.BuildTransientSource(cfg, _pluginHttp);
             if (transient is Phosphor.Plugin.Abstractions.IConfigurable configurable)
             {
                 foreach (var action in configurable.GetConfigActions())
                 {
+                    if (action.Id == Phosphor.Plugins.Plex.PlexSourceProvider.ActionBrowseLibraries)
+                        continue;
                     var actionRow = new System.Windows.Controls.StackPanel
                     {
                         Orientation = System.Windows.Controls.Orientation.Horizontal,
@@ -4333,6 +4336,228 @@ public partial class SettingsWindow : JukeboxWindow
         HarvestPluginSourcesTab(); // preserve current edits before re-render
         _settings.PluginInstances.RemoveAll(c => c.InstanceId == instanceId);
         PopulatePluginSourcesTab();
+    }
+
+    /// <summary>
+    /// Parses the added libraries for an instance from its "libraries" setting into the in-memory
+    /// editor state (once per instance per tab session).
+    /// </summary>
+    private List<PlexLibraryMapping> GetInstanceLibraries(Phosphor.Plugins.PluginInstanceConfig cfg)
+    {
+        if (_pluginLibraryState.TryGetValue(cfg.InstanceId, out var libs))
+            return libs;
+
+        libs = new List<PlexLibraryMapping>();
+        if (cfg.Settings.TryGetValue("libraries", out var json) && !string.IsNullOrWhiteSpace(json))
+        {
+            try
+            {
+                var parsed = System.Text.Json.JsonSerializer.Deserialize<List<PlexLibraryMapping>>(json);
+                if (parsed != null) libs = parsed;
+            }
+            catch { /* ignore malformed */ }
+        }
+        _pluginLibraryState[cfg.InstanceId] = libs;
+        return libs;
+    }
+
+    /// <summary>Serializes an instance's in-memory library list back into its "libraries" setting.</summary>
+    private void SaveInstanceLibraries(string instanceId)
+    {
+        var cfg = _pluginWorkingConfigs.FirstOrDefault(c => c.InstanceId == instanceId);
+        if (cfg == null || !_pluginLibraryState.TryGetValue(instanceId, out var libs)) return;
+        cfg.Settings["libraries"] = System.Text.Json.JsonSerializer.Serialize(libs);
+    }
+
+    /// <summary>
+    /// Renders the inline Plex-library editor into the settings grid: an "add library" dropdown +
+    /// button, and a list of added libraries each with Hubs/Playlists checkboxes and a Remove
+    /// button. Mirrors the legacy Plex tab (no popup, cabinet-friendly).
+    /// </summary>
+    private void BuildInlineLibraryEditor(
+        System.Windows.Controls.Grid grid, Phosphor.Plugins.PluginInstanceConfig cfg,
+        Phosphor.Plugin.Abstractions.PluginSettingDescriptor d,
+        System.Windows.Media.Brush text, System.Windows.Media.Brush dim,
+        System.Windows.Media.Brush surface2, System.Windows.Media.Brush accent)
+    {
+        var added = GetInstanceLibraries(cfg);
+        var instId = cfg.InstanceId;
+
+        // Container spanning both grid columns for the whole library editor.
+        var container = new System.Windows.Controls.StackPanel { Margin = new Thickness(0, 4, 0, 0) };
+
+        // Section label
+        container.Children.Add(new System.Windows.Controls.TextBlock
+        {
+            Text = "Library tiles", Foreground = dim, FontSize = 10, FontWeight = FontWeights.Bold,
+            Margin = new Thickness(0, 0, 0, 4),
+        });
+
+        // ── Add row: dropdown of not-yet-added libraries + Add button ──
+        var addRow = new System.Windows.Controls.DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+        var addBtn = new System.Windows.Controls.Button
+        {
+            Content = "＋ Add", Padding = new Thickness(8, 3, 8, 3), Margin = new Thickness(8, 0, 0, 0),
+        };
+        System.Windows.Controls.DockPanel.SetDock(addBtn, System.Windows.Controls.Dock.Right);
+        var combo = new System.Windows.Controls.ComboBox
+        {
+            Foreground = text, Background = surface2, Height = EditorHeight,
+            VerticalContentAlignment = VerticalAlignment.Center,
+        };
+
+        // Populate the dropdown from the available cache (if already fetched), excluding added.
+        void RefreshCombo()
+        {
+            combo.Items.Clear();
+            var addedKeys = new HashSet<string>(added.Select(l => l.Key));
+            if (_pluginLibraryAvailable.TryGetValue(instId, out var avail))
+            {
+                foreach (var lib in avail.Where(l => !addedKeys.Contains(l.Key)))
+                    combo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = $"{lib.Title} ({lib.Type})", Tag = lib });
+                combo.Text = combo.Items.Count > 0 ? "" : "All libraries added";
+            }
+            else
+            {
+                combo.Text = "Click to load libraries…";
+            }
+            if (combo.Items.Count > 0) combo.SelectedIndex = 0;
+        }
+        RefreshCombo();
+
+        // Lazily fetch on first dropdown open.
+        combo.DropDownOpened += async (_, _) =>
+        {
+            if (!_pluginLibraryAvailable.ContainsKey(instId))
+            {
+                combo.Text = "Loading…";
+                await FetchAvailableLibrariesAsync(instId);
+                RefreshCombo();
+                combo.IsDropDownOpen = true;
+            }
+        };
+
+        addBtn.Click += (_, _) =>
+        {
+            if (combo.SelectedItem is System.Windows.Controls.ComboBoxItem item && item.Tag is PlexLibraryMapping lib
+                && !added.Any(l => l.Key == lib.Key))
+            {
+                HarvestPluginSourcesTab();
+                added.Add(new PlexLibraryMapping { Key = lib.Key, Title = lib.Title, Type = lib.Type });
+                SaveInstanceLibraries(instId);
+                PopulatePluginSourcesTab();
+            }
+        };
+        addRow.Children.Add(addBtn);
+        addRow.Children.Add(combo);
+        container.Children.Add(addRow);
+
+        // ── Added libraries list: Title + Hubs + Playlists + Remove ──
+        if (added.Count == 0)
+        {
+            container.Children.Add(new System.Windows.Controls.TextBlock
+            {
+                Text = "No libraries added yet.", Foreground = dim, FontSize = 11,
+            });
+        }
+        foreach (var lib in added)
+        {
+            var libKey = lib.Key;
+            var row = new System.Windows.Controls.DockPanel { Margin = new Thickness(0, 3, 0, 3) };
+
+            var removeBtn = new System.Windows.Controls.Button
+            {
+                Content = "✕", Padding = new Thickness(6, 1, 6, 1), Margin = new Thickness(8, 0, 0, 0), FontSize = 12,
+            };
+            System.Windows.Controls.DockPanel.SetDock(removeBtn, System.Windows.Controls.Dock.Right);
+            removeBtn.Click += (_, _) =>
+            {
+                HarvestPluginSourcesTab();
+                added.RemoveAll(l => l.Key == libKey);
+                SaveInstanceLibraries(instId);
+                PopulatePluginSourcesTab();
+            };
+            row.Children.Add(removeBtn);
+
+            var playlistsCb = new System.Windows.Controls.CheckBox
+            {
+                Content = "Playlists", IsChecked = lib.PlaylistsEnabled, Foreground = dim,
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
+                ToolTip = "Show a Playlists tile",
+            };
+            playlistsCb.Checked += (_, _) => { lib.PlaylistsEnabled = true; SaveInstanceLibraries(instId); };
+            playlistsCb.Unchecked += (_, _) => { lib.PlaylistsEnabled = false; SaveInstanceLibraries(instId); };
+            System.Windows.Controls.DockPanel.SetDock(playlistsCb, System.Windows.Controls.Dock.Right);
+            row.Children.Add(playlistsCb);
+
+            var hubsCb = new System.Windows.Controls.CheckBox
+            {
+                Content = "Hubs", IsChecked = lib.HubsEnabled, Foreground = dim,
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
+                ToolTip = "Show a Hubs tile (Recently Added, etc.)",
+            };
+            hubsCb.Checked += (_, _) => { lib.HubsEnabled = true; SaveInstanceLibraries(instId); };
+            hubsCb.Unchecked += (_, _) => { lib.HubsEnabled = false; SaveInstanceLibraries(instId); };
+            System.Windows.Controls.DockPanel.SetDock(hubsCb, System.Windows.Controls.Dock.Right);
+            row.Children.Add(hubsCb);
+
+            row.Children.Add(new System.Windows.Controls.TextBlock
+            {
+                Text = $"{lib.Title} ({lib.Type})", Foreground = text,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            container.Children.Add(row);
+        }
+
+        // Add the container spanning both columns.
+        int gridRow = grid.RowDefinitions.Count;
+        grid.RowDefinitions.Add(new System.Windows.Controls.RowDefinition { Height = System.Windows.GridLength.Auto });
+        System.Windows.Controls.Grid.SetRow(container, gridRow);
+        System.Windows.Controls.Grid.SetColumn(container, 0);
+        System.Windows.Controls.Grid.SetColumnSpan(container, 2);
+        container.Margin = new Thickness(0, 6, 0, 0);
+        grid.Children.Add(container);
+    }
+
+    /// <summary>
+    /// Lazily fetches the full library list from the server for the "add" dropdown, using the
+    /// instance's current (harvested) URL/token. Cached per instance for the tab session.
+    /// </summary>
+    private async Task<List<PlexLibraryMapping>> FetchAvailableLibrariesAsync(string instanceId)
+    {
+        if (_pluginLibraryAvailable.TryGetValue(instanceId, out var cached))
+            return cached;
+
+        HarvestPluginSourcesTab();
+        var cfg = _settings.PluginInstances.FirstOrDefault(c => c.InstanceId == instanceId);
+        var libs = new List<PlexLibraryMapping>();
+        if (cfg != null)
+        {
+            var source = Phosphor.Plugins.PluginSettingsFactory.BuildTransientSource(cfg, _pluginHttp);
+            if (source is Phosphor.Plugin.Abstractions.IConfigurable configurable)
+            {
+                try
+                {
+                    var sel = await configurable.InvokeConfigActionAsync(Phosphor.Plugins.Plex.PlexSourceProvider.ActionBrowseLibraries);
+                    // Options carry Id = library key, Label = "Title (Type)". Recover Title/Type.
+                    foreach (var o in sel.Options)
+                    {
+                        var label = o.Label;
+                        string title = label, type = "";
+                        var lp = label.LastIndexOf(" (", StringComparison.Ordinal);
+                        if (lp >= 0 && label.EndsWith(")"))
+                        {
+                            title = label[..lp];
+                            type = label[(lp + 2)..^1];
+                        }
+                        libs.Add(new PlexLibraryMapping { Key = o.Id, Title = title, Type = type });
+                    }
+                }
+                catch { /* fetch failure handled by caller (empty list) */ }
+            }
+        }
+        _pluginLibraryAvailable[instanceId] = libs;
+        return libs;
     }
 
     /// <summary>
