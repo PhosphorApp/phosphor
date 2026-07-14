@@ -541,6 +541,17 @@ Each phase is independently shippable and reversible.
    once the tab can edit it directly. **Secrets note:** the Plex token migrates into the config
    settings dict in `settings.json` — no less secure than today's plaintext `PlexToken`; a
    DPAPI-backed credential store (via `IPluginHost.GetSecret/SetSecret`) is a separate follow-up.
+   **Editable fields done (Phase 7c-1).** The Plug-ins tab is now an editor: per instance it
+   renders an Enabled toggle, a Display name box (the user's "Bob's Plex" override), and one
+   control per schema field (Text→TextBox, Secret→PasswordBox, Bool→CheckBox, Enum→ComboBox),
+   over a working copy of `PluginInstances`. On save it harvests the controls back (secrets
+   overwritten only when typed) into `settings.PluginInstances`, and the registry now **reads
+   from `PluginInstances`** (seeded once from the flat fields for older files) so edits take
+   effect on the existing settings-apply rebuild. The legacy Plex tab still drives the flag-off
+   `_plex` path (the two separate paths we've kept throughout); it retires at cutover.
+   **7c-2 (todo):** add/remove instances (real multi-Plex — "Bob's Plex" + "Work Plex"),
+   enable/disable UX, `AllowCaching` toggle, and invoking `IConfigurable` actions (Plex
+   "browse libraries" from inside the Plug-ins tab, so the `libraries` blob becomes editable here).
 8. **Reference third source (validation).** Prototype Jellyfin or a local-folder
    source to confirm no core changes are needed.
 

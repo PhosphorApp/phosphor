@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Phosphor.Plugin.Abstractions;
 using Phosphor.Plugins.Plex;
 using Phosphor.Plugins.YouTube;
 
@@ -55,5 +56,21 @@ public static class PluginSettingsFactory
         }
 
         return configs;
+    }
+
+    /// <summary>
+    /// Returns the declarative settings schema for a provider type id, plus its display name and
+    /// description — for the settings UI to render editable fields without a live registry. Returns
+    /// null for an unknown type id.
+    /// </summary>
+    public static (string DisplayName, string? Description, IReadOnlyList<PluginSettingDescriptor> Schema)? DescribeProvider(string typeId)
+    {
+        IPhosphorSourceProvider? p = typeId switch
+        {
+            YouTubeSourceProvider.YouTubeTypeId => new YouTubeSourceProvider(),
+            PlexSourceProvider.PlexTypeId => new PlexSourceProvider(),
+            _ => null,
+        };
+        return p == null ? null : (p.DisplayName, p.Description, p.GetSettingsSchema());
     }
 }

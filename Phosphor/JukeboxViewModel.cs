@@ -72,15 +72,13 @@ public partial class JukeboxViewModel : ObservableObject
         var registry = new Phosphor.Plugins.SourceRegistry(http);
         try
         {
-            // 7b: the flat Plex/engine fields remain the edit surface (legacy Plex tab), so we
-            // derive the instance configs from them on each build — no staleness. We still write
-            // the derived list into settings.PluginInstances so the persisted section exists and
-            // round-trips; a later increment (editable Plug-ins tab) flips the read source to the
-            // persisted list once it can be edited directly.
-            var configs = Phosphor.Plugins.PluginSettingsFactory.FromAppSettings(settings);
-            settings.PluginInstances = configs;
+            // The persisted PluginInstances list is the source of truth for the plug-in path and is
+            // edited via the Plug-ins settings tab. Seed it once from the flat Plex/engine fields for
+            // first run / older settings files (a one-time migration); thereafter user edits persist.
+            if (settings.PluginInstances.Count == 0)
+                settings.PluginInstances = Phosphor.Plugins.PluginSettingsFactory.FromAppSettings(settings);
 
-            await registry.BuildAsync(configs);
+            await registry.BuildAsync(settings.PluginInstances);
             _sourceRegistry = registry;
             DebugLog.Log("SourceRegistry", $"Built {registry.Sources.Count} source(s); enabled={_usePluginSources}");
             WireCacheDownloadOverride();

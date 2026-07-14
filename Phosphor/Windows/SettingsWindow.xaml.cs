@@ -3542,6 +3542,8 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.DebugLogging = CbDebugLogging.IsChecked == true;
         DebugLog.Enabled = _settings.DebugLogging;
         _settings.UsePluginSources = CbUsePluginSources.IsChecked == true;
+        // Harvest the editable Plug-ins tab into settings.PluginInstances (the plug-in path's config).
+        HarvestPluginSourcesTab();
         if (CbResultColumns.SelectedItem is int cols)
             _settings.ResultColumns = cols;
         _settings.ResultFontSizeModifier = Math.Clamp((int)SliderResultFontSize.Value, -12, 12);
@@ -4007,20 +4009,44 @@ public partial class SettingsWindow : JukeboxWindow
         e.Handled = true;
     }
 
+    // Working copy of the plug-in instance configs the tab edits, plus a map from each editor
+    // control to (instanceId, settingKey) so values can be harvested back on save. DisplayName and
+    // Enabled controls are tracked separately.
+    private readonly List<Phosphor.Plugins.PluginInstanceConfig> _pluginWorkingConfigs = new();
+    private readonly List<(System.Windows.Controls.Control Control, string InstanceId, string Key)> _pluginFieldControls = new();
+    private readonly Dictionary<string, System.Windows.Controls.TextBox> _pluginDisplayNameBoxes = new();
+    private readonly Dictionary<string, System.Windows.Controls.CheckBox> _pluginEnabledBoxes = new();
+
     /// <summary>
-    /// Populates the read-only Plug-ins tab from the live source registry (via the owner VM).
-    /// Informational for now: each configured source shows its display name, type, configured
-    /// state, capabilities, and declarative settings (secret values masked).
+    /// Populates the Plug-ins tab with editable controls over a working copy of
+    /// <c>settings.PluginInstances</c>. Values are harvested back and persisted on save
+    /// (<see cref="HarvestPluginSourcesTab"/>). Add/remove instances and interactive config actions
+    /// are a later increment.
     /// </summary>
     private void PopulatePluginSourcesTab()
     {
         if (PanelPluginSources == null) return;
         PanelPluginSources.Children.Clear();
+        _pluginFieldControls.Clear();
+        _pluginDisplayNameBoxes.Clear();
+        _pluginEnabledBoxes.Clear();
 
-        var vm = Owner?.DataContext as JukeboxViewModel;
-        var sources = vm?.DescribePluginSources() ?? [];
+        // Edit a working copy so cancelling the dialog doesn't mutate settings.
+        _pluginWorkingConfigs.Clear();
+        foreach (var c in _settings.PluginInstances)
+        {
+            _pluginWorkingConfigs.Add(new Phosphor.Plugins.PluginInstanceConfig
+            {
+                TypeId = c.TypeId,
+                InstanceId = c.InstanceId,
+                DisplayName = c.DisplayName,
+                Enabled = c.Enabled,
+                Settings = new Dictionary<string, string?>(c.Settings),
+                AllowCaching = c.AllowCaching,
+            });
+        }
 
-        if (sources.Count == 0)
+        if (_pluginWorkingConfigs.Count == 0)
         {
             if (PluginSourcesEmptyText != null)
                 PluginSourcesEmptyText.Visibility = Visibility.Visible;
@@ -4033,74 +4059,191 @@ public partial class SettingsWindow : JukeboxWindow
         var text = (System.Windows.Media.Brush)FindResource("TextBrush");
         var dim = (System.Windows.Media.Brush)FindResource("TextDimBrush");
 
-        foreach (var s in sources)
+        foreach (var cfg in _pluginWorkingConfigs)
         {
+            var info = Phosphor.Plugins.PluginSettingsFactory.DescribeProvider(cfg.TypeId);
+            var typeName = info?.DisplayName ?? cfg.TypeId;
+
             var card = new System.Windows.Controls.Border
             {
                 BorderBrush = accent,
                 BorderThickness = new Thickness(0, 0, 0, 1),
-                Padding = new Thickness(0, 6, 0, 10),
-                Margin = new Thickness(0, 0, 0, 8),
+                Padding = new Thickness(0, 6, 0, 12),
+                Margin = new Thickness(0, 0, 0, 10),
             };
             var panel = new System.Windows.Controls.StackPanel();
 
-            var status = s.IsConfigured ? "configured" : "not configured";
-            if (!s.IsEnabled) status += " · disabled";
+            // Header: provider type name
             panel.Children.Add(new System.Windows.Controls.TextBlock
             {
-                Text = $"{s.DisplayName}  ({s.TypeId}) — {status}",
+                Text = $"{typeName}  ({cfg.TypeId})",
                 Foreground = accent,
                 FontWeight = FontWeights.Bold,
                 FontSize = 12,
                 Margin = new Thickness(0, 0, 0, 4),
             });
 
-            // Optional author-provided description (setup notes, doc links, etc.)
-            if (!string.IsNullOrWhiteSpace(s.Description))
+            if (!string.IsNullOrWhiteSpace(info?.Description))
             {
                 panel.Children.Add(new System.Windows.Controls.TextBlock
                 {
-                    Text = s.Description,
+                    Text = info!.Value.Description,
                     Foreground = dim,
                     FontSize = 11,
                     TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 0, 0, 4),
+                    Margin = new Thickness(0, 0, 0, 6),
                 });
             }
 
-            if (s.Capabilities.Count > 0)
+            // Enabled toggle
+            var enabledBox = new System.Windows.Controls.CheckBox
             {
+                Content = "Enabled",
+                IsChecked = cfg.Enabled,
+                Foreground = text,
+                Margin = new Thickness(0, 0, 0, 6),
+            };
+            _pluginEnabledBoxes[cfg.InstanceId] = enabledBox;
+            panel.Children.Add(enabledBox);
+
+            // Display name
+            panel.Children.Add(new System.Windows.Controls.TextBlock
+            {
+                Text = "Display name", Foreground = dim, FontSize = 10,
+            });
+            var nameBox = new System.Windows.Controls.TextBox
+            {
+                Text = cfg.DisplayName ?? typeName,
+                Foreground = text,
+                Margin = new Thickness(0, 0, 0, 6),
+                MaxWidth = 360,
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+            };
+            _pluginDisplayNameBoxes[cfg.InstanceId] = nameBox;
+            panel.Children.Add(nameBox);
+
+            // Declarative settings fields
+            var schema = info?.Schema ?? [];
+            foreach (var d in schema)
+            {
+                cfg.Settings.TryGetValue(d.Key, out var current);
+                current ??= d.DefaultValue;
+
                 panel.Children.Add(new System.Windows.Controls.TextBlock
                 {
-                    Text = "Capabilities: " + string.Join(", ", s.Capabilities),
-                    Foreground = dim,
-                    FontSize = 10,
-                    TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 0, 0, 4),
+                    Text = d.Label + (string.IsNullOrWhiteSpace(d.HelpText) ? "" : $"  — {d.HelpText}"),
+                    Foreground = dim, FontSize = 10, TextWrapping = TextWrapping.Wrap,
                 });
-            }
 
-            foreach (var field in s.Settings)
-            {
-                var value = field.DisplayValue;
-                // The Plex "libraries" value is a JSON blob — show a friendly count instead.
-                if (field.Key == "libraries" && !string.IsNullOrWhiteSpace(value))
+                System.Windows.Controls.Control editor = d.Type switch
                 {
-                    var count = System.Text.RegularExpressions.Regex.Matches(value, "\"Key\"").Count;
-                    value = count > 0 ? $"{count} mapped" : "none";
+                    Phosphor.Plugin.Abstractions.PluginSettingType.Bool => new System.Windows.Controls.CheckBox
+                    {
+                        IsChecked = bool.TryParse(current, out var b) && b,
+                        Foreground = text,
+                    },
+                    Phosphor.Plugin.Abstractions.PluginSettingType.Enum => MakeEnumCombo(d, current, text),
+                    Phosphor.Plugin.Abstractions.PluginSettingType.Secret => new System.Windows.Controls.PasswordBox
+                    {
+                        MaxWidth = 360, HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+                    },
+                    _ => new System.Windows.Controls.TextBox
+                    {
+                        Text = current ?? "", Foreground = text,
+                        MaxWidth = 360, HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+                    },
+                };
+                editor.Margin = new Thickness(0, 0, 0, 6);
+
+                // The Plex "libraries" blob isn't hand-editable here; show a read-only summary.
+                if (d.Key == "libraries")
+                {
+                    var count = string.IsNullOrWhiteSpace(current)
+                        ? 0 : System.Text.RegularExpressions.Regex.Matches(current, "\"Key\"").Count;
+                    panel.Children.Add(new System.Windows.Controls.TextBlock
+                    {
+                        Text = count > 0 ? $"{count} libraries mapped (edit via Plex tab for now)" : "none mapped",
+                        Foreground = text, FontSize = 11, Margin = new Thickness(0, 0, 0, 6),
+                    });
+                    continue;
                 }
-                panel.Children.Add(new System.Windows.Controls.TextBlock
-                {
-                    Text = $"  {field.Label}: {value}",
-                    Foreground = text,
-                    FontSize = 11,
-                    TextWrapping = TextWrapping.Wrap,
-                });
+
+                _pluginFieldControls.Add((editor, cfg.InstanceId, d.Key));
+                panel.Children.Add(editor);
             }
 
             card.Child = panel;
             PanelPluginSources.Children.Add(card);
         }
+    }
+
+    private System.Windows.Controls.ComboBox MakeEnumCombo(
+        Phosphor.Plugin.Abstractions.PluginSettingDescriptor d, string? current, System.Windows.Media.Brush text)
+    {
+        var combo = new System.Windows.Controls.ComboBox
+        {
+            MaxWidth = 360, HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+        };
+        foreach (var v in d.EnumValues ?? [])
+            combo.Items.Add(v);
+        if (current != null && combo.Items.Contains(current))
+            combo.SelectedItem = current;
+        else if (combo.Items.Count > 0)
+            combo.SelectedIndex = 0;
+        return combo;
+    }
+
+    /// <summary>
+    /// Harvests the editable Plug-ins tab controls back into the working configs and writes them to
+    /// <c>_settings.PluginInstances</c>. Secrets are only overwritten when the user typed a value.
+    /// </summary>
+    private void HarvestPluginSourcesTab()
+    {
+        if (_pluginWorkingConfigs.Count == 0) return;
+
+        foreach (var cfg in _pluginWorkingConfigs)
+        {
+            if (_pluginEnabledBoxes.TryGetValue(cfg.InstanceId, out var en))
+                cfg.Enabled = en.IsChecked == true;
+            if (_pluginDisplayNameBoxes.TryGetValue(cfg.InstanceId, out var nb))
+                cfg.DisplayName = string.IsNullOrWhiteSpace(nb.Text) ? null : nb.Text.Trim();
+        }
+
+        foreach (var (control, instanceId, key) in _pluginFieldControls)
+        {
+            var cfg = _pluginWorkingConfigs.FirstOrDefault(c => c.InstanceId == instanceId);
+            if (cfg == null) continue;
+
+            switch (control)
+            {
+                case System.Windows.Controls.PasswordBox pb:
+                    // Overwrite the stored secret only when the user typed something.
+                    if (!string.IsNullOrEmpty(pb.Password))
+                        cfg.Settings[key] = pb.Password;
+                    break;
+                case System.Windows.Controls.CheckBox cb:
+                    cfg.Settings[key] = (cb.IsChecked == true).ToString();
+                    break;
+                case System.Windows.Controls.ComboBox combo:
+                    cfg.Settings[key] = combo.SelectedItem?.ToString() ?? "";
+                    break;
+                case System.Windows.Controls.TextBox tb:
+                    cfg.Settings[key] = tb.Text;
+                    break;
+            }
+        }
+
+        _settings.PluginInstances = _pluginWorkingConfigs
+            .Select(c => new Phosphor.Plugins.PluginInstanceConfig
+            {
+                TypeId = c.TypeId,
+                InstanceId = c.InstanceId,
+                DisplayName = c.DisplayName,
+                Enabled = c.Enabled,
+                Settings = new Dictionary<string, string?>(c.Settings),
+                AllowCaching = c.AllowCaching,
+            })
+            .ToList();
     }
 
     private async Task TryLoadPlexLibrariesAsync()
