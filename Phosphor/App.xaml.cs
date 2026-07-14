@@ -424,13 +424,26 @@ public partial class App : Application
     /// </summary>
     private void MaybeAutoUpdateYtDlp(JukeboxViewModel viewModel)
     {
-        if (!_settings.YtDlpAutoUpdate) return;
+        if (!_settings.YtDlpAutoUpdate)
+        {
+            DebugLog.Log("YtDlpUpdater", "Startup auto-update skipped: auto-update disabled");
+            return;
+        }
         if (_settings.VideoEngine != VideoEngineKind.YtDlp
             && _settings.SearchEngine != SearchEngineKind.YtDlp)
+        {
+            DebugLog.Log("YtDlpUpdater", "Startup auto-update skipped: yt-dlp is not the active engine");
             return;
+        }
 
-        if ((DateTime.UtcNow - _settings.YtDlpLastUpdateCheck) < TimeSpan.FromDays(7))
+        var sinceLast = DateTime.UtcNow - _settings.YtDlpLastUpdateCheck;
+        if (sinceLast < TimeSpan.FromDays(7))
+        {
+            DebugLog.Log("YtDlpUpdater",
+                $"Startup auto-update skipped: throttled (last check {sinceLast.TotalDays:F1} days ago, min 7). " +
+                "Pressing the manual update button also resets this timer.");
             return;
+        }
 
         _settings.YtDlpLastUpdateCheck = DateTime.UtcNow;
         _ = Task.Run(async () =>
