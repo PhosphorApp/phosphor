@@ -11,19 +11,19 @@ namespace Phosphor.Plugins;
 public sealed class PluginInstanceConfig
 {
     /// <summary>The provider type id this instance belongs to (e.g. "youtube", "plex").</summary>
-    public required string TypeId { get; init; }
+    public string TypeId { get; set; } = "";
 
     /// <summary>Stable id unique to this configured instance (e.g. "youtube", "plex", "plex-2").</summary>
-    public required string InstanceId { get; init; }
+    public string InstanceId { get; set; } = "";
 
     /// <summary>User-facing label (e.g. "YouTube", "Home Plex"). Optional; the source may default it.</summary>
-    public string? DisplayName { get; init; }
+    public string? DisplayName { get; set; }
 
     /// <summary>Whether this instance is active. Disabled instances are skipped by the registry.</summary>
-    public bool Enabled { get; init; } = true;
+    public bool Enabled { get; set; } = true;
 
     /// <summary>The declarative settings blob for this instance (keys are provider-defined).</summary>
-    public Dictionary<string, string?> Settings { get; init; } = new();
+    public Dictionary<string, string?> Settings { get; set; } = new();
 
     /// <summary>
     /// Caching policy for this instance. <c>null</c> means "use the capability default" (cache when
@@ -31,5 +31,5 @@ public sealed class PluginInstanceConfig
     /// on/off. Not yet consumed by the cache gate — reserved for the capability-based cache-gate
     /// follow-up (see PLUGIN_ARCHITECTURE_ANALYSIS.md).
     /// </summary>
-    public bool? AllowCaching { get; init; }
+    public bool? AllowCaching { get; set; }
 }

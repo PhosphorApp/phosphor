@@ -532,6 +532,15 @@ Each phase is independently shippable and reversible.
    make it *editable* (bind fields, add/remove instances, enable/disable, `AllowCaching` toggle,
    invoke `IConfigurable` actions like Plex "browse libraries") and persist configs — that is
    the step that lets the flat `AppSettings` fields and the old Plex tab finally retire.
+   **Persistence groundwork done (Phase 7b).** Added `AppSettings.PluginInstances`
+   (`List<PluginInstanceConfig>`) as the host-owned store (Option 1 — one file, riding the
+   existing save-on-exit). To avoid a stale-config footgun before the editable UI exists, the
+   flat fields remain the edit surface: the registry build **derives** `PluginInstances` from
+   them each time and writes it back, so the persisted section exists and round-trips but never
+   goes stale against a legacy Plex-tab edit. Phase 7c flips the read source to `PluginInstances`
+   once the tab can edit it directly. **Secrets note:** the Plex token migrates into the config
+   settings dict in `settings.json` — no less secure than today's plaintext `PlexToken`; a
+   DPAPI-backed credential store (via `IPluginHost.GetSecret/SetSecret`) is a separate follow-up.
 8. **Reference third source (validation).** Prototype Jellyfin or a local-folder
    source to confirm no core changes are needed.
 

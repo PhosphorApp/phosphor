@@ -403,6 +403,15 @@ public class AppSettings
     public List<PlexLibraryMapping> PlexLibraries { get; set; } = [];
     public bool PlexStereoAudio { get; set; }
     public bool PlexGaplessPlayback { get; set; }
+
+    /// <summary>
+    /// Host-owned persistence for plug-in source instances. In this phase the flat Plex/engine
+    /// fields remain the edit surface, so this list is <em>derived</em> from them on each registry
+    /// build and written back for round-trip visibility (the persisted section exists and reflects
+    /// current config). A later increment (editable Plug-ins tab) makes this the authoritative edit
+    /// surface and stops deriving. See PLUGIN_ARCHITECTURE_ANALYSIS.md.
+    /// </summary>
+    public List<Phosphor.Plugins.PluginInstanceConfig> PluginInstances { get; set; } = [];
     public bool RepeatEnabled { get; set; }
     public bool AutoDjEnabled { get; set; }
     public bool AutoPlayQueueOnStart { get; set; }
