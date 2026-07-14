@@ -764,6 +764,23 @@ Each phase is independently shippable and reversible.
    (a pre-authored `categories.json` concept); binding them to arbitrary sources is a possible later
    follow-up but wasn't needed. **AutoDJ source (undecided):** likely a global "AutoDJ uses <source>"
    option rather than a contract capability, since AutoDJ is discovery-shaped; revisit later.
+   **AutoDJ provider knob (done, stop-gap):** a "Default AutoDJ Provider" dropdown (General→SEARCH,
+   `AppSettings.AutoDjProviderId`, null = YouTube) now steers both AutoDJ paths via
+   `SearchVideosViaPluginOrLegacy(query, AutoDjProviderId)`; YouTube+legacy fallback if the source is
+   gone. A stop-gap until the richer AutoDJ model.
+
+   **Plex library-scoped search (done) + scoped-search capability (deferred #2).** Searching *inside*
+   a Plex library used `/hubs/search?sectionId=`, which is Plex's **global** smart-search — the
+   `sectionId` is only a soft hint, so results bled in from other libraries / actors / tags. Fixed in
+   `PlexService.SearchLibraryAsync` by switching to the per-section
+   `/library/sections/{key}/all?title=` (+ `type=8/9/10` for music artist/album/track), which
+   hard-filters to that one library; removed the now-dead `ParseMusicSearchResults`. **This stayed a
+   Plex-local fix.** The generic contract still only has source-wide `ITextSearchCapable.SearchAsync`;
+   "search *within* the browse node I'm viewing" remains host-side special-casing (the
+   `_isPlexBrowsing` branch in `DoSearch`). **Deferred follow-up (#2):** lift it into a capability —
+   e.g. `IScopedSearchable.SearchInCategoryAsync(SourceCategory node, query)` — so any browsable
+   source (local-folder → open folder, Jellyfin → open library) can offer scoped search and the host
+   drops the Plex-ism. Do it when a second source needs scoped search (don't add speculatively).
 8. **Reference third source (validation).** Prototype Jellyfin or a local-folder
    source to confirm no core changes are needed.
 

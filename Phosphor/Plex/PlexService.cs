@@ -150,7 +150,10 @@ public class PlexService
     }
 
     /// <summary>
-    /// Search within a specific library section. For music libraries supports searching by
+    /// Search within a specific library section. Uses the per-section
+    /// <c>/library/sections/{key}/all?title=</c> endpoint, which hard-filters to that one library
+    /// (unlike <c>/hubs/search</c>, which is a global smart-search that ignores the section scope and
+    /// bleeds in cross-library / actor / tag matches). For music libraries supports searching by
     /// artist (type 8), album (type 9), or track (type 10).
     /// </summary>
     public async Task<List<VideoItem>> SearchLibraryAsync(string sectionKey, string query, string? libraryType = null, PlexSearchMode? searchMode = null, CancellationToken ct = default)
@@ -160,26 +163,26 @@ public class PlexService
 
         if (libraryType == "artist")
         {
-            // Determine Plex type code based on search mode
-            var itemType = searchMode switch
+            // Determine Plex API type code + our parse type based on search mode.
+            var (apiType, itemType) = searchMode switch
             {
-                PlexSearchMode.Artist => PlexItemType.Artist,
-                PlexSearchMode.Album => PlexItemType.Album,
-                _ => PlexItemType.Track
+                PlexSearchMode.Artist => (8, PlexItemType.Artist),
+                PlexSearchMode.Album => (9, PlexItemType.Album),
+                _ => (10, PlexItemType.Track),
             };
 
-            // Use the global hub search scoped to this library section
-            var url = $"{_serverUrl}/hubs/search?query={encoded}&sectionId={sectionKey}&X-Plex-Token={_token}{StreamParam}";
+            // Section-scoped title search — only this library, only the requested item type.
+            var url = $"{_serverUrl}/library/sections/{sectionKey}/all?type={apiType}&title={encoded}&X-Plex-Token={_token}{StreamParam}";
             var doc = await FetchJsonAsync(url, ct);
 
-            items.AddRange(ParseMusicSearchResults(doc, itemType));
+            items.AddRange(ParsePlexItems(doc, itemType));
         }
         else
         {
-            // Video libraries — use the hub search scoped to this section
-            var url = $"{_serverUrl}/hubs/search?query={encoded}&sectionId={sectionKey}&X-Plex-Token={_token}{StreamParam}";
+            // Video libraries — section-scoped title search (hard-filtered to this section).
+            var url = $"{_serverUrl}/library/sections/{sectionKey}/all?title={encoded}&X-Plex-Token={_token}{StreamParam}";
             var doc = await FetchJsonAsync(url, ct);
-            items.AddRange(ParseSearchResults(doc));
+            items.AddRange(ParseVideos(doc));
         }
 
         return items;
@@ -616,55 +619,6 @@ public class PlexService
                 var item = MapToVideoItem(m);
                 if (item != null)
                     items.Add(item);
-            }
-        }
-        return items;
-    }
-
-    /// <summary>
-    /// Parse hub search results for music libraries, filtering to the requested item type
-    /// (artist, album, or track). Uses the fuzzy /search endpoint.
-    /// </summary>
-    private List<VideoItem> ParseMusicSearchResults(JsonDocument doc, PlexItemType targetType)
-    {
-        var items = new List<VideoItem>();
-        if (!doc.RootElement.TryGetProperty("MediaContainer", out var mc) ||
-            !mc.TryGetProperty("Hub", out var hubs))
-            return items;
-
-        // Map target type to Plex hub type strings
-        var targetHubTypes = targetType switch
-        {
-            PlexItemType.Artist => new[] { "artist" },
-            PlexItemType.Album => new[] { "album" },
-            PlexItemType.Track => new[] { "track" },
-            _ => new[] { "artist", "album", "track" }
-        };
-
-        foreach (var hub in hubs.EnumerateArray())
-        {
-            var type = hub.GetProperty("type").GetString() ?? "";
-            if (!targetHubTypes.Contains(type))
-                continue;
-
-            if (!hub.TryGetProperty("Metadata", out var metadata))
-                continue;
-
-            foreach (var m in metadata.EnumerateArray())
-            {
-                if (type == "track")
-                {
-                    var item = MapToVideoItem(m);
-                    if (item != null)
-                        items.Add(item);
-                }
-                else
-                {
-                    var itemType = type == "artist" ? PlexItemType.Artist : PlexItemType.Album;
-                    var item = MapToPlexItem(m, itemType);
-                    if (item != null)
-                        items.Add(item);
-                }
             }
         }
         return items;
