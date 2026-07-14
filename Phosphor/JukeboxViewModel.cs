@@ -165,6 +165,19 @@ public partial class JukeboxViewModel : ObservableObject
         _pluginBrowseTiles.Clear();
         _pluginBrowseTiles.AddRange(tiles);
         DebugLog.Log("SourceRegistry", $"Built {tiles.Count} plug-in browse tile(s).");
+
+        // Sync these root tiles into the persisted genre-category entries so they participate in the
+        // unified sort/visibility model (like Plex tiles). Prunes stale, preserves user customization.
+        var sourceTiles = tiles
+            .Select(t => new GenreCategoryStore.SourceTile(
+                t.SourceInstanceId!, t.SourceCategoryId ?? t.Name, t.Name, t.Icon,
+                registry.ByInstance(t.SourceInstanceId!)?.TypeId ?? ""))
+            .ToList();
+        GenreCategoryStore.SyncSourceTiles(_genreCategories, sourceTiles);
+        GenreCategoryStore.SaveInBackground(_genreCategories);
+
+        // Tiles were synced into the genre entries — rebuild so they appear (sorted/hideable).
+        await RunOnUiAsync(RebuildCategories);
     }
 
     /// <summary>
@@ -1697,6 +1710,28 @@ public partial class JukeboxViewModel : ObservableObject
 
                 sortable.Add((entry.SortOrder, group));
             }
+            else if (entry.IsGenericSource)
+            {
+                // Generic plug-in source root tile — recover the opaque SourceState from the live
+                // tile list (persisted entry holds only serializable identity + sort/visibility).
+                var live = _pluginBrowseTiles.FirstOrDefault(t =>
+                    t.SourceInstanceId == entry.SourceInstanceId
+                    && (t.SourceCategoryId ?? t.Name) == (entry.SourceCategoryId ?? ""));
+                if (live == null) continue; // source not currently available — skip its tile
+
+                sortable.Add((entry.SortOrder, new List<Category>
+                {
+                    new()
+                    {
+                        Name = entry.Name,
+                        Icon = entry.Icon,
+                        IsPluginBrowse = true,
+                        SourceInstanceId = entry.SourceInstanceId,
+                        SourceCategoryId = entry.SourceCategoryId,
+                        SourceState = live.SourceState,
+                    }
+                }));
+            }
             else
             {
                 sortable.Add((entry.SortOrder, new List<Category>
@@ -1708,9 +1743,6 @@ public partial class JukeboxViewModel : ObservableObject
 
         // Merge by SortOrder (stable sort preserves relative order for ties)
         var items = sortable.OrderBy(s => s.SortOrder).SelectMany(s => s.Items).ToList();
-
-        // Generic plug-in browse tiles (local-folder, future third-party sources).
-        items.AddRange(_pluginBrowseTiles);
 
         // "New Playlist" action tile at the end
         items.Add(new Category { Name = "New Playlist", Icon = "＋", IsNewPlaylist = true });

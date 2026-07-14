@@ -1583,6 +1583,9 @@
                                                                     <DataTrigger Binding="{Binding IsPlex}" Value="True">
                                                                         <Setter Property="Visibility" Value="Collapsed"/>
                                                                     </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsGenericSource}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
                                                                     <DataTrigger Binding="{Binding IsPlaylist}" Value="True">
                                                                         <Setter Property="Visibility" Value="Collapsed"/>
                                                                     </DataTrigger>
@@ -1694,6 +1697,11 @@
                                                                         <Setter Property="IsEnabled" Value="False"/>
                                                                         <Setter Property="Opacity" Value="0.4"/>
                                                                         <Setter Property="ToolTip" Value="Plex library"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsGenericSource}" Value="True">
+                                                                        <Setter Property="IsEnabled" Value="False"/>
+                                                                        <Setter Property="Opacity" Value="0.4"/>
+                                                                        <Setter Property="ToolTip" Value="Plug-in source"/>
                                                                     </DataTrigger>
                                                                     <DataTrigger Binding="{Binding IsPlaylist}" Value="True">
                                                                         <Setter Property="Visibility" Value="Collapsed"/>

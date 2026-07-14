@@ -29,6 +29,11 @@ public class CategoryVisibilityItem
     public string? PlexLibraryType { get; set; }
     public bool PlexHubsEnabled { get; set; }
     public bool PlexPlaylistsEnabled { get; set; }
+    // Generic plug-in source tile identity (round-tripped so sort/visibility persist for these too).
+    public string? SourceInstanceId { get; set; }
+    public string? SourceCategoryId { get; set; }
+    public string? SourceTypeId { get; set; }
+    public bool IsGenericSource { get; set; }
     /// <summary>
     /// The search term when the settings window was opened, used to detect changes.
     /// </summary>
@@ -876,6 +881,10 @@ public partial class SettingsWindow : JukeboxWindow
                 PlexLibraryType = entry.PlexLibraryType,
                 PlexHubsEnabled = entry.PlexHubsEnabled,
                 PlexPlaylistsEnabled = entry.PlexPlaylistsEnabled,
+                SourceInstanceId = entry.SourceInstanceId,
+                SourceCategoryId = entry.SourceCategoryId,
+                SourceTypeId = entry.SourceTypeId,
+                IsGenericSource = entry.IsGenericSource,
                 SortOrder = entry.SortOrder
             });
         }
@@ -3435,6 +3444,9 @@ public partial class SettingsWindow : JukeboxWindow
             PlexLibraryType = i.PlexLibraryType,
             PlexHubsEnabled = i.PlexHubsEnabled,
             PlexPlaylistsEnabled = i.PlexPlaylistsEnabled,
+            SourceInstanceId = i.SourceInstanceId,
+            SourceCategoryId = i.SourceCategoryId,
+            SourceTypeId = i.SourceTypeId,
             SortOrder = i.SortOrder
         }).ToList());
 

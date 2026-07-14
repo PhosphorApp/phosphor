@@ -23,6 +23,16 @@ public class GenreCategoryEntry
     public bool PlexHubsEnabled { get; set; }
     public bool PlexPlaylistsEnabled { get; set; }
     public bool IsPlex => PlexLibraryKey != null;
+
+    // Generic plug-in source tile fields (when set, this entry is a root tile for an IBrowsable
+    // plug-in source — local-folder, future Jellyfin, …). Only serializable identity is persisted;
+    // the opaque browse SourceState is recovered at runtime from the live registry by matching
+    // (SourceInstanceId, SourceCategoryId).
+    public string? SourceInstanceId { get; set; }
+    public string? SourceCategoryId { get; set; }
+    public string? SourceTypeId { get; set; }
+    public bool IsGenericSource => SourceInstanceId != null;
+
     public int SortOrder { get; set; }
 }
 
@@ -181,6 +191,49 @@ public static class GenreCategoryStore
                         IsVisible = true
                     });
                 }
+            }
+        }
+    }
+
+    /// <summary>One root tile for a generic IBrowsable plug-in source.</summary>
+    public sealed record SourceTile(string InstanceId, string CategoryId, string DisplayName, string Icon, string TypeId);
+
+    /// <summary>
+    /// Syncs generic plug-in source root tiles (local-folder, future Jellyfin, …) into the entry
+    /// list, mirroring <see cref="SyncAllPlexLibraries"/>: prune entries whose (instance, category)
+    /// is no longer present, preserve user customizations (icon/name/position/visibility) for
+    /// survivors, and add new tiles. Keyed by (SourceInstanceId, SourceCategoryId).
+    /// </summary>
+    public static void SyncSourceTiles(List<GenreCategoryEntry> entries, IReadOnlyList<SourceTile> tiles)
+    {
+        var validPairs = new HashSet<(string, string)>(
+            tiles.Select(t => (t.InstanceId, t.CategoryId)));
+
+        // Prune generic-source entries no longer backed by a live tile.
+        entries.RemoveAll(e => e.IsGenericSource
+            && !validPairs.Contains((e.SourceInstanceId!, e.SourceCategoryId ?? "")));
+
+        foreach (var t in tiles)
+        {
+            var existing = entries.FirstOrDefault(e =>
+                e.SourceInstanceId == t.InstanceId && (e.SourceCategoryId ?? "") == t.CategoryId);
+            if (existing != null)
+            {
+                // Preserve user icon/name/position/visibility; keep type id current.
+                existing.SourceTypeId = t.TypeId;
+            }
+            else
+            {
+                entries.Add(new GenreCategoryEntry
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    Name = t.DisplayName,
+                    Icon = t.Icon,
+                    SourceInstanceId = t.InstanceId,
+                    SourceCategoryId = t.CategoryId,
+                    SourceTypeId = t.TypeId,
+                    IsVisible = true,
+                });
             }
         }
     }
