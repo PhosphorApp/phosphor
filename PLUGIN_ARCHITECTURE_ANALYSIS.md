@@ -5,7 +5,17 @@ Exploratory analysis (branch `plugin-rework`) for reworking Phosphor's music/vid
 additional sources can be added, enabled, and disabled independently — potentially
 by third parties dropping a DLL into a `plug-ins` folder scanned at startup.
 
-**Analysis phase only — no production code changes yet.**
+> **STATUS (implemented).** This document began as analysis and grew into a running
+> changelog as the work landed. The plug-in architecture is now **fully implemented** on
+> `plugin-rework`: the capability-based contract (`Phosphor.Plugin.Abstractions`, v0.11.0),
+> both in-box sources (YouTube, Plex) running through the registry as the sole source path
+> (the old `UsePluginSources` flag is **removed**), an editable **Plug-ins** settings tab, the
+> dynamic `AssemblyLoadContext` DLL loader, and a working third-party reference plug-in
+> (`Phosphor.Plugins.LocalFolder`). **Mid-phase notes below that say "todo", "deferred",
+> "when the flag is on/off", or "still single-server" are historical** — later entries and
+> this banner supersede them. For authoring a plug-in, see **`PLUGIN_AUTHORING_GUIDE.md`**.
+> Remaining items are conscious deferrals only: DPAPI secret encryption, the untrusted-code
+> policy for third-party DLLs, and an optional second reference source (Jellyfin/Subsonic).
 
 ---
 
@@ -644,17 +654,16 @@ Each phase is independently shippable and reversible.
      `SetYouTubeTimeout`/`YouTubeTimeoutSeconds` were renamed to `Network…` (clean rename — the
      tester-only user base needs no settings migration).
 
-   **`IRefreshable` — rescan/catalog capability (0.10.0, done; implementor pending).** Added ahead of
-   its first real consumer (the planned local-folder source, which walks configured directories and
-   builds a searchable catalog). Deliberately **separate from `IUpdatable`**: update = change the
-   source's software/engine (yt-dlp); refresh = re-read the source's *content* and rebuild its index
-   (a folder rescan, Plex "Update Libraries"). `bool CanRefresh` +
-   `Task<RefreshResult> RefreshAsync(IProgress<RefreshProgress>?, ct)` with `RefreshProgress(double
-   Fraction, string? CurrentItem)` and `RefreshResult(bool Success, int ItemCount, string Message)` —
-   progress + cancellation because a big NAS walk is slow. The Plug-ins tab already renders a gated
-   "Rescan library" button with a progress bar (parallel to Test/Update); it stays hidden until a
-   source implements the capability. Plex *could* adopt it (real "Update Libraries") but isn't
-   required to. First implementation lands with the local-folder plug-in.
+   **`IRefreshable` — rescan/catalog capability (0.10.0, done).** Deliberately **separate from
+   `IUpdatable`**: update = change the source's software/engine (yt-dlp); refresh = re-read the
+   source's *content* and rebuild its index (a folder rescan, Plex "Update Libraries"). `bool
+   CanRefresh` + `Task<RefreshResult> RefreshAsync(IProgress<RefreshProgress>?, ct)` with
+   `RefreshProgress(double Fraction, string? CurrentItem)` and `RefreshResult(bool Success, int
+   ItemCount, string Message)` — progress + cancellation because a big NAS walk is slow. The Plug-ins
+   tab renders a gated "Rescan library" button with a progress bar (parallel to Test/Update); it
+   stays hidden until a source implements the capability. **Implemented** by the local-folder
+   plug-in (walks its folders and builds an in-memory catalog). Plex *could* adopt it (real "Update
+   Libraries") but isn't required to.
 
    **Design decision — built-ins stay compiled-in (Model A).** YouTube and Plex remain statically
    referenced, not extracted to DLLs: they *are* the product (must work with an empty `plugins/`
