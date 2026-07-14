@@ -605,6 +605,17 @@ Each phase is independently shippable and reversible.
    (`_plexServiceByInstance`, built in `ConfigurePlexFromSettings`) exposed via `ActivePlex` so the
    remaining runtime `_plex`-direct calls (in-library search, hub/playlist lists, `GetAllTracks`,
    `GetChapters`) hit the right server. Flag-off stays byte-identical (resolvers fall back to `_plex`).
+
+   **Flag cutover (done).** `AppSettings.UsePluginSources` (and the VM's `_usePluginSources`
+   field/property, plus the About→Dev/Test checkbox) are removed — the source registry is now the
+   permanent, mandatory path. Every decision point dropped the `_usePluginSources &&` guard, keeping
+   only the registry/capability availability check, and `ConfigurePlexFromSettings` lost its legacy
+   flat-field branch. **Deliberately kept:** the `...ViaPluginOrLegacy` helpers retain their legacy
+   engine/`_plex` fallback branches — not as a flag toggle but as a **resilience net**:
+   `BuildSourceRegistryAsync` sets `_sourceRegistry = null` if the registry fails to build, and the
+   disk caches still consume `_videoEngine` as their raw-stream downloader, so the legacy engines
+   cannot be deleted without making a registry-build failure fatal. Doc comments were refreshed from
+   "identical with the flag off" to "falls back … when the registry is unavailable."
 8. **Reference third source (validation).** Prototype Jellyfin or a local-folder
    source to confirm no core changes are needed.
 

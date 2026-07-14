@@ -26,15 +26,15 @@ public partial class JukeboxViewModel : ObservableObject
 
     /// <summary>
     /// Read-only summaries of the configured plug-in sources (for the Plug-ins settings tab).
-    /// Empty when the registry hasn't been built. Does not require the flag to be enabled.
+    /// Empty when the registry hasn't been built.
     /// </summary>
     public IReadOnlyList<Phosphor.Plugins.SourceSummary> DescribePluginSources() =>
         _sourceRegistry?.DescribeSources() ?? [];
 
     /// <summary>
     /// Updates the active YouTube engine tool (yt-dlp) and returns a user-facing status line.
-    /// Routes through the plug-in source's <c>IUpdatable</c> when the plug-in path is on and the
-    /// source supports updating; otherwise uses the legacy <see cref="Video.YtDlpUpdater"/>.
+    /// Routes through the plug-in source's <c>IUpdatable</c> when the source supports updating;
+    /// otherwise falls back to the legacy <see cref="Video.YtDlpUpdater"/>.
     /// </summary>
     public async Task<string> UpdatePluginEngineOrLegacyAsync(CancellationToken ct = default)
     {
@@ -792,11 +792,11 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Whether an item's source can produce downloadable raw streams for the disk caches. When the
-    /// plug-in path is on, this is driven by capability (the owning source implements
-    /// <c>IDownloadable</c> — YouTube does, Plex does not); otherwise it falls back to the legacy
-    /// rule (<c>!IsPlex</c>). The per-instance <c>AllowCaching</c> policy overrides the capability
-    /// default when set (<c>true</c> forces on, <c>false</c> forces off).
+    /// Whether an item's source can produce downloadable raw streams for the disk caches. Driven by
+    /// capability (the owning source implements <c>IDownloadable</c> — YouTube does, Plex does not),
+    /// falling back to the legacy rule (<c>!IsPlex</c>) when the registry is unavailable. The
+    /// per-instance <c>AllowCaching</c> policy overrides the capability default when set
+    /// (<c>true</c> forces on, <c>false</c> forces off).
     /// </summary>
     private bool IsItemCacheable(VideoItem item)
     {
@@ -834,10 +834,9 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Free-text video search. When the experimental plug-in path is enabled and a YouTube
-    /// source is available, routes through <c>ITextSearchCapable</c> (mapping results back to
-    /// <see cref="VideoItem"/>); otherwise uses the legacy in-VM search engine. Phase 4 proof
-    /// point — behavior is identical with the flag off.
+    /// Free-text video search. Routes through the YouTube source's <c>ITextSearchCapable</c>
+    /// capability (mapping results back to <see cref="VideoItem"/>); falls back to the legacy in-VM
+    /// search engine when the registry is unavailable.
     /// </summary>
     private IAsyncEnumerable<VideoItem> SearchVideosViaPluginOrLegacy(string query)
     {
@@ -878,34 +877,34 @@ public partial class JukeboxViewModel : ObservableObject
             yield return ToVideoItem(item);
     }
 
-    /// <summary>The YouTube discovery capability if the plug-in path is enabled and available, else null.</summary>
+    /// <summary>The YouTube discovery capability if the registry is available, else null.</summary>
     private Phosphor.Plugin.Abstractions.IPlaylistChannelDiscovery? PluginDiscovery =>
         _sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IPlaylistChannelDiscovery d
             ? d : null;
 
-    /// <summary>Resolves a playlist id via the plug-in discovery capability when enabled, else the legacy engine.</summary>
+    /// <summary>Resolves a playlist id via the plug-in discovery capability, else the legacy engine.</summary>
     private Task<string?> ResolvePlaylistIdViaPluginOrLegacy(string nameIdOrUrl, Action<string>? onFoundByName)
         => PluginDiscovery is { } d
             ? d.ResolvePlaylistIdAsync(nameIdOrUrl, onFoundByName)
             : _searchEngine.ResolvePlaylistIdAsync(nameIdOrUrl, onFoundByName);
 
-    /// <summary>Yields a playlist's videos via the plug-in discovery capability when enabled, else the legacy engine.</summary>
+    /// <summary>Yields a playlist's videos via the plug-in discovery capability, else the legacy engine.</summary>
     private IAsyncEnumerable<VideoItem> GetPlaylistVideosViaPluginOrLegacy(string playlistId)
         => PluginDiscovery is { } d
             ? MapPluginItems(d.GetPlaylistItemsAsync(playlistId))
             : _searchEngine.GetPlaylistVideosAsync(playlistId);
 
-    /// <summary>Yields a channel's uploads via the plug-in discovery capability when enabled, else the legacy engine.</summary>
+    /// <summary>Yields a channel's uploads via the plug-in discovery capability, else the legacy engine.</summary>
     private IAsyncEnumerable<VideoItem> GetChannelUploadsViaPluginOrLegacy(string handleOrUser)
         => PluginDiscovery is { } d
             ? MapPluginItems(d.GetChannelUploadsAsync(handleOrUser))
             : _searchEngine.GetChannelUploadsAsync(handleOrUser);
 
     /// <summary>
-    /// Fetches YouTube video metadata. When the plug-in path is enabled and the YouTube source
-    /// resolves metadata, routes through <c>IPlayableResolver.GetMetadataAsync</c> (mapping the
-    /// result back to the host <see cref="Video.VideoMetadata"/>); otherwise uses the legacy
-    /// in-VM video engine. Behavior is identical with the flag off.
+    /// Fetches YouTube video metadata. Routes through the YouTube source's
+    /// <c>IPlayableResolver.GetMetadataAsync</c> (mapping the result back to the host
+    /// <see cref="Video.VideoMetadata"/>); falls back to the legacy in-VM video engine when the
+    /// registry is unavailable.
     /// </summary>
     private async Task<Video.VideoMetadata?> GetYouTubeMetadataViaPluginOrLegacy(string videoId)
     {
@@ -937,10 +936,10 @@ public partial class JukeboxViewModel : ObservableObject
             m.PublishedAt);
 
     /// <summary>
-    /// Resolves live YouTube stream URLs for playback. When the plug-in path is enabled and the
-    /// YouTube source resolves streams, routes through <c>IPlayableResolver.ResolveAsync</c>
-    /// (mapping the result back to the host <see cref="Video.VideoStreams"/>); otherwise uses the
-    /// legacy in-VM video engine. Behavior is identical with the flag off.
+    /// Resolves live YouTube stream URLs for playback. Routes through the YouTube source's
+    /// <c>IPlayableResolver.ResolveAsync</c> (mapping the result back to the host
+    /// <see cref="Video.VideoStreams"/>); falls back to the legacy in-VM video engine when the
+    /// registry is unavailable.
     /// </summary>
     /// <remarks>
     /// Returns plain data and touches no UI/dispatcher, so it is safe to await from the
@@ -1044,10 +1043,10 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Drills into a Plex container (artist→albums or album→tracks). When the plug-in path is
-    /// enabled and the Plex source supports browsing, routes through <c>IBrowsable.BrowseAsync</c>
-    /// (converting the result back to <see cref="VideoItem"/>s); otherwise uses the legacy
-    /// <c>_plex.GetChildrenAsync</c>. Behavior is identical with the flag off.
+    /// Drills into a Plex container (artist→albums or album→tracks). Routes through the active
+    /// instance's <c>IBrowsable.BrowseAsync</c> (converting the result back to
+    /// <see cref="VideoItem"/>s); falls back to the legacy <c>_plex.GetChildrenAsync</c> when the
+    /// registry is unavailable.
     /// </summary>
     private async Task<List<VideoItem>> PlexBrowseChildrenViaPluginOrLegacy(
         string ratingKey, PlexItemType childType, CancellationToken ct)
@@ -1081,12 +1080,12 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Shared core for the paginated Plex browse helpers. When the plug-in path is enabled and
-    /// the Plex source supports paged browsing, wraps <paramref name="node"/> in a
-    /// <see cref="Phosphor.Plugin.Abstractions.SourceCategory"/> and routes through
-    /// <c>IPagedBrowsable.BrowsePageAsync</c> (unwrapping items back to <see cref="VideoItem"/>);
-    /// otherwise invokes <paramref name="legacy"/>. Returns the page's items and total size so
-    /// callers' "load more" logic is unchanged. Behavior is identical with the flag off.
+    /// Shared core for the paginated Plex browse helpers. Wraps <paramref name="node"/> in a
+    /// <see cref="Phosphor.Plugin.Abstractions.SourceCategory"/> and routes through the active
+    /// instance's <c>IPagedBrowsable.BrowsePageAsync</c> (unwrapping items back to
+    /// <see cref="VideoItem"/>); falls back to <paramref name="legacy"/> when the registry is
+    /// unavailable. Returns the page's items and total size so callers' "load more" logic is
+    /// unchanged.
     /// </summary>
     private async Task<(List<VideoItem> Items, int TotalSize)> PlexBrowsePageViaPluginOrLegacy(
         Phosphor.Plugins.Plex.PlexNode node, int offset, int count,
@@ -1149,10 +1148,10 @@ public partial class JukeboxViewModel : ObservableObject
 
     /// <summary>
     /// Returns a stable, pre-loadable gapless stream URL for <paramref name="item"/>, or null if it
-    /// isn't gapless-eligible. When the plug-in path is on, this is driven by the source's
-    /// <c>IGaplessCapable</c> capability (Plex audio tracks qualify; YouTube doesn't); otherwise it
-    /// falls back to the legacy rule (Plex audio-only item with a StreamUrl). Pure/synchronous —
-    /// no UI or dispatcher — so it's safe to call from BackglassWindow's own thread.
+    /// isn't gapless-eligible. Driven by the source's <c>IGaplessCapable</c> capability (Plex audio
+    /// tracks qualify; YouTube doesn't), falling back to the legacy rule (Plex audio-only item with
+    /// a StreamUrl) when the registry is unavailable. Pure/synchronous — no UI or dispatcher — so
+    /// it's safe to call from BackglassWindow's own thread.
     /// </summary>
     public string? TryGetGaplessStreamUrl(VideoItem item)
     {
