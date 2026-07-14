@@ -4063,9 +4063,15 @@ public partial class SettingsWindow : JukeboxWindow
                 });
             }
 
-            foreach (var field in s.Schema)
+            foreach (var field in s.Settings)
             {
-                var value = field.Secret ? "••••••" : (field.DefaultValue ?? "");
+                var value = field.DisplayValue;
+                // The Plex "libraries" value is a JSON blob — show a friendly count instead.
+                if (field.Key == "libraries" && !string.IsNullOrWhiteSpace(value))
+                {
+                    var count = System.Text.RegularExpressions.Regex.Matches(value, "\"Key\"").Count;
+                    value = count > 0 ? $"{count} mapped" : "none";
+                }
                 panel.Children.Add(new System.Windows.Controls.TextBlock
                 {
                     Text = $"  {field.Label}: {value}",

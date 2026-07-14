@@ -20,6 +20,9 @@ namespace Phosphor.Plugins;
 public sealed class SourceRegistry
 {
     private readonly List<IPhosphorSource> _sources = [];
+    // Tracks the config each source was built from, so the settings UI can report the actual
+    // configured values (not just schema defaults).
+    private readonly Dictionary<string, PluginInstanceConfig> _configs = new(StringComparer.Ordinal);
     private readonly HttpClient _http;
 
     public SourceRegistry(HttpClient http)
@@ -56,6 +59,8 @@ public sealed class SourceRegistry
         foreach (var s in _sources)
         {
             var schema = CreateProvider(s.TypeId)?.GetSettingsSchema() ?? [];
+            _configs.TryGetValue(s.InstanceId, out var cfg);
+
             var caps = new List<string>();
             if (s is ITextSearchCapable) caps.Add("Search");
             if (s is IPlaylistChannelDiscovery) caps.Add("Playlists/Channels");
@@ -65,8 +70,22 @@ public sealed class SourceRegistry
             if (s is IDownloadable) caps.Add("Download/Cache");
             if (s is IConfigurable) caps.Add("Setup actions");
 
+            // Report each schema field's ACTUAL configured value (from the instance's settings),
+            // falling back to the schema default only when the key isn't set. Secrets are masked.
+            var fields = new List<SourceSettingValue>();
+            foreach (var d in schema)
+            {
+                string? raw = cfg?.Settings != null && cfg.Settings.TryGetValue(d.Key, out var v)
+                    ? v
+                    : d.DefaultValue;
+                var display = d.Secret
+                    ? (string.IsNullOrEmpty(raw) ? "" : "••••••")
+                    : (raw ?? "");
+                fields.Add(new SourceSettingValue(d.Key, d.Label, display, d.Secret));
+            }
+
             list.Add(new SourceSummary(
-                s.TypeId, s.InstanceId, s.DisplayName, s.IsConfigured, s.IsEnabled, caps, schema));
+                s.TypeId, s.InstanceId, s.DisplayName, s.IsConfigured, s.IsEnabled, caps, fields));
         }
         return list;
     }
@@ -79,6 +98,7 @@ public sealed class SourceRegistry
     public async Task BuildAsync(IEnumerable<PluginInstanceConfig> configs, CancellationToken ct = default)
     {
         _sources.Clear();
+        _configs.Clear();
 
         foreach (var cfg in configs)
         {
@@ -94,6 +114,7 @@ public sealed class SourceRegistry
             var source = provider.CreateInstance(cfg.InstanceId, cfg.Settings);
             if (!string.IsNullOrEmpty(cfg.DisplayName))
                 source.DisplayName = cfg.DisplayName!;
+            _configs[cfg.InstanceId] = cfg;
             await AddAsync(source, ct);
         }
     }
@@ -125,4 +146,7 @@ public sealed record SourceSummary(
     bool IsConfigured,
     bool IsEnabled,
     IReadOnlyList<string> Capabilities,
-    IReadOnlyList<PluginSettingDescriptor> Schema);
+    IReadOnlyList<SourceSettingValue> Settings);
+
+/// <summary>One setting field with its actual configured display value (secrets already masked).</summary>
+public sealed record SourceSettingValue(string Key, string Label, string DisplayValue, bool Secret);
