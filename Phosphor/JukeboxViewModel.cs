@@ -1070,7 +1070,40 @@ public partial class JukeboxViewModel : ObservableObject
     public bool GaplessPlayback { get; set; }
 
     /// <summary>
-    /// Returns the next track in the queue if it is an audio-only Plex track with a StreamUrl,
+    /// Returns a stable, pre-loadable gapless stream URL for <paramref name="item"/>, or null if it
+    /// isn't gapless-eligible. When the plug-in path is on, this is driven by the source's
+    /// <c>IGaplessCapable</c> capability (Plex audio tracks qualify; YouTube doesn't); otherwise it
+    /// falls back to the legacy rule (Plex audio-only item with a StreamUrl). Pure/synchronous —
+    /// no UI or dispatcher — so it's safe to call from BackglassWindow's own thread.
+    /// </summary>
+    public string? TryGetGaplessStreamUrl(VideoItem item)
+    {
+        if (_usePluginSources && _sourceRegistry != null)
+        {
+            // Route the item to its source and ask the gapless capability. Plex reads the carried
+            // VideoItem from SourceState, so wrap it accordingly.
+            var source = item.IsPlex ? _sourceRegistry.PlexInstances.FirstOrDefault() : _sourceRegistry.YouTube;
+            if (source is Phosphor.Plugin.Abstractions.IGaplessCapable g)
+            {
+                var probe = new Phosphor.Plugin.Abstractions.SourceItem
+                {
+                    SourceInstanceId = source.InstanceId,
+                    ItemId = item.VideoId,
+                    SourceState = item,
+                };
+                return g.GetGaplessStreamUrl(probe);
+            }
+            return null;
+        }
+
+        // Legacy rule.
+        return item.IsPlex && item.IsAudioOnly && !string.IsNullOrEmpty(item.StreamUrl)
+            ? item.StreamUrl
+            : null;
+    }
+
+    /// <summary>
+    /// Returns the next track in the queue if it is gapless-eligible (a pre-loadable audio stream),
     /// suitable for gapless pre-loading. Returns null otherwise.
     /// </summary>
     public VideoItem? GetNextGaplessTrack()
@@ -1083,10 +1116,7 @@ public partial class JukeboxViewModel : ObservableObject
         if (nextIdx < 0 || nextIdx >= Queue.Count) return null;
 
         var next = Queue[nextIdx];
-        if (next.IsPlex && next.IsAudioOnly && !string.IsNullOrEmpty(next.StreamUrl))
-            return next;
-
-        return null;
+        return TryGetGaplessStreamUrl(next) != null ? next : null;
     }
 
     // ── Cache mode ──

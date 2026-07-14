@@ -85,6 +85,23 @@ public interface IPlayableResolver
 }
 
 /// <summary>
+/// Capability: the source can supply a stable, pre-loadable audio stream for an item ahead of
+/// playback, enabling gapless transitions (the host primes the next track's stream before the
+/// current one ends). Implemented by sources whose audio items carry a long-lived, direct stream
+/// URL (e.g. Plex music tracks); sources that resolve short-lived URLs per play (e.g. YouTube)
+/// do not implement it. Synchronous because a capable source already holds the URL — a future
+/// source needing IO to obtain it could add an async overload.
+/// </summary>
+public interface IGaplessCapable
+{
+    /// <summary>
+    /// Returns a stable, pre-loadable stream URL for <paramref name="item"/> suitable for gapless
+    /// priming, or <c>null</c> if the item isn't eligible (e.g. not audio-only, or no direct URL).
+    /// </summary>
+    string? GetGaplessStreamUrl(SourceItem item);
+}
+
+/// <summary>
 /// Capability: the source (or its underlying engine/tool) can report its version and update itself
 /// at runtime. Implemented by sources backed by an updatable external tool (e.g. yt-dlp); in-process
 /// libraries that ship compiled-in report <see cref="SupportsUpdate"/> = <c>false</c>. Lets the host

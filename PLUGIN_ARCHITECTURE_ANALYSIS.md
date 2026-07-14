@@ -575,6 +575,13 @@ Stop after any phase and still have a working app. Phases 1–4 deliver most of 
   decided this direction — model gapless as an `IPreloadableStream`/`IGaplessCapable`
   capability (replacing the `GetNextGaplessTrack` `IsPlex` gate). Deferred as its own
   increment because it touches the thread-sensitive audio-playback path (`GaplessAudioPlayer`).
+  **Done:** added `IGaplessCapable` (`string? GetGaplessStreamUrl(SourceItem)`) to the
+  contract (0.6.0), implemented by `PlexSource` (returns an audio-only item's stable
+  `StreamUrl`). Both gapless `IsPlex` gates — the VM's `GetNextGaplessTrack` (next-track
+  priming) and BackglassWindow's current-track selection — now go through a pure/synchronous
+  VM helper `TryGetGaplessStreamUrl(VideoItem)` (capability-driven when the flag is on, legacy
+  Plex+audio+StreamUrl rule when off). Sync + no UI/dispatcher, so BackglassWindow's own-thread
+  audio flow is unchanged. Another Plex-ism removed.
 - **Runtime self-update is a capability (done).** `IUpdatable` (`SupportsUpdate`,
   `GetVersionAsync`, `UpdateAsync` → `UpdateResult`) added to the contract (0.5.0),
   implemented by `YouTubeSource` (delegating to `YtDlpUpdater`, `SupportsUpdate` true only

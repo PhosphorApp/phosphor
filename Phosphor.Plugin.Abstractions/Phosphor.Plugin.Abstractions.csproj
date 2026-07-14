@@ -15,9 +15,9 @@
 	<RootNamespace>Phosphor.Plugin.Abstractions</RootNamespace>
 	<Product>Phosphor</Product>
 	<Company>Phosphor</Company>
-	<Version>0.5.0</Version>
-	<AssemblyVersion>0.5.0.0</AssemblyVersion>
-	<FileVersion>0.5.0.0</FileVersion>
+	<Version>0.6.0</Version>
+	<AssemblyVersion>0.6.0.0</AssemblyVersion>
+	<FileVersion>0.6.0.0</FileVersion>
 	<GenerateDocumentationFile>true</GenerateDocumentationFile>
 	<!-- Self-explanatory enum members / record properties don't each need an XML doc. -->
 	<NoWarn>$(NoWarn);CS1591</NoWarn>
@@ -45,7 +45,7 @@
 	<IncludeSymbols>true</IncludeSymbols>
 	<SymbolPackageFormat>snupkg</SymbolPackageFormat>
 	<!-- Package version tracks the contract version (PluginApi.Current). -->
-	<PackageVersion>0.5.0</PackageVersion>
+	<PackageVersion>0.6.0</PackageVersion>
   </PropertyGroup>
 
   <ItemGroup>

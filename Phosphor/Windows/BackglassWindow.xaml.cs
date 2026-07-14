@@ -664,10 +664,10 @@ public partial class BackglassWindow : JukeboxWindow
             // Check if this item is audio-only (e.g. Plex music track)
             bool isAudioOnly = _audioOnly || (vm?.CurrentlyPlaying?.IsAudioOnly == true);
 
-            // ── PCM gapless path for Plex audio-only tracks ──
+            // ── PCM gapless path (sources that can supply a stable pre-loadable audio stream) ──
             if (isAudioOnly && vm?.GaplessPlayback == true
-                && vm.CurrentlyPlaying?.IsPlex == true
-                && vm.CurrentlyPlaying.StreamUrl is { } gaplessUrl)
+                && vm.CurrentlyPlaying is { } gaplessItem
+                && vm.TryGetGaplessStreamUrl(gaplessItem) is { } gaplessUrl)
             {
                 _mediaPlayer.Vout -= OnVout;
                 if (_videoView != null)

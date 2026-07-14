@@ -16,7 +16,7 @@ namespace Phosphor.Plugins.Plex;
 /// In-box, so it uses <see cref="PlexService"/>, <see cref="VideoItem"/>, and the Plex enums
 /// directly. Pure data producer: no UI, no thread assumptions.
 /// </remarks>
-public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable, IPagedBrowsable, IPlayableResolver, IConfigurable
+public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable, IPagedBrowsable, IPlayableResolver, IConfigurable, IGaplessCapable
 {
     private readonly PlexService _plex = new();
     private IPluginHost? _host;
@@ -231,6 +231,20 @@ public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable
         }
 
         return PlexMappings.ToSourceMetadata(v);
+    }
+
+    // ── IGaplessCapable ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Plex audio tracks carry a stable, direct audio <c>StreamUrl</c> built at browse time, which
+    /// can be pre-loaded on the idle decoder for gapless transitions. Returns it for audio-only
+    /// items; null otherwise.
+    /// </summary>
+    public string? GetGaplessStreamUrl(SourceItem item)
+    {
+        var v = PlexMappings.VideoItemOf(item);
+        if (v == null || !v.IsAudioOnly || string.IsNullOrEmpty(v.StreamUrl)) return null;
+        return v.StreamUrl;
     }
 
     // ── IConfigurable ──────────────────────────────────────────────────────────
