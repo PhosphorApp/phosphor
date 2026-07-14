@@ -2534,6 +2534,27 @@
                 </ScrollViewer>
             </TabItem>
 
+            <!-- ═══ TAB: Plug-ins ═══ -->
+            <TabItem Header="PLUG-INS">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,5,0">
+                    <Border Background="{StaticResource SurfaceBrush}" CornerRadius="6"
+                            Padding="12" Margin="0,8,0,0">
+                        <StackPanel>
+                            <TextBlock Text="SOURCE PLUG-INS" FontSize="12" FontWeight="Bold"
+                                       Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
+                            <TextBlock Text="Music/video sources are provided by plug-ins. Enable the plug-in source path under About → Dev/Test to route search and browse through them. This tab lists the currently configured sources and their settings."
+                                       FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
+                                       TextWrapping="Wrap"/>
+                            <StackPanel x:Name="PanelPluginSources"/>
+                            <TextBlock x:Name="PluginSourcesEmptyText"
+                                       Text="No plug-in sources configured yet."
+                                       FontSize="11" Foreground="{StaticResource TextDimBrush}"
+                                       Visibility="Collapsed" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </ScrollViewer>
+            </TabItem>
+
             <!-- ═══ TAB: Cache ═══ -->
             <TabItem Header="CACHE">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,5,0">

@@ -510,11 +510,13 @@ Each phase is independently shippable and reversible.
    per-instance store, and letting users edit it, lands with the generic Plug-ins UI
    (Phase 7) — until the UI edits configs directly, the flat fields stay the editing
    surface and the factory derives configs each build.
-   **Cacheability follow-up (decided):** model "can it be cached" as a *capability*
-   (source implements `IDownloadable`) rather than the hardcoded `!item.IsPlex` gates in
-   the VM, with the per-instance `AllowCaching` config as the *policy* layer on top
-   (default = capability default). The `AllowCaching` field exists on the config now but is
-   not yet consumed; replacing the cache gates with a capability check is a small follow-up.
+   **Cacheability follow-up (Phase 5b — done):** "can it be cached" is now a *capability*
+   check — the VM's `IsItemCacheable(item)` returns whether the item's owning source
+   implements `IDownloadable` when the plug-in path is on (YouTube yes, Plex no), falling
+   back to the legacy `!item.IsPlex` when off. All five caching gates (preemptive-cache skip,
+   prefetch skip, cache-on-play, and the two add-to-playlist caches) now use it, replacing the
+   hardcoded Plex-isms. The per-instance `AllowCaching` config remains the *policy* layer on
+   top (default = capability default); wiring it through config→source is a later small step.
 6. **Dynamic loader (opt-in).** Add the `plug-ins` folder scan using a collectible
    `AssemblyLoadContext`, `ApiVersion` checks, failure isolation, and a manifest.
    Gate behind a setting initially.
@@ -522,7 +524,14 @@ Each phase is independently shippable and reversible.
    **Plug-ins** tab that renders each instance's declarative schema
    (`GetSettingsSchema()`) plus any interactive config actions (`IConfigurable`, e.g.
    Plex "browse libraries"), with add/remove for multi-instance sources. See
-   **Settings & configuration** above.
+   **Settings & configuration** above. — 🟡 **Read-only tab done (Phase 7a).** Added a new
+   **PLUG-INS** settings tab (kept separate from the legacy Plex tab, which is removed later)
+   that lists each configured source via `SourceRegistry.DescribeSources()` → `SourceSummary`
+   (display name, type id, configured/enabled, capability list, and declarative schema with
+   secrets masked), surfaced through `JukeboxViewModel.DescribePluginSources()`. **Still todo:**
+   make it *editable* (bind fields, add/remove instances, enable/disable, `AllowCaching` toggle,
+   invoke `IConfigurable` actions like Plex "browse libraries") and persist configs — that is
+   the step that lets the flat `AppSettings` fields and the old Plex tab finally retire.
 8. **Reference third source (validation).** Prototype Jellyfin or a local-folder
    source to confirm no core changes are needed.
 

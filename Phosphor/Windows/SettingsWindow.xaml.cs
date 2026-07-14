@@ -1162,6 +1162,10 @@ public partial class SettingsWindow : JukeboxWindow
         if (!string.IsNullOrWhiteSpace(settings.PlexServerUrl) && !string.IsNullOrWhiteSpace(settings.PlexToken))
             Loaded += async (_, _) => await TryLoadPlexLibrariesAsync();
 
+        // Populate the Plug-ins tab from the live source registry once the window is loaded
+        // (Owner/DataContext is available by then).
+        Loaded += (_, _) => PopulatePluginSourcesTab();
+
         HistoryCountText.Text = $"{settings.KeyBindings.ToEntries().Count} bindings configured";
 
         // Restore saved window position if it's visible on a current monitor
@@ -3997,6 +4001,83 @@ public partial class SettingsWindow : JukeboxWindow
     {
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
         e.Handled = true;
+    }
+
+    /// <summary>
+    /// Populates the read-only Plug-ins tab from the live source registry (via the owner VM).
+    /// Informational for now: each configured source shows its display name, type, configured
+    /// state, capabilities, and declarative settings (secret values masked).
+    /// </summary>
+    private void PopulatePluginSourcesTab()
+    {
+        if (PanelPluginSources == null) return;
+        PanelPluginSources.Children.Clear();
+
+        var vm = Owner?.DataContext as JukeboxViewModel;
+        var sources = vm?.DescribePluginSources() ?? [];
+
+        if (sources.Count == 0)
+        {
+            if (PluginSourcesEmptyText != null)
+                PluginSourcesEmptyText.Visibility = Visibility.Visible;
+            return;
+        }
+        if (PluginSourcesEmptyText != null)
+            PluginSourcesEmptyText.Visibility = Visibility.Collapsed;
+
+        var accent = (System.Windows.Media.Brush)FindResource("AccentBrush");
+        var text = (System.Windows.Media.Brush)FindResource("TextBrush");
+        var dim = (System.Windows.Media.Brush)FindResource("TextDimBrush");
+
+        foreach (var s in sources)
+        {
+            var card = new System.Windows.Controls.Border
+            {
+                BorderBrush = accent,
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Padding = new Thickness(0, 6, 0, 10),
+                Margin = new Thickness(0, 0, 0, 8),
+            };
+            var panel = new System.Windows.Controls.StackPanel();
+
+            var status = s.IsConfigured ? "configured" : "not configured";
+            if (!s.IsEnabled) status += " · disabled";
+            panel.Children.Add(new System.Windows.Controls.TextBlock
+            {
+                Text = $"{s.DisplayName}  ({s.TypeId}) — {status}",
+                Foreground = accent,
+                FontWeight = FontWeights.Bold,
+                FontSize = 12,
+                Margin = new Thickness(0, 0, 0, 4),
+            });
+
+            if (s.Capabilities.Count > 0)
+            {
+                panel.Children.Add(new System.Windows.Controls.TextBlock
+                {
+                    Text = "Capabilities: " + string.Join(", ", s.Capabilities),
+                    Foreground = dim,
+                    FontSize = 10,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 0, 0, 4),
+                });
+            }
+
+            foreach (var field in s.Schema)
+            {
+                var value = field.Secret ? "••••••" : (field.DefaultValue ?? "");
+                panel.Children.Add(new System.Windows.Controls.TextBlock
+                {
+                    Text = $"  {field.Label}: {value}",
+                    Foreground = text,
+                    FontSize = 11,
+                    TextWrapping = TextWrapping.Wrap,
+                });
+            }
+
+            card.Child = panel;
+            PanelPluginSources.Children.Add(card);
+        }
     }
 
     private async Task TryLoadPlexLibrariesAsync()

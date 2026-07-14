@@ -47,6 +47,31 @@ public sealed class SourceRegistry
         _sources.OfType<T>();
 
     /// <summary>
+    /// Returns a read-only description of each configured source for the settings UI: identity,
+    /// configured/enabled state, the capabilities it supports, and its declarative settings schema.
+    /// </summary>
+    public IReadOnlyList<SourceSummary> DescribeSources()
+    {
+        var list = new List<SourceSummary>();
+        foreach (var s in _sources)
+        {
+            var schema = CreateProvider(s.TypeId)?.GetSettingsSchema() ?? [];
+            var caps = new List<string>();
+            if (s is ITextSearchCapable) caps.Add("Search");
+            if (s is IPlaylistChannelDiscovery) caps.Add("Playlists/Channels");
+            if (s is IBrowsable) caps.Add("Browse");
+            if (s is IPagedBrowsable) caps.Add("Paged browse");
+            if (s is IPlayableResolver) caps.Add("Playback");
+            if (s is IDownloadable) caps.Add("Download/Cache");
+            if (s is IConfigurable) caps.Add("Setup actions");
+
+            list.Add(new SourceSummary(
+                s.TypeId, s.InstanceId, s.DisplayName, s.IsConfigured, s.IsEnabled, caps, schema));
+        }
+        return list;
+    }
+
+    /// <summary>
     /// Builds and initializes the source instances from the given per-instance configs. Safe to
     /// call again to rebuild after settings change; existing instances are discarded. Disabled
     /// configs are skipped. Unknown provider type ids are logged and ignored.
@@ -91,3 +116,13 @@ public sealed class SourceRegistry
         _sources.Add(source);
     }
 }
+
+/// <summary>Read-only description of a configured source instance for the settings UI.</summary>
+public sealed record SourceSummary(
+    string TypeId,
+    string InstanceId,
+    string DisplayName,
+    bool IsConfigured,
+    bool IsEnabled,
+    IReadOnlyList<string> Capabilities,
+    IReadOnlyList<PluginSettingDescriptor> Schema);

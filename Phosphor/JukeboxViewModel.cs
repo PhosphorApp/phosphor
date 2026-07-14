@@ -36,6 +36,13 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Read-only summaries of the configured plug-in sources (for the Plug-ins settings tab).
+    /// Empty when the registry hasn't been built. Does not require the flag to be enabled.
+    /// </summary>
+    public IReadOnlyList<Phosphor.Plugins.SourceSummary> DescribePluginSources() =>
+        _sourceRegistry?.DescribeSources() ?? [];
+
+    /// <summary>
     /// Builds (or rebuilds) the plug-in <see cref="Phosphor.Plugins.SourceRegistry"/> from the
     /// given settings. Additive in Phase 4 — the registry runs alongside the legacy engines and
     /// is only consulted on paths guarded by <see cref="UsePluginSources"/>.
@@ -684,6 +691,27 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Whether an item's source can produce downloadable raw streams for the disk caches. When the
+    /// plug-in path is on, this is driven by capability (the owning source implements
+    /// <c>IDownloadable</c> — YouTube does, Plex does not); otherwise it falls back to the legacy
+    /// rule (<c>!IsPlex</c>). Replaces hardcoded Plex-specific cache gates. (The per-instance
+    /// <c>AllowCaching</c> policy layer is not yet consumed — see PLUGIN_ARCHITECTURE_ANALYSIS.md.)
+    /// </summary>
+    private bool IsItemCacheable(VideoItem item)
+    {
+        if (_usePluginSources && _sourceRegistry != null)
+        {
+            // YouTube items have no "scheme:" prefix; Plex items are "plex:...". Route the item to
+            // its source and ask whether that source supports downloading.
+            if (item.IsPlex)
+                return _sourceRegistry.PlexInstances.FirstOrDefault() is Phosphor.Plugin.Abstractions.IDownloadable;
+            return _sourceRegistry.YouTube is Phosphor.Plugin.Abstractions.IDownloadable;
+        }
+
+        return !item.IsPlex;
+    }
+
+    /// <summary>
     /// Runs <paramref name="action"/> on the UI (dispatcher) thread. A no-op marshal when the
     /// caller is already on the UI thread, so it is safe and cheap on any path. Needed because
     /// async continuations can resume on a threadpool thread (e.g. the plug-in search path),
@@ -1080,7 +1108,7 @@ public partial class JukeboxViewModel : ObservableObject
         if (nextIdx < 0 || nextIdx >= Queue.Count) return;
 
         var next = Queue[nextIdx];
-        if (next.IsPlex || next.IsAudioOnly) return;
+        if (!IsItemCacheable(next) || next.IsAudioOnly) return;
 
         var videoId = next.VideoId;
         if (string.IsNullOrEmpty(videoId)) return;
@@ -1138,8 +1166,8 @@ public partial class JukeboxViewModel : ObservableObject
         var nextId = Queue[nextIdx].VideoId;
         if (nextId == _prefetchingVideoId) return;
 
-        // Plex items are streamed directly — no YouTube prefetch needed
-        if (Queue[nextIdx].IsPlex) return;
+        // Non-cacheable sources are streamed directly — no YouTube-style prefetch needed
+        if (!IsItemCacheable(Queue[nextIdx])) return;
 
         // Skip if already in the main cache or prefetch cache
         if (_cache?.TryGet(nextId) != null) return;
@@ -2817,8 +2845,8 @@ public partial class JukeboxViewModel : ObservableObject
         if (item.IsPlex && item.PlexRatingKey != null && item.Chapters == null && _plex.IsConfigured)
             _ = SafeFireAndForget(FetchPlexChaptersAsync(item));
 
-        // Cache on playback when mode is Everything (YouTube only)
-        if (_cache is { Enabled: true } && CacheMode == CacheMode.Everything && !item.IsPlex)
+        // Cache on playback when mode is Everything (cacheable sources only)
+        if (_cache is { Enabled: true } && CacheMode == CacheMode.Everything && IsItemCacheable(item))
             _ = SafeFireAndForget(_cache.CacheVideoAsync(item.VideoId, VideoQuality, StereoAudio, item.Duration, item.Chapters, item.Title));
 
         // Preemptively cache the *next* queue item as soon as this one starts —
@@ -3198,7 +3226,7 @@ public partial class JukeboxViewModel : ObservableObject
                 foreach (var track in tracks)
                 {
                     _playlists.AddToPlaylist(ActivePlaylistName, track);
-                    if (_cache is { Enabled: true } && !track.IsPlex)
+                    if (_cache is { Enabled: true } && IsItemCacheable(track))
                         _ = SafeFireAndForget(_cache.CacheVideoAsync(track.VideoId, duration: track.Duration, chapters: track.Chapters, title: track.Title));
                 }
                 StatusText = $"Added {tracks.Count} tracks from {item.Title} to {ActivePlaylistName}";
@@ -3217,8 +3245,8 @@ public partial class JukeboxViewModel : ObservableObject
         // Fetch accurate duration and save to playlist JSON
         _ = SafeFireAndForget(RefreshPlaylistItemDurationAsync(ActivePlaylistName, item));
 
-        // Trigger background caching for playlist items (YouTube only)
-        if (_cache is { Enabled: true } && !item.IsPlex)
+        // Trigger background caching for playlist items (cacheable sources only)
+        if (_cache is { Enabled: true } && IsItemCacheable(item))
             _ = SafeFireAndForget(_cache.CacheVideoAsync(item.VideoId, duration: item.Duration, chapters: item.Chapters, title: item.Title));
     }
 
