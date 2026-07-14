@@ -1536,6 +1536,9 @@ public partial class JukeboxViewModel : ObservableObject
     private IAsyncEnumerator<VideoItem>? _searchEnumerator;
     private CancellationTokenSource _searchCts = new();
     private string _currentSearchQuery = "";
+    // The source id the current search ran against (null = YouTube); captured so "save as live
+    // playlist" binds the playlist to the source actually searched, not the current dropdown value.
+    private string? _currentSearchSourceId;
     private bool _hasMoreResults;
     private bool _isLoadingMore;
 
@@ -1673,7 +1676,9 @@ public partial class JukeboxViewModel : ObservableObject
             var playlist = _playlists.Playlists.FirstOrDefault(p => p.Name == category.Name);
             if (playlist?.Kind == PlaylistKind.Live)
             {
-                // Live playlist — run the stored search
+                // Live playlist — run the stored search against the source it was bound to
+                // (null = YouTube for legacy playlists). Reflect that source in the dropdown so
+                // "load more" / re-save stay consistent.
                 ActivePlaylistName = category.Name;
                 _activePlaylistId = playlist.Id;
                 ActiveCategory = category.Name;
@@ -1681,7 +1686,9 @@ public partial class JukeboxViewModel : ObservableObject
                 IsViewingLivePlaylist = true;
                 ShowCategories = false;
                 SearchQuery = playlist.SearchTerm;
-                await DoSearch(playlist.SearchTerm);
+                if (playlist.SourceInstanceId != null && SearchSources.Any(s => s.InstanceId == playlist.SourceInstanceId))
+                    ActiveSearchSourceId = playlist.SourceInstanceId;
+                await DoSearch(playlist.SearchTerm, playlist.SourceInstanceId);
                 return;
             }
 
@@ -1932,6 +1939,7 @@ public partial class JukeboxViewModel : ObservableObject
         }
 
         _currentSearchQuery = query;
+        _currentSearchSourceId = sourceInstanceId;
 
         // Parse and strip duration filters (min:/max:) from the query
         query = ParseDurationFilters(query);
@@ -3684,7 +3692,9 @@ public partial class JukeboxViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(SearchQuery))
             return;
 
-        _playlists.CreateLivePlaylist(name, SearchQuery, icon);
+        // Bind the playlist to the source the current search actually ran against (null = YouTube),
+        // so re-opening it queries that source rather than the default.
+        _playlists.CreateLivePlaylist(name, SearchQuery, icon, _currentSearchSourceId);
         RebuildCategories();
         StatusText = $"Created live playlist: {name}";
     }

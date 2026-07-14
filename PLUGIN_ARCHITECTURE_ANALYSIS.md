@@ -755,11 +755,15 @@ Each phase is independently shippable and reversible.
    dropdown** — genre/live-playlist tiles and AutoDJ/"Find similar" pass YouTube explicitly, so
    *tiles are source-bound artifacts* (a "Today's Top Hits" live playlist stays a YouTube search
    forever). The genre/live-playlist result caches are attached only on the YouTube-bound path so a
-   cross-source ad-hoc search can't contaminate them. **Phase 2 (deferred):** persist a source id on
-   each tile/live-playlist so a search saved against Plex/Local re-runs against *that* source (today
-   they're implicitly YouTube — an artifact of the YouTube-only origin). **AutoDJ source (undecided):**
-   likely a global "AutoDJ uses <source>" option rather than a contract capability, since AutoDJ is
-   discovery-shaped; revisit later.
+   cross-source ad-hoc search can't contaminate them. **Phase 2 (done for live playlists):** a live
+   playlist now stores the source it was created against (`Playlist.SourceInstanceId`, null = YouTube
+   / legacy) — captured from the source the search actually ran against (`_currentSearchSourceId`, not
+   the live dropdown value) — and re-opening it re-runs against *that* source and reflects it in the
+   dropdown. Legacy playlists (null) stay YouTube. A bound source that's since been removed degrades
+   via the search resolver's YouTube+legacy fallback. **Genre category tiles** remain YouTube-defined
+   (a pre-authored `categories.json` concept); binding them to arbitrary sources is a possible later
+   follow-up but wasn't needed. **AutoDJ source (undecided):** likely a global "AutoDJ uses <source>"
+   option rather than a contract capability, since AutoDJ is discovery-shaped; revisit later.
 8. **Reference third source (validation).** Prototype Jellyfin or a local-folder
    source to confirm no core changes are needed.
 
