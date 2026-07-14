@@ -68,14 +68,7 @@ public sealed class SourceRegistry
             var schema = provider?.GetSettingsSchema() ?? [];
             _configs.TryGetValue(s.InstanceId, out var cfg);
 
-            var caps = new List<string>();
-            if (s is ITextSearchCapable) caps.Add("Search");
-            if (s is IPlaylistChannelDiscovery) caps.Add("Playlists/Channels");
-            if (s is IBrowsable) caps.Add("Browse");
-            if (s is IPagedBrowsable) caps.Add("Paged browse");
-            if (s is IPlayableResolver) caps.Add("Playback");
-            if (s is IDownloadable) caps.Add("Download/Cache");
-            if (s is IConfigurable) caps.Add("Setup actions");
+            var caps = PluginSettingsFactory.DescribeCapabilities(s);
 
             // Report each schema field's ACTUAL configured value (from the instance's settings),
             // falling back to the schema default only when the key isn't set. Secrets are masked.

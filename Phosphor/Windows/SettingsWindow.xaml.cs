@@ -4152,6 +4152,25 @@ public partial class SettingsWindow : JukeboxWindow
                 });
             }
 
+            // Supported capabilities (human-readable list of the interfaces the source implements).
+            var capSource = Phosphor.Plugins.PluginSettingsFactory.BuildTransientSource(cfg, _pluginHttp);
+            if (capSource != null)
+            {
+                var caps = Phosphor.Plugins.PluginSettingsFactory.DescribeCapabilities(capSource);
+                if (caps.Count > 0)
+                {
+                    panel.Children.Add(new System.Windows.Controls.TextBlock
+                    {
+                        Text = "Supports: " + string.Join(", ", caps),
+                        Foreground = dim,
+                        FontSize = 11,
+                        FontStyle = FontStyles.Italic,
+                        TextWrapping = TextWrapping.Wrap,
+                        Margin = new Thickness(0, 0, 0, 8),
+                    });
+                }
+            }
+
             // ── Settings table: column 0 = label, column 1 = editor ──
             var grid = new System.Windows.Controls.Grid();
             grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new System.Windows.GridLength(130) });

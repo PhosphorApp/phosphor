@@ -97,4 +97,24 @@ public static class PluginSettingsFactory
         };
         return provider?.CreateInstance(cfg.InstanceId, cfg.Settings);
     }
+
+    /// <summary>
+    /// Returns a human-readable list of the capabilities a source implements (e.g. "Search",
+    /// "Download/Cache"), for display under each source in the settings UI. Order is stable and
+    /// roughly follows the discovery→playback→setup flow.
+    /// </summary>
+    public static IReadOnlyList<string> DescribeCapabilities(IPhosphorSource source)
+    {
+        var caps = new List<string>();
+        if (source is ITextSearchCapable) caps.Add("Search");
+        if (source is IPlaylistChannelDiscovery) caps.Add("Playlists/Channels");
+        if (source is IBrowsable) caps.Add("Browse");
+        if (source is IPagedBrowsable) caps.Add("Paged browse");
+        if (source is IPlayableResolver) caps.Add("Playback");
+        if (source is IDownloadable) caps.Add("Download/Cache");
+        if (source is IGaplessCapable) caps.Add("Gapless");
+        if (source is IUpdatable) caps.Add("Self-update");
+        if (source is IConfigurable) caps.Add("Setup actions");
+        return caps;
+    }
 }
