@@ -2186,8 +2186,19 @@ public partial class JukeboxViewModel : ObservableObject
     public bool IsPlexBrowsing
     {
         get => _isPlexBrowsing;
-        private set => SetProperty(ref _isPlexBrowsing, value);
+        private set
+        {
+            if (SetProperty(ref _isPlexBrowsing, value))
+                OnPropertyChanged(nameof(IsSearchSourceSelectable));
+        }
     }
+
+    /// <summary>
+    /// Whether the search-source dropdown is meaningful right now. False when search is "locked" to a
+    /// context that ignores the selector — e.g. browsing inside a Plex library, where the search box
+    /// searches that library. The UI greys the dropdown out in that case.
+    /// </summary>
+    public bool IsSearchSourceSelectable => !IsPlexBrowsing;
 
     // ── Category cache page tracking ──
     private ResultCache? _activeResultCache;

@@ -166,7 +166,8 @@
                       ItemsSource="{Binding SearchSources}"
                       SelectedValuePath="InstanceId"
                       SelectedValue="{Binding ActiveSearchSourceId, Mode=TwoWay}"
-                      ToolTip="Which source the search box queries">
+                      IsEnabled="{Binding IsSearchSourceSelectable}"
+                      ToolTip="Which source the search box queries (locked while browsing a library)">
                 <ComboBox.Style>
                     <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
                         <Setter Property="Visibility" Value="Visible"/>
