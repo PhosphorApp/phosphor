@@ -2189,16 +2189,28 @@ public partial class JukeboxViewModel : ObservableObject
         private set
         {
             if (SetProperty(ref _isPlexBrowsing, value))
+            {
+                OnPropertyChanged(nameof(IsSearchScoped));
                 OnPropertyChanged(nameof(IsSearchSourceSelectable));
+            }
         }
     }
 
     /// <summary>
-    /// Whether the search-source dropdown is meaningful right now. False when search is "locked" to a
-    /// context that ignores the selector — e.g. browsing inside a Plex library, where the search box
-    /// searches that library. The UI greys the dropdown out in that case.
+    /// Whether the current view <em>scopes</em> the search box to a specific browse context (a
+    /// library/folder/collection), so the global search-source selector doesn't apply. Source-agnostic
+    /// by design: today only Plex library browsing sets it, but any future scoped source (Jellyfin
+    /// library, local-folder, …) should feed into this same signal rather than the UI checking a
+    /// per-source flag. When a generic scoped-search capability lands (see PLUGIN_ARCHITECTURE_ANALYSIS.md),
+    /// this becomes its natural home.
     /// </summary>
-    public bool IsSearchSourceSelectable => !IsPlexBrowsing;
+    public bool IsSearchScoped => IsPlexBrowsing;
+
+    /// <summary>
+    /// Whether the search-source dropdown is meaningful right now — false when the view scopes search
+    /// to a context (<see cref="IsSearchScoped"/>). The UI greys the dropdown out in that case.
+    /// </summary>
+    public bool IsSearchSourceSelectable => !IsSearchScoped;
 
     // ── Category cache page tracking ──
     private ResultCache? _activeResultCache;

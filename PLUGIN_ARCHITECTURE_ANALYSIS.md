@@ -781,6 +781,10 @@ Each phase is independently shippable and reversible.
    e.g. `IScopedSearchable.SearchInCategoryAsync(SourceCategory node, query)` — so any browsable
    source (local-folder → open folder, Jellyfin → open library) can offer scoped search and the host
    drops the Plex-ism. Do it when a second source needs scoped search (don't add speculatively).
+   **UI hook already generalized:** the search-source dropdown greys out via a source-agnostic
+   `JukeboxViewModel.IsSearchScoped` signal (not a per-source flag) — today backed by `IsPlexBrowsing`,
+   but the single place any future scoped source feeds into, so the #2 capability slots in without
+   touching the UI binding.
 8. **Reference third source (validation).** Prototype Jellyfin or a local-folder
    source to confirm no core changes are needed.
 
