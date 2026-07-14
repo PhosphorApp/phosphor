@@ -15,7 +15,7 @@ namespace Phosphor.Plugins;
 /// The registry is the source path for the app: the VM dispatches YouTube and Plex
 /// discovery/playback through the configured instances and their capabilities.
 /// </remarks>
-public sealed class SourceRegistry
+public sealed class SourceRegistry : IAsyncDisposable
 {
     private readonly List<IPhosphorSource> _sources = [];
     // Tracks the config each source was built from, so the settings UI can report the actual
@@ -97,6 +97,7 @@ public sealed class SourceRegistry
     /// </summary>
     public async Task BuildAsync(IEnumerable<PluginInstanceConfig> configs, CancellationToken ct = default)
     {
+        await DisposeSourcesAsync();
         _sources.Clear();
         _configs.Clear();
 
@@ -135,6 +136,42 @@ public sealed class SourceRegistry
         var host = new PluginHost(source.InstanceId, _http);
         await source.InitializeAsync(host, ct);
         _sources.Add(source);
+    }
+
+    /// <summary>
+    /// Disposes each current source that opts into teardown (<see cref="IAsyncDisposable"/> or
+    /// <see cref="IDisposable"/>), so a rebuild or app shutdown releases any connections, watchers,
+    /// or timers a source holds. Defensive: a faulty source's dispose never aborts the sweep.
+    /// </summary>
+    private async Task DisposeSourcesAsync()
+    {
+        foreach (var source in _sources)
+        {
+            try
+            {
+                switch (source)
+                {
+                    case IAsyncDisposable ad:
+                        await ad.DisposeAsync();
+                        break;
+                    case IDisposable d:
+                        d.Dispose();
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLog.LogException($"SourceRegistry dispose '{source.InstanceId}'", ex);
+            }
+        }
+    }
+
+    /// <summary>Disposes all live sources. Call when the registry is being replaced or the app exits.</summary>
+    public async ValueTask DisposeAsync()
+    {
+        await DisposeSourcesAsync();
+        _sources.Clear();
+        _configs.Clear();
     }
 }
 

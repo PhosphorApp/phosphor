@@ -4169,6 +4169,38 @@ public partial class SettingsWindow : JukeboxWindow
                         Margin = new Thickness(0, 0, 0, 8),
                     });
                 }
+
+                // ── "Test connection" — for sources that support it (e.g. Plex). ──
+                if (capSource is Phosphor.Plugin.Abstractions.IConnectionTestable)
+                {
+                    var testInstanceId = cfg.InstanceId;
+                    var testRow = new System.Windows.Controls.StackPanel
+                    {
+                        Orientation = System.Windows.Controls.Orientation.Horizontal,
+                        Margin = new Thickness(0, 0, 0, 8),
+                    };
+                    var testBtn = new System.Windows.Controls.Button
+                    {
+                        Content = "Test connection", Padding = new Thickness(8, 3, 8, 3),
+                        VerticalAlignment = VerticalAlignment.Center,
+                    };
+                    var testResult = new System.Windows.Controls.TextBlock
+                    {
+                        Foreground = dim, FontSize = 11, VerticalAlignment = VerticalAlignment.Center,
+                        Margin = new Thickness(10, 0, 0, 0), TextWrapping = TextWrapping.Wrap,
+                    };
+                    testBtn.Click += async (_, _) =>
+                    {
+                        await TestPluginConnectionAsync(testInstanceId, testBtn, testResult);
+                    };
+                    testRow.Children.Add(testBtn);
+                    testRow.Children.Add(testResult);
+                    panel.Children.Add(testRow);
+                }
+
+                // The transient built for capability display is no longer needed — dispose it so any
+                // resources it opened during construction are released.
+                DisposeTransientSource(capSource);
             }
 
             // ── Settings table: column 0 = label, column 1 = editor ──
@@ -4296,6 +4328,7 @@ public partial class SettingsWindow : JukeboxWindow
                     panel.Children.Add(actionRow);
                 }
             }
+            DisposeTransientSource(transient);
 
             card.Child = panel;
             PanelPluginSources.Children.Add(card);
@@ -4593,6 +4626,68 @@ public partial class SettingsWindow : JukeboxWindow
     }
 
     /// <summary>
+    /// Runs a source's <see cref="Phosphor.Plugin.Abstractions.IConnectionTestable"/> check using the
+    /// current (harvested) settings and shows the ✓/✗ result inline. Builds and disposes a transient
+    /// source for the one-off test.
+    /// </summary>
+    private async Task TestPluginConnectionAsync(
+        string instanceId,
+        System.Windows.Controls.Button button,
+        System.Windows.Controls.TextBlock result)
+    {
+        HarvestPluginSourcesTab();
+        var cfg = _settings.PluginInstances.FirstOrDefault(c => c.InstanceId == instanceId);
+        if (cfg == null) return;
+
+        var source = Phosphor.Plugins.PluginSettingsFactory.BuildTransientSource(cfg, _pluginHttp);
+        if (source is not Phosphor.Plugin.Abstractions.IConnectionTestable testable)
+        {
+            DisposeTransientSource(source);
+            return;
+        }
+
+        button.IsEnabled = false;
+        result.Text = "Testing…";
+        result.Foreground = System.Windows.Media.Brushes.Gray;
+        try
+        {
+            if (source is Phosphor.Plugin.Abstractions.IPhosphorSource ps)
+                await ps.InitializeAsync(new Phosphor.Plugins.Host.PluginHost(cfg.InstanceId, _pluginHttp));
+
+            var r = await testable.TestConnectionAsync();
+            var latency = r.Latency is { } l ? $" ({l.TotalMilliseconds:F0} ms)" : "";
+            result.Text = (r.Success ? "✓ " : "✗ ") + r.Message + latency;
+            result.Foreground = r.Success
+                ? System.Windows.Media.Brushes.MediumSeaGreen
+                : System.Windows.Media.Brushes.IndianRed;
+        }
+        catch (Exception ex)
+        {
+            result.Text = "✗ " + ex.Message;
+            result.Foreground = System.Windows.Media.Brushes.IndianRed;
+        }
+        finally
+        {
+            button.IsEnabled = true;
+            DisposeTransientSource(source);
+        }
+    }
+
+    /// <summary>Disposes a transient UI-built source (best-effort) so it releases any resources.</summary>
+    private static void DisposeTransientSource(Phosphor.Plugin.Abstractions.IPhosphorSource? source)
+    {
+        try
+        {
+            switch (source)
+            {
+                case IAsyncDisposable ad: _ = ad.DisposeAsync(); break;
+                case IDisposable d: d.Dispose(); break;
+            }
+        }
+        catch { /* best-effort teardown */ }
+    }
+
+    /// <summary>
     /// Invokes an <see cref="Phosphor.Plugin.Abstractions.IConfigurable"/> action for an instance
     /// (e.g. Plex "browse libraries"): harvests current edits, builds a transient source from the
     /// instance config, runs the action, shows a checkbox selection dialog, applies the result via
@@ -4784,7 +4879,7 @@ public partial class SettingsWindow : JukeboxWindow
             if (_pluginDisplayNameBoxes.TryGetValue(cfg.InstanceId, out var nb))
                 cfg.DisplayName = string.IsNullOrWhiteSpace(nb.Text) ? null : nb.Text.Trim();
             if (_pluginCachingBoxes.TryGetValue(cfg.InstanceId, out var cache))
-                cfg.AllowCaching = (cache.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string switch
+                cfg.AllowCaching = ((cache.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string) switch
                 {
                     "true" => true,
                     "false" => false,

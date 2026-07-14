@@ -16,7 +16,7 @@ namespace Phosphor.Plugins.Plex;
 /// In-box, so it uses <see cref="PlexService"/>, <see cref="VideoItem"/>, and the Plex enums
 /// directly. Pure data producer: no UI, no thread assumptions.
 /// </remarks>
-public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable, IPagedBrowsable, IPlayableResolver, IConfigurable, IGaplessCapable
+public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable, IPagedBrowsable, IPlayableResolver, IConfigurable, IGaplessCapable, IConnectionTestable
 {
     private readonly PlexService _plex = new();
     private IPluginHost? _host;
@@ -56,6 +56,32 @@ public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable
 
         _plex.Configure(_serverUrl, _token, _stereoAudio);
         _host?.Log($"PlexSource: server={_serverUrl} stereo={_stereoAudio} libraries={_libraries.Count}");
+    }
+
+    // ── IConnectionTestable ────────────────────────────────────────────────────
+
+    public async Task<ConnectionTestResult> TestConnectionAsync(CancellationToken ct = default)
+    {
+        if (!_plex.IsConfigured)
+            return new ConnectionTestResult(false, "Server URL and token are required.");
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            // A successful library fetch confirms both reachability and a valid token, and gives a
+            // friendly count for the result line.
+            var libs = await _plex.GetLibrariesAsync();
+            sw.Stop();
+            return new ConnectionTestResult(
+                true,
+                $"Connected — {libs.Count} librar{(libs.Count == 1 ? "y" : "ies")} found.",
+                sw.Elapsed);
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            return new ConnectionTestResult(false, $"Connection failed: {ex.Message}", sw.Elapsed);
+        }
     }
 
     // ── ITextSearchCapable ─────────────────────────────────────────────────────

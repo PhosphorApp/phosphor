@@ -616,6 +616,22 @@ Each phase is independently shippable and reversible.
    disk caches still consume `_videoEngine` as their raw-stream downloader, so the legacy engines
    cannot be deleted without making a registry-build failure fatal. Doc comments were refreshed from
    "identical with the flag off" to "falls back … when the registry is unavailable."
+
+   **Lifecycle: teardown + connection test (0.9.0, done).** Two additive contract improvements:
+   - **Source disposal.** `SourceRegistry` now disposes each source that opts into teardown
+     (`IAsyncDisposable` or `IDisposable`) before a rebuild and on its own disposal (`SourceRegistry`
+     is itself `IAsyncDisposable`); `BuildSourceRegistryAsync` disposes the *previous* registry after
+     swapping in the new one. This closes a latent leak: the registry rebuilds on every settings save,
+     and a future source holding a connection/`FileSystemWatcher`/poll-timer would otherwise leak an
+     instance per save. Disposal is defensive (a faulty source never aborts the sweep). Startup stays
+     `InitializeAsync(IPluginHost, ct)` — no separate `IStartup` needed (async + host-injected).
+   - **`IConnectionTestable`.** Optional capability: `Task<ConnectionTestResult> TestConnectionAsync(ct)`
+     with `ConnectionTestResult(bool Success, string Message, TimeSpan? Latency)`. Verifies reachability
+     + auth beyond the static `IsConfigured` "fields filled in" check. Plex fetches its library list
+     (confirms URL + token, reports the count); YouTube does a lightweight HEAD to youtube.com. The
+     Plug-ins tab renders a "Test connection" button with an inline ✓/✗ + latency result, building and
+     disposing a transient source for the one-off test (transients built for capability display and
+     config actions are now disposed too).
 8. **Reference third source (validation).** Prototype Jellyfin or a local-folder
    source to confirm no core changes are needed.
 

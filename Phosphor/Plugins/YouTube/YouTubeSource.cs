@@ -18,9 +18,10 @@ namespace Phosphor.Plugins.YouTube;
 /// YoutubeExplode package and existing engine code directly. It is a pure data producer:
 /// it never touches UI or assumes a thread.
 /// </remarks>
-public sealed class YouTubeSource : IPhosphorSource, ITextSearchCapable, IPlaylistChannelDiscovery, IPlayableResolver, IDownloadable, IUpdatable
+public sealed class YouTubeSource : IPhosphorSource, ITextSearchCapable, IPlaylistChannelDiscovery, IPlayableResolver, IDownloadable, IUpdatable, IConnectionTestable
 {
     private readonly HttpClient? _http;
+    private static readonly HttpClient _sharedHttp = new() { Timeout = TimeSpan.FromSeconds(15) };
     private IPluginHost? _host;
 
     private SearchEngineKind _searchKind = SearchEngineKind.YoutubeExplode;
@@ -57,6 +58,30 @@ public sealed class YouTubeSource : IPhosphorSource, ITextSearchCapable, IPlayli
     }
 
     public void ApplySettings(IReadOnlyDictionary<string, string?> values) => ApplySettingsInternal(values);
+
+    /// <summary>
+    /// Lightweight reachability check — YouTube needs no credentials, so this just confirms the
+    /// network can reach youtube.com within the HttpClient timeout.
+    /// </summary>
+    public async Task<ConnectionTestResult> TestConnectionAsync(CancellationToken ct = default)
+    {
+        var http = _http ?? _sharedHttp;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Head, "https://www.youtube.com/");
+            using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+            sw.Stop();
+            return resp.IsSuccessStatusCode
+                ? new ConnectionTestResult(true, "Reachable.", sw.Elapsed)
+                : new ConnectionTestResult(false, $"Unexpected response: {(int)resp.StatusCode} {resp.ReasonPhrase}", sw.Elapsed);
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            return new ConnectionTestResult(false, $"Not reachable: {ex.Message}", sw.Elapsed);
+        }
+    }
 
     private void ApplySettingsInternal(IReadOnlyDictionary<string, string?> values)
     {

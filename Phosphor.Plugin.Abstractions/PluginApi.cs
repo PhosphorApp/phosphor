@@ -9,5 +9,9 @@ namespace Phosphor.Plugin.Abstractions;
 public static class PluginApi
 {
     /// <summary>The contract version this build of the abstractions defines.</summary>
-    public static readonly Version Current = new(0, 8, 0);
+    /// <remarks>
+    /// 0.9.0 — added <see cref="IConnectionTestable"/> (optional "test connection" capability).
+    /// 0.8.0 — nested config sub-options (<c>ConfigOption.SubOptions</c>).
+    /// </remarks>
+    public static readonly Version Current = new(0, 9, 0);
 }

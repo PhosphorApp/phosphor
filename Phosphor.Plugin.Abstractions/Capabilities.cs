@@ -159,3 +159,25 @@ public interface IDownloadable
         IProgress<double>? progress = null,
         CancellationToken ct = default);
 }
+
+/// <summary>
+/// Capability: verify the source's configuration actually works (reachability + auth), beyond the
+/// static <see cref="IPhosphorSource.IsConfigured"/> "fields are filled in" check. Implemented by
+/// sources that talk to a server (e.g. Plex verifies the URL/token and counts libraries). Lets the
+/// settings UI offer a "Test connection" button with a clear ✓/✗ result during setup.
+/// </summary>
+public interface IConnectionTestable
+{
+    /// <summary>
+    /// Attempts a lightweight round-trip against the source's current settings and reports the
+    /// outcome. Must not throw for expected failures (unreachable host, bad credentials) — return a
+    /// failed <see cref="ConnectionTestResult"/> with a human-readable message instead.
+    /// </summary>
+    Task<ConnectionTestResult> TestConnectionAsync(CancellationToken ct = default);
+}
+
+/// <summary>Outcome of an <see cref="IConnectionTestable.TestConnectionAsync"/> attempt.</summary>
+/// <param name="Success">True when the source reached its backend and authenticated.</param>
+/// <param name="Message">A concise, user-facing status line (e.g. "Connected — 3 libraries" or "401 Unauthorized").</param>
+/// <param name="Latency">Optional round-trip time, for display.</param>
+public sealed record ConnectionTestResult(bool Success, string Message, TimeSpan? Latency = null);

@@ -54,6 +54,10 @@ public partial class JukeboxViewModel : ObservableObject
     /// </summary>
     public async Task BuildSourceRegistryAsync(AppSettings settings)
     {
+        // Dispose the previous registry so its sources release any connections/watchers/timers
+        // before we replace them (this method runs on every settings save).
+        var previous = _sourceRegistry;
+
         var http = new HttpClient { Timeout = TimeSpan.FromSeconds(YouTubeTimeoutSeconds) };
         var registry = new Phosphor.Plugins.SourceRegistry(http);
         try
@@ -73,6 +77,12 @@ public partial class JukeboxViewModel : ObservableObject
         {
             DebugLog.LogException("SourceRegistry build", ex);
             _sourceRegistry = null;
+        }
+
+        if (previous != null)
+        {
+            try { await previous.DisposeAsync(); }
+            catch (Exception ex) { DebugLog.LogException("SourceRegistry dispose (previous)", ex); }
         }
     }
 
