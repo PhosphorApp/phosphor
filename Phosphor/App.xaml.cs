@@ -74,8 +74,9 @@ public partial class App : Application
         viewModel.RepeatEnabled = _settings.RepeatEnabled;
         viewModel.AutoDjEnabled = _settings.AutoDjEnabled;
         viewModel.SetYouTubeTimeout(_settings.YouTubeTimeoutSeconds);
-        if (!string.IsNullOrWhiteSpace(_settings.PlexServerUrl) && !string.IsNullOrWhiteSpace(_settings.PlexToken))
-            viewModel.ConfigurePlex(_settings.PlexServerUrl, _settings.PlexToken, _settings.PlexLibraries, _settings.PlexStereoAudio);
+        // Configure Plex + its category tiles from the appropriate source (plug-in instance config
+        // when UsePluginSources is on, else the legacy flat fields).
+        viewModel.ConfigurePlexFromSettings(_settings);
 
         // Build the experimental plug-in source registry (runs alongside the legacy engines;
         // only consulted on paths guarded by UsePluginSources). Fire-and-forget: failure is

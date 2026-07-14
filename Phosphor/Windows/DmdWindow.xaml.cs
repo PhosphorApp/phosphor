@@ -2373,9 +2373,9 @@ public partial class DmdWindow : JukeboxWindow
         // Update cache settings
         if (DataContext is JukeboxViewModel vm)
         {
-            // Configure Plex first so SyncPlexLibraries updates categories.json before reload
-            if (!string.IsNullOrWhiteSpace(_appSettings.PlexServerUrl) && !string.IsNullOrWhiteSpace(_appSettings.PlexToken))
-                vm.ConfigurePlex(_appSettings.PlexServerUrl, _appSettings.PlexToken, _appSettings.PlexLibraries, _appSettings.PlexStereoAudio, skipRebuild: true);
+            // Configure Plex first so SyncPlexLibraries updates categories.json before reload.
+            // Sources config from plug-in instances when UsePluginSources is on, else flat fields.
+            vm.ConfigurePlexFromSettings(_appSettings, skipRebuild: true);
             LogStep("ConfigurePlex");
             vm.ReloadGenreCategories();
             LogStep("ReloadGenreCategories");

@@ -576,7 +576,13 @@ Each phase is independently shippable and reversible.
    `AppSettings.PlexLibraries`** (via `ConfigurePlex`/`GenreCategoryStore.SyncPlexLibraries`), not
    from `PluginInstances` — so libraries edited in the Plug-ins tab don't yet appear as tiles.
    Migrating tile-building to read plugin config is a separate, deliberate step (touches core
-   navigation).
+   navigation). — ✅ **Done.** Added `ConfigurePlexFromSettings(settings, skipRebuild)`: when the
+   flag is on it sources server/token/stereo/libraries from the **first enabled Plex
+   `PluginInstance`** (seeding the list from flat fields on first run) and feeds the existing
+   `ConfigurePlex` → `SyncPlexLibraries` → tiles; flag off uses the flat fields unchanged. Both
+   call sites (App startup, DmdWindow settings-apply) use it, so Plug-ins-tab library edits now
+   become tiles. **Still single-server for tiles:** only the first enabled Plex instance drives
+   tiles (the `_plex`/category model is single-server); true multi-server tiles is a later change.
 8. **Reference third source (validation).** Prototype Jellyfin or a local-folder
    source to confirm no core changes are needed.
 

@@ -144,6 +144,63 @@ public partial class JukeboxViewModel : ObservableObject
             RebuildCategories();
     }
 
+    /// <summary>
+    /// Configures Plex (and its category tiles) from settings, choosing the source of truth based
+    /// on <see cref="UsePluginSources"/>: when the plug-in path is on, the server/token/libraries
+    /// come from the first enabled Plex instance in <see cref="AppSettings.PluginInstances"/> (so
+    /// libraries edited in the Plug-ins tab become tiles); otherwise the legacy flat Plex fields.
+    /// Only a single active Plex drives tiles today — multi-server tiles are a later increment.
+    /// </summary>
+    public void ConfigurePlexFromSettings(AppSettings settings, bool skipRebuild = false)
+    {
+        string url = settings.PlexServerUrl;
+        string token = settings.PlexToken;
+        bool stereo = settings.PlexStereoAudio;
+        List<PlexLibraryMapping> libraries = settings.PlexLibraries;
+
+        if (settings.UsePluginSources)
+        {
+            // Seed the instance list on first run so a fresh flag-on install still gets Plex tiles
+            // from the migrated flat fields (matches BuildSourceRegistryAsync's one-time seed).
+            if (settings.PluginInstances.Count == 0)
+                settings.PluginInstances = Phosphor.Plugins.PluginSettingsFactory.FromAppSettings(settings);
+
+            var plexCfg = settings.PluginInstances
+                .FirstOrDefault(c => c.Enabled && c.TypeId == Phosphor.Plugins.Plex.PlexSourceProvider.PlexTypeId);
+            if (plexCfg != null)
+            {
+                url = GetSetting(plexCfg, Phosphor.Plugins.Plex.PlexSourceProvider.KeyServerUrl) ?? "";
+                token = GetSetting(plexCfg, Phosphor.Plugins.Plex.PlexSourceProvider.KeyToken) ?? "";
+                stereo = bool.TryParse(GetSetting(plexCfg, Phosphor.Plugins.Plex.PlexSourceProvider.KeyStereoAudio), out var s) && s;
+                libraries = ParsePlexLibraries(GetSetting(plexCfg, Phosphor.Plugins.Plex.PlexSourceProvider.KeyLibraries));
+            }
+            else
+            {
+                // Flag on but no configured Plex instance — no Plex tiles.
+                url = token = "";
+                libraries = [];
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(url) && !string.IsNullOrWhiteSpace(token))
+            ConfigurePlex(url, token, libraries, stereo, skipRebuild);
+        else if (!skipRebuild)
+            RebuildCategories();
+    }
+
+    private static string? GetSetting(Phosphor.Plugins.PluginInstanceConfig cfg, string key)
+        => cfg.Settings.TryGetValue(key, out var v) ? v : null;
+
+    private static List<PlexLibraryMapping> ParsePlexLibraries(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<PlexLibraryMapping>>(json) ?? [];
+        }
+        catch { return []; }
+    }
+
     // ── Categories (playlists + genres, rebuilt dynamically) ──
     public BulkObservableCollection<Category> Categories { get; } = new();
 
