@@ -810,7 +810,18 @@ Each phase is independently shippable and reversible.
      has >1 folder, exercising drill-down/back/breadcrumb. **Plex still uses its own path** (untouched)
      — Increments B (generic tiles join the sortable model) and C (retire Plex's bespoke path) follow.
      Pagination for the generic path deferred to when Plex migrates (C).
-   - **Deferred #B — play-time chapters/metadata.** The play path branches on `item.IsPlex` to call
+     **Increment B (done):** generic source root tiles are now first-class `GenreCategoryEntry`s, so
+     they participate in the **unified sort/visibility model** alongside YouTube genre tiles,
+     playlists, and Plex (previously they were `AddRange`'d unsorted and couldn't be reordered/hidden).
+     `GenreCategoryEntry` gained serializable generic identity (`SourceInstanceId`/`SourceCategoryId`/
+     `SourceTypeId`; the opaque browse `SourceState` stays in the live `_pluginBrowseTiles`, recovered
+     in `RebuildCategories` by matching `(instanceId, categoryId)`). `GenreCategoryStore.SyncSourceTiles`
+     mirrors `SyncAllPlexLibraries` (prune stale, preserve user icon/name/position/visibility);
+     `BuildPluginBrowseTilesAsync` calls it + rebuilds. The Settings category-visibility editor renders
+     generic entries (drag-sort + show/hide), with the search-term edit disabled like Plex. So a
+     local-folder tile can now be reordered, hidden, and mingled with everything else. Reload→sync→
+     rebuild ordering on settings-apply preserves user ordering.
+
      `FetchPlexChaptersAsync` vs `FetchYouTubeChaptersAsync`, and `GetPlexAudioTag` is Plex-shaped
      (cosmetic status text). The capability already exists (`IPlayableResolver.GetMetadataAsync`
      returns chapters and is used on the browse path) — the play path just doesn't route through it
