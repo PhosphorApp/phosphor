@@ -2542,7 +2542,7 @@
                         <StackPanel>
                             <TextBlock Text="SOURCE PLUG-INS" FontSize="12" FontWeight="Bold"
                                        Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
-                            <TextBlock Text="Music/video sources are provided by plug-ins. Enable the plug-in source path under About → Dev/Test to route search and browse through them. This tab lists the currently configured sources and their settings."
+                            <TextBlock Text="Music and video sources are provided by plug-ins. This tab lists the configured sources and their settings — add or remove sources, enable/disable them, and edit their configuration here."
                                        FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
                                        TextWrapping="Wrap"/>
                             <StackPanel x:Name="PanelPluginSources"/>
@@ -2847,17 +2847,6 @@
                                    Text="• FractalBox blur effects and Matrix color pulses can stack up during rapid pattern changes — letting each pattern run longer before switching reduces overlapping animations."/>
                         <TextBlock FontSize="11" Foreground="{StaticResource TextDimBrush}" TextWrapping="Wrap" Margin="0,0,0,4"
                                    Text="• ProjectM renders on its own OpenGL thread, so it bypasses WPF rendering overhead. On systems with a capable GPU it may perform better than WPF-based visuals, but on lower-end hardware the extra OpenGL context adds load."/>
-
-                        <TextBlock Text="DEV / TEST" FontSize="12" FontWeight="Bold"
-                                    Foreground="{StaticResource AccentBrush}" Margin="0,16,0,6"/>
-                        <TextBlock Text="Experimental, in-development options. These may change or misbehave — leave them off unless you're testing a specific feature."
-                                 FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
-                                 TextWrapping="Wrap"/>
-                        <CheckBox x:Name="CbUsePluginSources" Content="Use plug-in sources (experimental)"
-                                  Foreground="{StaticResource TextBrush}"/>
-                        <TextBlock Text="Routes supported search and browse paths through the new source plug-in system instead of the built-in engines. Takes effect after saving settings."
-                                 FontSize="10" Foreground="{StaticResource TextDimBrush}" Margin="20,2,0,0"
-                                 TextWrapping="Wrap"/>
                     </StackPanel>
                 </Border>
                 </ScrollViewer>

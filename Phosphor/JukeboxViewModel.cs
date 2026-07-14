@@ -21,19 +21,8 @@ public partial class JukeboxViewModel : ObservableObject
     private PrefetchCache? _prefetch;
     private readonly PlexService _plex = new();
 
-    // ── Plug-in sources (experimental; runs alongside the legacy engines) ──
+    // ── Plug-in sources (the source path — YouTube and Plex run through the registry) ──
     private Phosphor.Plugins.SourceRegistry? _sourceRegistry;
-    private bool _usePluginSources;
-
-    /// <summary>
-    /// Whether the experimental plug-in source path is enabled. When false (default) the VM
-    /// behaves exactly as before; the registry is ignored.
-    /// </summary>
-    public bool UsePluginSources
-    {
-        get => _usePluginSources;
-        set => _usePluginSources = value;
-    }
 
     /// <summary>
     /// Read-only summaries of the configured plug-in sources (for the Plug-ins settings tab).
@@ -49,8 +38,7 @@ public partial class JukeboxViewModel : ObservableObject
     /// </summary>
     public async Task<string> UpdatePluginEngineOrLegacyAsync(CancellationToken ct = default)
     {
-        if (_usePluginSources &&
-            _sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IUpdatable u && u.SupportsUpdate)
+        if (_sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IUpdatable u && u.SupportsUpdate)
         {
             var result = await u.UpdateAsync(ct);
             return result.DisplayString;
@@ -62,12 +50,10 @@ public partial class JukeboxViewModel : ObservableObject
 
     /// <summary>
     /// Builds (or rebuilds) the plug-in <see cref="Phosphor.Plugins.SourceRegistry"/> from the
-    /// given settings. Additive in Phase 4 — the registry runs alongside the legacy engines and
-    /// is only consulted on paths guarded by <see cref="UsePluginSources"/>.
+    /// given settings. The registry is the source path for YouTube and Plex discovery/playback.
     /// </summary>
     public async Task BuildSourceRegistryAsync(AppSettings settings)
     {
-        _usePluginSources = settings.UsePluginSources;
         var http = new HttpClient { Timeout = TimeSpan.FromSeconds(YouTubeTimeoutSeconds) };
         var registry = new Phosphor.Plugins.SourceRegistry(http);
         try
@@ -80,7 +66,7 @@ public partial class JukeboxViewModel : ObservableObject
 
             await registry.BuildAsync(settings.PluginInstances);
             _sourceRegistry = registry;
-            DebugLog.Log("SourceRegistry", $"Built {registry.Sources.Count} source(s); enabled={_usePluginSources}");
+            DebugLog.Log("SourceRegistry", $"Built {registry.Sources.Count} source(s)");
             WireCacheDownloadOverride();
         }
         catch (Exception ex)
@@ -145,72 +131,61 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Configures Plex (and its category tiles) from settings, choosing the source of truth based
-    /// on <see cref="UsePluginSources"/>. When the plug-in path is on, tiles are built from <em>all</em>
+    /// Configures Plex (and its category tiles) from settings. Tiles are built from <em>all</em>
     /// enabled Plex instances in <see cref="AppSettings.PluginInstances"/> (each tile tagged with its
-    /// instance id); the single legacy <c>_plex</c> service is still configured from the first enabled
-    /// instance (browse routing per-instance lands in a follow-up). When off, the legacy flat Plex
-    /// fields drive a single server.
+    /// instance id); a per-instance <see cref="PlexService"/> cache is built so browse operations
+    /// target the right server, and the single <c>_plex</c> service is configured from the first
+    /// enabled instance as a default fallback.
     /// </summary>
     public void ConfigurePlexFromSettings(AppSettings settings, bool skipRebuild = false)
     {
-        if (settings.UsePluginSources)
+        // Seed the instance list on first run so a fresh install still gets Plex tiles
+        // from the migrated flat fields (matches BuildSourceRegistryAsync's one-time seed).
+        if (settings.PluginInstances.Count == 0)
+            settings.PluginInstances = Phosphor.Plugins.PluginSettingsFactory.FromAppSettings(settings);
+
+        var plexInstances = settings.PluginInstances
+            .Where(c => c.Enabled && c.TypeId == Phosphor.Plugins.Plex.PlexSourceProvider.PlexTypeId)
+            .Where(c => !string.IsNullOrWhiteSpace(GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyServerUrl))
+                     && !string.IsNullOrWhiteSpace(GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyToken)))
+            .ToList();
+
+        // Configure the single legacy _plex service from the first enabled instance (used as a
+        // default fallback; per-instance browse uses _plexServiceByInstance below).
+        var first = plexInstances.FirstOrDefault();
+        if (first != null)
         {
-            // Seed the instance list on first run so a fresh flag-on install still gets Plex tiles
-            // from the migrated flat fields (matches BuildSourceRegistryAsync's one-time seed).
-            if (settings.PluginInstances.Count == 0)
-                settings.PluginInstances = Phosphor.Plugins.PluginSettingsFactory.FromAppSettings(settings);
-
-            var plexInstances = settings.PluginInstances
-                .Where(c => c.Enabled && c.TypeId == Phosphor.Plugins.Plex.PlexSourceProvider.PlexTypeId)
-                .Where(c => !string.IsNullOrWhiteSpace(GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyServerUrl))
-                         && !string.IsNullOrWhiteSpace(GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyToken)))
-                .ToList();
-
-            // Configure the single legacy _plex service from the first enabled instance (browse
-            // still targets this until per-instance routing lands in Sub-step B).
-            var first = plexInstances.FirstOrDefault();
-            if (first != null)
-            {
-                _plex.Configure(
-                    GetSetting(first, Phosphor.Plugins.Plex.PlexSourceProvider.KeyServerUrl) ?? "",
-                    GetSetting(first, Phosphor.Plugins.Plex.PlexSourceProvider.KeyToken) ?? "",
-                    bool.TryParse(GetSetting(first, Phosphor.Plugins.Plex.PlexSourceProvider.KeyStereoAudio), out var s) && s);
-                _plexStereoAudio = bool.TryParse(GetSetting(first, Phosphor.Plugins.Plex.PlexSourceProvider.KeyStereoAudio), out var s2) && s2;
-            }
-
-            // Build a per-instance PlexService for each enabled instance so multi-server browse
-            // (hub/playlist lists, in-library search, GetAllTracks, chapters) targets the right server.
-            _plexServiceByInstance.Clear();
-            foreach (var c in plexInstances)
-            {
-                var svc = new PlexService();
-                svc.Configure(
-                    GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyServerUrl) ?? "",
-                    GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyToken) ?? "",
-                    bool.TryParse(GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyStereoAudio), out var cs) && cs);
-                _plexServiceByInstance[c.InstanceId] = svc;
-            }
-
-            // Build tiles from ALL enabled instances, tagged with their instance id.
-            var instLibs = plexInstances
-                .Select(c => new GenreCategoryStore.PlexInstanceLibraries(
-                    c.InstanceId,
-                    c.DisplayName ?? "Plex",
-                    ParsePlexLibraries(GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyLibraries))))
-                .ToList();
-            _plexLibraries = instLibs.SelectMany(i => i.Libraries).ToList();
-            GenreCategoryStore.SyncAllPlexLibraries(_genreCategories, instLibs);
-            GenreCategoryStore.SaveInBackground(_genreCategories);
-            if (!skipRebuild)
-                RebuildCategories();
-            return;
+            _plex.Configure(
+                GetSetting(first, Phosphor.Plugins.Plex.PlexSourceProvider.KeyServerUrl) ?? "",
+                GetSetting(first, Phosphor.Plugins.Plex.PlexSourceProvider.KeyToken) ?? "",
+                bool.TryParse(GetSetting(first, Phosphor.Plugins.Plex.PlexSourceProvider.KeyStereoAudio), out var s) && s);
+            _plexStereoAudio = bool.TryParse(GetSetting(first, Phosphor.Plugins.Plex.PlexSourceProvider.KeyStereoAudio), out var s2) && s2;
         }
 
-        // Legacy flat-field path (single server).
-        if (!string.IsNullOrWhiteSpace(settings.PlexServerUrl) && !string.IsNullOrWhiteSpace(settings.PlexToken))
-            ConfigurePlex(settings.PlexServerUrl, settings.PlexToken, settings.PlexLibraries, settings.PlexStereoAudio, skipRebuild);
-        else if (!skipRebuild)
+        // Build a per-instance PlexService for each enabled instance so multi-server browse
+        // (hub/playlist lists, in-library search, GetAllTracks, chapters) targets the right server.
+        _plexServiceByInstance.Clear();
+        foreach (var c in plexInstances)
+        {
+            var svc = new PlexService();
+            svc.Configure(
+                GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyServerUrl) ?? "",
+                GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyToken) ?? "",
+                bool.TryParse(GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyStereoAudio), out var cs) && cs);
+            _plexServiceByInstance[c.InstanceId] = svc;
+        }
+
+        // Build tiles from ALL enabled instances, tagged with their instance id.
+        var instLibs = plexInstances
+            .Select(c => new GenreCategoryStore.PlexInstanceLibraries(
+                c.InstanceId,
+                c.DisplayName ?? "Plex",
+                ParsePlexLibraries(GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyLibraries))))
+            .ToList();
+        _plexLibraries = instLibs.SelectMany(i => i.Libraries).ToList();
+        GenreCategoryStore.SyncAllPlexLibraries(_genreCategories, instLibs);
+        GenreCategoryStore.SaveInBackground(_genreCategories);
+        if (!skipRebuild)
             RebuildCategories();
     }
 
@@ -825,7 +800,7 @@ public partial class JukeboxViewModel : ObservableObject
     /// </summary>
     private bool IsItemCacheable(VideoItem item)
     {
-        if (_usePluginSources && _sourceRegistry != null)
+        if (_sourceRegistry != null)
         {
             // YouTube items have no "scheme:" prefix; Plex items are "plex:...". Route the item to
             // its source and ask whether that source supports downloading, then let the instance's
@@ -866,8 +841,7 @@ public partial class JukeboxViewModel : ObservableObject
     /// </summary>
     private IAsyncEnumerable<VideoItem> SearchVideosViaPluginOrLegacy(string query)
     {
-        if (_usePluginSources &&
-            _sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.ITextSearchCapable yt)
+        if (_sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.ITextSearchCapable yt)
         {
             DebugLog.Log("SourceRegistry", "Search routed through plug-in YouTube source");
             return MapPluginSearch(yt, query);
@@ -906,7 +880,7 @@ public partial class JukeboxViewModel : ObservableObject
 
     /// <summary>The YouTube discovery capability if the plug-in path is enabled and available, else null.</summary>
     private Phosphor.Plugin.Abstractions.IPlaylistChannelDiscovery? PluginDiscovery =>
-        _usePluginSources && _sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IPlaylistChannelDiscovery d
+        _sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IPlaylistChannelDiscovery d
             ? d : null;
 
     /// <summary>Resolves a playlist id via the plug-in discovery capability when enabled, else the legacy engine.</summary>
@@ -935,8 +909,7 @@ public partial class JukeboxViewModel : ObservableObject
     /// </summary>
     private async Task<Video.VideoMetadata?> GetYouTubeMetadataViaPluginOrLegacy(string videoId)
     {
-        if (_usePluginSources &&
-            _sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IPlayableResolver resolver)
+        if (_sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IPlayableResolver resolver)
         {
             var probe = new Phosphor.Plugin.Abstractions.SourceItem
             {
@@ -976,8 +949,7 @@ public partial class JukeboxViewModel : ObservableObject
     public async Task<Video.VideoStreams?> ResolveStreamsViaPluginOrLegacy(
         string videoId, VideoQualityPreference quality, bool preferStereo, bool audioOnly, CancellationToken ct = default)
     {
-        if (_usePluginSources &&
-            _sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IPlayableResolver resolver)
+        if (_sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IPlayableResolver resolver)
         {
             var probe = new Phosphor.Plugin.Abstractions.SourceItem
             {
@@ -1063,7 +1035,7 @@ public partial class JukeboxViewModel : ObservableObject
     private void WireCacheDownloadOverride()
     {
         Func<string, VideoQualityPreference, bool, string, CancellationToken, Task<Video.VideoDownload?>>? over =
-            (_usePluginSources && _sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IDownloadable)
+            (_sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IDownloadable)
                 ? DownloadStreamsViaPluginOrLegacy
                 : null;
 
@@ -1081,7 +1053,7 @@ public partial class JukeboxViewModel : ObservableObject
         string ratingKey, PlexItemType childType, CancellationToken ct)
     {
         var plex = ActivePlexSource;
-        if (_usePluginSources && plex is Phosphor.Plugin.Abstractions.IBrowsable browsable)
+        if (plex is Phosphor.Plugin.Abstractions.IBrowsable browsable)
         {
             // The parent node kind is one level above the requested children: album-children
             // hang off an Artist node, track-children off an Album node.
@@ -1121,7 +1093,7 @@ public partial class JukeboxViewModel : ObservableObject
         Func<Task<PlexPage>> legacy, CancellationToken ct = default)
     {
         var plex = ActivePlexSource;
-        if (_usePluginSources && plex is Phosphor.Plugin.Abstractions.IPagedBrowsable paged)
+        if (plex is Phosphor.Plugin.Abstractions.IPagedBrowsable paged)
         {
             var category = new Phosphor.Plugin.Abstractions.SourceCategory
             {
@@ -1184,7 +1156,7 @@ public partial class JukeboxViewModel : ObservableObject
     /// </summary>
     public string? TryGetGaplessStreamUrl(VideoItem item)
     {
-        if (_usePluginSources && _sourceRegistry != null)
+        if (_sourceRegistry != null)
         {
             // Route the item to its source and ask the gapless capability. Plex reads the carried
             // VideoItem from SourceState, so wrap it accordingly.

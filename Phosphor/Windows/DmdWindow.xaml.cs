@@ -2374,15 +2374,14 @@ public partial class DmdWindow : JukeboxWindow
         if (DataContext is JukeboxViewModel vm)
         {
             // Configure Plex first so SyncPlexLibraries updates categories.json before reload.
-            // Sources config from plug-in instances when UsePluginSources is on, else flat fields.
+            // Plex tiles/services are built from the enabled plug-in instances.
             vm.ConfigurePlexFromSettings(_appSettings, skipRebuild: true);
             LogStep("ConfigurePlex");
             vm.ReloadGenreCategories();
             LogStep("ReloadGenreCategories");
             vm.SetVideoEngine(_appSettings.VideoEngine);
             vm.SetSearchEngine(_appSettings.SearchEngine);
-            // Rebuild the plug-in source registry so the Dev/Test "Use plug-in sources" toggle
-            // (and any Plex/engine changes) take effect without a restart.
+            // Rebuild the plug-in source registry so Plex/engine changes take effect without a restart.
             _ = vm.BuildSourceRegistryAsync(_appSettings);
             vm.SetupPrefetch(_appSettings.PrefetchEnabled);
             vm.SetupThumbnailCache(_appSettings.ThumbnailCacheEnabled, _appSettings.ThumbnailCacheMaxSizeMb);

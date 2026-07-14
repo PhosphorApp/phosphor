@@ -987,9 +987,6 @@ public partial class SettingsWindow : JukeboxWindow
         UpdateDebugLogPathText();
         UpdateCrashLogStatus();
 
-        // Dev / Test
-        CbUsePluginSources.IsChecked = settings.UsePluginSources;
-
         // Track list settings
         foreach (var c in new[] { 1, 2, 3, 4 })
             CbResultColumns.Items.Add(c);
@@ -3541,7 +3538,6 @@ public partial class SettingsWindow : JukeboxWindow
             ? ageValues[CbPlexPlaylistCacheMaxAge.SelectedIndex] : 168;
         _settings.DebugLogging = CbDebugLogging.IsChecked == true;
         DebugLog.Enabled = _settings.DebugLogging;
-        _settings.UsePluginSources = CbUsePluginSources.IsChecked == true;
         // Harvest the editable Plug-ins tab into settings.PluginInstances (the plug-in path's config).
         HarvestPluginSourcesTab();
         if (CbResultColumns.SelectedItem is int cols)

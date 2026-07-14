@@ -12,10 +12,8 @@ namespace Phosphor.Plugins;
 /// <see cref="PluginHost"/>, and exposes lookups by instance id and by capability.
 /// </summary>
 /// <remarks>
-/// Phase 4 runs the registry <em>alongside</em> the legacy VM engines rather than replacing
-/// them — adoption is gated by <c>AppSettings.UsePluginSources</c> and limited to narrow
-/// paths. Later phases migrate the VM's dispatch onto the registry and retire the legacy
-/// branches.
+/// The registry is the source path for the app: the VM dispatches YouTube and Plex
+/// discovery/playback through the configured instances and their capabilities.
 /// </remarks>
 public sealed class SourceRegistry
 {
