@@ -785,6 +785,26 @@ Each phase is independently shippable and reversible.
    `JukeboxViewModel.IsSearchScoped` signal (not a per-source flag) — today backed by `IsPlexBrowsing`,
    but the single place any future scoped source feeds into, so the #2 capability slots in without
    touching the UI binding.
+
+   **Remaining VM coupling audit (eval).** A focused scan of the hi-vis VM/host code found the
+   architecture is capability-driven for search/browse/resolve/download/caching/gapless/update. The
+   residual `IsPlex`/`_plex` coupling clusters into three buckets:
+   - **Leave as-is:** the ~29 `_plex`-direct calls inside the Plex-specific browse/drill methods are
+     the Plex source's in-box implementation (Model A), not bad coupling; and the legacy `!IsPlex`
+     fallback branches are the deliberate registry-failure resilience net.
+   - **Deferred #A — tile-building unification (planned; see below).** `RebuildCategories` still has a
+     bespoke `if (entry.IsPlex)` branch and `SelectCategoryAsync` has 5 Plex browse branches, running
+     in parallel with the generic `_pluginBrowseTiles` / `BrowsePluginCategoryAsync` path. **Key
+     finding:** `PlexSource` *already* fully implements the generic `IBrowsable` (root library tiles +
+     `BrowseResult.Categories`/`Items` for Hubs/Playlists/artists/albums) and `IPagedBrowsable` — so
+     the duplication is host-side legacy machinery, and the only real gap is that the generic host
+     path ignores `BrowseResult.Categories` (sub-tiles) and pagination. Unifying is mostly enriching
+     the generic path, then retiring the Plex-specific branches. Highest-value structural cleanup.
+   - **Deferred #B — play-time chapters/metadata.** The play path branches on `item.IsPlex` to call
+     `FetchPlexChaptersAsync` vs `FetchYouTubeChaptersAsync`, and `GetPlexAudioTag` is Plex-shaped
+     (cosmetic status text). The capability already exists (`IPlayableResolver.GetMetadataAsync`
+     returns chapters and is used on the browse path) — the play path just doesn't route through it
+     consistently. A contained refactor for a later increment; touches the thread-sensitive play path.
 8. **Reference third source (validation).** Prototype Jellyfin or a local-folder
    source to confirm no core changes are needed.
 
