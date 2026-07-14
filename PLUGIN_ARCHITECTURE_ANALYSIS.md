@@ -347,6 +347,10 @@ This also gives "not configured" and "failed to load" states one consistent home
   in setters).
 - **Secrets.** Plex tokens (and future API keys) live in settings today. A plug-in
   credential store should ideally be encrypted (DPAPI) rather than plaintext JSON.
+  **Decision (deferred):** the only current secret — the Plex token — is low-sensitivity
+  (it's embedded in the Plex web URL and visible to anyone already logged into that
+  account, and is read-scoped to the server), so DPAPI encryption is deferred. Revisit if
+  a plug-in with genuinely sensitive credentials (e.g. real API keys) is added.
 - **Testing surface explodes.** Each capability × each source is a test matrix.
 - **Discovery/enumeration UX.** Enable/disable, "not configured," and "plug-in
   failed to load" states all need UI.
@@ -515,8 +519,13 @@ Each phase is independently shippable and reversible.
    implements `IDownloadable` when the plug-in path is on (YouTube yes, Plex no), falling
    back to the legacy `!item.IsPlex` when off. All five caching gates (preemptive-cache skip,
    prefetch skip, cache-on-play, and the two add-to-playlist caches) now use it, replacing the
-   hardcoded Plex-isms. The per-instance `AllowCaching` config remains the *policy* layer on
-   top (default = capability default); wiring it through config→source is a later small step.
+   hardcoded Plex-isms. The per-instance `AllowCaching` config is the *policy* layer on
+   top (default = capability default). **Policy wiring (done):** `SourceRegistry.CachingPolicy(instanceId)`
+   exposes each instance's `AllowCaching`; `IsItemCacheable` resolves the item's owning source
+   (`ActivePlexSource` for Plex, `YouTube` else) and, when the policy is set, uses it to force
+   caching on/off — otherwise falls back to the `IDownloadable` capability default. The Plug-ins
+   settings tab renders a per-instance "Caching" selector (Default / Always cache / Never cache)
+   that round-trips through `AllowCaching`.
 6. **Dynamic loader (opt-in).** Add the `plug-ins` folder scan using a collectible
    `AssemblyLoadContext`, `ApiVersion` checks, failure isolation, and a manifest.
    Gate behind a setting initially.
@@ -559,7 +568,8 @@ Each phase is independently shippable and reversible.
    gained `IConfigurable.ApplyConfigActionAsync(actionId, selectedIds, currentSettings)`
    (0.7.0): the source owns turning the selection into its settings shape (PlexSource rebuilds
    its rich `libraries` mapping from the chosen keys, preserving Hubs/Playlists flags). The
-   `AllowCaching` toggle UI remains a small follow-up; multi-instance + config actions are done.
+   `AllowCaching` toggle UI is now done (per-instance "Caching" selector); multi-instance +
+   config actions are done.
    **Nested config options (0.8.0).** The Plex library picker needs per-library sub-flags
    (Hubs / Playlists), which the flat `ConfigOption` couldn't express — so `ConfigOption` gained
    `SubOptions` (+ `ConfigSubOption`), and `ApplyConfigActionAsync` now takes structured

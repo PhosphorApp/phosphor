@@ -45,6 +45,14 @@ public sealed class SourceRegistry
     public IPhosphorSource? ByInstance(string instanceId) =>
         _sources.FirstOrDefault(s => s.InstanceId == instanceId);
 
+    /// <summary>
+    /// The per-instance caching policy for a source: <c>null</c> = "use the capability default"
+    /// (cache when the source implements <c>IDownloadable</c>); <c>true</c>/<c>false</c> forces it.
+    /// Returns <c>null</c> for unknown instances.
+    /// </summary>
+    public bool? CachingPolicy(string instanceId) =>
+        _configs.TryGetValue(instanceId, out var cfg) ? cfg.AllowCaching : null;
+
     /// <summary>Enumerates sources implementing a given capability.</summary>
     public IEnumerable<T> WithCapability<T>() where T : class =>
         _sources.OfType<T>();

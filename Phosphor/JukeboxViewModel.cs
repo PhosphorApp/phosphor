@@ -820,18 +820,23 @@ public partial class JukeboxViewModel : ObservableObject
     /// Whether an item's source can produce downloadable raw streams for the disk caches. When the
     /// plug-in path is on, this is driven by capability (the owning source implements
     /// <c>IDownloadable</c> — YouTube does, Plex does not); otherwise it falls back to the legacy
-    /// rule (<c>!IsPlex</c>). Replaces hardcoded Plex-specific cache gates. (The per-instance
-    /// <c>AllowCaching</c> policy layer is not yet consumed — see PLUGIN_ARCHITECTURE_ANALYSIS.md.)
+    /// rule (<c>!IsPlex</c>). The per-instance <c>AllowCaching</c> policy overrides the capability
+    /// default when set (<c>true</c> forces on, <c>false</c> forces off).
     /// </summary>
     private bool IsItemCacheable(VideoItem item)
     {
         if (_usePluginSources && _sourceRegistry != null)
         {
             // YouTube items have no "scheme:" prefix; Plex items are "plex:...". Route the item to
-            // its source and ask whether that source supports downloading.
-            if (item.IsPlex)
-                return _sourceRegistry.PlexInstances.FirstOrDefault() is Phosphor.Plugin.Abstractions.IDownloadable;
-            return _sourceRegistry.YouTube is Phosphor.Plugin.Abstractions.IDownloadable;
+            // its source and ask whether that source supports downloading, then let the instance's
+            // AllowCaching policy (if set) override that capability default.
+            var source = item.IsPlex ? ActivePlexSource : _sourceRegistry.YouTube;
+            if (source == null) return false;
+
+            var policy = _sourceRegistry.CachingPolicy(source.InstanceId);
+            if (policy.HasValue) return policy.Value;
+
+            return source is Phosphor.Plugin.Abstractions.IDownloadable;
         }
 
         return !item.IsPlex;

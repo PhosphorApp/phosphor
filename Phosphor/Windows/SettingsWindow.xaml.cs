@@ -4016,6 +4016,8 @@ public partial class SettingsWindow : JukeboxWindow
     private readonly List<(System.Windows.Controls.Control Control, string InstanceId, string Key)> _pluginFieldControls = new();
     private readonly Dictionary<string, System.Windows.Controls.TextBox> _pluginDisplayNameBoxes = new();
     private readonly Dictionary<string, System.Windows.Controls.CheckBox> _pluginEnabledBoxes = new();
+    // Per-instance caching-policy selector (Default / Always / Never → AllowCaching null/true/false).
+    private readonly Dictionary<string, System.Windows.Controls.ComboBox> _pluginCachingBoxes = new();
 
     // Sentinel used to pre-fill a secret field so it looks populated without exposing the real
     // value. On harvest, a field still equal to the sentinel is left unchanged.
@@ -4049,6 +4051,7 @@ public partial class SettingsWindow : JukeboxWindow
         _pluginFieldControls.Clear();
         _pluginDisplayNameBoxes.Clear();
         _pluginEnabledBoxes.Clear();
+        _pluginCachingBoxes.Clear();
 
         // Edit a working copy so cancelling the dialog doesn't mutate settings.
         _pluginWorkingConfigs.Clear();
@@ -4227,6 +4230,23 @@ public partial class SettingsWindow : JukeboxWindow
                 _pluginFieldControls.Add((editor, cfg.InstanceId, d.Key));
                 AddSettingRow(grid, d.Label, d.HelpText, editor, text, dim);
             }
+
+            // ── Caching policy selector (Default / Always / Never) ──
+            var cachingCombo = new System.Windows.Controls.ComboBox
+            {
+                Foreground = text, Background = surface2, Height = EditorHeight,
+                MinWidth = EditorMinWidth,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+            };
+            cachingCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = "Default (based on source)", Tag = "default" });
+            cachingCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = "Always cache", Tag = "true" });
+            cachingCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = "Never cache", Tag = "false" });
+            cachingCombo.SelectedIndex = cfg.AllowCaching switch { true => 1, false => 2, null => 0 };
+            cachingCombo.ToolTip = "Whether videos from this source are downloaded to the disk cache. " +
+                "Default uses the source's capability (YouTube caches, Plex streams live).";
+            _pluginCachingBoxes[cfg.InstanceId] = cachingCombo;
+            AddSettingRow(grid, "Caching", cachingCombo.ToolTip as string, cachingCombo, text, dim);
 
             panel.Children.Add(grid);
 
@@ -4751,6 +4771,13 @@ public partial class SettingsWindow : JukeboxWindow
                 cfg.Enabled = en.IsChecked == true;
             if (_pluginDisplayNameBoxes.TryGetValue(cfg.InstanceId, out var nb))
                 cfg.DisplayName = string.IsNullOrWhiteSpace(nb.Text) ? null : nb.Text.Trim();
+            if (_pluginCachingBoxes.TryGetValue(cfg.InstanceId, out var cache))
+                cfg.AllowCaching = (cache.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string switch
+                {
+                    "true" => true,
+                    "false" => false,
+                    _ => null,
+                };
         }
 
         foreach (var (control, instanceId, key) in _pluginFieldControls)

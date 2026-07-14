@@ -28,8 +28,8 @@ public sealed class PluginInstanceConfig
     /// <summary>
     /// Caching policy for this instance. <c>null</c> means "use the capability default" (cache when
     /// the source implements <c>IDownloadable</c>); <c>true</c>/<c>false</c> lets the user force it
-    /// on/off. Not yet consumed by the cache gate — reserved for the capability-based cache-gate
-    /// follow-up (see PLUGIN_ARCHITECTURE_ANALYSIS.md).
+    /// on/off. Consumed by <c>JukeboxViewModel.IsItemCacheable</c> via
+    /// <c>SourceRegistry.CachingPolicy</c>, and editable in the Plug-ins settings tab.
     /// </summary>
     public bool? AllowCaching { get; set; }
 }
