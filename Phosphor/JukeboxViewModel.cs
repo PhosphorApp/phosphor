@@ -449,19 +449,7 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     // ── Plex ──
-    private List<PlexLibraryMapping> _plexLibraries = [];
     private bool _plexStereoAudio;
-
-    public void ConfigurePlex(string serverUrl, string token, List<PlexLibraryMapping> libraries, bool stereoAudio = false, bool skipRebuild = false)
-    {
-        _plex.Configure(serverUrl, token, stereoAudio);
-        _plexStereoAudio = stereoAudio;
-        _plexLibraries = libraries;
-        GenreCategoryStore.SyncPlexLibraries(_genreCategories, _plexLibraries);
-        GenreCategoryStore.SaveInBackground(_genreCategories);
-        if (!skipRebuild)
-            RebuildCategories();
-    }
 
     /// <summary>
     /// Configures Plex (and its category tiles) from settings. Tiles are built from <em>all</em>
@@ -508,34 +496,16 @@ public partial class JukeboxViewModel : ObservableObject
             _plexServiceByInstance[c.InstanceId] = svc;
         }
 
-        // Build tiles from ALL enabled instances, tagged with their instance id.
-        var instLibs = plexInstances
-            .Select(c => new GenreCategoryStore.PlexInstanceLibraries(
-                c.InstanceId,
-                c.DisplayName ?? "Plex",
-                ParsePlexLibraries(GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyLibraries))))
-            .ToList();
-        _plexLibraries = instLibs.SelectMany(i => i.Libraries).ToList();
-        // NOTE: Plex home tiles are no longer synced here — Plex flows through the generic browse
-        // path (BuildPluginBrowseTilesAsync → SyncSourceTiles), one tile per library like any other
-        // IBrowsable source. This method now only wires up the PlexService instances used for
-        // playback/chapters/gapless. _plexLibraries is retained for those non-tile lookups.
+        // Plex home tiles are no longer synced here — Plex flows through the generic browse path
+        // (BuildPluginBrowseTilesAsync → SyncSourceTiles), one tile per library like any other
+        // IBrowsable source. This method only wires up the PlexService instances used for
+        // playback/chapters/gapless.
         if (!skipRebuild)
             RebuildCategories();
     }
 
     private static string? GetSetting(Phosphor.Plugins.PluginInstanceConfig cfg, string key)
         => cfg.Settings.TryGetValue(key, out var v) ? v : null;
-
-    private static List<PlexLibraryMapping> ParsePlexLibraries(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json)) return [];
-        try
-        {
-            return System.Text.Json.JsonSerializer.Deserialize<List<PlexLibraryMapping>>(json) ?? [];
-        }
-        catch { return []; }
-    }
 
     /// <summary>
     /// Returns the <see cref="PlexService"/> for the currently-active browse instance (multi-server).
