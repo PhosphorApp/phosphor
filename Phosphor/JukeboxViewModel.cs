@@ -2073,6 +2073,57 @@ public partial class JukeboxViewModel : ObservableObject
         StatusText = "Searching...";
         SearchResults.Clear();
 
+        // If currently browsing a generic plug-in node whose source supports in-view search,
+        // search within that node (fan-out is the source's concern) instead of the global source.
+        if (IsGenericBrowsing && _browseStack.Count > 0
+            && _sourceRegistry?.ByInstance(_browseStack[^1].SourceInstanceId)
+               is Phosphor.Plugin.Abstractions.IScopedSearchable scoped)
+        {
+            var node = _browseStack[^1];
+            // Search spans the whole node — leaf paging no longer applies.
+            _genericPaged = null;
+            _genericPagedCategory = null;
+            _genericPagedResolver = null;
+            _genericPagedOffset = 0;
+            CanLoadMore = false;
+            _hasMoreResults = false;
+
+            try
+            {
+                var sourceCategory = new Phosphor.Plugin.Abstractions.SourceCategory
+                {
+                    SourceInstanceId = node.SourceInstanceId,
+                    CategoryId = node.CategoryId,
+                    Title = node.Title,
+                    SourceState = node.SourceState,
+                };
+
+                var result = await scoped.SearchInCategoryAsync(sourceCategory, query, _searchCts.Token);
+                if (_searchCts.Token.IsCancellationRequested) return;
+
+                foreach (var cat in result.Categories)
+                    SearchResults.Add(ToGenericContainerItem(cat));
+
+                var resolver = _sourceRegistry.ByInstance(node.SourceInstanceId)
+                    as Phosphor.Plugin.Abstractions.IPlayableResolver;
+                foreach (var item in result.Items)
+                    await AddResolvedLeafAsync(item, resolver, _searchCts.Token);
+
+                StatusText = $"{SearchResults.Count} result(s) for \"{query}\" in {node.Title}";
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                StatusText = $"Search error: {ex.Message}";
+                DebugLog.LogException("Generic scoped search", ex);
+            }
+            finally
+            {
+                IsSearching = false;
+            }
+            return;
+        }
+
         // If currently browsing a Plex library, search within that library instead of YouTube
         if (_isPlexBrowsing && _plex.IsConfigured && !string.IsNullOrEmpty(_activePlexLibraryKey))
         {
@@ -2376,7 +2427,16 @@ public partial class JukeboxViewModel : ObservableObject
     /// per-source flag. When a generic scoped-search capability lands (see PLUGIN_ARCHITECTURE_ANALYSIS.md),
     /// this becomes its natural home.
     /// </summary>
-    public bool IsSearchScoped => IsPlexBrowsing;
+    public bool IsSearchScoped => IsPlexBrowsing || IsGenericScopedSearchAvailable;
+
+    /// <summary>
+    /// True when the active generic browse node's source implements <see cref="IScopedSearchable"/>,
+    /// so typing in the search box searches within that node rather than the global source.
+    /// </summary>
+    private bool IsGenericScopedSearchAvailable =>
+        IsGenericBrowsing && _browseStack.Count > 0
+        && _sourceRegistry?.ByInstance(_browseStack[^1].SourceInstanceId)
+           is Phosphor.Plugin.Abstractions.IScopedSearchable;
 
     /// <summary>
     /// Whether the search-source dropdown is meaningful right now — false when the view scopes search
@@ -2517,7 +2577,14 @@ public partial class JukeboxViewModel : ObservableObject
     public bool IsGenericBrowsing
     {
         get => _isGenericBrowsing;
-        private set => SetProperty(ref _isGenericBrowsing, value);
+        private set
+        {
+            if (SetProperty(ref _isGenericBrowsing, value))
+            {
+                OnPropertyChanged(nameof(IsSearchScoped));
+                OnPropertyChanged(nameof(IsSearchSourceSelectable));
+            }
+        }
     }
 
     private void UpdateBrowseBreadcrumb()
