@@ -50,6 +50,7 @@ internal static class PlexMappings
         SourceInstanceId = instanceId,
         CategoryId = $"library:{lib.Key}",
         Title = lib.Title,
+        Icon = lib.Type == "artist" ? "🎵" : "🎬",
         HasSubCategories = true,
         SourceState = new PlexNode(PlexNodeKind.Library, lib.Key, lib.Type),
     };
@@ -61,6 +62,12 @@ internal static class PlexMappings
         CategoryId = v.VideoId,
         Title = v.Title,
         ThumbnailUrl = v.ThumbnailUrl,
+        Icon = node.Kind switch
+        {
+            PlexNodeKind.Artist => "🎤",
+            PlexNodeKind.Album => "💿",
+            _ => null,
+        },
         HasSubCategories = node.Kind is not PlexNodeKind.Album, // albums expand straight to tracks
         SourceState = node,
     };
@@ -71,6 +78,7 @@ internal static class PlexMappings
         SourceInstanceId = instanceId,
         CategoryId = $"hub:{hub.HubKey}",
         Title = hub.Title,
+        Icon = "⭐",
         HasSubCategories = false,
         SourceState = new PlexNode(PlexNodeKind.Hub, hub.HubKey, hub.Type),
     };
@@ -82,6 +90,7 @@ internal static class PlexMappings
         CategoryId = $"playlist:{pl.RatingKey}",
         Title = pl.Title,
         ThumbnailUrl = pl.Thumb,
+        Icon = "🎶",
         HasSubCategories = false,
         SourceState = new PlexNode(PlexNodeKind.Playlist, pl.RatingKey),
     };

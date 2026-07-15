@@ -16,7 +16,7 @@ namespace Phosphor.Plugins.Plex;
 /// In-box, so it uses <see cref="PlexService"/>, <see cref="VideoItem"/>, and the Plex enums
 /// directly. Pure data producer: no UI, no thread assumptions.
 /// </remarks>
-public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable, IPagedBrowsable, IPlayableResolver, IConfigurable, IGaplessCapable, IConnectionTestable
+public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable, IPagedBrowsable, IScopedSearchable, IPlayableResolver, IConfigurable, IGaplessCapable, IConnectionTestable
 {
     private readonly PlexService _plex = new();
     private IPluginHost? _host;
@@ -137,6 +137,7 @@ public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable
                 SourceInstanceId = InstanceId,
                 CategoryId = $"hublist:{node.Key}",
                 Title = "Hubs",
+                Icon = "⭐",
                 HasSubCategories = true,
                 SourceState = new PlexNode(PlexNodeKind.HubList, node.Key, node.LibraryType),
             },
@@ -145,6 +146,7 @@ public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable
                 SourceInstanceId = InstanceId,
                 CategoryId = $"playlistlist:{node.Key}",
                 Title = "Playlists",
+                Icon = "🎶",
                 HasSubCategories = true,
                 SourceState = new PlexNode(PlexNodeKind.PlaylistList, node.Key, node.LibraryType),
             },
@@ -232,6 +234,49 @@ public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable
         {
             Items = page.Items.Select(v => PlexMappings.ToSourceItem(v, InstanceId)).ToList(),
             TotalSize = page.TotalSize,
+        };
+    }
+
+    // ── IScopedSearchable ──────────────────────────────────────────────────────
+
+    public async Task<BrowseResult> SearchInCategoryAsync(
+        SourceCategory node, string query, CancellationToken ct = default)
+    {
+        // Only library-scoped search is supported; other nodes return nothing.
+        if (node.SourceState is not PlexNode plexNode || plexNode.Kind != PlexNodeKind.Library)
+            return new BrowseResult();
+
+        if (plexNode.LibraryType == "artist")
+        {
+            // Music: fan out across artist (8), album (9), and track (10) and merge. Matching
+            // artists/albums become drill-in containers; matching tracks are playable leaves.
+            var artists = await _plex.SearchLibraryAsync(
+                plexNode.Key, query, plexNode.LibraryType, PlexSearchMode.Artist, ct);
+            var albums = await _plex.SearchLibraryAsync(
+                plexNode.Key, query, plexNode.LibraryType, PlexSearchMode.Album, ct);
+            var tracks = await _plex.SearchLibraryAsync(
+                plexNode.Key, query, plexNode.LibraryType, PlexSearchMode.Track, ct);
+
+            var categories = new List<SourceCategory>();
+            foreach (var a in artists)
+                categories.Add(PlexMappings.ToCategory(a, InstanceId,
+                    new PlexNode(PlexNodeKind.Artist, a.PlexRatingKey ?? "", plexNode.LibraryType)));
+            foreach (var al in albums)
+                categories.Add(PlexMappings.ToCategory(al, InstanceId,
+                    new PlexNode(PlexNodeKind.Album, al.PlexRatingKey ?? "", plexNode.LibraryType)));
+
+            return new BrowseResult
+            {
+                Categories = categories,
+                Items = tracks.Select(v => PlexMappings.ToSourceItem(v, InstanceId)).ToList(),
+            };
+        }
+
+        // Video: plain section-scoped title search — all leaves.
+        var videos = await _plex.SearchLibraryAsync(plexNode.Key, query, plexNode.LibraryType, null, ct);
+        return new BrowseResult
+        {
+            Items = videos.Select(v => PlexMappings.ToSourceItem(v, InstanceId)).ToList(),
         };
     }
 
