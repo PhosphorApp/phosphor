@@ -297,29 +297,26 @@ public partial class JukeboxViewModel : ObservableObject
                 SearchResults.Add(ToGenericContainerItem(cat));
 
             var resolver = source as Phosphor.Plugin.Abstractions.IPlayableResolver;
-            foreach (var item in result.Items)
-            {
-                var vi = ToVideoItem(item);
-                // Resolve a playable URL now (local files are a cheap path check); the player checks
-                // VideoItem.StreamUrl first and plays it directly.
-                if (resolver != null)
-                {
-                    try
-                    {
-                        var stream = await resolver.ResolveAsync(
-                            item, new Phosphor.Plugin.Abstractions.PlaybackPreferences(), ct);
-                        if (stream != null) vi.StreamUrl = stream.PrimaryUri;
-                    }
-                    catch (Exception ex)
-                    {
-                        DebugLog.LogException($"Plugin resolve '{item.ItemId}'", ex);
-                    }
-                }
-                vi.IsAudioOnly = item.IsAudioOnly;
-                SearchResults.Add(vi);
-            }
 
-            StatusText = $"{SearchResults.Count} item(s) in {node.Title}";
+            // Leaf items: if the source is paginated, drive leaves through the paged path (so large
+            // libraries lazy-load on "load more"); otherwise render the single-shot Items.
+            if (source is Phosphor.Plugin.Abstractions.IPagedBrowsable paged)
+            {
+                _genericPaged = paged;
+                _genericPagedCategory = sourceCategory;
+                _genericPagedResolver = resolver;
+                _genericPagedOffset = 0;
+                _genericPagedTotal = int.MaxValue;
+                await LoadMoreGenericPageAsync();
+            }
+            else
+            {
+                _genericPaged = null;
+                foreach (var item in result.Items)
+                    await AddResolvedLeafAsync(item, resolver, ct);
+                CanLoadMore = false;
+                StatusText = $"{SearchResults.Count} item(s) in {node.Title}";
+            }
         }
         catch (Exception ex)
         {
@@ -343,6 +340,77 @@ public partial class JukeboxViewModel : ObservableObject
         GenericSourceState = cat.SourceState,
         GenericCategoryId = cat.CategoryId,
     };
+
+    // ── Generic paged browse state ──
+    private Phosphor.Plugin.Abstractions.IPagedBrowsable? _genericPaged;
+    private Phosphor.Plugin.Abstractions.SourceCategory? _genericPagedCategory;
+    private Phosphor.Plugin.Abstractions.IPlayableResolver? _genericPagedResolver;
+    private int _genericPagedOffset;
+    private int _genericPagedTotal;
+
+    /// <summary>Resolves a leaf <see cref="SourceItem"/> to a playable <see cref="VideoItem"/> and adds it.</summary>
+    private async Task AddResolvedLeafAsync(
+        Phosphor.Plugin.Abstractions.SourceItem item,
+        Phosphor.Plugin.Abstractions.IPlayableResolver? resolver,
+        CancellationToken ct)
+    {
+        var vi = ToVideoItem(item);
+        // Resolve a playable URL now (local files are a cheap path check); the player checks
+        // VideoItem.StreamUrl first and plays it directly.
+        if (resolver != null)
+        {
+            try
+            {
+                var stream = await resolver.ResolveAsync(
+                    item, new Phosphor.Plugin.Abstractions.PlaybackPreferences(), ct);
+                if (stream != null) vi.StreamUrl = stream.PrimaryUri;
+            }
+            catch (Exception ex)
+            {
+                DebugLog.LogException($"Plugin resolve '{item.ItemId}'", ex);
+            }
+        }
+        vi.IsAudioOnly = item.IsAudioOnly;
+        SearchResults.Add(vi);
+    }
+
+    /// <summary>Loads the next page of leaf items for the active generic paged browse node.</summary>
+    private async Task LoadMoreGenericPageAsync()
+    {
+        if (_genericPaged is null || _genericPagedCategory is null || _isLoadingMore) return;
+        if (_genericPagedOffset >= _genericPagedTotal) { CanLoadMore = false; return; }
+
+        _isLoadingMore = true;
+        var token = _searchCts.Token;
+        try
+        {
+            var page = await _genericPaged.BrowsePageAsync(
+                _genericPagedCategory, _genericPagedOffset, SearchPageSize, token);
+            if (token.IsCancellationRequested) return;
+
+            _genericPagedTotal = page.TotalSize;
+            foreach (var item in page.Items)
+                await AddResolvedLeafAsync(item, _genericPagedResolver, token);
+
+            _genericPagedOffset += page.Items.Count;
+            // Stop if the source reports no more, or returned an empty page (defensive against
+            // a source that under-reports TotalSize).
+            bool hasMore = page.Items.Count > 0 && _genericPagedOffset < _genericPagedTotal;
+            CanLoadMore = hasMore;
+            StatusText = hasMore
+                ? $"Showing {SearchResults.Count} item(s) — scroll for more"
+                : $"Showing all {SearchResults.Count} item(s)";
+        }
+        catch (Exception ex)
+        {
+            DebugLog.LogException("Generic browse pagination", ex);
+            CanLoadMore = false;
+        }
+        finally
+        {
+            _isLoadingMore = false;
+        }
+    }
 
     // ── Genre categories (loaded from categories.json) ──
     private List<GenreCategoryEntry> _genreCategories = [];
@@ -1911,6 +1979,10 @@ public partial class JukeboxViewModel : ObservableObject
         // Reset generic plug-in browse navigation.
         IsGenericBrowsing = false;
         _browseStack.Clear();
+        _genericPaged = null;
+        _genericPagedCategory = null;
+        _genericPagedResolver = null;
+        _genericPagedOffset = 0;
         UpdateBrowseBreadcrumb();
         ActiveCategory = "";
         SearchResults.Clear();
@@ -3005,7 +3077,9 @@ public partial class JukeboxViewModel : ObservableObject
     [RelayCommand]
     private async Task LoadMoreResultsAsync()
     {
-        if (_isHistoryBrowsing)
+        if (IsGenericBrowsing && _genericPaged != null)
+            await LoadMoreGenericPageAsync();
+        else if (_isHistoryBrowsing)
             LoadMoreHistoryResults();
         else if (_isPlexHubBrowsing)
             await LoadMorePlexHubResultsAsync();
