@@ -121,6 +121,7 @@ public static class PluginSettingsFactory
     {
         var caps = new List<string>();
         if (source is ITextSearchCapable) caps.Add("Search");
+        if (source is IScopedSearchable) caps.Add("In-view search");
         if (source is IPlaylistChannelDiscovery) caps.Add("Playlists/Channels");
         if (source is IBrowsable) caps.Add("Browse");
         if (source is IPagedBrowsable) caps.Add("Paged browse");

@@ -213,3 +213,21 @@ public sealed record RefreshProgress(double Fraction, string? CurrentItem = null
 /// <param name="ItemCount">Total items in the catalog after the rescan.</param>
 /// <param name="Message">A concise, user-facing status line (e.g. "Scanned 1,204 files in 3 folders").</param>
 public sealed record RefreshResult(bool Success, int ItemCount, string Message);
+
+/// <summary>
+/// Capability: search <em>within</em> a specific browse node the user is currently viewing (a Plex
+/// library, a folder, a Jellyfin collection), rather than the whole source. Complements
+/// <see cref="ITextSearchCapable"/> (which is source-wide). Returns a <see cref="BrowseResult"/> so
+/// results can be a mix of drill-in sub-categories and playable leaf items — e.g. a Plex music
+/// library search surfaces matching artists and albums as containers plus matching tracks as leaves.
+/// </summary>
+public interface IScopedSearchable
+{
+    /// <summary>
+    /// Searches inside <paramref name="node"/> (the browse category currently open) for
+    /// <paramref name="query"/>. The source owns how it interprets the scope + query (e.g. a Plex
+    /// music library fans out across artist/album/track and merges the matches). Must not throw for
+    /// expected failures — return an empty <see cref="BrowseResult"/> instead.
+    /// </summary>
+    Task<BrowseResult> SearchInCategoryAsync(SourceCategory node, string query, CancellationToken ct = default);
+}

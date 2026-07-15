@@ -17,6 +17,12 @@ public sealed class SourceCategory
     public string? ThumbnailUrl { get; init; }
 
     /// <summary>
+    /// Optional glyph/emoji the host shows on this node's tile (e.g. "🟠", "📡"). Lets a source theme
+    /// its own tiles; the host falls back to a default when null/empty.
+    /// </summary>
+    public string? Icon { get; init; }
+
+    /// <summary>
     /// True when this node has further sub-categories (vs. only leaf items). The host may
     /// use this to decide whether to keep drilling. When unknown, leave false and let the
     /// browse result speak for itself.

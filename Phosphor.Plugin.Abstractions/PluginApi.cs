@@ -10,12 +10,13 @@ public static class PluginApi
 {
     /// <summary>The contract version this build of the abstractions defines.</summary>
     /// <remarks>
+    /// 0.12.0 — added <c>SourceCategory.Icon</c> + <see cref="IScopedSearchable"/> (search within a browse node).
     /// 0.11.0 — added <c>PluginSettingType.FolderPath</c> + <c>PluginSettingDescriptor.AllowMultiple</c>.
     /// 0.10.0 — added <see cref="IRefreshable"/> (rescan content / rebuild catalog).
     /// 0.9.0 — added <see cref="IConnectionTestable"/> (optional "test connection" capability).
     /// 0.8.0 — nested config sub-options (<c>ConfigOption.SubOptions</c>).
     /// </remarks>
-    public static readonly Version Current = new(0, 11, 0);
+    public static readonly Version Current = new(0, 12, 0);
 
     /// <summary>
     /// The oldest contract version this host still accepts. A plug-in built against an older
@@ -23,7 +24,7 @@ public static class PluginApi
     /// contract is pre-1.0 and evolving, this tracks <see cref="Current"/>; once it stabilizes, this
     /// can lag behind so older plug-ins keep loading.
     /// </summary>
-    public static readonly Version MinimumSupported = new(0, 11, 0);
+    public static readonly Version MinimumSupported = new(0, 12, 0);
 
     /// <summary>
     /// Whether a plug-in built against <paramref name="pluginApiVersion"/> is compatible with this
