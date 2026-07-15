@@ -296,40 +296,6 @@
                 </StackPanel>
             </DockPanel>
 
-            <!-- Plex music browse bar (shown when viewing a Plex music library) -->
-            <DockPanel Grid.Row="1" Margin="0,0,0,4"
-                       Visibility="{Binding IsViewingPlexMusic, Converter={StaticResource BoolVis}}">
-
-                <TextBlock x:Name="PlexBreadcrumbText" Text="{Binding PlexBreadcrumb}" DockPanel.Dock="Left"
-                           Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="12" Tag="NavText"
-                           VerticalAlignment="Center" Margin="0,0,12,0"/>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <TextBlock Text="Search:" Foreground="{StaticResource TextDimBrush}" FontSize="11"
-                               VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <RadioButton x:Name="PlexSearchArtist" Content="Artists" GroupName="PlexSearch"
-                                 IsChecked="True" Foreground="{StaticResource TextBrush}" FontSize="11"
-                                 VerticalAlignment="Center" Margin="0,0,8,0"
-                                 Checked="PlexSearchMode_Changed"/>
-                    <RadioButton x:Name="PlexSearchAlbum" Content="Albums" GroupName="PlexSearch"
-                                 Foreground="{StaticResource TextBrush}" FontSize="11"
-                                 VerticalAlignment="Center" Margin="0,0,8,0"
-                                 Checked="PlexSearchMode_Changed"/>
-                    <RadioButton x:Name="PlexSearchTrack" Content="Tracks" GroupName="PlexSearch"
-                                 Foreground="{StaticResource TextBrush}" FontSize="11"
-                                 VerticalAlignment="Center"
-                                 Checked="PlexSearchMode_Changed"/>
-                </StackPanel>
-            </DockPanel>
-
-            <!-- Plex hub/playlist browse bar -->
-            <DockPanel Grid.Row="1" Margin="0,0,0,4"
-                       Visibility="{Binding IsViewingPlexHubOrPlaylist, Converter={StaticResource BoolVis}}">
-
-                <TextBlock x:Name="PlexHubBreadcrumbText" Text="{Binding PlexHubBreadcrumb}" DockPanel.Dock="Left"
-                           Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="12"
-                           VerticalAlignment="Center" Margin="0,0,12,0"/>
-            </DockPanel>
-
             <!-- Generic plug-in browse bar (source-agnostic drill-down breadcrumb) -->
             <DockPanel Grid.Row="1" Margin="0,0,0,4"
                        Visibility="{Binding IsGenericBrowsing, Converter={StaticResource BoolVis}}">

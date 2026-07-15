@@ -451,8 +451,6 @@ public partial class JukeboxViewModel : ObservableObject
     // ── Plex ──
     private List<PlexLibraryMapping> _plexLibraries = [];
     private bool _plexStereoAudio;
-    private List<VideoItem> _plexHubCategories = [];
-    private string _activeHubParentName = "";
 
     public void ConfigurePlex(string serverUrl, string token, List<PlexLibraryMapping> libraries, bool stereoAudio = false, bool skipRebuild = false)
     {
@@ -953,11 +951,6 @@ public partial class JukeboxViewModel : ObservableObject
     public event Action? PauseRequested;
     public event Action? ResumeRequested;
     public event Action<long>? SeekRequested;
-
-    /// <summary>
-    /// Raised when a non-playable Plex item (artist/album) is activated and needs drill-down handling.
-    /// </summary>
-    public event Action<VideoItem>? PlexDrillDownRequested;
 
     private double _playbackPosition;
     public double PlaybackPosition
@@ -1898,15 +1891,8 @@ public partial class JukeboxViewModel : ObservableObject
         IsViewingPlaylist = false;
         IsViewingLivePlaylist = false;
         IsPlexBrowsing = false;
-        _isPlexHubBrowsing = false;
-        _isPlexPlaylistBrowsing = false;
         _isHistoryBrowsing = false;
-        IsViewingPlexMusic = false;
-        IsViewingPlexHubOrPlaylist = false;
-        _activePlexHubKey = null;
-        _activePlexPlaylistKey = null;
         _activePlexInstanceId = null;
-        _plexHubCategories.Clear();
         // Reset generic plug-in browse navigation.
         IsGenericBrowsing = false;
         _browseStack.Clear();
@@ -1928,39 +1914,6 @@ public partial class JukeboxViewModel : ObservableObject
         }
 
         StatusText = "Select a category or search";
-    }
-
-    /// <summary>
-    /// Navigate back from hub/playlist content or sub-list.
-    /// </summary>
-    public void PlexHubGoBack()
-    {
-        if (_isPlexHubBrowsing || _isPlexPlaylistBrowsing)
-        {
-            // Viewing hub/playlist contents — go back to the parent list
-            _isPlexHubBrowsing = false;
-            _isPlexPlaylistBrowsing = false;
-            _activePlexHubKey = null;
-            _activePlexPlaylistKey = null;
-            CanLoadMore = false;
-            PlexHubBreadcrumb = _activeHubParentName;
-
-            // Re-run the parent hub/playlist list query
-            if (_plexHubCategories.Count > 0)
-            {
-                SearchResults.ReplaceAll(_plexHubCategories);
-                StatusText = $"{_plexHubCategories.Count} items";
-            }
-            else
-            {
-                ShowCategoryListCommand.Execute(null);
-            }
-        }
-        else
-        {
-            // Viewing sub-list or unknown state — go home
-            ShowCategoryListCommand.Execute(null);
-        }
     }
 
     // ── Search ──
@@ -2047,42 +2000,6 @@ public partial class JukeboxViewModel : ObservableObject
             {
                 StatusText = $"Search error: {ex.Message}";
                 DebugLog.LogException("Generic scoped search", ex);
-            }
-            finally
-            {
-                IsSearching = false;
-            }
-            return;
-        }
-
-        // If currently browsing a Plex library, search within that library instead of YouTube
-        if (_isPlexBrowsing && _plex.IsConfigured && !string.IsNullOrEmpty(_activePlexLibraryKey))
-        {
-            // Clear drill-down breadcrumb — search results may span multiple artists/albums
-            _plexDrillArtistKey = null;
-            _plexDrillArtistName = null;
-            _plexDrillAlbumKey = null;
-            _plexDrillAlbumName = null;
-            UpdatePlexBreadcrumb();
-
-            try
-            {
-                var searchType = _activePlexLibraryType == "artist" ? _plexSearchMode : (PlexSearchMode?)null;
-                var results = await ActivePlex.SearchLibraryAsync(
-                    _activePlexLibraryKey, query, _activePlexLibraryType, searchType, _searchCts.Token);
-
-                foreach (var v in results)
-                    SearchResults.Add(v);
-
-                CanLoadMore = false;
-                _hasMoreResults = false;
-                StatusText = $"{SearchResults.Count} Plex results for \"{query}\"";
-            }
-            catch (OperationCanceledException) { }
-            catch (Exception ex)
-            {
-                StatusText = $"Plex search error: {ex.Message}";
-                DebugLog.LogException("Plex search", ex);
             }
             finally
             {
@@ -2334,8 +2251,6 @@ public partial class JukeboxViewModel : ObservableObject
 
     // ── Plex browsing ──
 
-    private const int PlexPageSize = 40;
-    private int _plexTotalSize;
     private bool _isPlexBrowsing;
     public bool IsPlexBrowsing
     {
@@ -2409,85 +2324,19 @@ public partial class JukeboxViewModel : ObservableObject
             : $"{total} items in history";
     }
 
-    private string _activePlexLibraryKey = "";
-
-    private string? _activePlexLibraryType;
-
     // The Plex instance id the current browse session targets (multi-server). Null = first/legacy.
     private string? _activePlexInstanceId;
 
-    // Per-instance PlexService cache for legacy-style calls (hub/playlist lists, in-library search,
-    // GetAllTracks, chapters) that the plug-in path still routes through a PlexService. Configured
-    // from each instance's settings so multi-server calls hit the right server.
+    // Per-instance PlexService cache for legacy-style calls (GetAllTracks, chapters, gapless) that
+    // the plug-in path still routes through a PlexService. Configured from each instance's settings
+    // so multi-server calls hit the right server.
     private readonly Dictionary<string, PlexService> _plexServiceByInstance = new(StringComparer.Ordinal);
 
-    // Active hub/playlist browsing state for pagination
-    private string? _activePlexHubKey;
-    private string? _activePlexHubType;
-    private string? _activePlexPlaylistKey;
-    private string? _activePlexPlaylistName;
-    private int _plexPlaylistCachePageIndex;
-    private string? _activePlexLibraryName;
-    private int _plexLibraryCachePageIndex;
-    private bool _isPlexHubBrowsing;
-    private bool _isPlexPlaylistBrowsing;
-
-    // ── Plex music drill-down state ──
-    private string? _plexDrillArtistKey;
-    private string? _plexDrillArtistName;
-    private string? _plexDrillAlbumKey;
-    private string? _plexDrillAlbumName;
-
-    private PlexSearchMode _plexSearchMode = PlexSearchMode.Artist;
-    public PlexSearchMode PlexSearchMode
-    {
-        get => _plexSearchMode;
-        set
-        {
-            SetProperty(ref _plexSearchMode, value);
-        }
-    }
-
-    private bool _isViewingPlexMusic;
-    public bool IsViewingPlexMusic
-    {
-        get => _isViewingPlexMusic;
-        set
-        {
-            if (SetProperty(ref _isViewingPlexMusic, value))
-                OnPropertyChanged(nameof(ShouldHideFindSimilar));
-        }
-    }
-
-    private bool _isViewingPlexHubOrPlaylist;
-    public bool IsViewingPlexHubOrPlaylist
-    {
-        get => _isViewingPlexHubOrPlaylist;
-        set
-        {
-            if (SetProperty(ref _isViewingPlexHubOrPlaylist, value))
-                OnPropertyChanged(nameof(ShouldHideFindSimilar));
-        }
-    }
-
     /// <summary>
-    /// True when "Find Similar" should be hidden (Plex music, hub, or playlist views).
+    /// True when "Find Similar" should be hidden — for generic plug-in browse views (Plex libraries,
+    /// folders, …) whose container/leaf items aren't YouTube-style "find similar" candidates.
     /// </summary>
-    public bool ShouldHideFindSimilar => IsViewingPlexMusic || IsViewingPlexHubOrPlaylist;
-
-    private string _plexHubBreadcrumb = "";
-    public string PlexHubBreadcrumb
-    {
-        get => _plexHubBreadcrumb;
-        set => SetProperty(ref _plexHubBreadcrumb, value);
-    }
-
-    private string _plexBreadcrumb = "";
-    public string PlexBreadcrumb
-    {
-        get => _plexBreadcrumb;
-        set => SetProperty(ref _plexBreadcrumb, value);
-    }
+    public bool ShouldHideFindSimilar => IsGenericBrowsing;
 
     // ── Generic plug-in browse navigation stack (source-agnostic drill-down + breadcrumb + back) ──
     // Each frame is one browse level; the top of the stack is the currently-displayed node. Used by
@@ -2514,6 +2363,7 @@ public partial class JukeboxViewModel : ObservableObject
             {
                 OnPropertyChanged(nameof(IsSearchScoped));
                 OnPropertyChanged(nameof(IsSearchSourceSelectable));
+                OnPropertyChanged(nameof(ShouldHideFindSimilar));
             }
         }
     }
@@ -2523,555 +2373,6 @@ public partial class JukeboxViewModel : ObservableObject
             ? string.Join(" › ", _browseStack.Select(n => n.Title))
             : "";
 
-    private async Task BrowsePlexLibraryAsync(string libraryKey, string? libraryType = null, string? displayName = null)
-    {
-        _searchCts.Cancel();
-        _searchCts = new CancellationTokenSource();
-
-        IsSearching = true;
-        StatusText = "Loading Plex library...";
-        SearchResults.Clear();
-        _plexTotalSize = 0;
-        _activePlexLibraryKey = libraryKey;
-        _activePlexLibraryType = libraryType;
-        IsPlexBrowsing = true;
-        _activePlexLibraryName = displayName;
-        _plexLibraryCachePageIndex = 0;
-
-        // Reset drill-down state
-        _plexDrillArtistKey = null;
-        _plexDrillArtistName = null;
-        _plexDrillAlbumKey = null;
-        _plexDrillAlbumName = null;
-
-        if (libraryType == "artist")
-        {
-            IsViewingPlexMusic = true;
-            PlexSearchMode = PlexSearchMode.Artist;
-            UpdatePlexBreadcrumb();
-        }
-        else
-        {
-            IsViewingPlexMusic = false;
-        }
-
-        await LoadMorePlexResultsAsync();
-    }
-
-    public async Task BrowsePlexHubContentAsync(string hubKey, string? hubType, string displayName)
-    {
-        _searchCts.Cancel();
-        _searchCts = new CancellationTokenSource();
-        var token = _searchCts.Token;
-
-        IsSearching = true;
-        StatusText = $"Loading {displayName}...";
-        SearchResults.Clear();
-        IsPlexBrowsing = false;
-        _isPlexHubBrowsing = true;
-        _isPlexPlaylistBrowsing = false;
-        _activePlexHubKey = hubKey;
-        _activePlexHubType = hubType;
-        _activePlexPlaylistKey = null;
-        IsViewingPlexMusic = false;
-        IsViewingPlexHubOrPlaylist = true;
-        PlexHubBreadcrumb = $"{_activeHubParentName} › {displayName}";
-        ShowCategories = false;
-        _plexTotalSize = 0;
-
-        try
-        {
-            var page = await PlexBrowseHubPageViaPluginOrLegacy(hubKey, hubType ?? "", 0, PlexPageSize, token);
-            if (token.IsCancellationRequested) return;
-
-            _plexTotalSize = page.TotalSize;
-            foreach (var v in page.Items)
-                SearchResults.Add(v);
-
-            bool hasMore = SearchResults.Count < _plexTotalSize;
-            CanLoadMore = hasMore;
-            StatusText = hasMore
-                ? $"Showing {SearchResults.Count} of {_plexTotalSize} items in {displayName} — scroll for more"
-                : $"{SearchResults.Count} items in {displayName}";
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            StatusText = $"Plex error: {ex.Message}";
-            DebugLog.LogException("Plex hub content", ex);
-            CanLoadMore = false;
-        }
-        finally
-        {
-            IsSearching = false;
-        }
-    }
-
-    private async Task BrowsePlexHubListAsync(string libraryKey, string? libraryType, string displayName)
-    {
-        _searchCts.Cancel();
-        _searchCts = new CancellationTokenSource();
-        var token = _searchCts.Token;
-
-        _activeHubParentName = displayName;
-        IsViewingPlexHubOrPlaylist = true;
-        PlexHubBreadcrumb = displayName;
-        IsSearching = true;
-        StatusText = "Loading hubs...";
-        SearchResults.Clear();
-        ShowCategories = false;
-        CanLoadMore = false;
-        _isPlexHubBrowsing = false;
-        _isPlexPlaylistBrowsing = false;
-        _activePlexHubKey = null;
-        _activePlexPlaylistKey = null;
-        _plexHubCategories.Clear();
-
-        try
-        {
-            var hubs = await ActivePlex.GetLibraryHubsAsync(libraryKey, token);
-            if (token.IsCancellationRequested) return;
-
-            foreach (var hub in hubs)
-            {
-                var vi = new VideoItem
-                {
-                    Title = hub.Title,
-                    Author = $"{hub.Size} items",
-                    PlexItemType = PlexItemType.Hub,
-                    PlexHubKey = hub.HubKey,
-                    PlexHubType = hub.Type,
-                    VideoId = $"plex:hub:{hub.HubKey}",
-                };
-                SearchResults.Add(vi);
-                _plexHubCategories.Add(vi);
-            }
-
-            StatusText = $"{hubs.Count} hubs available";
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            StatusText = $"Plex error: {ex.Message}";
-            DebugLog.LogException("Plex hub list", ex);
-        }
-        finally
-        {
-            IsSearching = false;
-        }
-    }
-
-    private async Task BrowsePlexPlaylistListAsync(string? libraryType, string displayName)
-    {
-        _searchCts.Cancel();
-        _searchCts = new CancellationTokenSource();
-        var token = _searchCts.Token;
-
-        _activeHubParentName = displayName;
-        IsViewingPlexHubOrPlaylist = true;
-        PlexHubBreadcrumb = displayName;
-        IsSearching = true;
-        StatusText = "Loading playlists...";
-        SearchResults.Clear();
-        ShowCategories = false;
-        CanLoadMore = false;
-        _isPlexHubBrowsing = false;
-        _isPlexPlaylistBrowsing = false;
-        _activePlexHubKey = null;
-        _activePlexPlaylistKey = null;
-        _plexHubCategories.Clear();
-
-        try
-        {
-            var playlistType = libraryType == "artist" ? "audio" : "video";
-            var playlists = await ActivePlex.GetPlaylistsAsync(playlistType, token);
-            if (token.IsCancellationRequested) return;
-
-            foreach (var pl in playlists)
-            {
-                var vi = new VideoItem
-                {
-                    Title = pl.Title,
-                    Author = $"{pl.LeafCount} items{(pl.Smart ? " · Smart" : "")}",
-                    PlexItemType = PlexItemType.Playlist,
-                    PlexRatingKey = pl.RatingKey,
-                    VideoId = $"plex:playlist:{pl.RatingKey}",
-                    ThumbnailUrl = pl.Thumb,
-                };
-                SearchResults.Add(vi);
-                _plexHubCategories.Add(vi);
-            }
-
-            StatusText = $"{playlists.Count} playlists available";
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            StatusText = $"Plex error: {ex.Message}";
-            DebugLog.LogException("Plex playlist list", ex);
-        }
-        finally
-        {
-            IsSearching = false;
-        }
-    }
-
-    public async Task BrowsePlexPlaylistContentAsync(string ratingKey, string displayName)
-    {
-        _searchCts.Cancel();
-        _searchCts = new CancellationTokenSource();
-        var token = _searchCts.Token;
-
-        IsSearching = true;
-        StatusText = $"Loading {displayName}...";
-        SearchResults.Clear();
-        IsPlexBrowsing = false;
-        _isPlexHubBrowsing = false;
-        _isPlexPlaylistBrowsing = true;
-        _activePlexPlaylistKey = ratingKey;
-        _activePlexPlaylistName = displayName;
-        _plexPlaylistCachePageIndex = 0;
-        _activePlexHubKey = null;
-        IsViewingPlexHubOrPlaylist = true;
-        PlexHubBreadcrumb = $"{_activeHubParentName} › {displayName}";
-        ShowCategories = false;
-        _plexTotalSize = 0;
-
-        try
-        {
-            // Try plex playlist cache first
-            if (PlexPlaylistCache is { Enabled: true } ppc)
-            {
-                var cached = ppc.TryGetPage(displayName, 0, out var isLast);
-                if (cached != null)
-                {
-                    foreach (var v in cached)
-                        SearchResults.Add(v);
-                    _plexPlaylistCachePageIndex = 1;
-                    CanLoadMore = !isLast;
-                    StatusText = isLast
-                        ? $"{SearchResults.Count} items in {displayName} (cached)"
-                        : $"Showing {SearchResults.Count} items in {displayName} (cached) — scroll for more";
-                    return;
-                }
-            }
-
-            var page = await PlexBrowsePlaylistPageViaPluginOrLegacy(ratingKey, 0, PlexPageSize, token);
-            if (token.IsCancellationRequested) return;
-
-            _plexTotalSize = page.TotalSize;
-            foreach (var v in page.Items)
-                SearchResults.Add(v);
-
-            // Store in cache
-            bool hasMore = SearchResults.Count < _plexTotalSize;
-            if (PlexPlaylistCache is { Enabled: true } storeCache)
-                storeCache.StorePage(displayName, 0, page.Items, !hasMore);
-            _plexPlaylistCachePageIndex = 1;
-
-            CanLoadMore = hasMore;
-            StatusText = hasMore
-                ? $"Showing {SearchResults.Count} of {_plexTotalSize} items in {displayName} — scroll for more"
-                : $"{SearchResults.Count} items in {displayName}";
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            StatusText = $"Plex error: {ex.Message}";
-            DebugLog.LogException("Plex playlist content", ex);
-            CanLoadMore = false;
-        }
-        finally
-        {
-            IsSearching = false;
-        }
-    }
-
-    /// <summary>
-    /// Drill into a Plex artist
-    /// </summary>
-    public async Task PlexDrillIntoArtistAsync(string ratingKey, string artistName)
-    {
-        _searchCts.Cancel();
-        _searchCts = new CancellationTokenSource();
-
-        _plexDrillArtistKey = ratingKey;
-        _plexDrillArtistName = artistName;
-        _plexDrillAlbumKey = null;
-        _plexDrillAlbumName = null;
-        UpdatePlexBreadcrumb();
-
-        IsSearching = true;
-        StatusText = $"Loading albums by {artistName}...";
-        SearchResults.Clear();
-
-        try
-        {
-            var items = await PlexBrowseChildrenViaPluginOrLegacy(ratingKey, PlexItemType.Album, _searchCts.Token);
-            foreach (var v in items)
-                SearchResults.Add(v);
-            CanLoadMore = false;
-            IsPlexBrowsing = true;
-            StatusText = $"{SearchResults.Count} albums by {artistName}";
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex) { StatusText = $"Plex error: {ex.Message}"; DebugLog.LogException("Plex drill artist", ex); }
-        finally { IsSearching = false; }
-    }
-
-    /// <summary>
-    /// Drill into a Plex album
-    /// </summary>
-    public async Task PlexDrillIntoAlbumAsync(string ratingKey, string albumName)
-    {
-        _searchCts.Cancel();
-        _searchCts = new CancellationTokenSource();
-
-        _plexDrillAlbumKey = ratingKey;
-        _plexDrillAlbumName = albumName;
-        UpdatePlexBreadcrumb();
-
-        IsSearching = true;
-        StatusText = $"Loading tracks from {albumName}...";
-        SearchResults.Clear();
-
-        try
-        {
-            var items = await PlexBrowseChildrenViaPluginOrLegacy(ratingKey, PlexItemType.Track, _searchCts.Token);
-            foreach (var v in items)
-                SearchResults.Add(v);
-            CanLoadMore = false;
-            IsPlexBrowsing = true;
-            StatusText = $"{SearchResults.Count} tracks on {albumName}";
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex) { StatusText = $"Plex error: {ex.Message}"; DebugLog.LogException("Plex drill album", ex); }
-        finally { IsSearching = false; }
-    }
-
-    /// <summary>
-    /// Navigate back one level
-    /// Returns true if navigation was handled, false if already at the top.
-    /// </summary>
-    public async Task<bool> PlexDrillBackAsync()
-    {
-        if (_plexDrillAlbumKey != null)
-        {
-            // Go back to album list for this artist
-            _plexDrillAlbumKey = null;
-            _plexDrillAlbumName = null;
-            UpdatePlexBreadcrumb();
-            if (_plexDrillArtistKey != null)
-                await PlexDrillIntoArtistAsync(_plexDrillArtistKey, _plexDrillArtistName ?? "");
-            return true;
-        }
-
-        if (_plexDrillArtistKey != null)
-        {
-            // Go back to artist list
-            _plexDrillArtistKey = null;
-            _plexDrillArtistName = null;
-            UpdatePlexBreadcrumb();
-            SearchResults.Clear();
-            _plexTotalSize = 0;
-            IsPlexBrowsing = true;
-            _isLoadingMore = false;
-            await LoadMorePlexResultsAsync();
-            return true;
-        }
-
-        return false;
-    }
-
-    private void UpdatePlexBreadcrumb()
-    {
-        var parts = new List<string>();
-        if (_plexDrillArtistName != null)
-            parts.Add(_plexDrillArtistName);
-        if (_plexDrillAlbumName != null)
-            parts.Add(_plexDrillAlbumName);
-        PlexBreadcrumb = parts.Count > 0 ? string.Join(" › ", parts) : "";
-    }
-
-    private async Task LoadMorePlexResultsAsync()
-    {
-        if (!_isPlexBrowsing || _isLoadingMore) return;
-
-        // Drill-down views are not paginated — skip if we're inside an artist or album
-        if (_plexDrillArtistKey != null || _plexDrillAlbumKey != null) return;
-
-        _isLoadingMore = true;
-        IsSearching = true;
-        var token = _searchCts.Token;
-
-        try
-        {
-            // Try plex playlist cache first
-            if (PlexPlaylistCache is { Enabled: true } ppc && _activePlexLibraryName != null)
-            {
-                var cached = ppc.TryGetPage(_activePlexLibraryName, _plexLibraryCachePageIndex, out var isLast);
-                if (cached != null)
-                {
-                    foreach (var v in cached)
-                        SearchResults.Add(v);
-                    _plexLibraryCachePageIndex++;
-                    CanLoadMore = !isLast;
-                    IsPlexBrowsing = !isLast;
-                    StatusText = isLast
-                        ? $"Showing all {SearchResults.Count} Plex items (cached)"
-                        : $"Showing {SearchResults.Count} Plex items (cached) — scroll for more";
-                    return;
-                }
-            }
-
-            // Music libraries at top level: show artists instead of tracks
-            var browseType = (_activePlexLibraryType == "artist" && _plexDrillArtistKey == null)
-                ? "artist" : _activePlexLibraryType;
-
-            var page = await PlexBrowseLibraryPageViaPluginOrLegacy(
-                _activePlexLibraryKey, browseType, SearchResults.Count, PlexPageSize, token);
-
-            if (token.IsCancellationRequested) return;
-
-            _plexTotalSize = page.TotalSize;
-
-            foreach (var v in page.Items)
-                SearchResults.Add(v);
-
-            bool hasMore = SearchResults.Count < _plexTotalSize;
-
-            // Store in cache
-            if (PlexPlaylistCache is { Enabled: true } storeCache && _activePlexLibraryName != null)
-                storeCache.StorePage(_activePlexLibraryName, _plexLibraryCachePageIndex, page.Items, !hasMore);
-            _plexLibraryCachePageIndex++;
-
-            CanLoadMore = hasMore;
-            IsPlexBrowsing = hasMore;
-            StatusText = hasMore
-                ? $"Showing {SearchResults.Count} of {_plexTotalSize} Plex items — scroll for more"
-                : $"Showing all {SearchResults.Count} Plex items";
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            StatusText = $"Plex error: {ex.Message}";
-            DebugLog.LogException("Plex library browse", ex);
-            IsPlexBrowsing = false;
-            CanLoadMore = false;
-        }
-        finally
-        {
-            IsSearching = false;
-            _isLoadingMore = false;
-        }
-    }
-
-    public async Task<List<PlexLibrary>> GetPlexLibrariesAsync()
-    {
-        if (!_plex.IsConfigured) return [];
-        try { return await _plex.GetLibrariesAsync(); }
-        catch { return []; }
-    }
-
-    private async Task LoadMorePlexHubResultsAsync()
-    {
-        if (!_isPlexHubBrowsing || _isLoadingMore || _activePlexHubKey == null) return;
-
-        _isLoadingMore = true;
-        IsSearching = true;
-        var token = _searchCts.Token;
-
-        try
-        {
-            var page = await PlexBrowseHubPageViaPluginOrLegacy(
-                _activePlexHubKey, _activePlexHubType ?? "", SearchResults.Count, PlexPageSize, token);
-            if (token.IsCancellationRequested) return;
-
-            _plexTotalSize = page.TotalSize;
-            foreach (var v in page.Items)
-                SearchResults.Add(v);
-
-            bool hasMore = SearchResults.Count < _plexTotalSize;
-            CanLoadMore = hasMore;
-            StatusText = hasMore
-                ? $"Showing {SearchResults.Count} of {_plexTotalSize} items — scroll for more"
-                : $"Showing all {SearchResults.Count} items";
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            StatusText = $"Plex error: {ex.Message}";
-            DebugLog.LogException("Plex hub pagination", ex);
-            CanLoadMore = false;
-        }
-        finally
-        {
-            IsSearching = false;
-            _isLoadingMore = false;
-        }
-    }
-
-    private async Task LoadMorePlexPlaylistResultsAsync()
-    {
-        if (!_isPlexPlaylistBrowsing || _isLoadingMore || _activePlexPlaylistKey == null) return;
-
-        _isLoadingMore = true;
-        IsSearching = true;
-        var token = _searchCts.Token;
-
-        try
-        {
-            // Try plex playlist cache first
-            if (PlexPlaylistCache is { Enabled: true } ppc && _activePlexPlaylistName != null)
-            {
-                var cached = ppc.TryGetPage(_activePlexPlaylistName, _plexPlaylistCachePageIndex, out var isLast);
-                if (cached != null)
-                {
-                    foreach (var v in cached)
-                        SearchResults.Add(v);
-                    _plexPlaylistCachePageIndex++;
-                    CanLoadMore = !isLast;
-                    StatusText = isLast
-                        ? $"Showing all {SearchResults.Count} items (cached)"
-                        : $"Showing {SearchResults.Count} items (cached) — scroll for more";
-                    return;
-                }
-            }
-
-            var page = await PlexBrowsePlaylistPageViaPluginOrLegacy(
-                _activePlexPlaylistKey, SearchResults.Count, PlexPageSize, token);
-            if (token.IsCancellationRequested) return;
-
-            _plexTotalSize = page.TotalSize;
-            foreach (var v in page.Items)
-                SearchResults.Add(v);
-
-            bool hasMore = SearchResults.Count < _plexTotalSize;
-
-            // Store in cache
-            if (PlexPlaylistCache is { Enabled: true } storeCache && _activePlexPlaylistName != null)
-                storeCache.StorePage(_activePlexPlaylistName, _plexPlaylistCachePageIndex, page.Items, !hasMore);
-            _plexPlaylistCachePageIndex++;
-
-            CanLoadMore = hasMore;
-            StatusText = hasMore
-                ? $"Showing {SearchResults.Count} of {_plexTotalSize} items — scroll for more"
-                : $"Showing all {SearchResults.Count} items";
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            StatusText = $"Plex error: {ex.Message}";
-            DebugLog.LogException("Plex playlist pagination", ex);
-            CanLoadMore = false;
-        }
-        finally
-        {
-            IsSearching = false;
-            _isLoadingMore = false;
-        }
-    }
-
     [RelayCommand]
     private async Task LoadMoreResultsAsync()
     {
@@ -3079,12 +2380,6 @@ public partial class JukeboxViewModel : ObservableObject
             await LoadMoreGenericPageAsync();
         else if (_isHistoryBrowsing)
             LoadMoreHistoryResults();
-        else if (_isPlexHubBrowsing)
-            await LoadMorePlexHubResultsAsync();
-        else if (_isPlexPlaylistBrowsing)
-            await LoadMorePlexPlaylistResultsAsync();
-        else if (_isPlexBrowsing)
-            await LoadMorePlexResultsAsync();
         else
             await LoadMoreResults(SearchPageSize);
     }
@@ -3440,13 +2735,6 @@ public partial class JukeboxViewModel : ObservableObject
         if (item.IsGenericContainer)
         {
             _ = SafeFireAndForget(DrillIntoGenericContainerAsync(item));
-            return;
-        }
-
-        // Non-playable Plex items trigger drill-down via event
-        if (item.PlexItemType is PlexItemType.Artist or PlexItemType.Album or PlexItemType.Hub or PlexItemType.Playlist)
-        {
-            PlexDrillDownRequested?.Invoke(item);
             return;
         }
 
