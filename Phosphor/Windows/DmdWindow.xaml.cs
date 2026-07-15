@@ -27,6 +27,13 @@ public partial class DmdWindow : JukeboxWindow
     private PlayfieldProxy? _playfieldProxy;
     private BackglassProxy? _backglassProxy;
     private TopperProxy? _topperProxy;
+
+    /// <summary>
+    /// Drives synchronized Pinup Popper playback across every screen currently in Pinup mode.
+    /// Owned here (DMD thread) so it can outlive/coordinate the individual windows. Created
+    /// lazily by <see cref="RefreshPinupSync"/>.
+    /// </summary>
+    private PinupSyncCoordinator? _pinupSync;
     private DirectInputPoller? _dinputPoller;
     private int _resultColumns = 2;
     private int _resultFontSize = 20;
@@ -2039,6 +2046,47 @@ public partial class DmdWindow : JukeboxWindow
         });
     }
 
+    /// <summary>
+    /// Public entry point (called from App startup) to build and start the Pinup sync
+    /// coordinator once all windows are initialized.
+    /// </summary>
+    public void StartPinupSync() => RefreshPinupSync();
+
+    /// <summary>
+    /// (Re)builds the Pinup sync coordinator from the current settings. Registers every screen
+    /// whose display mode is <see cref="PlayfieldMode.PinupPlaylist"/> (and is shown) as a
+    /// follower, then loads the game list off-thread and starts coordinated playback with the
+    /// shared clip duration. Stops the coordinator when no screen uses Pinup mode.
+    /// </summary>
+    private void RefreshPinupSync()
+    {
+        if (_appSettings == null)
+            return;
+
+        _pinupSync ??= new PinupSyncCoordinator(Dispatcher);
+
+        var followers = new List<IPinupFollower>();
+        if (_playfieldProxy != null && _appSettings.ShowPlayfield &&
+            _appSettings.PlayfieldDisplayMode == PlayfieldMode.PinupPlaylist)
+            followers.Add(_playfieldProxy);
+        if (_backglassProxy != null && _appSettings.ShowBackglass &&
+            _appSettings.BackglassDisplayMode == PlayfieldMode.PinupPlaylist)
+            followers.Add(_backglassProxy);
+
+        _pinupSync.SetFollowers(followers);
+
+        if (followers.Count == 0)
+        {
+            _pinupSync.Stop();
+            return;
+        }
+
+        int dwell = _appSettings.PinupClipDurationSeconds;
+        // Load the resolved game globs off-thread, then start on the DMD dispatcher.
+        PinupPlaylistLoader.LoadGamesAsync(globs =>
+            Dispatcher.BeginInvoke(() => _pinupSync?.Start(globs, dwell)));
+    }
+
     private async Task ApplySettingsFromWindow(SettingsWindow settingsWindow)
     {
         if (_appSettings == null) return;
@@ -2057,9 +2105,22 @@ public partial class DmdWindow : JukeboxWindow
             _appSettings.PlayfieldVideoAudioEnabled,
             _appSettings.PlayfieldVideoAudioVolume);
         _playfieldProxy?.SetMode(settingsWindow.SelectedPlayfieldMode);
-        // Pinup Playlist: apply durations and (re)load the resolved file list on a
-        // background task when the feature is active.
-        PinupPlaylistLoader.LoadAndApplyAsync(_appSettings, _playfieldProxy);
+
+        // Backglass ambient content (independent of the playfield)
+        _backglassProxy?.SetBackglassStaticImage(_appSettings.BackglassStaticImagePath);
+        _backglassProxy?.SetBackglassVideoPath(_appSettings.BackglassVideoPath);
+        _backglassProxy?.SetBackglassVideoFolders(_appSettings.BackglassVideoFolders);
+        _backglassProxy?.SetBackglassVideoFolderOptions(
+            _appSettings.BackglassVideoFolderPlayMode,
+            _appSettings.BackglassVideoFolderMinDurationSeconds,
+            _appSettings.BackglassVideoFolderMaxDurationSeconds);
+        _backglassProxy?.SetBackglassVideoAudio(
+            _appSettings.BackglassVideoAudioEnabled,
+            _appSettings.BackglassVideoAudioVolume);
+        _backglassProxy?.SetBackglassMode(settingsWindow.SelectedBackglassMode);
+
+        // Pinup sync: (re)build the coordinator across all screens now in Pinup mode.
+        RefreshPinupSync();
         _showVideoInfo = _appSettings.ShowVideoInfo;
         _backglassProxy?.SetShowVideoInfo(_appSettings.ShowVideoInfo);
         if (!_showVideoInfo) { VideoInfoText.Visibility = Visibility.Collapsed; VideoInfoText.Text = ""; }

@@ -140,6 +140,10 @@ public partial class BackglassWindow : JukeboxWindow
     {
         var vlc = _libVLC ?? new LibVLC("--no-video-title-show", "--network-caching=3000", "--http-reconnect");
         var mp = new MediaPlayer(vlc);
+        // Stop VLC from grabbing mouse/keyboard on its video HWND so events pass
+        // through to the hosting WinForms panel (enables our drag/resize hooks).
+        mp.EnableMouseInput = false;
+        mp.EnableKeyInput = false;
         // Wire EndReached on our dispatcher so the handler can touch UI
         Dispatcher.Invoke(() => mp.EndReached += OnMediaEnded);
         // Clear chapter-seek spinner once VLC finishes buffering
@@ -311,7 +315,14 @@ public partial class BackglassWindow : JukeboxWindow
             child.MouseDown += (_, me) =>
             {
                 if (me.Button == System.Windows.Forms.MouseButtons.Left)
-                    BeginDragMove();
+                    BeginDragOrResizeFromChild(me.X, me.Y);
+            };
+
+            // Show sizing cursors near the edges so the user can tell the window is
+            // resizable even while a video covers the client area.
+            child.MouseMove += (_, me) =>
+            {
+                child.Cursor = GetChildResizeCursor(me.X, me.Y);
             };
         }
     }
@@ -420,6 +431,8 @@ public partial class BackglassWindow : JukeboxWindow
         }
 
         var mp = new MediaPlayer(_libVLC);
+        mp.EnableMouseInput = false;
+        mp.EnableKeyInput = false;
         mp.Volume = _mediaPlayer?.Volume ?? 100;
         var media = new Media(_libVLC, new Uri(nextTrack.StreamUrl!));
 
@@ -481,7 +494,7 @@ public partial class BackglassWindow : JukeboxWindow
                     vm.PlayNext();
                 else
                 {
-                    IdleOverlay.Visibility = Visibility.Visible;
+                    ShowIdleBackground();
                     _colorTimer.Start();
                     ResetLogoDimIdle();
                     if (DataContext is JukeboxViewModel vm2)
@@ -597,7 +610,7 @@ public partial class BackglassWindow : JukeboxWindow
                         // Only reveal if video still hasn't appeared (videoView is hidden)
                         if (_videoView == null || _videoView.Visibility != Visibility.Visible)
                         {
-                            IdleOverlay.Visibility = Visibility.Visible;
+                            ShowIdleBackground();
                             _colorTimer.Start();
                         }
                     };
@@ -639,7 +652,7 @@ public partial class BackglassWindow : JukeboxWindow
                     }
                     // Hide idle overlay once video is rendering (in case it was
                     // briefly shown during a slow transition)
-                    IdleOverlay.Visibility = Visibility.Collapsed;
+                    HideIdleForJukeboxVideo();
                     // Stop the blob color cycle now that the overlay is hidden — no
                     // point burning CPU on an invisible surface during playback.
                     _colorTimer.Stop();
@@ -687,7 +700,7 @@ public partial class BackglassWindow : JukeboxWindow
 
                 if (ct.IsCancellationRequested) { _gaplessPlayer.Stop(); _usingGaplessPlayer = false; return; }
 
-                IdleOverlay.Visibility = Visibility.Visible;
+                ShowIdleBackground();
                 _colorTimer.Start();
                 _positionTimer?.Start();
                 PlaybackStarted?.Invoke();
@@ -828,7 +841,7 @@ public partial class BackglassWindow : JukeboxWindow
                     // Timed out � server likely unreachable
                     await Task.Run(() => _mediaPlayer.Stop());
                     DetachVideoView();
-                    IdleOverlay.Visibility = Visibility.Visible;
+                    ShowIdleBackground();
                     _colorTimer.Start();
                     if (DataContext is JukeboxViewModel vmAoTimeout)
                     {
@@ -839,7 +852,7 @@ public partial class BackglassWindow : JukeboxWindow
                     return;
                 }
 
-                IdleOverlay.Visibility = Visibility.Visible;
+                ShowIdleBackground();
                 _colorTimer.Start();
                 _positionTimer?.Start();
                 PlaybackStarted?.Invoke();
@@ -859,7 +872,7 @@ public partial class BackglassWindow : JukeboxWindow
                 // Timed out waiting for video � server likely unreachable
                 await Task.Run(() => _mediaPlayer.Stop());
                 DetachVideoView();
-                IdleOverlay.Visibility = Visibility.Visible;
+                ShowIdleBackground();
                 _colorTimer.Start();
                 if (DataContext is JukeboxViewModel vmTimeout)
                 {
@@ -870,7 +883,7 @@ public partial class BackglassWindow : JukeboxWindow
                 return;
             }
 
-            IdleOverlay.Visibility = Visibility.Collapsed;
+            HideIdleForJukeboxVideo();
 
             if (streamingResolution != null)
                 StartVideoInfoPolling(streamingResolution);
@@ -901,7 +914,7 @@ public partial class BackglassWindow : JukeboxWindow
         {
             System.Diagnostics.Debug.WriteLine($"Playback error: {ex.Message}");
             DetachVideoView();
-            IdleOverlay.Visibility = Visibility.Visible;
+            ShowIdleBackground();
             _colorTimer.Start();
             if (DataContext is JukeboxViewModel vmErr)
                 vmErr.NotifyPlaybackStarted();
@@ -1207,7 +1220,7 @@ public partial class BackglassWindow : JukeboxWindow
             if (_mediaPlayer != null)
                 await Task.Run(() => _mediaPlayer.Stop());
 
-            IdleOverlay.Visibility = Visibility.Visible;
+            ShowIdleBackground();
             _colorTimer.Start();
             ResetLogoDimIdle();
         });
@@ -1271,7 +1284,7 @@ public partial class BackglassWindow : JukeboxWindow
                     if (nextIsAudioOnly)
                     {
                         DetachVideoView();
-                        IdleOverlay.Visibility = Visibility.Visible;
+                        ShowIdleBackground();
                         _colorTimer.Start();
                     }
 
@@ -1289,7 +1302,7 @@ public partial class BackglassWindow : JukeboxWindow
                 // Queue finished — show idle screen
                 DisposeGaplessNext();
                 DetachVideoView();
-                IdleOverlay.Visibility = Visibility.Visible;
+                ShowIdleBackground();
                 _colorTimer.Start();
                 ResetLogoDimIdle();
                 if (DataContext is JukeboxViewModel vm2)
@@ -1440,6 +1453,7 @@ public partial class BackglassWindow : JukeboxWindow
         if (_mediaPlayer != null)
             _mediaPlayer.EndReached -= OnMediaEnded;
         DisposeGaplessNext();
+        DisposeAmbientVlc();
         _gaplessPlayer?.Dispose();
         _gaplessPlayer = null;
         _colorTimer.Stop();
@@ -1523,13 +1537,46 @@ public partial class BackglassWindow : JukeboxWindow
                 }
                 _colorTimer.Start();
             }
+            // Resume ambient video playback (deferred while hidden).
+            if (AmbientIsVideoMode && !_jukeboxVideoActive)
+                RefreshAmbient();
         }
         else
         {
             _colorTimer.Stop();
             _currentPattern?.Dispose();
             _currentPattern = null;
+            // Pause ambient video so a looping clip doesn't keep decoding while hidden.
+            if (AmbientIsVideoMode)
+                PauseAmbientVideo();
         }
+    }
+
+    /// <summary>
+    /// Shows the idle background: the blob/logo IdleOverlay when the ambient mode is
+    /// Screensaver, otherwise the ambient content layer (image/video/folders/pinup).
+    /// Called wherever playback stops or an audio-only track starts. Also tells the
+    /// ambient engine that no jukebox video is on screen so it can (re)start.
+    /// </summary>
+    private void ShowIdleBackground()
+    {
+        // No jukebox video is on screen now — let ambient content take over.
+        SetJukeboxVideoActive(false);
+        // Screensaver mode keeps the classic blob/logo overlay visible; other ambient
+        // modes hide it so the ambient layer (beneath) shows through.
+        IdleOverlay.Visibility = AmbientReplacesIdleOverlay
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
+
+    /// <summary>
+    /// Hides all idle background content because a jukebox video track is now on
+    /// screen (paramount layer). Collapses the IdleOverlay and pauses/hides ambient.
+    /// </summary>
+    private void HideIdleForJukeboxVideo()
+    {
+        IdleOverlay.SetCurrentValue(VisibilityProperty, Visibility.Collapsed);
+        SetJukeboxVideoActive(true);
     }
 
     public void SetLogoSpin(bool spin)

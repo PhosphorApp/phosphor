@@ -97,15 +97,14 @@ public partial class PlayfieldWindow : JukeboxWindow
     // (robust under seamless input-repeat looping where mp.Time resets each loop).
     private DateTime _clipStartUtc;
 
-    // Pinup Playlist mode: like folder mode, but the file list is pre-resolved from the
-    // Pinup Popper database (each game's PlayfieldVideoFilename glob resolved to a real
-    // video file) and randomized once, then walked in order. Reuses the folder-mode
-    // crossfade/position-timer playback pipeline.
+    // Pinup Playlist mode: driven externally by the PinupSyncCoordinator (owned by the
+    // DMD) so all screens advance in lockstep. Unlike folder mode, the playfield does NOT
+    // shuffle or run its own advance timer — the coordinator selects the current game and
+    // pushes its resolved file via SetPinupCurrentFile. Playback is a seamless single-clip
+    // loop (like single-file Video mode) that keeps looping until the coordinator swaps it.
     private bool _pinupMode;
-    private string[] _pinupFiles = [];
-    private int _pinupIndex;
-    private int _pinupMinDurationSec = 15;
-    private int _pinupMaxDurationSec;               // 0 = no maximum
+    private string? _pinupCurrentPath;
+    private const string PlayfieldScreenFolder = "Playfield";
 
     //added to try to prevent window from stealing focus
     private const int WS_EX_NOACTIVATE = 0x08000000;
@@ -813,6 +812,10 @@ public partial class PlayfieldWindow : JukeboxWindow
 
         var vlc = new LibVLC(BuildVlcArgs());
         var mp = new VlcMediaPlayer(vlc) { Mute = true };
+        // Stop VLC from grabbing mouse/keyboard on its video HWND so events pass
+        // through to the hosting WinForms panel (enables our drag/resize hooks).
+        mp.EnableMouseInput = false;
+        mp.EnableKeyInput = false;
         mp.Vout += OnVideoVout;
         mp.EndReached += OnVideoEndReached;
 
@@ -943,52 +946,69 @@ public partial class PlayfieldWindow : JukeboxWindow
     }
 
     /// <summary>
-    /// Sets the resolved video files for <see cref="PlayfieldMode.PinupPlaylist"/> mode.
-    /// Each entry is a glob (e.g. <c>...\Playfield\Game.*</c>) from the Pinup Popper database;
-    /// it is resolved to an actual video file (mp4/mkv/etc.). Misses are skipped and logged.
-    /// The resulting list is shuffled once so playback order is random.
+    /// Plays a specific Pinup game clip supplied by the <see cref="PinupSyncCoordinator"/>.
+    /// <paramref name="canonicalPlayfieldGlob"/> is the canonical playfield glob
+    /// (…\Playfield\&lt;base&gt;.*); it is used directly for the playfield screen and resolved
+    /// to a real file (extension-agnostic). The clip loops seamlessly until the coordinator
+    /// supplies the next game. Shows black if no matching file exists.
     /// </summary>
-    public void SetPinupFiles(IReadOnlyList<string>? globs)
+    public void SetPinupCurrentFile(string? canonicalPlayfieldGlob)
     {
-        var resolved = new List<string>();
-        foreach (var glob in globs ?? [])
-        {
-            if (string.IsNullOrWhiteSpace(glob))
-                continue;
+        var file = string.IsNullOrWhiteSpace(canonicalPlayfieldGlob)
+            ? null
+            : ResolvePinupGlob(canonicalPlayfieldGlob);
 
-            var file = ResolvePinupGlob(glob);
-            if (file == null)
-            {
-                DebugLog.Log("Pinup", $"No video file found for: {glob}");
-                continue;
-            }
-            resolved.Add(file);
+        _pinupCurrentPath = file;
+        if (file == null)
+        {
+            DebugLog.Log("Pinup", $"No playfield video for: {canonicalPlayfieldGlob}");
+            // No file for this game on the playfield — show black by stopping playback.
+            if (_videoMode && _pinupMode)
+                StopVideoPlayback();
+            return;
         }
 
-        // Fisher–Yates shuffle for a random playback order.
-        for (int i = resolved.Count - 1; i > 0; i--)
-        {
-            int j = _rng.Next(i + 1);
-            (resolved[i], resolved[j]) = (resolved[j], resolved[i]);
-        }
+        if (!_videoMode || !_pinupMode)
+            return;
 
-        _pinupFiles = resolved.ToArray();
-        _pinupIndex = 0;
-        DebugLog.Log("Pinup", $"Resolved {_pinupFiles.Length} playable file(s) from {(globs?.Count ?? 0)} game(s).");
-
-        // If we're already in pinup mode and nothing is playing yet, kick it off.
-        if (_videoMode && _pinupMode && _mediaPlayer == null)
+        // If a clip is already playing, cross-dip to black to mask the swap (and any
+        // input-repeat loop seam), then play the new clip behind the black overlay;
+        // OnVideoVout fades it back in. On the first clip (nothing playing yet), just
+        // start — the overlay begins black and fades in on the first frame.
+        var mp = _mediaPlayer;
+        if (mp != null && _videoView != null && mp.IsPlaying)
+            SwapPinupClip();
+        else
             StartVideoPlayback();
     }
 
     /// <summary>
-    /// Sets Pinup Playlist playback durations: the minimum on-screen time (a clip loops
-    /// until this elapses) and the maximum runtime cap (0 = no maximum).
+    /// Transitions to the coordinator-supplied Pinup clip stored in
+    /// <see cref="_pinupCurrentPath"/> with a fade-to-black → swap → fade-in, matching the
+    /// folder-mode seam handling so the loop seam and hard cut aren't visible.
     /// </summary>
-    public void SetPinupOptions(int minDurationSec, int maxDurationSec)
+    private void SwapPinupClip()
     {
-        _pinupMinDurationSec = Math.Max(0, minDurationSec);
-        _pinupMaxDurationSec = maxDurationSec <= 0 ? 0 : Math.Max(maxDurationSec, _pinupMinDurationSec);
+        var mp = _mediaPlayer;
+        if (mp == null)
+        {
+            StartVideoPlayback();
+            return;
+        }
+
+        _videoTransitioning = true;
+        StopVideoPositionTimer();
+        FadeVideoOverlay(1.0, VideoTransitionFadeMs, () =>
+        {
+            if (!_videoMode || !_pinupMode || _mediaPlayer == null)
+            {
+                _videoTransitioning = false;
+                return;
+            }
+            // Play the new clip behind the fully-black overlay; OnVideoVout clears
+            // _videoTransitioning and fades back in when the first frame arrives.
+            PlayCurrentMedia(_mediaPlayer);
+        });
     }
 
     /// <summary>
@@ -1012,31 +1032,6 @@ public partial class PlayfieldWindow : JukeboxWindow
             }
         }
         catch { /* unreadable directory — treat as a miss */ }
-        return null;
-    }
-
-    /// <summary>
-    /// Returns the next Pinup file, walking the shuffled list in order and wrapping at the
-    /// end (skipping any files that have since disappeared). Returns null if none remain.
-    /// </summary>
-    private string? PickNextPinupFile()
-    {
-        if (_pinupFiles.Length == 0)
-            return null;
-
-        if (_pinupIndex >= _pinupFiles.Length)
-            _pinupIndex = 0;
-
-        for (int scanned = 0; scanned < _pinupFiles.Length; scanned++)
-        {
-            var candidate = _pinupFiles[_pinupIndex];
-            _pinupIndex++;
-            if (_pinupIndex >= _pinupFiles.Length)
-                _pinupIndex = 0;
-
-            if (File.Exists(candidate))
-                return candidate;
-        }
         return null;
     }
 
@@ -1296,7 +1291,7 @@ public partial class PlayfieldWindow : JukeboxWindow
     /// True when playback advances through a list of clips (folder or Pinup mode) using the
     /// crossfade/position-timer pipeline, as opposed to seamless single-file looping.
     /// </summary>
-    private bool MultiClipMode => _folderMode || _pinupMode;
+    private bool MultiClipMode => _folderMode;
 
     /// <summary>
     /// Starts (or restarts) the playfield video via LibVLC. In single-file mode
@@ -1309,7 +1304,7 @@ public partial class PlayfieldWindow : JukeboxWindow
     private void StartVideoPlayback()
     {
         // Nothing to play: single-file needs a valid file; folder mode needs folders;
-        // pinup mode needs at least one resolved file.
+        // pinup mode needs a coordinator-supplied clip.
         if (_folderMode)
         {
             if (_videoFolders.Length == 0)
@@ -1317,7 +1312,7 @@ public partial class PlayfieldWindow : JukeboxWindow
         }
         else if (_pinupMode)
         {
-            if (_pinupFiles.Length == 0)
+            if (string.IsNullOrWhiteSpace(_pinupCurrentPath) || !File.Exists(_pinupCurrentPath))
                 return;
         }
         else if (string.IsNullOrWhiteSpace(_videoPath) || !File.Exists(_videoPath))
@@ -1333,10 +1328,10 @@ public partial class PlayfieldWindow : JukeboxWindow
         if (view == null)
             return;
 
-        // Single-file mode: if the same file is already looping, just show it.
-        // (Multi-clip modes always advance, so they never take this shortcut.)
+        // Single-file / pinup mode: if the same file is already looping, just show it.
+        // (Folder mode always advances, so it never takes this shortcut.)
         if (!MultiClipMode && mp.IsPlaying &&
-            string.Equals(_playingVideoPath, _videoPath, StringComparison.OrdinalIgnoreCase))
+            string.Equals(_playingVideoPath, CurrentSingleFilePath, StringComparison.OrdinalIgnoreCase))
         {
             view.Visibility = Visibility.Visible;
             return;
@@ -1386,8 +1381,8 @@ public partial class PlayfieldWindow : JukeboxWindow
 
         if (MultiClipMode)
         {
-            // Multi-clip mode (folder or pinup): choose the next file.
-            var pick = _pinupMode ? PickNextPinupFile() : PickNextVideoFile(_playingVideoPath);
+            // Multi-clip mode (folder): choose the next file.
+            var pick = PickNextVideoFile(_playingVideoPath);
             if (pick == null)
             {
                 // Nothing playable — abandon the transition so a later attempt
@@ -1409,19 +1404,28 @@ public partial class PlayfieldWindow : JukeboxWindow
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(_videoPath) || !File.Exists(_videoPath))
+        // Single-file mode (single Video, or a coordinator-supplied Pinup clip).
+        var path = CurrentSingleFilePath;
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             return;
 
-        var single = new VlcMedia(_libVLC, new Uri(_videoPath));
+        var single = new VlcMedia(_libVLC, new Uri(path));
         // Seamless gapless loop of a single file (huge repeat count).
         single.AddOption(":input-repeat=65535");
         // NOTE: rotation is applied at the LibVLC *instance* level (see
         // BuildVlcArgs) because the transform video-output filter is configured
         // when the vout is created, not from per-media options.
         mp.Play(single);
-        _playingVideoPath = _videoPath;
+        _playingVideoPath = path;
         ApplyAudioToPlayer();
     }
+
+    /// <summary>
+    /// The active single-clip source: the Pinup coordinator-supplied clip when in Pinup
+    /// mode, otherwise the single Video file. Folder mode doesn't use this (it advances
+    /// through a list).
+    /// </summary>
+    private string? CurrentSingleFilePath => _pinupMode ? _pinupCurrentPath : _videoPath;
 
     /// <summary>
     /// Safety fallback for folder mode. Folder clips use :input-repeat so they
@@ -1504,7 +1508,54 @@ public partial class PlayfieldWindow : JukeboxWindow
         // and above nothing that needs to sit behind it.
         System.Windows.Controls.Panel.SetZIndex(_videoView, 0);
         Root.Children.Insert(0, _videoView);
+        HookVideoViewForDrag();
         return _videoView;
+    }
+
+    /// <summary>
+    /// Hooks the VideoView's WinForms-hosted child so the window can still be moved and
+    /// resized while a video covers the client area. The airspace HWND swallows WPF mouse
+    /// input, so we forward its mouse-down to a Win32 move/resize and show sizing cursors
+    /// near the edges (mirrors the backglass behavior).
+    /// </summary>
+    private void HookVideoViewForDrag()
+    {
+        if (_videoView == null) return;
+
+        void Hook()
+        {
+            var host = FindVisualChild<System.Windows.Forms.Integration.WindowsFormsHost>(_videoView!);
+            if (host?.Child is System.Windows.Forms.Control child)
+            {
+                child.BackColor = System.Drawing.Color.Black;
+                child.MouseDown += (_, me) =>
+                {
+                    if (me.Button == System.Windows.Forms.MouseButtons.Left)
+                        BeginDragOrResizeFromChild(me.X, me.Y);
+                };
+                child.MouseMove += (_, me) =>
+                {
+                    child.Cursor = GetChildResizeCursor(me.X, me.Y);
+                };
+            }
+        }
+
+        if (_videoView.IsLoaded)
+            Hook();
+        else
+            _videoView.Loaded += (_, _) => Hook();
+    }
+
+    private static T? FindVisualChild<T>(System.Windows.DependencyObject parent) where T : System.Windows.DependencyObject
+    {
+        for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+            if (child is T match) return match;
+            var result = FindVisualChild<T>(child);
+            if (result != null) return result;
+        }
+        return null;
     }
 
     /// <summary>
@@ -1636,8 +1687,8 @@ public partial class PlayfieldWindow : JukeboxWindow
     /// </summary>
     private double ComputeClipTargetMs(VlcMediaPlayer mp)
     {
-        int minSec = _pinupMode ? _pinupMinDurationSec : _folderMinDurationSec;
-        int maxSec = _pinupMode ? _pinupMaxDurationSec : _folderMaxDurationSec;
+        int minSec = _folderMinDurationSec;
+        int maxSec = _folderMaxDurationSec;
         double minMs = minSec * 1000.0;
         double maxMs = maxSec > 0 ? maxSec * 1000.0 : double.PositiveInfinity;
 

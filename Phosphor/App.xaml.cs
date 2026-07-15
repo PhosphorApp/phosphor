@@ -147,6 +147,19 @@ public partial class App : Application
                 _settings.PlayfieldVideoAudioVolume);
             _playfieldProxy.SetMode(_settings.PlayfieldDisplayMode);
 
+            // Set backglass ambient content (independent of the playfield)
+            _backglassProxy.SetBackglassStaticImage(_settings.BackglassStaticImagePath);
+            _backglassProxy.SetBackglassVideoPath(_settings.BackglassVideoPath);
+            _backglassProxy.SetBackglassVideoFolders(_settings.BackglassVideoFolders);
+            _backglassProxy.SetBackglassVideoFolderOptions(
+                _settings.BackglassVideoFolderPlayMode,
+                _settings.BackglassVideoFolderMinDurationSeconds,
+                _settings.BackglassVideoFolderMaxDurationSeconds);
+            _backglassProxy.SetBackglassVideoAudio(
+                _settings.BackglassVideoAudioEnabled,
+                _settings.BackglassVideoAudioVolume);
+            _backglassProxy.SetBackglassMode(_settings.BackglassDisplayMode);
+
             // Always initialize backglass so its visual tree and media player are ready.
             // If hidden on launch, briefly show off-screen then hide to ensure initialization.
             if (!_settings.ShowBackglass)
@@ -200,10 +213,11 @@ public partial class App : Application
             LogWindowsAudioLevel("Startup");
             DebugLog.Log("App", "Deferred startup complete");
 
-            // Low-priority: refresh Pinup playlists/games and apply resolved files after all
-            // windows are up (only does work when the Pinup Playlist feature is active).
+            // Low-priority: start the Pinup sync coordinator (DMD-owned) after all windows
+            // are up. It registers every screen in Pinup mode and drives them in lockstep;
+            // only does work when the Pinup Playlist feature is active on some screen.
             Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
-                new Action(() => PinupPlaylistLoader.LoadAndApplyAsync(_settings, _playfieldProxy)));
+                new Action(() => _dmdWindow.StartPinupSync()));
         });
     }
 

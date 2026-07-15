@@ -47,14 +47,13 @@ public class AppSettings
     /// </summary>
     public int PlayfieldVideoFolderMaxDurationSeconds { get; set; }
     /// <summary>
-    /// Minimum on-screen time (seconds) for a Pinup Playlist clip. Mirrors the folder-mode
-    /// minimum but is a separate control so the two features can be tuned independently.
+    /// Shared on-screen time (seconds) for a Pinup Playlist clip across ALL screens
+    /// (playfield, backglass, future topper). The Pinup sync coordinator advances every
+    /// screen together after this dwell: a longer clip is cut off at this time, a shorter
+    /// clip loops seamlessly until it elapses. Range 5–300s; no "no maximum" option because
+    /// coordinated advancement requires a finite dwell.
     /// </summary>
-    public int PlayfieldPinupMinDurationSeconds { get; set; } = 15;
-    /// <summary>
-    /// Maximum runtime (seconds) for a Pinup Playlist clip before advancing. 0 = no maximum.
-    /// </summary>
-    public int PlayfieldPinupMaxDurationSeconds { get; set; }
+    public int PinupClipDurationSeconds { get; set; } = 30;
     /// <summary>
     /// When true, playfield video audio is played (all video modes). Default false — the
     /// playfield video is normally a silent ambient loop that shouldn't fight the backglass music.
@@ -64,6 +63,48 @@ public class AppSettings
     /// Playfield video audio volume (0–100) when <see cref="PlayfieldVideoAudioEnabled"/> is true.
     /// </summary>
     public int PlayfieldVideoAudioVolume { get; set; } = 50;
+
+    // ── Backglass ambient display (independent of the playfield) ──────────────
+    // These mirror the Playfield* ambient options but are configured separately so
+    // the backglass can show its own idle/ambient content. Ambient content is a
+    // background layer beneath the jukebox video player, which always takes priority.
+    /// <summary>
+    /// Ambient content shown on the backglass when idle (and during audio-only tracks),
+    /// beneath the jukebox video player. Defaults to <see cref="PlayfieldMode.Screensaver"/>
+    /// (the existing logo/blob idle overlay).
+    /// </summary>
+    public PlayfieldMode BackglassDisplayMode { get; set; } = PlayfieldMode.Screensaver;
+    public string BackglassStaticImagePath { get; set; } = "";
+    public string BackglassVideoPath { get; set; } = "";
+    /// <summary>
+    /// Folders scanned for video files when <see cref="BackglassDisplayMode"/> is
+    /// <see cref="PlayfieldMode.VideoFolders"/>. Mirrors <see cref="PlayfieldVideoFolders"/>.
+    /// </summary>
+    public List<string> BackglassVideoFolders { get; set; } = [];
+    /// <summary>
+    /// Default folder suggested for <see cref="BackglassVideoFolders"/> when the user
+    /// has not added any and this path exists on disk (standard vPinball BackGlass media).
+    /// </summary>
+    public const string DefaultBackglassVideoFolder =
+        @"C:\vPinball\PinUPSystem\POPMedia\Visual Pinball X\BackGlass";
+    /// <summary>Order in which <see cref="BackglassVideoFolders"/> files are played.</summary>
+    public VideoFolderPlayMode BackglassVideoFolderPlayMode { get; set; } = VideoFolderPlayMode.Random;
+    /// <summary>Minimum on-screen time (seconds) for a backglass folder-mode clip.</summary>
+    public int BackglassVideoFolderMinDurationSeconds { get; set; } = 15;
+    /// <summary>Maximum runtime (seconds) for a backglass folder-mode clip. 0 = no maximum.</summary>
+    public int BackglassVideoFolderMaxDurationSeconds { get; set; }
+    // Pinup Playlist clip duration is shared across all screens and configured on the
+    // General tab (see PinupClipDurationSeconds).
+    /// <summary>
+    /// When true, backglass ambient video audio is played (all ambient video modes).
+    /// Default false — ambient video is normally a silent loop behind the jukebox music.
+    /// </summary>
+    public bool BackglassVideoAudioEnabled { get; set; }
+    /// <summary>
+    /// Backglass ambient video audio volume (0–100) when <see cref="BackglassVideoAudioEnabled"/> is true.
+    /// </summary>
+    public int BackglassVideoAudioVolume { get; set; } = 50;
+
     public bool ShowVideoInfo { get; set; }
     public bool ShowBackglass { get; set; } = true;
     public bool ShowPlayfield { get; set; } = true;

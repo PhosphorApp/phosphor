@@ -184,6 +184,7 @@ public partial class SettingsWindow : JukeboxWindow
     private DirectInputPoller? _testDInputPoller;
 
     public PlayfieldMode SelectedPlayfieldMode { get; private set; }
+    public PlayfieldMode SelectedBackglassMode { get; private set; }
     public bool Saved { get; private set; }
     public bool WindowsReset { get; private set; }
 
@@ -412,14 +413,10 @@ public partial class SettingsWindow : JukeboxWindow
         RefreshPinupColumns();
         UpdatePinupPlaylistStatus();
 
-        // Pinup Min duration (5–300s, step 5)
-        SliderPinupMinDuration.Value =
-            Math.Clamp(settings.PlayfieldPinupMinDurationSeconds, 5, 300);
-        // Pinup Max duration (10–600s, step 10; 0 = No Maximum, represented by the 610 tick)
-        SliderPinupMaxDuration.Value = settings.PlayfieldPinupMaxDurationSeconds <= 0
-            ? 610
-            : Math.Clamp(settings.PlayfieldPinupMaxDurationSeconds, 10, 600);
-        UpdatePinupDurationLabels();
+        // Pinup clip duration (5–300s, step 5) — shared across all screens.
+        SliderPinupClipDuration.Value =
+            Math.Clamp(settings.PinupClipDurationSeconds, 5, 300);
+        UpdatePinupClipDurationLabel();
 
         // Populate playfield video folders list
         _playfieldVideoFolders.Clear();
@@ -519,6 +516,42 @@ public partial class SettingsWindow : JukeboxWindow
             default: RbLogoColorOff.IsChecked = true; break;
         }
         CbBackglassAudioOnly.IsChecked = settings.BackglassAudioOnly;
+
+        // ── Backglass ambient content (independent of the playfield) ──
+        switch (settings.BackglassDisplayMode)
+        {
+            case PlayfieldMode.Blank: RbBgBlank.IsChecked = true; break;
+            case PlayfieldMode.Screensaver: RbBgScreensaver.IsChecked = true; break;
+            case PlayfieldMode.StaticImage: RbBgStatic.IsChecked = true; break;
+            case PlayfieldMode.Video: RbBgVideo.IsChecked = true; break;
+            case PlayfieldMode.VideoFolders: RbBgVideoFolders.IsChecked = true; break;
+            case PlayfieldMode.PinupPlaylist: RbBgPinupPlaylist.IsChecked = true; break;
+        }
+        TbBgStaticImagePath.Text = settings.BackglassStaticImagePath;
+        TbBgVideoPath.Text = settings.BackglassVideoPath;
+        CbBgVideoAudioEnabled.IsChecked = settings.BackglassVideoAudioEnabled;
+        SliderBgVideoAudioVolume.Value = Math.Clamp(settings.BackglassVideoAudioVolume, 0, 100);
+        UpdateBackglassVideoAudioControls();
+
+        // Populate backglass video folders list
+        _backglassVideoFolders.Clear();
+        foreach (var f in settings.BackglassVideoFolders)
+            if (!string.IsNullOrWhiteSpace(f))
+                _backglassVideoFolders.Add(f);
+        LbBackglassVideoFolders.ItemsSource = _backglassVideoFolders;
+
+        CbBgVideoFolderPlayMode.Items.Clear();
+        CbBgVideoFolderPlayMode.Items.Add("Random");
+        CbBgVideoFolderPlayMode.Items.Add("Most Recent First");
+        CbBgVideoFolderPlayMode.SelectedIndex =
+            settings.BackglassVideoFolderPlayMode == VideoFolderPlayMode.MostRecentFirst ? 1 : 0;
+
+        SliderBgVideoFolderMinDuration.Value =
+            Math.Clamp(settings.BackglassVideoFolderMinDurationSeconds, 5, 300);
+        SliderBgVideoFolderMaxDuration.Value = settings.BackglassVideoFolderMaxDurationSeconds <= 0
+            ? VideoFolderMaxNoLimitTick
+            : Math.Clamp(settings.BackglassVideoFolderMaxDurationSeconds, 10, 600);
+        UpdateBackglassVideoFolderDurationLabels();
 
         CbDmdScreensaverDim.IsChecked = settings.DmdScreensaverDimEnabled;
         CbDmdDimDarkBlobs.IsChecked = settings.DmdScreensaverDimDarkBlobs;
@@ -1417,6 +1450,143 @@ public partial class SettingsWindow : JukeboxWindow
         TbVideoPath.Text = "";
     }
 
+    // ── Backglass ambient content handlers (independent of the playfield) ──
+    private readonly ObservableCollection<string> _backglassVideoFolders = new();
+
+    private void BrowseBackglassStaticImage_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Select Backglass Image",
+            Filter = "Image files|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tiff|All files|*.*"
+        };
+        if (!string.IsNullOrWhiteSpace(TbBgStaticImagePath.Text))
+        {
+            var dir = System.IO.Path.GetDirectoryName(TbBgStaticImagePath.Text);
+            if (!string.IsNullOrEmpty(dir) && System.IO.Directory.Exists(dir))
+                dlg.InitialDirectory = dir;
+        }
+        if (dlg.ShowDialog(this) == true)
+            TbBgStaticImagePath.Text = dlg.FileName;
+    }
+
+    private void ClearBackglassStaticImage_Click(object sender, RoutedEventArgs e)
+    {
+        TbBgStaticImagePath.Text = "";
+    }
+
+    private void BrowseBackglassVideo_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Select Backglass Video",
+            Filter = "Video files|*.mp4;*.avi;*.wmv;*.mkv;*.mov|All files|*.*"
+        };
+        if (!string.IsNullOrWhiteSpace(TbBgVideoPath.Text))
+        {
+            var dir = System.IO.Path.GetDirectoryName(TbBgVideoPath.Text);
+            if (!string.IsNullOrEmpty(dir) && System.IO.Directory.Exists(dir))
+                dlg.InitialDirectory = dir;
+        }
+        if (dlg.ShowDialog(this) == true)
+            TbBgVideoPath.Text = dlg.FileName;
+    }
+
+    private void ClearBackglassVideo_Click(object sender, RoutedEventArgs e)
+    {
+        TbBgVideoPath.Text = "";
+    }
+
+    private void AddBackglassVideoFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = "Select Backglass Video Folder",
+            Multiselect = true
+        };
+        string? seed = null;
+        if (_backglassVideoFolders.Count > 0)
+        {
+            var first = _backglassVideoFolders[0];
+            seed = System.IO.Path.IsPathRooted(first)
+                ? first
+                : System.IO.Path.Combine(AppContext.BaseDirectory, first);
+        }
+        else if (System.IO.Directory.Exists(AppSettings.DefaultBackglassVideoFolder))
+        {
+            seed = AppSettings.DefaultBackglassVideoFolder;
+        }
+        if (!string.IsNullOrEmpty(seed) && System.IO.Directory.Exists(seed))
+            dlg.InitialDirectory = seed;
+
+        if (dlg.ShowDialog(this) != true) return;
+
+        foreach (var folder in dlg.FolderNames)
+        {
+            var stored = MakePortableDittiPath(folder);
+            if (!_backglassVideoFolders.Contains(stored))
+                _backglassVideoFolders.Add(stored);
+        }
+    }
+
+    private void RemoveBackglassVideoFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button btn && btn.DataContext is string path)
+            _backglassVideoFolders.Remove(path);
+    }
+
+    private void SliderBgVideoFolderMinDuration_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (SliderBgVideoFolderMaxDuration != null)
+        {
+            double max = SliderBgVideoFolderMaxDuration.Value;
+            if (max < VideoFolderMaxNoLimitTick && max < e.NewValue)
+                SliderBgVideoFolderMaxDuration.Value = Math.Min(VideoFolderMaxNoLimitTick, e.NewValue);
+        }
+        UpdateBackglassVideoFolderDurationLabels();
+    }
+
+    private void SliderBgVideoFolderMaxDuration_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (SliderBgVideoFolderMinDuration != null &&
+            e.NewValue < VideoFolderMaxNoLimitTick && e.NewValue < SliderBgVideoFolderMinDuration.Value)
+        {
+            SliderBgVideoFolderMaxDuration.Value = SliderBgVideoFolderMinDuration.Value;
+            return;
+        }
+        UpdateBackglassVideoFolderDurationLabels();
+    }
+
+    private void UpdateBackglassVideoFolderDurationLabels()
+    {
+        if (TxtBgVideoFolderMinDuration != null)
+            TxtBgVideoFolderMinDuration.Text = $"{(int)SliderBgVideoFolderMinDuration.Value}s";
+        if (TxtBgVideoFolderMaxDuration != null)
+        {
+            TxtBgVideoFolderMaxDuration.Text = SliderBgVideoFolderMaxDuration.Value >= VideoFolderMaxNoLimitTick
+                ? "No Maximum"
+                : $"{(int)SliderBgVideoFolderMaxDuration.Value}s";
+        }
+    }
+
+    private void CbBgVideoAudioEnabled_Changed(object sender, RoutedEventArgs e)
+    {
+        UpdateBackglassVideoAudioControls();
+    }
+
+    private void SliderBgVideoAudioVolume_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        UpdateBackglassVideoAudioControls();
+    }
+
+    private void UpdateBackglassVideoAudioControls()
+    {
+        if (TxtBgVideoAudioVolume != null)
+            TxtBgVideoAudioVolume.Text = $"{(int)SliderBgVideoAudioVolume.Value}%";
+        if (SliderBgVideoAudioVolume != null)
+            SliderBgVideoAudioVolume.IsEnabled = CbBgVideoAudioEnabled.IsChecked == true;
+    }
+
     private void BrowsePopperDb_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new Microsoft.Win32.OpenFileDialog
@@ -1677,40 +1847,15 @@ public partial class SettingsWindow : JukeboxWindow
             SliderVideoAudioVolume.IsEnabled = CbVideoAudioEnabled.IsChecked == true;
     }
 
-    private void SliderPinupMinDuration_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void SliderPinupClipDuration_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        // Ensure Max stays >= Min (unless Max is "No Maximum").
-        if (SliderPinupMaxDuration != null)
-        {
-            double max = SliderPinupMaxDuration.Value;
-            if (max < VideoFolderMaxNoLimitTick && max < e.NewValue)
-                SliderPinupMaxDuration.Value = Math.Min(VideoFolderMaxNoLimitTick, e.NewValue);
-        }
-        UpdatePinupDurationLabels();
+        UpdatePinupClipDurationLabel();
     }
 
-    private void SliderPinupMaxDuration_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void UpdatePinupClipDurationLabel()
     {
-        // Don't allow Max below Min (unless it's the "No Maximum" tick).
-        if (SliderPinupMinDuration != null &&
-            e.NewValue < VideoFolderMaxNoLimitTick && e.NewValue < SliderPinupMinDuration.Value)
-        {
-            SliderPinupMaxDuration.Value = SliderPinupMinDuration.Value;
-            return; // this reassignment re-enters and updates the labels
-        }
-        UpdatePinupDurationLabels();
-    }
-
-    private void UpdatePinupDurationLabels()
-    {
-        if (TxtPinupMinDuration != null)
-            TxtPinupMinDuration.Text = $"{(int)SliderPinupMinDuration.Value}s";
-        if (TxtPinupMaxDuration != null)
-        {
-            TxtPinupMaxDuration.Text = SliderPinupMaxDuration.Value >= VideoFolderMaxNoLimitTick
-                ? "No Maximum"
-                : $"{(int)SliderPinupMaxDuration.Value}s";
-        }
+        if (TxtPinupClipDuration != null)
+            TxtPinupClipDuration.Text = $"{(int)SliderPinupClipDuration.Value}s";
     }
 
     public void SetHistoryCount(int count)
@@ -3339,12 +3484,7 @@ public partial class SettingsWindow : JukeboxWindow
                 ? 0
                 : (int)SliderVideoFolderMaxDuration.Value;
 
-        _settings.PlayfieldPinupMinDurationSeconds = (int)SliderPinupMinDuration.Value;
-        // The 610 tick means "No Maximum" -> store 0.
-        _settings.PlayfieldPinupMaxDurationSeconds =
-            SliderPinupMaxDuration.Value >= VideoFolderMaxNoLimitTick
-                ? 0
-                : (int)SliderPinupMaxDuration.Value;
+        _settings.PinupClipDurationSeconds = (int)SliderPinupClipDuration.Value;
 
         _settings.PlayfieldVideoAudioEnabled = CbVideoAudioEnabled.IsChecked == true;
         _settings.PlayfieldVideoAudioVolume = (int)SliderVideoAudioVolume.Value;
@@ -3382,6 +3522,36 @@ public partial class SettingsWindow : JukeboxWindow
             : RbLogoColorMorph.IsChecked == true ? LogoColorMode.SlowMorph
             : LogoColorMode.Off;
         _settings.BackglassAudioOnly = CbBackglassAudioOnly.IsChecked == true;
+
+        // ── Backglass ambient content (independent of the playfield) ──
+        if (RbBgBlank.IsChecked == true)
+            _settings.BackglassDisplayMode = PlayfieldMode.Blank;
+        else if (RbBgScreensaver.IsChecked == true)
+            _settings.BackglassDisplayMode = PlayfieldMode.Screensaver;
+        else if (RbBgVideo.IsChecked == true)
+            _settings.BackglassDisplayMode = PlayfieldMode.Video;
+        else if (RbBgVideoFolders.IsChecked == true)
+            _settings.BackglassDisplayMode = PlayfieldMode.VideoFolders;
+        else if (RbBgPinupPlaylist.IsChecked == true)
+            _settings.BackglassDisplayMode = PlayfieldMode.PinupPlaylist;
+        else
+            _settings.BackglassDisplayMode = PlayfieldMode.StaticImage;
+        SelectedBackglassMode = _settings.BackglassDisplayMode;
+
+        _settings.BackglassStaticImagePath = TbBgStaticImagePath.Text;
+        _settings.BackglassVideoPath = TbBgVideoPath.Text;
+        _settings.BackglassVideoFolders = new List<string>(_backglassVideoFolders);
+        _settings.BackglassVideoFolderPlayMode = CbBgVideoFolderPlayMode.SelectedIndex == 1
+            ? VideoFolderPlayMode.MostRecentFirst
+            : VideoFolderPlayMode.Random;
+        _settings.BackglassVideoFolderMinDurationSeconds = (int)SliderBgVideoFolderMinDuration.Value;
+        _settings.BackglassVideoFolderMaxDurationSeconds =
+            SliderBgVideoFolderMaxDuration.Value >= VideoFolderMaxNoLimitTick
+                ? 0
+                : (int)SliderBgVideoFolderMaxDuration.Value;
+
+        _settings.BackglassVideoAudioVolume = (int)SliderBgVideoAudioVolume.Value;
+
         _settings.DmdScreensaverDimEnabled = CbDmdScreensaverDim.IsChecked == true;
         _settings.DmdScreensaverDimDarkBlobs = CbDmdDimDarkBlobs.IsChecked == true;
         _settings.DmdSwapTarget = RbSwapBackglass.IsChecked == true ? DmdSwapMode.Backglass

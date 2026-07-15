@@ -295,6 +295,73 @@ public class JukeboxWindow : Window
     }
 
     /// <summary>
+    /// Begins a Win32 move OR resize based on where inside the client area the user
+    /// pressed. Used to forward mouse-down from a WinForms-hosted LibVLC VideoView
+    /// (whose airspace HWND swallows WPF mouse input), so windows can still be moved
+    /// and resized while a video is on screen. <paramref name="clientX"/>/<paramref name="clientY"/>
+    /// are relative to the client area (top-left = 0,0). Interior presses move the
+    /// window; presses within <see cref="RESIZE_BORDER"/> of an edge start a resize in
+    /// that direction (only when resizable and not expanded).
+    /// </summary>
+    public void BeginDragOrResizeFromChild(int clientX, int clientY)
+    {
+        if (_isExpanded) return;
+        var handle = new WindowInteropHelper(this).Handle;
+
+        nint ht = ComputeChildHitTest(handle, clientX, clientY);
+        ReleaseCapture();
+        SendMessage(handle, WM_NCLBUTTONDOWN, ht, 0);
+    }
+
+    /// <summary>
+    /// Returns the appropriate resize/move cursor for a point inside the client area,
+    /// or null when the default (arrow) cursor should be used. Lets a hosted VideoView
+    /// show sizing cursors near the edges while resizable.
+    /// </summary>
+    public System.Windows.Forms.Cursor GetChildResizeCursor(int clientX, int clientY)
+    {
+        if (_isExpanded || !_resizable)
+            return System.Windows.Forms.Cursors.Default;
+
+        var handle = new WindowInteropHelper(this).Handle;
+        return ComputeChildHitTest(handle, clientX, clientY) switch
+        {
+            HTTOPLEFT or HTBOTTOMRIGHT => System.Windows.Forms.Cursors.SizeNWSE,
+            HTTOPRIGHT or HTBOTTOMLEFT => System.Windows.Forms.Cursors.SizeNESW,
+            HTLEFT or HTRIGHT => System.Windows.Forms.Cursors.SizeWE,
+            HTTOP or HTBOTTOM => System.Windows.Forms.Cursors.SizeNS,
+            _ => System.Windows.Forms.Cursors.Default,
+        };
+    }
+
+    /// <summary>
+    /// Maps a client-area point to a Win32 hit-test code: an edge/corner HT* when
+    /// resizable and within the resize border, otherwise HTCAPTION (move).
+    /// </summary>
+    private nint ComputeChildHitTest(nint handle, int clientX, int clientY)
+    {
+        if (!_resizable || !GetClientRect(handle, out RECT client))
+            return HTCAPTION;
+
+        int w = client.Right - client.Left;
+        int h = client.Bottom - client.Top;
+        bool left = clientX < RESIZE_BORDER;
+        bool right = clientX > w - RESIZE_BORDER;
+        bool top = clientY < RESIZE_BORDER;
+        bool bottom = clientY > h - RESIZE_BORDER;
+
+        if (top && left) return HTTOPLEFT;
+        if (top && right) return HTTOPRIGHT;
+        if (bottom && left) return HTBOTTOMLEFT;
+        if (bottom && right) return HTBOTTOMRIGHT;
+        if (left) return HTLEFT;
+        if (right) return HTRIGHT;
+        if (top) return HTTOP;
+        if (bottom) return HTBOTTOM;
+        return HTCAPTION;
+    }
+
+    /// <summary>
     /// Apply a saved layout and show the window.
     /// </summary>
     public bool CheckWindowPositionOnStartup { get; set; } = true;
