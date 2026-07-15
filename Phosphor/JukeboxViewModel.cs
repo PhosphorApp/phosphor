@@ -287,11 +287,36 @@ public partial class JukeboxViewModel : ObservableObject
                 SourceState = node.SourceState,
             };
 
+            // A frame carrying a SearchQuery is a scoped-search result set (not a plain browse) —
+            // re-run the in-view search so Back navigates into it like any other level.
+            if (node.SearchQuery is { Length: > 0 } query
+                && source is Phosphor.Plugin.Abstractions.IScopedSearchable scopedSource)
+            {
+                var searchResult = await scopedSource.SearchInCategoryAsync(sourceCategory, query, ct);
+                if (ct.IsCancellationRequested) return;
+
+                if (pushOntoStack) _browseStack.Add(node);
+                UpdateBrowseBreadcrumb();
+                RaiseSearchScopeChanged();
+
+                _genericPaged = null;
+                CanLoadMore = false;
+                foreach (var cat in searchResult.Categories)
+                    SearchResults.Add(ToGenericContainerItem(cat, node.Icon));
+                var searchResolver = source as Phosphor.Plugin.Abstractions.IPlayableResolver;
+                foreach (var leaf in searchResult.Items)
+                    await AddResolvedLeafAsync(leaf, searchResolver, ct);
+
+                StatusText = $"{SearchResults.Count} result(s) for \"{query}\" in {node.Title}";
+                return;
+            }
+
             var result = await browsable.BrowseAsync(sourceCategory, ct);
             if (ct.IsCancellationRequested) return;
 
             if (pushOntoStack) _browseStack.Add(node);
             UpdateBrowseBreadcrumb();
+            RaiseSearchScopeChanged();
 
             // Sub-categories first (drill-in containers), then leaf items (playable).
             foreach (var cat in result.Categories)
@@ -394,6 +419,19 @@ public partial class JukeboxViewModel : ObservableObject
             return;
         }
 
+        SearchResults.Add(await ResolveLeafAsync(item, resolver, ct));
+    }
+
+    /// <summary>
+    /// Resolves a playable leaf <see cref="SourceItem"/> into a <see cref="VideoItem"/> with its
+    /// <c>StreamUrl</c> populated (via the source's <see cref="IPlayableResolver"/>), without adding
+    /// it anywhere. Shared by the browse render path and the container-expander (queue/playlist).
+    /// </summary>
+    private static async Task<VideoItem> ResolveLeafAsync(
+        Phosphor.Plugin.Abstractions.SourceItem item,
+        Phosphor.Plugin.Abstractions.IPlayableResolver? resolver,
+        CancellationToken ct)
+    {
         var vi = ToVideoItem(item);
         // Resolve a playable URL now (local files are a cheap path check); the player checks
         // VideoItem.StreamUrl first and plays it directly.
@@ -411,7 +449,93 @@ public partial class JukeboxViewModel : ObservableObject
             }
         }
         vi.IsAudioOnly = item.IsAudioOnly;
-        SearchResults.Add(vi);
+        return vi;
+    }
+
+    /// <summary>
+    /// Recursively expands a generic browse container (a <see cref="VideoItem.IsGenericContainer"/>
+    /// item — e.g. a Plex artist or album) into its playable leaf <see cref="VideoItem"/>s by
+    /// browsing it via the source's <see cref="IBrowsable"/>/<see cref="IPagedBrowsable"/> capability.
+    /// Source-agnostic: an artist expands through its albums to every track. Used by queue/playlist
+    /// add so a container never lands in the queue as an un-playable row. Capped defensively.
+    /// </summary>
+    private async Task<List<VideoItem>> ExpandContainerToLeavesAsync(VideoItem container, CancellationToken ct)
+    {
+        var leaves = new List<VideoItem>();
+        var source = _sourceRegistry?.ByInstance(container.GenericSourceInstanceId ?? "");
+        if (source is not Phosphor.Plugin.Abstractions.IBrowsable browsable)
+            return leaves;
+
+        var resolver = source as Phosphor.Plugin.Abstractions.IPlayableResolver;
+        var node = new Phosphor.Plugin.Abstractions.SourceCategory
+        {
+            SourceInstanceId = container.GenericSourceInstanceId!,
+            CategoryId = container.GenericCategoryId ?? "",
+            Title = container.Title,
+            SourceState = container.GenericSourceState,
+        };
+
+        await ExpandNodeAsync(node, browsable, resolver, leaves, depth: 0, ct);
+        return leaves;
+    }
+
+    private async Task ExpandNodeAsync(
+        Phosphor.Plugin.Abstractions.SourceCategory node,
+        Phosphor.Plugin.Abstractions.IBrowsable browsable,
+        Phosphor.Plugin.Abstractions.IPlayableResolver? resolver,
+        List<VideoItem> leaves,
+        int depth,
+        CancellationToken ct)
+    {
+        const int MaxDepth = 4;      // artist → album → track is 2; headroom for other shapes
+        const int MaxLeaves = 2000;  // safety cap so a huge library can't run away
+        if (depth > MaxDepth || leaves.Count >= MaxLeaves || ct.IsCancellationRequested) return;
+
+        var result = await browsable.BrowseAsync(node, ct);
+
+        // Playable leaves at this level. If none came back inline and the source pages, pull pages.
+        var items = result.Items;
+        if (items.Count == 0 && browsable is Phosphor.Plugin.Abstractions.IPagedBrowsable paged)
+        {
+            int offset = 0, total = int.MaxValue;
+            var buffer = new List<Phosphor.Plugin.Abstractions.SourceItem>();
+            while (offset < total && leaves.Count + buffer.Count < MaxLeaves && !ct.IsCancellationRequested)
+            {
+                var page = await paged.BrowsePageAsync(node, offset, SearchPageSize, ct);
+                total = page.TotalSize;
+                if (page.Items.Count == 0) break;
+                buffer.AddRange(page.Items);
+                offset += page.Items.Count;
+            }
+            items = buffer;
+        }
+
+        foreach (var item in items)
+        {
+            if (leaves.Count >= MaxLeaves) return;
+            if (item.IsContainer)
+            {
+                var child = new Phosphor.Plugin.Abstractions.SourceCategory
+                {
+                    SourceInstanceId = item.SourceInstanceId,
+                    CategoryId = item.ItemId,
+                    Title = item.Title,
+                    SourceState = item.SourceState,
+                };
+                await ExpandNodeAsync(child, browsable, resolver, leaves, depth + 1, ct);
+            }
+            else
+            {
+                leaves.Add(await ResolveLeafAsync(item, resolver, ct));
+            }
+        }
+
+        // Sub-categories (e.g. an artist's albums) — recurse into each.
+        foreach (var cat in result.Categories)
+        {
+            if (leaves.Count >= MaxLeaves) return;
+            await ExpandNodeAsync(cat, browsable, resolver, leaves, depth + 1, ct);
+        }
     }
 
     /// <summary>Loads the next page of leaf items for the active generic paged browse node.</summary>
@@ -1969,53 +2093,22 @@ public partial class JukeboxViewModel : ObservableObject
         SearchResults.Clear();
 
         // If currently browsing a generic plug-in node whose source supports in-view search,
-        // search within that node (fan-out is the source's concern) instead of the global source.
+        // push a scoped-search frame onto the browse stack (so drilling into a result and pressing
+        // Back returns to the results). EnterBrowseNodeAsync runs the search for a frame that carries
+        // a SearchQuery. The frame keeps the current node's identity but overrides its title/query.
         if (IsGenericBrowsing && _browseStack.Count > 0
             && _sourceRegistry?.ByInstance(_browseStack[^1].SourceInstanceId)
-               is Phosphor.Plugin.Abstractions.IScopedSearchable scoped)
+               is Phosphor.Plugin.Abstractions.IScopedSearchable)
         {
-            var node = _browseStack[^1];
-            // Search spans the whole node — leaf paging no longer applies.
-            _genericPaged = null;
-            _genericPagedCategory = null;
-            _genericPagedResolver = null;
-            _genericPagedOffset = 0;
-            CanLoadMore = false;
-            _hasMoreResults = false;
-
-            try
-            {
-                var sourceCategory = new Phosphor.Plugin.Abstractions.SourceCategory
-                {
-                    SourceInstanceId = node.SourceInstanceId,
-                    CategoryId = node.CategoryId,
-                    Title = node.Title,
-                    SourceState = node.SourceState,
-                };
-
-                var result = await scoped.SearchInCategoryAsync(sourceCategory, query, _searchCts.Token);
-                if (_searchCts.Token.IsCancellationRequested) return;
-
-                foreach (var cat in result.Categories)
-                    SearchResults.Add(ToGenericContainerItem(cat));
-
-                var resolver = _sourceRegistry.ByInstance(node.SourceInstanceId)
-                    as Phosphor.Plugin.Abstractions.IPlayableResolver;
-                foreach (var item in result.Items)
-                    await AddResolvedLeafAsync(item, resolver, _searchCts.Token);
-
-                StatusText = $"{SearchResults.Count} result(s) for \"{query}\" in {node.Title}";
-            }
-            catch (OperationCanceledException) { }
-            catch (Exception ex)
-            {
-                StatusText = $"Search error: {ex.Message}";
-                DebugLog.LogException("Generic scoped search", ex);
-            }
-            finally
-            {
-                IsSearching = false;
-            }
+            var current = _browseStack[^1];
+            var searchFrame = new BrowseNode(
+                $"Search: {query}",
+                current.SourceInstanceId,
+                current.CategoryId,
+                current.SourceState,
+                current.Icon,
+                query);
+            await EnterBrowseNodeAsync(searchFrame, pushOntoStack: true);
             return;
         }
 
@@ -2300,6 +2393,17 @@ public partial class JukeboxViewModel : ObservableObject
     /// to a context (<see cref="IsSearchScoped"/>). The UI greys the dropdown out in that case.
     /// </summary>
     public bool IsSearchSourceSelectable => !IsSearchScoped;
+
+    /// <summary>
+    /// Raises change notifications for the search-scope signals. Called after the browse stack is
+    /// mutated (push/pop) since <see cref="IsGenericScopedSearchAvailable"/> reads the stack top —
+    /// the <see cref="IsGenericBrowsing"/> setter alone fires too early (before the post-await push).
+    /// </summary>
+    private void RaiseSearchScopeChanged()
+    {
+        OnPropertyChanged(nameof(IsSearchScoped));
+        OnPropertyChanged(nameof(IsSearchSourceSelectable));
+    }
 
     // ── Category cache page tracking ──
     private ResultCache? _activeResultCache;
@@ -2632,6 +2736,33 @@ public partial class JukeboxViewModel : ObservableObject
             return;
         }
 
+        // Generic browse container (Plex artist/album, etc.) — expand to its playable tracks and
+        // queue those, so the queue never holds an un-playable container row.
+        if (item.IsGenericContainer)
+        {
+            StatusText = $"Loading tracks from {item.Title}...";
+            try
+            {
+                var leaves = await ExpandContainerToLeavesAsync(item, _searchCts.Token);
+                int added = 0;
+                foreach (var track in leaves)
+                {
+                    if (Queue.Count >= MaxQueueSize) break;
+                    Queue.Add(track);
+                    added++;
+                }
+                StatusText = added < leaves.Count
+                    ? $"Queued {added} of {leaves.Count} tracks (queue limit {MaxQueueSize})"
+                    : $"Queued {leaves.Count} tracks from {item.Title}";
+            }
+            catch (Exception ex)
+            {
+                StatusText = $"Failed to queue: {ex.Message}";
+                DebugLog.LogException("Queue container tracks", ex);
+            }
+            return;
+        }
+
         // For Plex artists/albums, fetch all tracks and queue them
         if (item.PlexItemType is PlexItemType.Artist or PlexItemType.Album
             && item.PlexRatingKey != null && _plex.IsConfigured)
@@ -2742,10 +2873,15 @@ public partial class JukeboxViewModel : ObservableObject
     {
         if (item == null) return;
 
-        // Generic plug-in browse container — drill in via the nav stack instead of playing.
+        // Generic browse container.
         if (item.IsGenericContainer)
         {
-            _ = SafeFireAndForget(DrillIntoGenericContainerAsync(item));
+            // In a browse view, activating a container drills into it. In a playlist view it's a
+            // stored container (Plex artist/album) — expand it to tracks and play them.
+            if (IsViewingPlaylist)
+                _ = SafeFireAndForget(PlayContainerAsync(item));
+            else
+                _ = SafeFireAndForget(DrillIntoGenericContainerAsync(item));
             return;
         }
 
@@ -2776,7 +2912,42 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Derives an audio stream tag for the status bar by inspecting the item's StreamUrl.
+    /// Expands a stored browse container (a Plex artist/album in a playlist) to its tracks, appends
+    /// them to the queue, and starts playing the first one — a container can't be played directly.
+    /// </summary>
+    private async Task PlayContainerAsync(VideoItem container)
+    {
+        StatusText = $"Loading tracks from {container.Title}...";
+        List<VideoItem> leaves;
+        try
+        {
+            leaves = await ExpandContainerToLeavesAsync(container, _searchCts.Token);
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Failed to play {container.Title}: {ex.Message}";
+            DebugLog.LogException("Play container", ex);
+            return;
+        }
+
+        if (leaves.Count == 0)
+        {
+            StatusText = $"No playable tracks in {container.Title}";
+            return;
+        }
+
+        int firstIndex = Queue.Count;
+        foreach (var track in leaves)
+        {
+            if (Queue.Count >= MaxQueueSize) break;
+            Queue.Add(track);
+        }
+
+        if (firstIndex < Queue.Count)
+            PlayFromQueueIndex(firstIndex);
+    }
+
+    /// <summary>
     /// Returns "" for non-Plex items, "(Stereo)" for native stereo selection,
     /// "(Stereo Transcode)" for server-side downmix, or "(Surround)" otherwise.
     /// </summary>
@@ -3260,14 +3431,33 @@ public partial class JukeboxViewModel : ObservableObject
     /// Queue all videos currently shown in the results list.
     /// </summary>
     [RelayCommand]
-    private void QueueAllFromPlaylist()
+    private async Task QueueAllFromPlaylist()
     {
         if (SearchResults.Count == 0) return;
 
-        foreach (var video in SearchResults)
-            Queue.Add(video);
+        int added = 0;
+        foreach (var video in SearchResults.ToList())
+        {
+            if (Queue.Count >= MaxQueueSize) break;
+            // A stored container (Plex artist/album in a playlist) expands to its tracks.
+            if (video.IsGenericContainer)
+            {
+                var leaves = await ExpandContainerToLeavesAsync(video, _searchCts.Token);
+                foreach (var track in leaves)
+                {
+                    if (Queue.Count >= MaxQueueSize) break;
+                    Queue.Add(track);
+                    added++;
+                }
+            }
+            else
+            {
+                Queue.Add(video);
+                added++;
+            }
+        }
 
-        StatusText = $"Queued {SearchResults.Count} videos from {ActiveCategory}";
+        StatusText = $"Queued {added} videos from {ActiveCategory}";
     }
 
     /// <summary>
@@ -3702,4 +3892,4 @@ public sealed record SearchSourceOption(string InstanceId, string DisplayName)
 /// <see cref="SourceState"/> the source hands back on browse, so drill-down and back-navigation are
 /// fully source-agnostic (the host never interprets it).
 /// </summary>
-public sealed record BrowseNode(string Title, string SourceInstanceId, string CategoryId, object? SourceState, string? Icon = null);
+public sealed record BrowseNode(string Title, string SourceInstanceId, string CategoryId, object? SourceState, string? Icon = null, string? SearchQuery = null);
