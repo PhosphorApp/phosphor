@@ -1863,7 +1863,7 @@ public partial class JukeboxViewModel : ObservableObject
             return;
         }
 
-        // Generic plug-in browse tile (local-folder, future third-party sources).
+        // Generic plug-in browse tile (Plex libraries, local-folder, future third-party sources).
         if (category.IsPluginBrowse && category.SourceInstanceId != null)
         {
             IsViewingPlaylist = false;
@@ -1871,65 +1871,6 @@ public partial class JukeboxViewModel : ObservableObject
             CanLoadMore = false;
             ShowCategories = false;
             await BrowsePluginCategoryAsync(category);
-            return;
-        }
-
-        if (category.IsPlexHub && _plex.IsConfigured)
-        {
-            _activePlexInstanceId = category.PlexInstanceId;
-            IsViewingPlaylist = false;
-            _hasMoreResults = false;
-            CanLoadMore = false;
-            ShowCategories = false;
-            IsPlexBrowsing = false;
-            await BrowsePlexHubContentAsync(category.PlexHubKey!, category.PlexHubType, category.Name);
-            return;
-        }
-
-        if (category.IsPlexPlaylist && _plex.IsConfigured)
-        {
-            _activePlexInstanceId = category.PlexInstanceId;
-            IsViewingPlaylist = false;
-            _hasMoreResults = false;
-            CanLoadMore = false;
-            ShowCategories = false;
-            IsPlexBrowsing = false;
-            await BrowsePlexPlaylistContentAsync(category.PlexPlaylistKey!, category.Name);
-            return;
-        }
-
-        if (category.IsPlexHubList && _plex.IsConfigured)
-        {
-            _activePlexInstanceId = category.PlexInstanceId;
-            IsViewingPlaylist = false;
-            _hasMoreResults = false;
-            CanLoadMore = false;
-            ShowCategories = false;
-            IsPlexBrowsing = false;
-            await BrowsePlexHubListAsync(category.PlexLibraryKey!, category.PlexLibraryType, category.Name);
-            return;
-        }
-
-        if (category.IsPlexPlaylistList && _plex.IsConfigured)
-        {
-            _activePlexInstanceId = category.PlexInstanceId;
-            IsViewingPlaylist = false;
-            _hasMoreResults = false;
-            CanLoadMore = false;
-            ShowCategories = false;
-            IsPlexBrowsing = false;
-            await BrowsePlexPlaylistListAsync(category.PlexLibraryType, category.Name);
-            return;
-        }
-
-        if (category.IsPlex && _plex.IsConfigured)
-        {
-            _activePlexInstanceId = category.PlexInstanceId;
-            IsViewingPlaylist = false;
-            _hasMoreResults = false;
-            CanLoadMore = false;
-            ShowCategories = false;
-            await BrowsePlexLibraryAsync(category.PlexLibraryKey!, category.PlexLibraryType, category.Name);
             return;
         }
 
