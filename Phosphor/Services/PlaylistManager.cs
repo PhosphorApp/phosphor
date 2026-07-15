@@ -16,6 +16,11 @@ public class Playlist
     public string Icon { get; set; } = "";
     public PlaylistKind Kind { get; set; } = PlaylistKind.Static;
     public string SearchTerm { get; set; } = "";
+    /// <summary>
+    /// For live playlists: the plug-in source instance the saved search runs against. <c>null</c>
+    /// means YouTube (the default / legacy playlists created before source binding existed).
+    /// </summary>
+    public string? SourceInstanceId { get; set; }
     public List<VideoItem> Videos { get; set; } = new();
     public int SortOrder { get; set; }
     public override string ToString() => Name;
@@ -49,12 +54,12 @@ public class PlaylistManager
         return playlist;
     }
 
-    public Playlist CreateLivePlaylist(string name, string searchTerm, string icon = "")
+    public Playlist CreateLivePlaylist(string name, string searchTerm, string icon = "", string? sourceInstanceId = null)
     {
         var existing = _playlists.FirstOrDefault(p => p.Name == name);
         if (existing != null) return existing;
 
-        var playlist = new Playlist { Name = name, Kind = PlaylistKind.Live, SearchTerm = searchTerm, Icon = icon };
+        var playlist = new Playlist { Name = name, Kind = PlaylistKind.Live, SearchTerm = searchTerm, Icon = icon, SourceInstanceId = sourceInstanceId };
         _playlists.Add(playlist);
         Save();
         return playlist;

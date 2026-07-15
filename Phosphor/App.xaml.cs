@@ -56,8 +56,13 @@ public partial class App : Application
             }
         });
         var viewModel = new JukeboxViewModel();
-        viewModel.SetVideoEngine(_settings.VideoEngine);
-        viewModel.SetSearchEngine(_settings.SearchEngine);
+        // Engine/quality/stereo come from the YouTube plug-in config (single source of truth). Seed
+        // the instance list first so a fresh install still has YouTube defaults to read.
+        if (_settings.PluginInstances.Count == 0)
+            _settings.PluginInstances = Phosphor.Plugins.PluginSettingsFactory.FromAppSettings(_settings);
+        var ytPlayback = Phosphor.Plugins.PluginSettingsFactory.ReadYouTubePlayback(_settings.PluginInstances);
+        viewModel.SetVideoEngine(ytPlayback.Video);
+        viewModel.SetSearchEngine(ytPlayback.Search);
         viewModel.SetupCache(_settings.CacheEnabled, _settings.CacheMaxSizeGb, _settings.CacheMaxClipLengthMinutes);
         viewModel.SetupPrefetch(_settings.PrefetchEnabled);
         viewModel.SetupThumbnailCache(_settings.ThumbnailCacheEnabled, _settings.ThumbnailCacheMaxSizeMb);
@@ -65,19 +70,25 @@ public partial class App : Application
         viewModel.SetupYtPlaylistCache(_settings.YtPlaylistCacheEnabled, _settings.YtPlaylistCacheMaxAgeHours);
         viewModel.SetupPlexPlaylistCache(_settings.PlexPlaylistCacheEnabled, _settings.PlexPlaylistCacheMaxAgeHours);
         ThumbnailCacheConverter.Cache = viewModel.ThumbnailCache;
-        viewModel.VideoQuality = _settings.VideoQuality;
-        viewModel.StereoAudio = _settings.StereoAudio;
+        viewModel.VideoQuality = ytPlayback.Quality;
+        viewModel.StereoAudio = ytPlayback.PreferStereo;
         viewModel.CacheMode = _settings.CacheMode;
         viewModel.PreemptiveCache = _settings.PreemptiveCache;
         viewModel.GaplessPlayback = _settings.PlexGaplessPlayback;
+        viewModel.AutoDjProviderId = _settings.AutoDjProviderId;
         viewModel.Volume = _settings.Volume;
         viewModel.RepeatEnabled = _settings.RepeatEnabled;
         viewModel.AutoDjEnabled = _settings.AutoDjEnabled;
-        viewModel.SetYouTubeTimeout(_settings.YouTubeTimeoutSeconds);
-        if (!string.IsNullOrWhiteSpace(_settings.PlexServerUrl) && !string.IsNullOrWhiteSpace(_settings.PlexToken))
-            viewModel.ConfigurePlex(_settings.PlexServerUrl, _settings.PlexToken, _settings.PlexLibraries, _settings.PlexStereoAudio);
+        viewModel.SetNetworkTimeout(_settings.NetworkTimeoutSeconds);
+        // Configure Plex + its category tiles from the plug-in instance configs.
+        viewModel.ConfigurePlexFromSettings(_settings);
 
-        MaybeAutoUpdateYtDlp();
+        // Build the experimental plug-in source registry (runs alongside the legacy engines;
+        // only consulted on paths guarded by UsePluginSources). Fire-and-forget: failure is
+        // logged and simply leaves the registry unused.
+        _ = viewModel.BuildSourceRegistryAsync(_settings);
+
+        MaybeAutoUpdateYtDlp(viewModel);
 
         // Create and show DMD first — it's the primary window
         _dmdWindow = new DmdWindow { DataContext = viewModel };
@@ -417,23 +428,38 @@ public partial class App : Application
     /// self-update in the background (at most once per week). Fire-and-forget: never blocks
     /// startup and swallows failures. The last-check timestamp is persisted on exit.
     /// </summary>
-    private void MaybeAutoUpdateYtDlp()
+    private void MaybeAutoUpdateYtDlp(JukeboxViewModel viewModel)
     {
-        if (!_settings.YtDlpAutoUpdate) return;
-        if (_settings.VideoEngine != VideoEngineKind.YtDlp
-            && _settings.SearchEngine != SearchEngineKind.YtDlp)
+        if (!_settings.YtDlpAutoUpdate)
+        {
+            DebugLog.Log("YtDlpUpdater", "Startup auto-update skipped: auto-update disabled");
             return;
+        }
+        var ytEngines = Phosphor.Plugins.PluginSettingsFactory.ReadYouTubePlayback(_settings.PluginInstances);
+        if (ytEngines.Video != VideoEngineKind.YtDlp
+            && ytEngines.Search != SearchEngineKind.YtDlp)
+        {
+            DebugLog.Log("YtDlpUpdater", "Startup auto-update skipped: yt-dlp is not the active engine");
+            return;
+        }
 
-        if ((DateTime.UtcNow - _settings.YtDlpLastUpdateCheck) < TimeSpan.FromDays(7))
+        var sinceLast = DateTime.UtcNow - _settings.YtDlpLastUpdateCheck;
+        if (sinceLast < TimeSpan.FromDays(7))
+        {
+            DebugLog.Log("YtDlpUpdater",
+                $"Startup auto-update skipped: throttled (last check {sinceLast.TotalDays:F1} days ago, min 7). " +
+                "Pressing the manual update button also resets this timer.");
             return;
+        }
 
         _settings.YtDlpLastUpdateCheck = DateTime.UtcNow;
         _ = Task.Run(async () =>
         {
             try
             {
-                var result = await new Phosphor.Video.YtDlpUpdater().UpdateAsync();
-                DebugLog.Log("YtDlpUpdater", $"Startup auto-update: {result.ToDisplayString()}");
+                // Routes through the plug-in IUpdatable when the plug-in path is enabled, else legacy.
+                var status = await viewModel.UpdatePluginEngineOrLegacyAsync();
+                DebugLog.Log("YtDlpUpdater", $"Startup auto-update: {status}");
             }
             catch (Exception ex)
             {
@@ -623,6 +649,8 @@ public partial class App : Application
         ShowCrashDialog("Fatal Exception", e.ExceptionObject as Exception);
     }
 
+    private static int _crashDialogShown;
+
     private static void ShowCrashDialog(string context, Exception? ex)
     {
         var message = $"[{context}]\n\n{ex?.GetType().Name}: {ex?.Message}\n\n{ex?.StackTrace}";
@@ -637,8 +665,15 @@ public partial class App : Application
             System.IO.File.AppendAllText(logPath,
                 $"\n\n=== {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===\n{message}");
 
-            MessageBox.Show(message, $"Phosphor — {context}",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+            // Show at most ONE crash dialog for the process lifetime. A cascading failure
+            // (e.g. a cross-thread collection edit that then throws on every render tick)
+            // would otherwise open an unbounded storm of dialogs. Every exception is still
+            // logged above; we just stop stacking popups once things have clearly gone wrong.
+            if (System.Threading.Interlocked.Exchange(ref _crashDialogShown, 1) == 0)
+            {
+                MessageBox.Show(message, $"Phosphor — {context}",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
         catch { /* last resort — nothing we can do */ }
     }

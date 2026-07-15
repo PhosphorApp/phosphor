@@ -21,6 +21,561 @@ public partial class JukeboxViewModel : ObservableObject
     private PrefetchCache? _prefetch;
     private readonly PlexService _plex = new();
 
+    // ── Plug-in sources (the source path — YouTube and Plex run through the registry) ──
+    private Phosphor.Plugins.SourceRegistry? _sourceRegistry;
+    private bool _pluginsDiscovered;
+    // Pre-fetched root-category tiles for generic IBrowsable plug-in sources (local-folder, future
+    // Jellyfin, …), keyed by instance id. Built after each registry build; read by RebuildCategories.
+    private readonly List<Category> _pluginBrowseTiles = new();
+
+    // ── Search source selection (the ad-hoc search box only; tiles stay source-bound) ──
+    /// <summary>Searchable sources for the search-box dropdown (rebuilt after each registry build).</summary>
+    public ObservableCollection<SearchSourceOption> SearchSources { get; } = new();
+
+    private string? _activeSearchSourceId;
+    /// <summary>
+    /// The instance id the search box targets. Defaults to YouTube. Only steers the ad-hoc search
+    /// box — genre/live-playlist tiles and AutoDJ are source-bound and ignore this.
+    /// </summary>
+    public string? ActiveSearchSourceId
+    {
+        get => _activeSearchSourceId;
+        set => SetProperty(ref _activeSearchSourceId, value);
+    }
+
+    /// <summary>
+    /// The source AutoDJ uses to find/queue similar tracks (from settings). <c>null</c>/empty =
+    /// YouTube. A stop-gap steering knob until a richer AutoDJ model exists.
+    /// </summary>
+    public string? AutoDjProviderId { get; set; }
+
+    /// <summary>
+    /// Read-only summaries of the configured plug-in sources (for the Plug-ins settings tab).
+    /// Empty when the registry hasn't been built.
+    /// </summary>
+    public IReadOnlyList<Phosphor.Plugins.SourceSummary> DescribePluginSources() =>
+        _sourceRegistry?.DescribeSources() ?? [];
+
+    /// <summary>
+    /// Updates the active YouTube engine tool (yt-dlp) and returns a user-facing status line.
+    /// Routes through the plug-in source's <c>IUpdatable</c> when the source supports updating;
+    /// otherwise falls back to the legacy <see cref="Video.YtDlpUpdater"/>.
+    /// </summary>
+    public async Task<string> UpdatePluginEngineOrLegacyAsync(CancellationToken ct = default)
+    {
+        if (_sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IUpdatable u && u.SupportsUpdate)
+        {
+            var result = await u.UpdateAsync(ct);
+            return result.DisplayString;
+        }
+
+        var legacy = await new Video.YtDlpUpdater().UpdateAsync(ct);
+        return legacy.ToDisplayString();
+    }
+
+    /// <summary>
+    /// Builds (or rebuilds) the plug-in <see cref="Phosphor.Plugins.SourceRegistry"/> from the
+    /// given settings. The registry is the source path for YouTube and Plex discovery/playback.
+    /// </summary>
+    public async Task BuildSourceRegistryAsync(AppSettings settings)
+    {
+        // Discover third-party plug-ins from the plugins/ folder once per app run (built-in type ids
+        // are reserved so a plug-in can't shadow YouTube/Plex). Cheap to guard; the scan touches disk.
+        if (!_pluginsDiscovered)
+        {
+            Phosphor.Plugins.DiscoveredProviders.Initialize(new[]
+            {
+                Phosphor.Plugins.YouTube.YouTubeSourceProvider.YouTubeTypeId,
+                Phosphor.Plugins.Plex.PlexSourceProvider.PlexTypeId,
+            });
+            _pluginsDiscovered = true;
+        }
+
+        // Dispose the previous registry so its sources release any connections/watchers/timers
+        // before we replace them (this method runs on every settings save).
+        var previous = _sourceRegistry;
+
+        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(NetworkTimeoutSeconds) };
+        var registry = new Phosphor.Plugins.SourceRegistry(http);
+        try
+        {
+            // The persisted PluginInstances list is the source of truth for the plug-in path and is
+            // edited via the Plug-ins settings tab. Seed it once from the flat Plex/engine fields for
+            // first run / older settings files (a one-time migration); thereafter user edits persist.
+            if (settings.PluginInstances.Count == 0)
+                settings.PluginInstances = Phosphor.Plugins.PluginSettingsFactory.FromAppSettings(settings);
+
+            await registry.BuildAsync(settings.PluginInstances);
+            _sourceRegistry = registry;
+            DebugLog.Log("SourceRegistry", $"Built {registry.Sources.Count} source(s)");
+            WireCacheDownloadOverride();
+            await BuildPluginBrowseTilesAsync(registry);
+            BuildSearchSources(registry);
+        }
+        catch (Exception ex)
+        {
+            DebugLog.LogException("SourceRegistry build", ex);
+            _sourceRegistry = null;
+        }
+
+        if (previous != null)
+        {
+            try { await previous.DisposeAsync(); }
+            catch (Exception ex) { DebugLog.LogException("SourceRegistry dispose (previous)", ex); }
+        }
+    }
+
+    /// <summary>
+    /// Pre-fetches root-category tiles for every generic <c>IBrowsable</c> plug-in source (local-folder,
+    /// future Jellyfin, …) into <see cref="_pluginBrowseTiles"/>, so the synchronous
+    /// <see cref="RebuildCategories"/> can emit them without an async call. Built-in YouTube/Plex are
+    /// skipped — YouTube isn't browsable and Plex has its own tile path (GenreCategoryStore). Failures
+    /// per source are logged and skipped so one bad plug-in never blocks the home screen.
+    /// </summary>
+    private async Task BuildPluginBrowseTilesAsync(Phosphor.Plugins.SourceRegistry registry)
+    {
+        var tiles = new List<Category>();
+        foreach (var source in registry.Sources)
+        {
+            if (source.TypeId == Phosphor.Plugins.YouTube.YouTubeSourceProvider.YouTubeTypeId) continue;
+            if (source is not Phosphor.Plugin.Abstractions.IBrowsable browsable) continue;
+
+            try
+            {
+                await foreach (var cat in browsable.GetRootCategoriesAsync())
+                {
+                    tiles.Add(new Category
+                    {
+                        Name = cat.Title,
+                        Icon = string.IsNullOrWhiteSpace(cat.Icon) ? "📁" : cat.Icon!,
+                        IsPluginBrowse = true,
+                        SourceInstanceId = source.InstanceId,
+                        SourceCategoryId = cat.CategoryId,
+                        SourceState = cat.SourceState,
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLog.LogException($"Plugin browse tiles '{source.InstanceId}'", ex);
+            }
+        }
+
+        _pluginBrowseTiles.Clear();
+        _pluginBrowseTiles.AddRange(tiles);
+        DebugLog.Log("SourceRegistry", $"Built {tiles.Count} plug-in browse tile(s).");
+
+        // Sync these root tiles into the persisted genre-category entries so they participate in the
+        // unified sort/visibility model (like Plex tiles). Prunes stale, preserves user customization.
+        var sourceTiles = tiles
+            .Select(t => new GenreCategoryStore.SourceTile(
+                t.SourceInstanceId!, t.SourceCategoryId ?? t.Name, t.Name, t.Icon,
+                registry.ByInstance(t.SourceInstanceId!)?.TypeId ?? ""))
+            .ToList();
+        GenreCategoryStore.SyncSourceTiles(_genreCategories, sourceTiles);
+        GenreCategoryStore.SaveInBackground(_genreCategories);
+
+        // Tiles were synced into the genre entries — rebuild so they appear (sorted/hideable).
+        await RunOnUiAsync(RebuildCategories);
+    }
+
+    /// <summary>
+    /// Rebuilds the search-box source list from every <c>ITextSearchCapable</c> source, keeping
+    /// YouTube first as the default. Preserves the current selection if it still resolves; otherwise
+    /// falls back to YouTube. UI-bound collection, so mutate on the dispatcher.
+    /// </summary>
+    private void BuildSearchSources(Phosphor.Plugins.SourceRegistry registry)
+    {
+        var options = registry.Sources
+            .Where(s => s is Phosphor.Plugin.Abstractions.ITextSearchCapable)
+            .Select(s => new SearchSourceOption(s.InstanceId, s.DisplayName))
+            // YouTube first (the default), then the rest by display name.
+            .OrderByDescending(o => o.InstanceId == Phosphor.Plugins.YouTube.YouTubeSourceProvider.YouTubeTypeId)
+            .ThenBy(o => o.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        void Apply()
+        {
+            SearchSources.Clear();
+            foreach (var o in options) SearchSources.Add(o);
+
+            // Keep the current selection if still valid; else default to YouTube (or first available).
+            if (_activeSearchSourceId == null || options.All(o => o.InstanceId != _activeSearchSourceId))
+                ActiveSearchSourceId = options.FirstOrDefault()?.InstanceId;
+        }
+
+        _ = RunOnUiAsync(Apply);
+    }
+
+    /// <summary>
+    /// Expands a generic plug-in browse tile by calling its source's <c>IBrowsable.BrowseAsync</c>
+    /// and rendering the returned items in the results list. Leaf items carry a resolved playable
+    /// <c>StreamUrl</c> (via the source's <c>IPlayableResolver</c>) so the existing player path plays
+    /// them directly — no source-specific playback wiring needed.
+    /// </summary>
+    /// <summary>
+    /// Enters a generic plug-in browse from a home-screen tile: resets the navigation stack to this
+    /// root node and renders it. Sub-categories become drill-in container items; leaf items play.
+    /// </summary>
+    private async Task BrowsePluginCategoryAsync(Category category)
+    {
+        _browseStack.Clear();
+        var root = new BrowseNode(
+            category.Name,
+            category.SourceInstanceId!,
+            category.SourceCategoryId ?? category.Name,
+            category.SourceState,
+            category.Icon);
+        await EnterBrowseNodeAsync(root, pushOntoStack: true);
+    }
+
+    /// <summary>
+    /// Drills into a generic browse container item (pushes its node) — invoked when the user
+    /// activates an <see cref="VideoItem.IsGenericContainer"/> result.
+    /// </summary>
+    public Task DrillIntoGenericContainerAsync(VideoItem item)
+    {
+        var node = new BrowseNode(
+            item.Title,
+            item.GenericSourceInstanceId!,
+            item.GenericCategoryId ?? item.Title,
+            item.GenericSourceState,
+            item.ContainerIcon);
+        return EnterBrowseNodeAsync(node, pushOntoStack: true);
+    }
+
+    /// <summary>Navigates one level back in the generic browse stack; returns false if already at root.</summary>
+    public async Task<bool> GenericBrowseBackAsync()
+    {
+        if (_browseStack.Count <= 1) return false;
+        _browseStack.RemoveAt(_browseStack.Count - 1);  // pop current
+        var parent = _browseStack[^1];
+        await EnterBrowseNodeAsync(parent, pushOntoStack: false);
+        return true;
+    }
+
+    /// <summary>
+    /// Core generic browse: calls the source's <c>IBrowsable.BrowseAsync</c> for <paramref name="node"/>,
+    /// renders sub-categories as drill-in container items and leaf items (with resolved StreamUrl) for
+    /// playback, and maintains the nav stack + breadcrumb. Source-agnostic — no per-source logic.
+    /// </summary>
+    private async Task EnterBrowseNodeAsync(BrowseNode node, bool pushOntoStack)
+    {
+        var source = _sourceRegistry?.ByInstance(node.SourceInstanceId);
+        if (source is not Phosphor.Plugin.Abstractions.IBrowsable browsable)
+        {
+            StatusText = "This source can't be browsed.";
+            return;
+        }
+
+        _searchCts.Cancel();
+        _searchCts = new CancellationTokenSource();
+        var ct = _searchCts.Token;
+
+        IsSearching = true;
+        IsGenericBrowsing = true;
+        StatusText = $"Loading {node.Title}...";
+        SearchResults.Clear();
+
+        try
+        {
+            var sourceCategory = new Phosphor.Plugin.Abstractions.SourceCategory
+            {
+                SourceInstanceId = node.SourceInstanceId,
+                CategoryId = node.CategoryId,
+                Title = node.Title,
+                SourceState = node.SourceState,
+            };
+
+            // A frame carrying a SearchQuery is a scoped-search result set (not a plain browse) —
+            // re-run the in-view search so Back navigates into it like any other level.
+            if (node.SearchQuery is { Length: > 0 } query
+                && source is Phosphor.Plugin.Abstractions.IScopedSearchable scopedSource)
+            {
+                var searchResult = await scopedSource.SearchInCategoryAsync(sourceCategory, query, ct);
+                if (ct.IsCancellationRequested) return;
+
+                if (pushOntoStack) _browseStack.Add(node);
+                UpdateBrowseBreadcrumb();
+                RaiseSearchScopeChanged();
+
+                _genericPaged = null;
+                CanLoadMore = false;
+                foreach (var cat in searchResult.Categories)
+                    SearchResults.Add(ToGenericContainerItem(cat, node.Icon));
+                var searchResolver = source as Phosphor.Plugin.Abstractions.IPlayableResolver;
+                foreach (var leaf in searchResult.Items)
+                    await AddResolvedLeafAsync(leaf, searchResolver, ct);
+
+                StatusText = $"{SearchResults.Count} result(s) for \"{query}\" in {node.Title}";
+                return;
+            }
+
+            var result = await browsable.BrowseAsync(sourceCategory, ct);
+            if (ct.IsCancellationRequested) return;
+
+            if (pushOntoStack) _browseStack.Add(node);
+            UpdateBrowseBreadcrumb();
+            RaiseSearchScopeChanged();
+
+            // Sub-categories first (drill-in containers), then leaf items (playable).
+            foreach (var cat in result.Categories)
+                SearchResults.Add(ToGenericContainerItem(cat, node.Icon));
+
+            var resolver = source as Phosphor.Plugin.Abstractions.IPlayableResolver;
+
+            // Leaf items. If BrowseAsync already returned leaves (e.g. an album's tracks), render
+            // those directly. Otherwise, if the source is paginated, drive leaves through the paged
+            // path so large collections lazy-load on "load more". A node yields leaves one way or the
+            // other — never both — so this avoids rendering the same items twice.
+            if (result.Items.Count > 0)
+            {
+                _genericPaged = null;
+                foreach (var item in result.Items)
+                    await AddResolvedLeafAsync(item, resolver, ct);
+                CanLoadMore = false;
+                StatusText = $"{SearchResults.Count} item(s) in {node.Title}";
+            }
+            else if (source is Phosphor.Plugin.Abstractions.IPagedBrowsable paged)
+            {
+                _genericPaged = paged;
+                _genericPagedCategory = sourceCategory;
+                _genericPagedResolver = resolver;
+                _genericPagedOffset = 0;
+                _genericPagedTotal = int.MaxValue;
+                await LoadMoreGenericPageAsync();
+            }
+            else
+            {
+                _genericPaged = null;
+                CanLoadMore = false;
+                StatusText = $"{SearchResults.Count} item(s) in {node.Title}";
+            }
+        }
+        catch (Exception ex)
+        {
+            DebugLog.LogException($"Plugin browse '{node.SourceInstanceId}'", ex);
+            StatusText = "Failed to load this source.";
+        }
+        finally
+        {
+            IsSearching = false;
+        }
+    }
+
+    /// <summary>Maps a browse sub-category into a drill-in container <see cref="VideoItem"/>.
+    /// Sub-categories without their own <see cref="Phosphor.Plugin.Abstractions.SourceCategory.Icon"/>
+    /// inherit <paramref name="parentIcon"/> so grouping tiles (e.g. Hubs/Playlists) take on the
+    /// parent library's personality.</summary>
+    private static VideoItem ToGenericContainerItem(
+        Phosphor.Plugin.Abstractions.SourceCategory cat, string? parentIcon = null) => new()
+    {
+        Title = cat.Title,
+        ThumbnailUrl = cat.ThumbnailUrl ?? "",
+        VideoId = cat.CategoryId,
+        IsGenericContainer = true,
+        ContainerIcon = string.IsNullOrWhiteSpace(cat.Icon) ? parentIcon : cat.Icon,
+        GenericSourceInstanceId = cat.SourceInstanceId,
+        GenericSourceState = cat.SourceState,
+        GenericCategoryId = cat.CategoryId,
+    };
+
+    /// <summary>
+    /// Maps a leaf <see cref="SourceItem"/> that is actually a browsable container
+    /// (<see cref="SourceItem.IsContainer"/> — e.g. a Plex artist/album returned inside a hub,
+    /// playlist, or search result) into a drill-in container <see cref="VideoItem"/>. Carries the
+    /// item's opaque <c>SourceState</c> so the source resolves the node on drill-in.
+    /// </summary>
+    private static VideoItem ToContainerLeafItem(Phosphor.Plugin.Abstractions.SourceItem item) => new()
+    {
+        Title = item.Title,
+        Author = item.Subtitle ?? "",
+        ThumbnailUrl = item.ThumbnailUrl ?? "",
+        VideoId = item.ItemId,
+        IsGenericContainer = true,
+        GenericSourceInstanceId = item.SourceInstanceId,
+        GenericSourceState = item.SourceState,
+        GenericCategoryId = item.ItemId,
+    };
+
+    // ── Generic paged browse state ──
+    private Phosphor.Plugin.Abstractions.IPagedBrowsable? _genericPaged;
+    private Phosphor.Plugin.Abstractions.SourceCategory? _genericPagedCategory;
+    private Phosphor.Plugin.Abstractions.IPlayableResolver? _genericPagedResolver;
+    private int _genericPagedOffset;
+    private int _genericPagedTotal;
+
+    /// <summary>Resolves a leaf <see cref="SourceItem"/> to a playable <see cref="VideoItem"/> and adds it.</summary>
+    private async Task AddResolvedLeafAsync(
+        Phosphor.Plugin.Abstractions.SourceItem item,
+        Phosphor.Plugin.Abstractions.IPlayableResolver? resolver,
+        CancellationToken ct)
+    {
+        // A "leaf" flagged IsContainer is really a browsable node (e.g. a Plex artist/album returned
+        // inside a hub/playlist/search) — render it as a drill-in container, not a playable row.
+        if (item.IsContainer)
+        {
+            SearchResults.Add(ToContainerLeafItem(item));
+            return;
+        }
+
+        SearchResults.Add(await ResolveLeafAsync(item, resolver, ct));
+    }
+
+    /// <summary>
+    /// Resolves a playable leaf <see cref="SourceItem"/> into a <see cref="VideoItem"/> with its
+    /// <c>StreamUrl</c> populated (via the source's <see cref="IPlayableResolver"/>), without adding
+    /// it anywhere. Shared by the browse render path and the container-expander (queue/playlist).
+    /// </summary>
+    private static async Task<VideoItem> ResolveLeafAsync(
+        Phosphor.Plugin.Abstractions.SourceItem item,
+        Phosphor.Plugin.Abstractions.IPlayableResolver? resolver,
+        CancellationToken ct)
+    {
+        var vi = ToVideoItem(item);
+        // Resolve a playable URL now (local files are a cheap path check); the player checks
+        // VideoItem.StreamUrl first and plays it directly.
+        if (resolver != null)
+        {
+            try
+            {
+                var stream = await resolver.ResolveAsync(
+                    item, new Phosphor.Plugin.Abstractions.PlaybackPreferences(), ct);
+                if (stream != null) vi.StreamUrl = stream.PrimaryUri;
+            }
+            catch (Exception ex)
+            {
+                DebugLog.LogException($"Plugin resolve '{item.ItemId}'", ex);
+            }
+        }
+        vi.IsAudioOnly = item.IsAudioOnly;
+        return vi;
+    }
+
+    /// <summary>
+    /// Recursively expands a generic browse container (a <see cref="VideoItem.IsGenericContainer"/>
+    /// item — e.g. a Plex artist or album) into its playable leaf <see cref="VideoItem"/>s by
+    /// browsing it via the source's <see cref="IBrowsable"/>/<see cref="IPagedBrowsable"/> capability.
+    /// Source-agnostic: an artist expands through its albums to every track. Used by queue/playlist
+    /// add so a container never lands in the queue as an un-playable row. Capped defensively.
+    /// </summary>
+    private async Task<List<VideoItem>> ExpandContainerToLeavesAsync(VideoItem container, CancellationToken ct)
+    {
+        var leaves = new List<VideoItem>();
+        var source = _sourceRegistry?.ByInstance(container.GenericSourceInstanceId ?? "");
+        if (source is not Phosphor.Plugin.Abstractions.IBrowsable browsable)
+            return leaves;
+
+        var resolver = source as Phosphor.Plugin.Abstractions.IPlayableResolver;
+        var node = new Phosphor.Plugin.Abstractions.SourceCategory
+        {
+            SourceInstanceId = container.GenericSourceInstanceId!,
+            CategoryId = container.GenericCategoryId ?? "",
+            Title = container.Title,
+            SourceState = container.GenericSourceState,
+        };
+
+        await ExpandNodeAsync(node, browsable, resolver, leaves, depth: 0, ct);
+        return leaves;
+    }
+
+    private async Task ExpandNodeAsync(
+        Phosphor.Plugin.Abstractions.SourceCategory node,
+        Phosphor.Plugin.Abstractions.IBrowsable browsable,
+        Phosphor.Plugin.Abstractions.IPlayableResolver? resolver,
+        List<VideoItem> leaves,
+        int depth,
+        CancellationToken ct)
+    {
+        const int MaxDepth = 4;      // artist → album → track is 2; headroom for other shapes
+        const int MaxLeaves = 2000;  // safety cap so a huge library can't run away
+        if (depth > MaxDepth || leaves.Count >= MaxLeaves || ct.IsCancellationRequested) return;
+
+        var result = await browsable.BrowseAsync(node, ct);
+
+        // Playable leaves at this level. If none came back inline and the source pages, pull pages.
+        var items = result.Items;
+        if (items.Count == 0 && browsable is Phosphor.Plugin.Abstractions.IPagedBrowsable paged)
+        {
+            int offset = 0, total = int.MaxValue;
+            var buffer = new List<Phosphor.Plugin.Abstractions.SourceItem>();
+            while (offset < total && leaves.Count + buffer.Count < MaxLeaves && !ct.IsCancellationRequested)
+            {
+                var page = await paged.BrowsePageAsync(node, offset, SearchPageSize, ct);
+                total = page.TotalSize;
+                if (page.Items.Count == 0) break;
+                buffer.AddRange(page.Items);
+                offset += page.Items.Count;
+            }
+            items = buffer;
+        }
+
+        foreach (var item in items)
+        {
+            if (leaves.Count >= MaxLeaves) return;
+            if (item.IsContainer)
+            {
+                var child = new Phosphor.Plugin.Abstractions.SourceCategory
+                {
+                    SourceInstanceId = item.SourceInstanceId,
+                    CategoryId = item.ItemId,
+                    Title = item.Title,
+                    SourceState = item.SourceState,
+                };
+                await ExpandNodeAsync(child, browsable, resolver, leaves, depth + 1, ct);
+            }
+            else
+            {
+                leaves.Add(await ResolveLeafAsync(item, resolver, ct));
+            }
+        }
+
+        // Sub-categories (e.g. an artist's albums) — recurse into each.
+        foreach (var cat in result.Categories)
+        {
+            if (leaves.Count >= MaxLeaves) return;
+            await ExpandNodeAsync(cat, browsable, resolver, leaves, depth + 1, ct);
+        }
+    }
+
+    /// <summary>Loads the next page of leaf items for the active generic paged browse node.</summary>
+    private async Task LoadMoreGenericPageAsync()
+    {
+        if (_genericPaged is null || _genericPagedCategory is null || _isLoadingMore) return;
+        if (_genericPagedOffset >= _genericPagedTotal) { CanLoadMore = false; return; }
+
+        _isLoadingMore = true;
+        var token = _searchCts.Token;
+        try
+        {
+            var page = await _genericPaged.BrowsePageAsync(
+                _genericPagedCategory, _genericPagedOffset, SearchPageSize, token);
+            if (token.IsCancellationRequested) return;
+
+            _genericPagedTotal = page.TotalSize;
+            foreach (var item in page.Items)
+                await AddResolvedLeafAsync(item, _genericPagedResolver, token);
+
+            _genericPagedOffset += page.Items.Count;
+            // Stop if the source reports no more, or returned an empty page (defensive against
+            // a source that under-reports TotalSize).
+            bool hasMore = page.Items.Count > 0 && _genericPagedOffset < _genericPagedTotal;
+            CanLoadMore = hasMore;
+            StatusText = hasMore
+                ? $"Showing {SearchResults.Count} item(s) — scroll for more"
+                : $"Showing all {SearchResults.Count} item(s)";
+        }
+        catch (Exception ex)
+        {
+            DebugLog.LogException("Generic browse pagination", ex);
+            CanLoadMore = false;
+        }
+        finally
+        {
+            _isLoadingMore = false;
+        }
+    }
+
     // ── Genre categories (loaded from categories.json) ──
     private List<GenreCategoryEntry> _genreCategories = [];
 
@@ -59,21 +614,83 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     // ── Plex ──
-    private List<PlexLibraryMapping> _plexLibraries = [];
     private bool _plexStereoAudio;
-    private List<VideoItem> _plexHubCategories = [];
-    private string _activeHubParentName = "";
 
-    public void ConfigurePlex(string serverUrl, string token, List<PlexLibraryMapping> libraries, bool stereoAudio = false, bool skipRebuild = false)
+    /// <summary>
+    /// Configures Plex (and its category tiles) from settings. Tiles are built from <em>all</em>
+    /// enabled Plex instances in <see cref="AppSettings.PluginInstances"/> (each tile tagged with its
+    /// instance id); a per-instance <see cref="PlexService"/> cache is built so browse operations
+    /// target the right server, and the single <c>_plex</c> service is configured from the first
+    /// enabled instance as a default fallback.
+    /// </summary>
+    public void ConfigurePlexFromSettings(AppSettings settings, bool skipRebuild = false)
     {
-        _plex.Configure(serverUrl, token, stereoAudio);
-        _plexStereoAudio = stereoAudio;
-        _plexLibraries = libraries;
-        GenreCategoryStore.SyncPlexLibraries(_genreCategories, _plexLibraries);
-        GenreCategoryStore.SaveInBackground(_genreCategories);
+        // Seed the instance list on first run so a fresh install still gets Plex tiles
+        // from the migrated flat fields (matches BuildSourceRegistryAsync's one-time seed).
+        if (settings.PluginInstances.Count == 0)
+            settings.PluginInstances = Phosphor.Plugins.PluginSettingsFactory.FromAppSettings(settings);
+
+        var plexInstances = settings.PluginInstances
+            .Where(c => c.Enabled && c.TypeId == Phosphor.Plugins.Plex.PlexSourceProvider.PlexTypeId)
+            .Where(c => !string.IsNullOrWhiteSpace(GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyServerUrl))
+                     && !string.IsNullOrWhiteSpace(GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyToken)))
+            .ToList();
+
+        // Configure the single legacy _plex service from the first enabled instance (used as a
+        // default fallback; per-instance browse uses _plexServiceByInstance below).
+        var first = plexInstances.FirstOrDefault();
+        if (first != null)
+        {
+            _plex.Configure(
+                GetSetting(first, Phosphor.Plugins.Plex.PlexSourceProvider.KeyServerUrl) ?? "",
+                GetSetting(first, Phosphor.Plugins.Plex.PlexSourceProvider.KeyToken) ?? "",
+                bool.TryParse(GetSetting(first, Phosphor.Plugins.Plex.PlexSourceProvider.KeyStereoAudio), out var s) && s);
+            _plexStereoAudio = bool.TryParse(GetSetting(first, Phosphor.Plugins.Plex.PlexSourceProvider.KeyStereoAudio), out var s2) && s2;
+        }
+
+        // Build a per-instance PlexService for each enabled instance so multi-server browse
+        // (hub/playlist lists, in-library search, GetAllTracks, chapters) targets the right server.
+        _plexServiceByInstance.Clear();
+        foreach (var c in plexInstances)
+        {
+            var svc = new PlexService();
+            svc.Configure(
+                GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyServerUrl) ?? "",
+                GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyToken) ?? "",
+                bool.TryParse(GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyStereoAudio), out var cs) && cs);
+            _plexServiceByInstance[c.InstanceId] = svc;
+        }
+
+        // Plex home tiles are no longer synced here — Plex flows through the generic browse path
+        // (BuildPluginBrowseTilesAsync → SyncSourceTiles), one tile per library like any other
+        // IBrowsable source. This method only wires up the PlexService instances used for
+        // playback/chapters/gapless.
         if (!skipRebuild)
             RebuildCategories();
     }
+
+    private static string? GetSetting(Phosphor.Plugins.PluginInstanceConfig cfg, string key)
+        => cfg.Settings.TryGetValue(key, out var v) ? v : null;
+
+    /// <summary>
+    /// Returns the <see cref="PlexService"/> for the currently-active browse instance (multi-server).
+    /// On the plug-in path this is the per-instance service configured in
+    /// <see cref="ConfigurePlexFromSettings"/>; falls back to the single legacy <c>_plex</c> when
+    /// there is no active/keyed instance (single-server or flag-off).
+    /// </summary>
+    private PlexService ActivePlex =>
+        _activePlexInstanceId != null && _plexServiceByInstance.TryGetValue(_activePlexInstanceId, out var svc)
+            ? svc
+            : _plex;
+
+    /// <summary>
+    /// Resolves the plug-in Plex source for the current browse session (multi-server). Prefers the
+    /// instance keyed by <see cref="_activePlexInstanceId"/>; falls back to the first Plex instance
+    /// so single-server / not-yet-scoped browses behave exactly as before.
+    /// </summary>
+    private Phosphor.Plugin.Abstractions.IPhosphorSource? ActivePlexSource =>
+        (_activePlexInstanceId != null ? _sourceRegistry?.ByInstance(_activePlexInstanceId) : null)
+            ?? _sourceRegistry?.PlexInstances.FirstOrDefault();
 
     // ── Categories (playlists + genres, rebuilt dynamically) ──
     public BulkObservableCollection<Category> Categories { get; } = new();
@@ -470,11 +1087,6 @@ public partial class JukeboxViewModel : ObservableObject
     public event Action? ResumeRequested;
     public event Action<long>? SeekRequested;
 
-    /// <summary>
-    /// Raised when a non-playable Plex item (artist/album) is activated and needs drill-down handling.
-    /// </summary>
-    public event Action<VideoItem>? PlexDrillDownRequested;
-
     private double _playbackPosition;
     public double PlaybackPosition
     {
@@ -616,16 +1228,16 @@ public partial class JukeboxViewModel : ObservableObject
     public int FileCachingMs { get; set; } = 300;
     public bool HttpReconnect { get; set; } = true;
 
-    // ── YouTube timeout ──
-    public int YouTubeTimeoutSeconds { get; private set; } = 30;
+    // ── Network timeout (host-shared HttpClient) ──
+    public int NetworkTimeoutSeconds { get; private set; } = 30;
 
-    public void SetYouTubeTimeout(int seconds)
+    public void SetNetworkTimeout(int seconds)
     {
         seconds = Math.Clamp(seconds, 5, 120);
-        if (seconds == YouTubeTimeoutSeconds) return;
-        YouTubeTimeoutSeconds = seconds;
+        if (seconds == NetworkTimeoutSeconds) return;
+        NetworkTimeoutSeconds = seconds;
         RebuildSearchEngine();
-        DebugLog.Log("YouTube", $"Timeout set to {seconds}s");
+        DebugLog.Log("Network", $"Timeout set to {seconds}s");
     }
 
     /// <summary>
@@ -640,9 +1252,380 @@ public partial class JukeboxViewModel : ObservableObject
 
     private void RebuildSearchEngine()
     {
-        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(YouTubeTimeoutSeconds) };
+        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(NetworkTimeoutSeconds) };
         _searchEngine = SearchEngineFactory.Create(_searchEngineKind, http);
     }
+
+    /// <summary>
+    /// Whether an item's source can produce downloadable raw streams for the disk caches. Driven by
+    /// capability (the owning source implements <c>IDownloadable</c> — YouTube does, Plex does not),
+    /// falling back to the legacy rule (<c>!IsPlex</c>) when the registry is unavailable. The
+    /// per-instance <c>AllowCaching</c> policy overrides the capability default when set
+    /// (<c>true</c> forces on, <c>false</c> forces off).
+    /// </summary>
+    private bool IsItemCacheable(VideoItem item)
+    {
+        if (_sourceRegistry != null)
+        {
+            // YouTube items have no "scheme:" prefix; Plex items are "plex:...". Route the item to
+            // its source and ask whether that source supports downloading, then let the instance's
+            // AllowCaching policy (if set) override that capability default.
+            var source = item.IsPlex ? ActivePlexSource : _sourceRegistry.YouTube;
+            if (source == null) return false;
+
+            var policy = _sourceRegistry.CachingPolicy(source.InstanceId);
+            if (policy.HasValue) return policy.Value;
+
+            return source is Phosphor.Plugin.Abstractions.IDownloadable;
+        }
+
+        return !item.IsPlex;
+    }
+
+    /// <summary>
+    /// Runs <paramref name="action"/> on the UI (dispatcher) thread. A no-op marshal when the
+    /// caller is already on the UI thread, so it is safe and cheap on any path. Needed because
+    /// async continuations can resume on a threadpool thread (e.g. the plug-in search path),
+    /// and mutating UI-bound <see cref="ObservableCollection{T}"/>s like <see cref="Queue"/>
+    /// off the dispatcher throws.
+    /// </summary>
+    private static async Task RunOnUiAsync(Action action)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher != null && !dispatcher.CheckAccess())
+            await dispatcher.InvokeAsync(action);
+        else
+            action();
+    }
+
+    /// <summary>
+    /// Free-text video search. Routes through the YouTube source's <c>ITextSearchCapable</c>
+    /// capability (mapping results back to <see cref="VideoItem"/>); falls back to the legacy in-VM
+    /// search engine when the registry is unavailable.
+    /// </summary>
+    private IAsyncEnumerable<VideoItem> SearchVideosViaPluginOrLegacy(string query)
+        => SearchVideosViaPluginOrLegacy(query, null);
+
+    /// <summary>
+    /// Runs a free-text search against a specific plug-in source. <paramref name="sourceInstanceId"/>
+    /// selects the <c>ITextSearchCapable</c> source: <c>null</c> means YouTube (the default and the
+    /// source-bound path for tiles/AutoDJ). Falls back to YouTube, then the legacy engine, when the
+    /// requested source is unavailable or not searchable.
+    /// </summary>
+    private IAsyncEnumerable<VideoItem> SearchVideosViaPluginOrLegacy(string query, string? sourceInstanceId)
+    {
+        // Resolve the requested source; null => YouTube.
+        var source = sourceInstanceId != null ? _sourceRegistry?.ByInstance(sourceInstanceId) : _sourceRegistry?.YouTube;
+        if (source is Phosphor.Plugin.Abstractions.ITextSearchCapable capable)
+        {
+            DebugLog.Log("SourceRegistry", $"Search routed through plug-in source '{source.InstanceId}'");
+            return MapPluginSearch(capable, query);
+        }
+
+        // Requested source gone/not searchable — fall back to YouTube, then the legacy engine.
+        if (_sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.ITextSearchCapable yt)
+        {
+            DebugLog.Log("SourceRegistry", "Search fell back to plug-in YouTube source");
+            return MapPluginSearch(yt, query);
+        }
+
+        return _searchEngine.SearchVideosAsync(query);
+    }
+
+    private static async IAsyncEnumerable<VideoItem> MapPluginSearch(
+        Phosphor.Plugin.Abstractions.ITextSearchCapable source,
+        string query,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await foreach (var item in source.SearchAsync(query, ct).WithCancellation(ct))
+            yield return ToVideoItem(item);
+    }
+
+    /// <summary>Maps a plug-in <see cref="Phosphor.Plugin.Abstractions.SourceItem"/> to a host
+    /// <see cref="VideoItem"/>. When the source stashed a full <see cref="VideoItem"/> in
+    /// <see cref="Phosphor.Plugin.Abstractions.SourceItem.SourceState"/> (as Plex does, carrying its
+    /// rich <c>plex:</c> id / rating key / audio stream), it is unwrapped directly so playback and
+    /// caching route correctly; otherwise the flat fields are copied (YouTube discovery shape).</summary>
+    private static VideoItem ToVideoItem(Phosphor.Plugin.Abstractions.SourceItem item)
+    {
+        if (item.SourceState is VideoItem carried)
+            return carried;
+
+        return new VideoItem
+        {
+            Title = item.Title,
+            Author = item.Subtitle ?? "",
+            ThumbnailUrl = item.ThumbnailUrl ?? "",
+            VideoId = item.ItemId,
+            Duration = item.Duration,
+        };
+    }
+
+    private static async IAsyncEnumerable<VideoItem> MapPluginItems(
+        IAsyncEnumerable<Phosphor.Plugin.Abstractions.SourceItem> source,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await foreach (var item in source.WithCancellation(ct))
+            yield return ToVideoItem(item);
+    }
+
+    /// <summary>The YouTube discovery capability if the registry is available, else null.</summary>
+    private Phosphor.Plugin.Abstractions.IPlaylistChannelDiscovery? PluginDiscovery =>
+        _sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IPlaylistChannelDiscovery d
+            ? d : null;
+
+    /// <summary>Resolves a playlist id via the plug-in discovery capability, else the legacy engine.</summary>
+    private Task<string?> ResolvePlaylistIdViaPluginOrLegacy(string nameIdOrUrl, Action<string>? onFoundByName)
+        => PluginDiscovery is { } d
+            ? d.ResolvePlaylistIdAsync(nameIdOrUrl, onFoundByName)
+            : _searchEngine.ResolvePlaylistIdAsync(nameIdOrUrl, onFoundByName);
+
+    /// <summary>Yields a playlist's videos via the plug-in discovery capability, else the legacy engine.</summary>
+    private IAsyncEnumerable<VideoItem> GetPlaylistVideosViaPluginOrLegacy(string playlistId)
+        => PluginDiscovery is { } d
+            ? MapPluginItems(d.GetPlaylistItemsAsync(playlistId))
+            : _searchEngine.GetPlaylistVideosAsync(playlistId);
+
+    /// <summary>Yields a channel's uploads via the plug-in discovery capability, else the legacy engine.</summary>
+    private IAsyncEnumerable<VideoItem> GetChannelUploadsViaPluginOrLegacy(string handleOrUser)
+        => PluginDiscovery is { } d
+            ? MapPluginItems(d.GetChannelUploadsAsync(handleOrUser))
+            : _searchEngine.GetChannelUploadsAsync(handleOrUser);
+
+    /// <summary>
+    /// Fetches YouTube video metadata. Routes through the YouTube source's
+    /// <c>IPlayableResolver.GetMetadataAsync</c> (mapping the result back to the host
+    /// <see cref="Video.VideoMetadata"/>); falls back to the legacy in-VM video engine when the
+    /// registry is unavailable.
+    /// </summary>
+    private async Task<Video.VideoMetadata?> GetYouTubeMetadataViaPluginOrLegacy(string videoId)
+    {
+        if (_sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IPlayableResolver resolver)
+        {
+            var probe = new Phosphor.Plugin.Abstractions.SourceItem
+            {
+                SourceInstanceId = _sourceRegistry.YouTube!.InstanceId,
+                ItemId = videoId,
+                SourceState = videoId,
+            };
+            var meta = await resolver.GetMetadataAsync(probe);
+            return meta == null ? null : MapPluginMetadata(meta);
+        }
+
+        return await _videoEngine.GetMetadataAsync(videoId);
+    }
+
+    private static Video.VideoMetadata MapPluginMetadata(Phosphor.Plugin.Abstractions.SourceMetadata m) =>
+        new(
+            m.Duration,
+            m.Description,
+            m.Chapters.Select(c => new ChapterMarker
+            {
+                Title = c.Title,
+                StartTime = c.Start,
+                EndTime = c.End ?? TimeSpan.Zero,
+            }).ToList(),
+            m.PublishedAt);
+
+    /// <summary>
+    /// Resolves live YouTube stream URLs for playback. Routes through the YouTube source's
+    /// <c>IPlayableResolver.ResolveAsync</c> (mapping the result back to the host
+    /// <see cref="Video.VideoStreams"/>); falls back to the legacy in-VM video engine when the
+    /// registry is unavailable.
+    /// </summary>
+    /// <remarks>
+    /// Returns plain data and touches no UI/dispatcher, so it is safe to await from the
+    /// BackglassWindow's own thread (unlike work that must marshal to a UI thread).
+    /// </remarks>
+    public async Task<Video.VideoStreams?> ResolveStreamsViaPluginOrLegacy(
+        string videoId, VideoQualityPreference quality, bool preferStereo, bool audioOnly, CancellationToken ct = default)
+    {
+        if (_sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IPlayableResolver resolver)
+        {
+            var probe = new Phosphor.Plugin.Abstractions.SourceItem
+            {
+                SourceInstanceId = _sourceRegistry.YouTube!.InstanceId,
+                ItemId = videoId,
+                SourceState = videoId,
+            };
+            var prefs = new Phosphor.Plugin.Abstractions.PlaybackPreferences
+            {
+                MaxQuality = MapQualityToPlugin(quality),
+                PreferStereo = preferStereo,
+                AudioOnly = audioOnly,
+            };
+            var resolved = await resolver.ResolveAsync(probe, prefs, ct);
+            DebugLog.Log("SourceRegistry", "Stream resolution routed through plug-in YouTube source");
+            return resolved == null ? null : MapResolvedStream(resolved);
+        }
+
+        return await _videoEngine.ResolveStreamsAsync(videoId, quality, preferStereo, audioOnly, ct);
+    }
+
+    private static Phosphor.Plugin.Abstractions.VideoQuality MapQualityToPlugin(VideoQualityPreference q) => q switch
+    {
+        VideoQualityPreference.Low => Phosphor.Plugin.Abstractions.VideoQuality.Low,
+        VideoQualityPreference.Medium => Phosphor.Plugin.Abstractions.VideoQuality.Medium,
+        VideoQualityPreference.High => Phosphor.Plugin.Abstractions.VideoQuality.High,
+        _ => Phosphor.Plugin.Abstractions.VideoQuality.Max,
+    };
+
+    private static Video.VideoStreams MapResolvedStream(Phosphor.Plugin.Abstractions.ResolvedStream s)
+    {
+        var kind = s.Layout switch
+        {
+            Phosphor.Plugin.Abstractions.StreamLayout.SeparateVideoAudio => Video.VideoStreamKind.SeparateVideoAudio,
+            Phosphor.Plugin.Abstractions.StreamLayout.Muxed => Video.VideoStreamKind.Muxed,
+            _ => Video.VideoStreamKind.AudioOnly,
+        };
+        return new Video.VideoStreams(kind, s.PrimaryUri, s.AudioSlaveUri, s.Resolution ?? "");
+    }
+
+    /// <summary>
+    /// Downloads raw streams for the disk caches. When the plug-in path is enabled and the
+    /// YouTube source supports downloading, routes through <c>IDownloadable.DownloadAsync</c>
+    /// (mapping the result back to the host <see cref="Video.VideoDownload"/>); otherwise, or if
+    /// the plug-in yields an incomplete result, falls back to the legacy video engine. Returns
+    /// plain data / no UI, so it is safe to await from the caches' background download threads.
+    /// </summary>
+    private async Task<Video.VideoDownload?> DownloadStreamsViaPluginOrLegacy(
+        string videoId, VideoQualityPreference quality, bool preferStereo, string destinationDir, CancellationToken ct)
+    {
+        if (_sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IDownloadable dl)
+        {
+            var probe = new Phosphor.Plugin.Abstractions.SourceItem
+            {
+                SourceInstanceId = _sourceRegistry.YouTube!.InstanceId,
+                ItemId = videoId,
+                SourceState = videoId,
+            };
+            var prefs = new Phosphor.Plugin.Abstractions.PlaybackPreferences
+            {
+                MaxQuality = MapQualityToPlugin(quality),
+                PreferStereo = preferStereo,
+            };
+            var result = await dl.DownloadAsync(probe, prefs, destinationDir, null, ct);
+
+            // The caches mux separate video+audio; use the plug-in result only when fully
+            // populated, otherwise fall through to the legacy engine so caching never breaks.
+            if (result?.VideoFilePath is { } vp && result.AudioFilePath is { } ap)
+            {
+                DebugLog.Log("SourceRegistry", "Stream download routed through plug-in YouTube source");
+                return new Video.VideoDownload(
+                    vp, ap, result.VideoContainer ?? "", result.AudioContainer ?? "", result.Resolution ?? "");
+            }
+        }
+
+        return await _videoEngine.DownloadStreamsAsync(videoId, quality, preferStereo, destinationDir, ct);
+    }
+
+    /// <summary>
+    /// Wires (or clears) the plug-in download override on the given caches based on whether the
+    /// plug-in source path is active. Called after the caches or registry are (re)built.
+    /// </summary>
+    private void WireCacheDownloadOverride()
+    {
+        Func<string, VideoQualityPreference, bool, string, CancellationToken, Task<Video.VideoDownload?>>? over =
+            (_sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IDownloadable)
+                ? DownloadStreamsViaPluginOrLegacy
+                : null;
+
+        if (_cache != null) _cache.DownloadOverride = over;
+        if (_prefetch != null) _prefetch.DownloadOverride = over;
+    }
+
+    /// <summary>
+    /// Drills into a Plex container (artist→albums or album→tracks). Routes through the active
+    /// instance's <c>IBrowsable.BrowseAsync</c> (converting the result back to
+    /// <see cref="VideoItem"/>s); falls back to the legacy <c>_plex.GetChildrenAsync</c> when the
+    /// registry is unavailable.
+    /// </summary>
+    private async Task<List<VideoItem>> PlexBrowseChildrenViaPluginOrLegacy(
+        string ratingKey, PlexItemType childType, CancellationToken ct)
+    {
+        var plex = ActivePlexSource;
+        if (plex is Phosphor.Plugin.Abstractions.IBrowsable browsable)
+        {
+            // The parent node kind is one level above the requested children: album-children
+            // hang off an Artist node, track-children off an Album node.
+            var parentKind = childType == PlexItemType.Track
+                ? Phosphor.Plugins.Plex.PlexNodeKind.Album
+                : Phosphor.Plugins.Plex.PlexNodeKind.Artist;
+
+            var category = new Phosphor.Plugin.Abstractions.SourceCategory
+            {
+                SourceInstanceId = plex.InstanceId,
+                CategoryId = ratingKey,
+                SourceState = new Phosphor.Plugins.Plex.PlexNode(parentKind, ratingKey),
+            };
+
+            var result = await browsable.BrowseAsync(category, ct);
+            DebugLog.Log("SourceRegistry", $"Plex drill routed through plug-in ({childType} children)");
+
+            var mapped = new List<VideoItem>();
+            mapped.AddRange(result.Categories.Select(Phosphor.Plugins.Plex.PlexMappings.ToContainerVideoItem));
+            mapped.AddRange(result.Items.Select(Phosphor.Plugins.Plex.PlexMappings.ToVideoItem));
+            return mapped;
+        }
+
+        return await _plex.GetChildrenAsync(ratingKey, childType, ct);
+    }
+
+    /// <summary>
+    /// Shared core for the paginated Plex browse helpers. Wraps <paramref name="node"/> in a
+    /// <see cref="Phosphor.Plugin.Abstractions.SourceCategory"/> and routes through the active
+    /// instance's <c>IPagedBrowsable.BrowsePageAsync</c> (unwrapping items back to
+    /// <see cref="VideoItem"/>); falls back to <paramref name="legacy"/> when the registry is
+    /// unavailable. Returns the page's items and total size so callers' "load more" logic is
+    /// unchanged.
+    /// </summary>
+    private async Task<(List<VideoItem> Items, int TotalSize)> PlexBrowsePageViaPluginOrLegacy(
+        Phosphor.Plugins.Plex.PlexNode node, int offset, int count,
+        Func<Task<PlexPage>> legacy, CancellationToken ct = default)
+    {
+        var plex = ActivePlexSource;
+        if (plex is Phosphor.Plugin.Abstractions.IPagedBrowsable paged)
+        {
+            var category = new Phosphor.Plugin.Abstractions.SourceCategory
+            {
+                SourceInstanceId = plex.InstanceId,
+                CategoryId = node.Key,
+                SourceState = node,
+            };
+
+            var page = await paged.BrowsePageAsync(category, offset, count, ct);
+            DebugLog.Log("SourceRegistry", $"Plex {node.Kind} page routed through plug-in (offset={offset})");
+            var items = page.Items.Select(Phosphor.Plugins.Plex.PlexMappings.ToVideoItem).ToList();
+            return (items, page.TotalSize);
+        }
+
+        var result = await legacy();
+        return (result.Items, result.TotalSize);
+    }
+
+    /// <summary>Fetches one page of a Plex hub's items (plug-in or legacy). See <see cref="PlexBrowsePageViaPluginOrLegacy"/>.</summary>
+    private Task<(List<VideoItem> Items, int TotalSize)> PlexBrowseHubPageViaPluginOrLegacy(
+        string hubKey, string hubType, int offset, int count, CancellationToken ct)
+        => PlexBrowsePageViaPluginOrLegacy(
+            new Phosphor.Plugins.Plex.PlexNode(Phosphor.Plugins.Plex.PlexNodeKind.Hub, hubKey, hubType),
+            offset, count,
+            () => _plex.GetHubItemsPageAsync(hubKey, hubType, offset, count, ct), ct);
+
+    /// <summary>Fetches one page of a Plex library's items (artists at music top-level, else videos).</summary>
+    private Task<(List<VideoItem> Items, int TotalSize)> PlexBrowseLibraryPageViaPluginOrLegacy(
+        string libraryKey, string? browseType, int offset, int count, CancellationToken ct)
+        => PlexBrowsePageViaPluginOrLegacy(
+            new Phosphor.Plugins.Plex.PlexNode(Phosphor.Plugins.Plex.PlexNodeKind.Library, libraryKey, browseType),
+            offset, count,
+            () => _plex.GetLibraryVideosPageAsync(libraryKey, offset, count, browseType, ct), ct);
+
+    /// <summary>Fetches one page of a Plex playlist's items (plug-in or legacy).</summary>
+    private Task<(List<VideoItem> Items, int TotalSize)> PlexBrowsePlaylistPageViaPluginOrLegacy(
+        string playlistKey, int offset, int count, CancellationToken ct)
+        => PlexBrowsePageViaPluginOrLegacy(
+            new Phosphor.Plugins.Plex.PlexNode(Phosphor.Plugins.Plex.PlexNodeKind.Playlist, playlistKey),
+            offset, count,
+            () => _plex.GetPlaylistItemsPageAsync(playlistKey, offset, count, ct), ct);
 
     /// <summary>
     /// Number of results to fetch per "load more" page. The out-of-process yt-dlp search
@@ -656,7 +1639,40 @@ public partial class JukeboxViewModel : ObservableObject
     public bool GaplessPlayback { get; set; }
 
     /// <summary>
-    /// Returns the next track in the queue if it is an audio-only Plex track with a StreamUrl,
+    /// Returns a stable, pre-loadable gapless stream URL for <paramref name="item"/>, or null if it
+    /// isn't gapless-eligible. Driven by the source's <c>IGaplessCapable</c> capability (Plex audio
+    /// tracks qualify; YouTube doesn't), falling back to the legacy rule (Plex audio-only item with
+    /// a StreamUrl) when the registry is unavailable. Pure/synchronous — no UI or dispatcher — so
+    /// it's safe to call from BackglassWindow's own thread.
+    /// </summary>
+    public string? TryGetGaplessStreamUrl(VideoItem item)
+    {
+        if (_sourceRegistry != null)
+        {
+            // Route the item to its source and ask the gapless capability. Plex reads the carried
+            // VideoItem from SourceState, so wrap it accordingly.
+            var source = item.IsPlex ? _sourceRegistry.PlexInstances.FirstOrDefault() : _sourceRegistry.YouTube;
+            if (source is Phosphor.Plugin.Abstractions.IGaplessCapable g)
+            {
+                var probe = new Phosphor.Plugin.Abstractions.SourceItem
+                {
+                    SourceInstanceId = source.InstanceId,
+                    ItemId = item.VideoId,
+                    SourceState = item,
+                };
+                return g.GetGaplessStreamUrl(probe);
+            }
+            return null;
+        }
+
+        // Legacy rule.
+        return item.IsPlex && item.IsAudioOnly && !string.IsNullOrEmpty(item.StreamUrl)
+            ? item.StreamUrl
+            : null;
+    }
+
+    /// <summary>
+    /// Returns the next track in the queue if it is gapless-eligible (a pre-loadable audio stream),
     /// suitable for gapless pre-loading. Returns null otherwise.
     /// </summary>
     public VideoItem? GetNextGaplessTrack()
@@ -669,10 +1685,7 @@ public partial class JukeboxViewModel : ObservableObject
         if (nextIdx < 0 || nextIdx >= Queue.Count) return null;
 
         var next = Queue[nextIdx];
-        if (next.IsPlex && next.IsAudioOnly && !string.IsNullOrEmpty(next.StreamUrl))
-            return next;
-
-        return null;
+        return TryGetGaplessStreamUrl(next) != null ? next : null;
     }
 
     // ── Cache mode ──
@@ -681,6 +1694,7 @@ public partial class JukeboxViewModel : ObservableObject
     public void SetupCache(bool enabled, double maxSizeGb, int maxClipLengthMinutes = 0)
     {
         _cache = new VideoCache(enabled, maxSizeGb, maxClipLengthMinutes) { VideoEngine = _videoEngine };
+        WireCacheDownloadOverride();
     }
 
     /// <summary>
@@ -718,7 +1732,7 @@ public partial class JukeboxViewModel : ObservableObject
         if (nextIdx < 0 || nextIdx >= Queue.Count) return;
 
         var next = Queue[nextIdx];
-        if (next.IsPlex || next.IsAudioOnly) return;
+        if (!IsItemCacheable(next) || next.IsAudioOnly) return;
 
         var videoId = next.VideoId;
         if (string.IsNullOrEmpty(videoId)) return;
@@ -755,6 +1769,7 @@ public partial class JukeboxViewModel : ObservableObject
             _prefetch?.PurgeAll();
             _prefetch = null;
         }
+        WireCacheDownloadOverride();
     }
 
     /// <summary>
@@ -775,8 +1790,8 @@ public partial class JukeboxViewModel : ObservableObject
         var nextId = Queue[nextIdx].VideoId;
         if (nextId == _prefetchingVideoId) return;
 
-        // Plex items are streamed directly — no YouTube prefetch needed
-        if (Queue[nextIdx].IsPlex) return;
+        // Non-cacheable sources are streamed directly — no YouTube-style prefetch needed
+        if (!IsItemCacheable(Queue[nextIdx])) return;
 
         // Skip if already in the main cache or prefetch cache
         if (_cache?.TryGet(nextId) != null) return;
@@ -801,6 +1816,9 @@ public partial class JukeboxViewModel : ObservableObject
     private IAsyncEnumerator<VideoItem>? _searchEnumerator;
     private CancellationTokenSource _searchCts = new();
     private string _currentSearchQuery = "";
+    // The source id the current search ran against (null = YouTube); captured so "save as live
+    // playlist" binds the playlist to the source actually searched, not the current dropdown value.
+    private string? _currentSearchSourceId;
     private bool _hasMoreResults;
     private bool _isLoadingMore;
 
@@ -874,20 +1892,31 @@ public partial class JukeboxViewModel : ObservableObject
                 continue;
             }
             if (!entry.IsVisible) continue;
+            // Legacy Plex tile entries (pre-generic-path) are ignored — Plex now renders through the
+            // generic source path (IsGenericSource). They're pruned from disk on next source build.
+            if (entry.IsPlex && !entry.IsGenericSource) continue;
 
-            if (entry.IsPlex)
+            if (entry.IsGenericSource)
             {
-                var group = new List<Category>();
-                group.Add(new Category { Name = entry.Name, Icon = entry.Icon, PlexLibraryKey = entry.PlexLibraryKey, PlexLibraryType = entry.PlexLibraryType });
+                // Generic plug-in source root tile — recover the opaque SourceState from the live
+                // tile list (persisted entry holds only serializable identity + sort/visibility).
+                var live = _pluginBrowseTiles.FirstOrDefault(t =>
+                    t.SourceInstanceId == entry.SourceInstanceId
+                    && (t.SourceCategoryId ?? t.Name) == (entry.SourceCategoryId ?? ""));
+                if (live == null) continue; // source not currently available — skip its tile
 
-                var title = entry.Name.StartsWith("Plex ") ? entry.Name[5..] : entry.Name;
-                if (entry.PlexHubsEnabled)
-                    group.Add(new Category { Name = $"{title}: Hubs", Icon = "📡", PlexLibraryKey = entry.PlexLibraryKey, PlexLibraryType = entry.PlexLibraryType, IsPlexHubList = true });
-
-                if (entry.PlexPlaylistsEnabled)
-                    group.Add(new Category { Name = $"{title}: Playlists", Icon = "📋", PlexLibraryKey = entry.PlexLibraryKey, PlexLibraryType = entry.PlexLibraryType, IsPlexPlaylistList = true });
-
-                sortable.Add((entry.SortOrder, group));
+                sortable.Add((entry.SortOrder, new List<Category>
+                {
+                    new()
+                    {
+                        Name = entry.Name,
+                        Icon = entry.Icon,
+                        IsPluginBrowse = true,
+                        SourceInstanceId = entry.SourceInstanceId,
+                        SourceCategoryId = entry.SourceCategoryId,
+                        SourceState = live.SourceState,
+                    }
+                }));
             }
             else
             {
@@ -935,7 +1964,9 @@ public partial class JukeboxViewModel : ObservableObject
             var playlist = _playlists.Playlists.FirstOrDefault(p => p.Name == category.Name);
             if (playlist?.Kind == PlaylistKind.Live)
             {
-                // Live playlist — run the stored search
+                // Live playlist — run the stored search against the source it was bound to
+                // (null = YouTube for legacy playlists). Reflect that source in the dropdown so
+                // "load more" / re-save stay consistent.
                 ActivePlaylistName = category.Name;
                 _activePlaylistId = playlist.Id;
                 ActiveCategory = category.Name;
@@ -943,7 +1974,9 @@ public partial class JukeboxViewModel : ObservableObject
                 IsViewingLivePlaylist = true;
                 ShowCategories = false;
                 SearchQuery = playlist.SearchTerm;
-                await DoSearch(playlist.SearchTerm);
+                if (playlist.SourceInstanceId != null && SearchSources.Any(s => s.InstanceId == playlist.SourceInstanceId))
+                    ActiveSearchSourceId = playlist.SourceInstanceId;
+                await DoSearch(playlist.SearchTerm, playlist.SourceInstanceId);
                 return;
             }
 
@@ -958,57 +1991,14 @@ public partial class JukeboxViewModel : ObservableObject
             return;
         }
 
-        if (category.IsPlexHub && _plex.IsConfigured)
+        // Generic plug-in browse tile (Plex libraries, local-folder, future third-party sources).
+        if (category.IsPluginBrowse && category.SourceInstanceId != null)
         {
             IsViewingPlaylist = false;
             _hasMoreResults = false;
             CanLoadMore = false;
             ShowCategories = false;
-            IsPlexBrowsing = false;
-            await BrowsePlexHubContentAsync(category.PlexHubKey!, category.PlexHubType, category.Name);
-            return;
-        }
-
-        if (category.IsPlexPlaylist && _plex.IsConfigured)
-        {
-            IsViewingPlaylist = false;
-            _hasMoreResults = false;
-            CanLoadMore = false;
-            ShowCategories = false;
-            IsPlexBrowsing = false;
-            await BrowsePlexPlaylistContentAsync(category.PlexPlaylistKey!, category.Name);
-            return;
-        }
-
-        if (category.IsPlexHubList && _plex.IsConfigured)
-        {
-            IsViewingPlaylist = false;
-            _hasMoreResults = false;
-            CanLoadMore = false;
-            ShowCategories = false;
-            IsPlexBrowsing = false;
-            await BrowsePlexHubListAsync(category.PlexLibraryKey!, category.PlexLibraryType, category.Name);
-            return;
-        }
-
-        if (category.IsPlexPlaylistList && _plex.IsConfigured)
-        {
-            IsViewingPlaylist = false;
-            _hasMoreResults = false;
-            CanLoadMore = false;
-            ShowCategories = false;
-            IsPlexBrowsing = false;
-            await BrowsePlexPlaylistListAsync(category.PlexLibraryType, category.Name);
-            return;
-        }
-
-        if (category.IsPlex && _plex.IsConfigured)
-        {
-            IsViewingPlaylist = false;
-            _hasMoreResults = false;
-            CanLoadMore = false;
-            ShowCategories = false;
-            await BrowsePlexLibraryAsync(category.PlexLibraryKey!, category.PlexLibraryType, category.Name);
+            await BrowsePluginCategoryAsync(category);
             return;
         }
 
@@ -1036,14 +2026,16 @@ public partial class JukeboxViewModel : ObservableObject
         IsViewingPlaylist = false;
         IsViewingLivePlaylist = false;
         IsPlexBrowsing = false;
-        _isPlexHubBrowsing = false;
-        _isPlexPlaylistBrowsing = false;
         _isHistoryBrowsing = false;
-        IsViewingPlexMusic = false;
-        IsViewingPlexHubOrPlaylist = false;
-        _activePlexHubKey = null;
-        _activePlexPlaylistKey = null;
-        _plexHubCategories.Clear();
+        _activePlexInstanceId = null;
+        // Reset generic plug-in browse navigation.
+        IsGenericBrowsing = false;
+        _browseStack.Clear();
+        _genericPaged = null;
+        _genericPagedCategory = null;
+        _genericPagedResolver = null;
+        _genericPagedOffset = 0;
+        UpdateBrowseBreadcrumb();
         ActiveCategory = "";
         SearchResults.Clear();
         CanLoadMore = false;
@@ -1057,39 +2049,6 @@ public partial class JukeboxViewModel : ObservableObject
         }
 
         StatusText = "Select a category or search";
-    }
-
-    /// <summary>
-    /// Navigate back from hub/playlist content or sub-list.
-    /// </summary>
-    public void PlexHubGoBack()
-    {
-        if (_isPlexHubBrowsing || _isPlexPlaylistBrowsing)
-        {
-            // Viewing hub/playlist contents — go back to the parent list
-            _isPlexHubBrowsing = false;
-            _isPlexPlaylistBrowsing = false;
-            _activePlexHubKey = null;
-            _activePlexPlaylistKey = null;
-            CanLoadMore = false;
-            PlexHubBreadcrumb = _activeHubParentName;
-
-            // Re-run the parent hub/playlist list query
-            if (_plexHubCategories.Count > 0)
-            {
-                SearchResults.ReplaceAll(_plexHubCategories);
-                StatusText = $"{_plexHubCategories.Count} items";
-            }
-            else
-            {
-                ShowCategoryListCommand.Execute(null);
-            }
-        }
-        else
-        {
-            // Viewing sub-list or unknown state — go home
-            ShowCategoryListCommand.Execute(null);
-        }
     }
 
     // ── Search ──
@@ -1111,7 +2070,8 @@ public partial class JukeboxViewModel : ObservableObject
         IsViewingPlaylist = false;
         ActiveCategory = "Search";
         SearchQuery = query; // Restore in case binding cleared it
-        await DoSearch(query);
+        // The ad-hoc search box honors the selected search source; tiles/live playlists don't.
+        await DoSearch(query, ActiveSearchSourceId);
     }
 
     private void RefreshSearchSuggestions()
@@ -1121,7 +2081,7 @@ public partial class JukeboxViewModel : ObservableObject
             SearchSuggestions.Add(s);
     }
 
-    private async Task DoSearch(string query)
+    private async Task DoSearch(string query, string? sourceInstanceId = null)
     {
         // Cancel any in-progress load so the new search can proceed
         _searchCts.Cancel();
@@ -1132,39 +2092,23 @@ public partial class JukeboxViewModel : ObservableObject
         StatusText = "Searching...";
         SearchResults.Clear();
 
-        // If currently browsing a Plex library, search within that library instead of YouTube
-        if (_isPlexBrowsing && _plex.IsConfigured && !string.IsNullOrEmpty(_activePlexLibraryKey))
+        // If currently browsing a generic plug-in node whose source supports in-view search,
+        // push a scoped-search frame onto the browse stack (so drilling into a result and pressing
+        // Back returns to the results). EnterBrowseNodeAsync runs the search for a frame that carries
+        // a SearchQuery. The frame keeps the current node's identity but overrides its title/query.
+        if (IsGenericBrowsing && _browseStack.Count > 0
+            && _sourceRegistry?.ByInstance(_browseStack[^1].SourceInstanceId)
+               is Phosphor.Plugin.Abstractions.IScopedSearchable)
         {
-            // Clear drill-down breadcrumb — search results may span multiple artists/albums
-            _plexDrillArtistKey = null;
-            _plexDrillArtistName = null;
-            _plexDrillAlbumKey = null;
-            _plexDrillAlbumName = null;
-            UpdatePlexBreadcrumb();
-
-            try
-            {
-                var searchType = _activePlexLibraryType == "artist" ? _plexSearchMode : (PlexSearchMode?)null;
-                var results = await _plex.SearchLibraryAsync(
-                    _activePlexLibraryKey, query, _activePlexLibraryType, searchType, _searchCts.Token);
-
-                foreach (var v in results)
-                    SearchResults.Add(v);
-
-                CanLoadMore = false;
-                _hasMoreResults = false;
-                StatusText = $"{SearchResults.Count} Plex results for \"{query}\"";
-            }
-            catch (OperationCanceledException) { }
-            catch (Exception ex)
-            {
-                StatusText = $"Plex search error: {ex.Message}";
-                DebugLog.LogException("Plex search", ex);
-            }
-            finally
-            {
-                IsSearching = false;
-            }
+            var current = _browseStack[^1];
+            var searchFrame = new BrowseNode(
+                $"Search: {query}",
+                current.SourceInstanceId,
+                current.CategoryId,
+                current.SourceState,
+                current.Icon,
+                query);
+            await EnterBrowseNodeAsync(searchFrame, pushOntoStack: true);
             return;
         }
 
@@ -1176,6 +2120,7 @@ public partial class JukeboxViewModel : ObservableObject
         }
 
         _currentSearchQuery = query;
+        _currentSearchSourceId = sourceInstanceId;
 
         // Parse and strip duration filters (min:/max:) from the query
         query = ParseDurationFilters(query);
@@ -1199,7 +2144,7 @@ public partial class JukeboxViewModel : ObservableObject
             try
             {
                 // Resolve id / URL, or search by name (engine encapsulates the fallback).
-                var playlistId = await _searchEngine.ResolvePlaylistIdAsync(
+                var playlistId = await ResolvePlaylistIdViaPluginOrLegacy(
                     playlistIdOrName, title => StatusText = $"Found playlist: {title}");
                 if (playlistId == null)
                 {
@@ -1208,7 +2153,7 @@ public partial class JukeboxViewModel : ObservableObject
                     return;
                 }
 
-                var videos = _searchEngine.GetPlaylistVideosAsync(playlistId);
+                var videos = GetPlaylistVideosViaPluginOrLegacy(playlistId);
                 _searchEnumerator = string.IsNullOrEmpty(filterTerms)
                     ? videos.GetAsyncEnumerator()
                     : FilterVideosAsync(videos, filterTerms).GetAsyncEnumerator();
@@ -1236,7 +2181,7 @@ public partial class JukeboxViewModel : ObservableObject
                 if (parsedAsId)
                     filterTerms = Regex.Replace(query, @"playlist:\S+", "", RegexOptions.IgnoreCase).Trim();
 
-                var playlistId = await _searchEngine.ResolvePlaylistIdAsync(
+                var playlistId = await ResolvePlaylistIdViaPluginOrLegacy(
                     playlistIdOrName, title => StatusText = $"Found playlist: {title}");
                 if (playlistId == null)
                 {
@@ -1245,7 +2190,7 @@ public partial class JukeboxViewModel : ObservableObject
                     return;
                 }
 
-                var videos = _searchEngine.GetPlaylistVideosAsync(playlistId);
+                var videos = GetPlaylistVideosViaPluginOrLegacy(playlistId);
                 _searchEnumerator = string.IsNullOrEmpty(filterTerms)
                     ? videos.GetAsyncEnumerator()
                     : FilterVideosAsync(videos, filterTerms).GetAsyncEnumerator();
@@ -1266,7 +2211,7 @@ public partial class JukeboxViewModel : ObservableObject
             try
             {
                 // Engine encapsulates the handle→user fallback.
-                var videos = _searchEngine.GetChannelUploadsAsync(channelName);
+                var videos = GetChannelUploadsViaPluginOrLegacy(channelName);
                 _searchEnumerator = string.IsNullOrEmpty(filterTerms)
                     ? videos.GetAsyncEnumerator()
                     : FilterVideosAsync(videos, filterTerms).GetAsyncEnumerator();
@@ -1281,26 +2226,31 @@ public partial class JukeboxViewModel : ObservableObject
         }
         else
         {
-            _searchEnumerator = _searchEngine.SearchVideosAsync(query).GetAsyncEnumerator();
+            _searchEnumerator = SearchVideosViaPluginOrLegacy(query, sourceInstanceId).GetAsyncEnumerator();
         }
 
         _hasMoreResults = true;
 
-        // Determine cache key from active category or live playlist
+        // Determine cache key from active category or live playlist. Only the YouTube-bound path
+        // (tiles/live playlists, sourceInstanceId == null) uses these caches — an ad-hoc search
+        // against another source must not attach a YouTube-shaped category/playlist cache.
         _activeResultCache = null;
         _categoryCacheName = null;
         _categoryCachePageIndex = 0;
-        var genreEntry = _genreCategories.FirstOrDefault(c =>
-            !string.IsNullOrEmpty(c.SearchTerm) && c.SearchTerm == query);
-        if (genreEntry != null)
+        if (sourceInstanceId == null)
         {
-            _categoryCacheName = genreEntry.Id;
-            _activeResultCache = CategoryCache;
-        }
-        else if (IsViewingLivePlaylist && !string.IsNullOrEmpty(_activePlaylistId))
-        {
-            _categoryCacheName = _activePlaylistId;
-            _activeResultCache = YtPlaylistCache;
+            var genreEntry = _genreCategories.FirstOrDefault(c =>
+                !string.IsNullOrEmpty(c.SearchTerm) && c.SearchTerm == query);
+            if (genreEntry != null)
+            {
+                _categoryCacheName = genreEntry.Id;
+                _activeResultCache = CategoryCache;
+            }
+            else if (IsViewingLivePlaylist && !string.IsNullOrEmpty(_activePlaylistId))
+            {
+                _categoryCacheName = _activePlaylistId;
+                _activeResultCache = YtPlaylistCache;
+            }
         }
 
         await LoadMoreResults(SearchPageSize);
@@ -1405,13 +2355,54 @@ public partial class JukeboxViewModel : ObservableObject
 
     // ── Plex browsing ──
 
-    private const int PlexPageSize = 40;
-    private int _plexTotalSize;
     private bool _isPlexBrowsing;
     public bool IsPlexBrowsing
     {
         get => _isPlexBrowsing;
-        private set => SetProperty(ref _isPlexBrowsing, value);
+        private set
+        {
+            if (SetProperty(ref _isPlexBrowsing, value))
+            {
+                OnPropertyChanged(nameof(IsSearchScoped));
+                OnPropertyChanged(nameof(IsSearchSourceSelectable));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether the current view <em>scopes</em> the search box to a specific browse context (a
+    /// library/folder/collection), so the global search-source selector doesn't apply. Source-agnostic
+    /// by design: today only Plex library browsing sets it, but any future scoped source (Jellyfin
+    /// library, local-folder, …) should feed into this same signal rather than the UI checking a
+    /// per-source flag. When a generic scoped-search capability lands (see PLUGIN_ARCHITECTURE_ANALYSIS.md),
+    /// this becomes its natural home.
+    /// </summary>
+    public bool IsSearchScoped => IsPlexBrowsing || IsGenericScopedSearchAvailable;
+
+    /// <summary>
+    /// True when the active generic browse node's source implements <see cref="IScopedSearchable"/>,
+    /// so typing in the search box searches within that node rather than the global source.
+    /// </summary>
+    private bool IsGenericScopedSearchAvailable =>
+        IsGenericBrowsing && _browseStack.Count > 0
+        && _sourceRegistry?.ByInstance(_browseStack[^1].SourceInstanceId)
+           is Phosphor.Plugin.Abstractions.IScopedSearchable;
+
+    /// <summary>
+    /// Whether the search-source dropdown is meaningful right now — false when the view scopes search
+    /// to a context (<see cref="IsSearchScoped"/>). The UI greys the dropdown out in that case.
+    /// </summary>
+    public bool IsSearchSourceSelectable => !IsSearchScoped;
+
+    /// <summary>
+    /// Raises change notifications for the search-scope signals. Called after the browse stack is
+    /// mutated (push/pop) since <see cref="IsGenericScopedSearchAvailable"/> reads the stack top —
+    /// the <see cref="IsGenericBrowsing"/> setter alone fires too early (before the post-await push).
+    /// </summary>
+    private void RaiseSearchScopeChanged()
+    {
+        OnPropertyChanged(nameof(IsSearchScoped));
+        OnPropertyChanged(nameof(IsSearchSourceSelectable));
     }
 
     // ── Category cache page tracking ──
@@ -1448,638 +2439,62 @@ public partial class JukeboxViewModel : ObservableObject
             : $"{total} items in history";
     }
 
-    private string _activePlexLibraryKey = "";
+    // The Plex instance id the current browse session targets (multi-server). Null = first/legacy.
+    private string? _activePlexInstanceId;
 
-    private string? _activePlexLibraryType;
+    // Per-instance PlexService cache for legacy-style calls (GetAllTracks, chapters, gapless) that
+    // the plug-in path still routes through a PlexService. Configured from each instance's settings
+    // so multi-server calls hit the right server.
+    private readonly Dictionary<string, PlexService> _plexServiceByInstance = new(StringComparer.Ordinal);
 
-    // Active hub/playlist browsing state for pagination
-    private string? _activePlexHubKey;
-    private string? _activePlexHubType;
-    private string? _activePlexPlaylistKey;
-    private string? _activePlexPlaylistName;
-    private int _plexPlaylistCachePageIndex;
-    private string? _activePlexLibraryName;
-    private int _plexLibraryCachePageIndex;
-    private bool _isPlexHubBrowsing;
-    private bool _isPlexPlaylistBrowsing;
+    /// <summary>
+    /// True when "Find Similar" should be hidden — for generic plug-in browse views (Plex libraries,
+    /// folders, …) whose container/leaf items aren't YouTube-style "find similar" candidates.
+    /// </summary>
+    public bool ShouldHideFindSimilar => IsGenericBrowsing;
 
-    // ── Plex music drill-down state ──
-    private string? _plexDrillArtistKey;
-    private string? _plexDrillArtistName;
-    private string? _plexDrillAlbumKey;
-    private string? _plexDrillAlbumName;
+    // ── Generic plug-in browse navigation stack (source-agnostic drill-down + breadcrumb + back) ──
+    // Each frame is one browse level; the top of the stack is the currently-displayed node. Used by
+    // any IBrowsable source (local-folder, future Jellyfin, …) so drill-down/back/breadcrumb work
+    // without source-specific state. Plex keeps its own path for now (retired in a later increment).
+    private readonly List<BrowseNode> _browseStack = new();
 
-    private PlexSearchMode _plexSearchMode = PlexSearchMode.Artist;
-    public PlexSearchMode PlexSearchMode
+    private string _browseBreadcrumb = "";
+    /// <summary>Breadcrumb for the generic plug-in browse path (e.g. "Folder › Subfolder").</summary>
+    public string BrowseBreadcrumb
     {
-        get => _plexSearchMode;
-        set
-        {
-            SetProperty(ref _plexSearchMode, value);
-        }
+        get => _browseBreadcrumb;
+        private set => SetProperty(ref _browseBreadcrumb, value);
     }
 
-    private bool _isViewingPlexMusic;
-    public bool IsViewingPlexMusic
+    private bool _isGenericBrowsing;
+    /// <summary>True while viewing a generic plug-in browse node (enables Back + breadcrumb).</summary>
+    public bool IsGenericBrowsing
     {
-        get => _isViewingPlexMusic;
-        set
+        get => _isGenericBrowsing;
+        private set
         {
-            if (SetProperty(ref _isViewingPlexMusic, value))
+            if (SetProperty(ref _isGenericBrowsing, value))
+            {
+                OnPropertyChanged(nameof(IsSearchScoped));
+                OnPropertyChanged(nameof(IsSearchSourceSelectable));
                 OnPropertyChanged(nameof(ShouldHideFindSimilar));
-        }
-    }
-
-    private bool _isViewingPlexHubOrPlaylist;
-    public bool IsViewingPlexHubOrPlaylist
-    {
-        get => _isViewingPlexHubOrPlaylist;
-        set
-        {
-            if (SetProperty(ref _isViewingPlexHubOrPlaylist, value))
-                OnPropertyChanged(nameof(ShouldHideFindSimilar));
-        }
-    }
-
-    /// <summary>
-    /// True when "Find Similar" should be hidden (Plex music, hub, or playlist views).
-    /// </summary>
-    public bool ShouldHideFindSimilar => IsViewingPlexMusic || IsViewingPlexHubOrPlaylist;
-
-    private string _plexHubBreadcrumb = "";
-    public string PlexHubBreadcrumb
-    {
-        get => _plexHubBreadcrumb;
-        set => SetProperty(ref _plexHubBreadcrumb, value);
-    }
-
-    private string _plexBreadcrumb = "";
-    public string PlexBreadcrumb
-    {
-        get => _plexBreadcrumb;
-        set => SetProperty(ref _plexBreadcrumb, value);
-    }
-
-    private async Task BrowsePlexLibraryAsync(string libraryKey, string? libraryType = null, string? displayName = null)
-    {
-        _searchCts.Cancel();
-        _searchCts = new CancellationTokenSource();
-
-        IsSearching = true;
-        StatusText = "Loading Plex library...";
-        SearchResults.Clear();
-        _plexTotalSize = 0;
-        _activePlexLibraryKey = libraryKey;
-        _activePlexLibraryType = libraryType;
-        IsPlexBrowsing = true;
-        _activePlexLibraryName = displayName;
-        _plexLibraryCachePageIndex = 0;
-
-        // Reset drill-down state
-        _plexDrillArtistKey = null;
-        _plexDrillArtistName = null;
-        _plexDrillAlbumKey = null;
-        _plexDrillAlbumName = null;
-
-        if (libraryType == "artist")
-        {
-            IsViewingPlexMusic = true;
-            PlexSearchMode = PlexSearchMode.Artist;
-            UpdatePlexBreadcrumb();
-        }
-        else
-        {
-            IsViewingPlexMusic = false;
-        }
-
-        await LoadMorePlexResultsAsync();
-    }
-
-    public async Task BrowsePlexHubContentAsync(string hubKey, string? hubType, string displayName)
-    {
-        _searchCts.Cancel();
-        _searchCts = new CancellationTokenSource();
-        var token = _searchCts.Token;
-
-        IsSearching = true;
-        StatusText = $"Loading {displayName}...";
-        SearchResults.Clear();
-        IsPlexBrowsing = false;
-        _isPlexHubBrowsing = true;
-        _isPlexPlaylistBrowsing = false;
-        _activePlexHubKey = hubKey;
-        _activePlexHubType = hubType;
-        _activePlexPlaylistKey = null;
-        IsViewingPlexMusic = false;
-        IsViewingPlexHubOrPlaylist = true;
-        PlexHubBreadcrumb = $"{_activeHubParentName} › {displayName}";
-        ShowCategories = false;
-        _plexTotalSize = 0;
-
-        try
-        {
-            var page = await _plex.GetHubItemsPageAsync(hubKey, hubType ?? "", 0, PlexPageSize, token);
-            if (token.IsCancellationRequested) return;
-
-            _plexTotalSize = page.TotalSize;
-            foreach (var v in page.Items)
-                SearchResults.Add(v);
-
-            bool hasMore = SearchResults.Count < _plexTotalSize;
-            CanLoadMore = hasMore;
-            StatusText = hasMore
-                ? $"Showing {SearchResults.Count} of {_plexTotalSize} items in {displayName} — scroll for more"
-                : $"{SearchResults.Count} items in {displayName}";
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            StatusText = $"Plex error: {ex.Message}";
-            DebugLog.LogException("Plex hub content", ex);
-            CanLoadMore = false;
-        }
-        finally
-        {
-            IsSearching = false;
-        }
-    }
-
-    private async Task BrowsePlexHubListAsync(string libraryKey, string? libraryType, string displayName)
-    {
-        _searchCts.Cancel();
-        _searchCts = new CancellationTokenSource();
-        var token = _searchCts.Token;
-
-        _activeHubParentName = displayName;
-        IsViewingPlexHubOrPlaylist = true;
-        PlexHubBreadcrumb = displayName;
-        IsSearching = true;
-        StatusText = "Loading hubs...";
-        SearchResults.Clear();
-        ShowCategories = false;
-        CanLoadMore = false;
-        _isPlexHubBrowsing = false;
-        _isPlexPlaylistBrowsing = false;
-        _activePlexHubKey = null;
-        _activePlexPlaylistKey = null;
-        _plexHubCategories.Clear();
-
-        try
-        {
-            var hubs = await _plex.GetLibraryHubsAsync(libraryKey, token);
-            if (token.IsCancellationRequested) return;
-
-            foreach (var hub in hubs)
-            {
-                var vi = new VideoItem
-                {
-                    Title = hub.Title,
-                    Author = $"{hub.Size} items",
-                    PlexItemType = PlexItemType.Hub,
-                    PlexHubKey = hub.HubKey,
-                    PlexHubType = hub.Type,
-                    VideoId = $"plex:hub:{hub.HubKey}",
-                };
-                SearchResults.Add(vi);
-                _plexHubCategories.Add(vi);
             }
-
-            StatusText = $"{hubs.Count} hubs available";
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            StatusText = $"Plex error: {ex.Message}";
-            DebugLog.LogException("Plex hub list", ex);
-        }
-        finally
-        {
-            IsSearching = false;
         }
     }
 
-    private async Task BrowsePlexPlaylistListAsync(string? libraryType, string displayName)
-    {
-        _searchCts.Cancel();
-        _searchCts = new CancellationTokenSource();
-        var token = _searchCts.Token;
-
-        _activeHubParentName = displayName;
-        IsViewingPlexHubOrPlaylist = true;
-        PlexHubBreadcrumb = displayName;
-        IsSearching = true;
-        StatusText = "Loading playlists...";
-        SearchResults.Clear();
-        ShowCategories = false;
-        CanLoadMore = false;
-        _isPlexHubBrowsing = false;
-        _isPlexPlaylistBrowsing = false;
-        _activePlexHubKey = null;
-        _activePlexPlaylistKey = null;
-        _plexHubCategories.Clear();
-
-        try
-        {
-            var playlistType = libraryType == "artist" ? "audio" : "video";
-            var playlists = await _plex.GetPlaylistsAsync(playlistType, token);
-            if (token.IsCancellationRequested) return;
-
-            foreach (var pl in playlists)
-            {
-                var vi = new VideoItem
-                {
-                    Title = pl.Title,
-                    Author = $"{pl.LeafCount} items{(pl.Smart ? " · Smart" : "")}",
-                    PlexItemType = PlexItemType.Playlist,
-                    PlexRatingKey = pl.RatingKey,
-                    VideoId = $"plex:playlist:{pl.RatingKey}",
-                    ThumbnailUrl = pl.Thumb,
-                };
-                SearchResults.Add(vi);
-                _plexHubCategories.Add(vi);
-            }
-
-            StatusText = $"{playlists.Count} playlists available";
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            StatusText = $"Plex error: {ex.Message}";
-            DebugLog.LogException("Plex playlist list", ex);
-        }
-        finally
-        {
-            IsSearching = false;
-        }
-    }
-
-    public async Task BrowsePlexPlaylistContentAsync(string ratingKey, string displayName)
-    {
-        _searchCts.Cancel();
-        _searchCts = new CancellationTokenSource();
-        var token = _searchCts.Token;
-
-        IsSearching = true;
-        StatusText = $"Loading {displayName}...";
-        SearchResults.Clear();
-        IsPlexBrowsing = false;
-        _isPlexHubBrowsing = false;
-        _isPlexPlaylistBrowsing = true;
-        _activePlexPlaylistKey = ratingKey;
-        _activePlexPlaylistName = displayName;
-        _plexPlaylistCachePageIndex = 0;
-        _activePlexHubKey = null;
-        IsViewingPlexHubOrPlaylist = true;
-        PlexHubBreadcrumb = $"{_activeHubParentName} › {displayName}";
-        ShowCategories = false;
-        _plexTotalSize = 0;
-
-        try
-        {
-            // Try plex playlist cache first
-            if (PlexPlaylistCache is { Enabled: true } ppc)
-            {
-                var cached = ppc.TryGetPage(displayName, 0, out var isLast);
-                if (cached != null)
-                {
-                    foreach (var v in cached)
-                        SearchResults.Add(v);
-                    _plexPlaylistCachePageIndex = 1;
-                    CanLoadMore = !isLast;
-                    StatusText = isLast
-                        ? $"{SearchResults.Count} items in {displayName} (cached)"
-                        : $"Showing {SearchResults.Count} items in {displayName} (cached) — scroll for more";
-                    return;
-                }
-            }
-
-            var page = await _plex.GetPlaylistItemsPageAsync(ratingKey, 0, PlexPageSize, token);
-            if (token.IsCancellationRequested) return;
-
-            _plexTotalSize = page.TotalSize;
-            foreach (var v in page.Items)
-                SearchResults.Add(v);
-
-            // Store in cache
-            bool hasMore = SearchResults.Count < _plexTotalSize;
-            if (PlexPlaylistCache is { Enabled: true } storeCache)
-                storeCache.StorePage(displayName, 0, page.Items, !hasMore);
-            _plexPlaylistCachePageIndex = 1;
-
-            CanLoadMore = hasMore;
-            StatusText = hasMore
-                ? $"Showing {SearchResults.Count} of {_plexTotalSize} items in {displayName} — scroll for more"
-                : $"{SearchResults.Count} items in {displayName}";
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            StatusText = $"Plex error: {ex.Message}";
-            DebugLog.LogException("Plex playlist content", ex);
-            CanLoadMore = false;
-        }
-        finally
-        {
-            IsSearching = false;
-        }
-    }
-
-    /// <summary>
-    /// Drill into a Plex artist
-    /// </summary>
-    public async Task PlexDrillIntoArtistAsync(string ratingKey, string artistName)
-    {
-        _searchCts.Cancel();
-        _searchCts = new CancellationTokenSource();
-
-        _plexDrillArtistKey = ratingKey;
-        _plexDrillArtistName = artistName;
-        _plexDrillAlbumKey = null;
-        _plexDrillAlbumName = null;
-        UpdatePlexBreadcrumb();
-
-        IsSearching = true;
-        StatusText = $"Loading albums by {artistName}...";
-        SearchResults.Clear();
-
-        try
-        {
-            var items = await _plex.GetChildrenAsync(ratingKey, PlexItemType.Album, _searchCts.Token);
-            foreach (var v in items)
-                SearchResults.Add(v);
-            CanLoadMore = false;
-            IsPlexBrowsing = true;
-            StatusText = $"{SearchResults.Count} albums by {artistName}";
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex) { StatusText = $"Plex error: {ex.Message}"; DebugLog.LogException("Plex drill artist", ex); }
-        finally { IsSearching = false; }
-    }
-
-    /// <summary>
-    /// Drill into a Plex album
-    /// </summary>
-    public async Task PlexDrillIntoAlbumAsync(string ratingKey, string albumName)
-    {
-        _searchCts.Cancel();
-        _searchCts = new CancellationTokenSource();
-
-        _plexDrillAlbumKey = ratingKey;
-        _plexDrillAlbumName = albumName;
-        UpdatePlexBreadcrumb();
-
-        IsSearching = true;
-        StatusText = $"Loading tracks from {albumName}...";
-        SearchResults.Clear();
-
-        try
-        {
-            var items = await _plex.GetChildrenAsync(ratingKey, PlexItemType.Track, _searchCts.Token);
-            foreach (var v in items)
-                SearchResults.Add(v);
-            CanLoadMore = false;
-            IsPlexBrowsing = true;
-            StatusText = $"{SearchResults.Count} tracks on {albumName}";
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex) { StatusText = $"Plex error: {ex.Message}"; DebugLog.LogException("Plex drill album", ex); }
-        finally { IsSearching = false; }
-    }
-
-    /// <summary>
-    /// Navigate back one level
-    /// Returns true if navigation was handled, false if already at the top.
-    /// </summary>
-    public async Task<bool> PlexDrillBackAsync()
-    {
-        if (_plexDrillAlbumKey != null)
-        {
-            // Go back to album list for this artist
-            _plexDrillAlbumKey = null;
-            _plexDrillAlbumName = null;
-            UpdatePlexBreadcrumb();
-            if (_plexDrillArtistKey != null)
-                await PlexDrillIntoArtistAsync(_plexDrillArtistKey, _plexDrillArtistName ?? "");
-            return true;
-        }
-
-        if (_plexDrillArtistKey != null)
-        {
-            // Go back to artist list
-            _plexDrillArtistKey = null;
-            _plexDrillArtistName = null;
-            UpdatePlexBreadcrumb();
-            SearchResults.Clear();
-            _plexTotalSize = 0;
-            IsPlexBrowsing = true;
-            _isLoadingMore = false;
-            await LoadMorePlexResultsAsync();
-            return true;
-        }
-
-        return false;
-    }
-
-    private void UpdatePlexBreadcrumb()
-    {
-        var parts = new List<string>();
-        if (_plexDrillArtistName != null)
-            parts.Add(_plexDrillArtistName);
-        if (_plexDrillAlbumName != null)
-            parts.Add(_plexDrillAlbumName);
-        PlexBreadcrumb = parts.Count > 0 ? string.Join(" › ", parts) : "";
-    }
-
-    private async Task LoadMorePlexResultsAsync()
-    {
-        if (!_isPlexBrowsing || _isLoadingMore) return;
-
-        // Drill-down views are not paginated — skip if we're inside an artist or album
-        if (_plexDrillArtistKey != null || _plexDrillAlbumKey != null) return;
-
-        _isLoadingMore = true;
-        IsSearching = true;
-        var token = _searchCts.Token;
-
-        try
-        {
-            // Try plex playlist cache first
-            if (PlexPlaylistCache is { Enabled: true } ppc && _activePlexLibraryName != null)
-            {
-                var cached = ppc.TryGetPage(_activePlexLibraryName, _plexLibraryCachePageIndex, out var isLast);
-                if (cached != null)
-                {
-                    foreach (var v in cached)
-                        SearchResults.Add(v);
-                    _plexLibraryCachePageIndex++;
-                    CanLoadMore = !isLast;
-                    IsPlexBrowsing = !isLast;
-                    StatusText = isLast
-                        ? $"Showing all {SearchResults.Count} Plex items (cached)"
-                        : $"Showing {SearchResults.Count} Plex items (cached) — scroll for more";
-                    return;
-                }
-            }
-
-            // Music libraries at top level: show artists instead of tracks
-            var browseType = (_activePlexLibraryType == "artist" && _plexDrillArtistKey == null)
-                ? "artist" : _activePlexLibraryType;
-
-            var page = await _plex.GetLibraryVideosPageAsync(
-                _activePlexLibraryKey, SearchResults.Count, PlexPageSize, browseType, token);
-
-            if (token.IsCancellationRequested) return;
-
-            _plexTotalSize = page.TotalSize;
-
-            foreach (var v in page.Items)
-                SearchResults.Add(v);
-
-            bool hasMore = SearchResults.Count < _plexTotalSize;
-
-            // Store in cache
-            if (PlexPlaylistCache is { Enabled: true } storeCache && _activePlexLibraryName != null)
-                storeCache.StorePage(_activePlexLibraryName, _plexLibraryCachePageIndex, page.Items, !hasMore);
-            _plexLibraryCachePageIndex++;
-
-            CanLoadMore = hasMore;
-            IsPlexBrowsing = hasMore;
-            StatusText = hasMore
-                ? $"Showing {SearchResults.Count} of {_plexTotalSize} Plex items — scroll for more"
-                : $"Showing all {SearchResults.Count} Plex items";
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            StatusText = $"Plex error: {ex.Message}";
-            DebugLog.LogException("Plex library browse", ex);
-            IsPlexBrowsing = false;
-            CanLoadMore = false;
-        }
-        finally
-        {
-            IsSearching = false;
-            _isLoadingMore = false;
-        }
-    }
-
-    public async Task<List<PlexLibrary>> GetPlexLibrariesAsync()
-    {
-        if (!_plex.IsConfigured) return [];
-        try { return await _plex.GetLibrariesAsync(); }
-        catch { return []; }
-    }
-
-    private async Task LoadMorePlexHubResultsAsync()
-    {
-        if (!_isPlexHubBrowsing || _isLoadingMore || _activePlexHubKey == null) return;
-
-        _isLoadingMore = true;
-        IsSearching = true;
-        var token = _searchCts.Token;
-
-        try
-        {
-            var page = await _plex.GetHubItemsPageAsync(
-                _activePlexHubKey, _activePlexHubType ?? "", SearchResults.Count, PlexPageSize, token);
-            if (token.IsCancellationRequested) return;
-
-            _plexTotalSize = page.TotalSize;
-            foreach (var v in page.Items)
-                SearchResults.Add(v);
-
-            bool hasMore = SearchResults.Count < _plexTotalSize;
-            CanLoadMore = hasMore;
-            StatusText = hasMore
-                ? $"Showing {SearchResults.Count} of {_plexTotalSize} items — scroll for more"
-                : $"Showing all {SearchResults.Count} items";
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            StatusText = $"Plex error: {ex.Message}";
-            DebugLog.LogException("Plex hub pagination", ex);
-            CanLoadMore = false;
-        }
-        finally
-        {
-            IsSearching = false;
-            _isLoadingMore = false;
-        }
-    }
-
-    private async Task LoadMorePlexPlaylistResultsAsync()
-    {
-        if (!_isPlexPlaylistBrowsing || _isLoadingMore || _activePlexPlaylistKey == null) return;
-
-        _isLoadingMore = true;
-        IsSearching = true;
-        var token = _searchCts.Token;
-
-        try
-        {
-            // Try plex playlist cache first
-            if (PlexPlaylistCache is { Enabled: true } ppc && _activePlexPlaylistName != null)
-            {
-                var cached = ppc.TryGetPage(_activePlexPlaylistName, _plexPlaylistCachePageIndex, out var isLast);
-                if (cached != null)
-                {
-                    foreach (var v in cached)
-                        SearchResults.Add(v);
-                    _plexPlaylistCachePageIndex++;
-                    CanLoadMore = !isLast;
-                    StatusText = isLast
-                        ? $"Showing all {SearchResults.Count} items (cached)"
-                        : $"Showing {SearchResults.Count} items (cached) — scroll for more";
-                    return;
-                }
-            }
-
-            var page = await _plex.GetPlaylistItemsPageAsync(
-                _activePlexPlaylistKey, SearchResults.Count, PlexPageSize, token);
-            if (token.IsCancellationRequested) return;
-
-            _plexTotalSize = page.TotalSize;
-            foreach (var v in page.Items)
-                SearchResults.Add(v);
-
-            bool hasMore = SearchResults.Count < _plexTotalSize;
-
-            // Store in cache
-            if (PlexPlaylistCache is { Enabled: true } storeCache && _activePlexPlaylistName != null)
-                storeCache.StorePage(_activePlexPlaylistName, _plexPlaylistCachePageIndex, page.Items, !hasMore);
-            _plexPlaylistCachePageIndex++;
-
-            CanLoadMore = hasMore;
-            StatusText = hasMore
-                ? $"Showing {SearchResults.Count} of {_plexTotalSize} items — scroll for more"
-                : $"Showing all {SearchResults.Count} items";
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            StatusText = $"Plex error: {ex.Message}";
-            DebugLog.LogException("Plex playlist pagination", ex);
-            CanLoadMore = false;
-        }
-        finally
-        {
-            IsSearching = false;
-            _isLoadingMore = false;
-        }
-    }
+    private void UpdateBrowseBreadcrumb()
+        => BrowseBreadcrumb = _browseStack.Count > 0
+            ? string.Join(" › ", _browseStack.Select(n => n.Title))
+            : "";
 
     [RelayCommand]
     private async Task LoadMoreResultsAsync()
     {
-        if (_isHistoryBrowsing)
+        if (IsGenericBrowsing && _genericPaged != null)
+            await LoadMoreGenericPageAsync();
+        else if (_isHistoryBrowsing)
             LoadMoreHistoryResults();
-        else if (_isPlexHubBrowsing)
-            await LoadMorePlexHubResultsAsync();
-        else if (_isPlexPlaylistBrowsing)
-            await LoadMorePlexPlaylistResultsAsync();
-        else if (_isPlexBrowsing)
-            await LoadMorePlexResultsAsync();
         else
             await LoadMoreResults(SearchPageSize);
     }
@@ -2321,6 +2736,33 @@ public partial class JukeboxViewModel : ObservableObject
             return;
         }
 
+        // Generic browse container (Plex artist/album, etc.) — expand to its playable tracks and
+        // queue those, so the queue never holds an un-playable container row.
+        if (item.IsGenericContainer)
+        {
+            StatusText = $"Loading tracks from {item.Title}...";
+            try
+            {
+                var leaves = await ExpandContainerToLeavesAsync(item, _searchCts.Token);
+                int added = 0;
+                foreach (var track in leaves)
+                {
+                    if (Queue.Count >= MaxQueueSize) break;
+                    Queue.Add(track);
+                    added++;
+                }
+                StatusText = added < leaves.Count
+                    ? $"Queued {added} of {leaves.Count} tracks (queue limit {MaxQueueSize})"
+                    : $"Queued {leaves.Count} tracks from {item.Title}";
+            }
+            catch (Exception ex)
+            {
+                StatusText = $"Failed to queue: {ex.Message}";
+                DebugLog.LogException("Queue container tracks", ex);
+            }
+            return;
+        }
+
         // For Plex artists/albums, fetch all tracks and queue them
         if (item.PlexItemType is PlexItemType.Artist or PlexItemType.Album
             && item.PlexRatingKey != null && _plex.IsConfigured)
@@ -2328,7 +2770,7 @@ public partial class JukeboxViewModel : ObservableObject
             StatusText = $"Loading tracks from {item.Title}...";
             try
             {
-                var tracks = await _plex.GetAllTracksAsync(item.PlexRatingKey, item.PlexItemType);
+                var tracks = await ActivePlex.GetAllTracksAsync(item.PlexRatingKey, item.PlexItemType);
                 int added = 0;
                 foreach (var track in tracks)
                 {
@@ -2409,7 +2851,7 @@ public partial class JukeboxViewModel : ObservableObject
             if (vi.PlexItemType is PlexItemType.Artist or PlexItemType.Album
                 && vi.PlexRatingKey != null && _plex.IsConfigured)
             {
-                var tracks = await _plex.GetAllTracksAsync(vi.PlexRatingKey, vi.PlexItemType);
+                var tracks = await ActivePlex.GetAllTracksAsync(vi.PlexRatingKey, vi.PlexItemType);
                 foreach (var track in tracks)
                 {
                     if (Queue.Count >= MaxQueueSize) break;
@@ -2431,10 +2873,15 @@ public partial class JukeboxViewModel : ObservableObject
     {
         if (item == null) return;
 
-        // Non-playable Plex items trigger drill-down via event
-        if (item.PlexItemType is PlexItemType.Artist or PlexItemType.Album or PlexItemType.Hub or PlexItemType.Playlist)
+        // Generic browse container.
+        if (item.IsGenericContainer)
         {
-            PlexDrillDownRequested?.Invoke(item);
+            // In a browse view, activating a container drills into it. In a playlist view it's a
+            // stored container (Plex artist/album) — expand it to tracks and play them.
+            if (IsViewingPlaylist)
+                _ = SafeFireAndForget(PlayContainerAsync(item));
+            else
+                _ = SafeFireAndForget(DrillIntoGenericContainerAsync(item));
             return;
         }
 
@@ -2454,8 +2901,8 @@ public partial class JukeboxViewModel : ObservableObject
         if (item.IsPlex && item.PlexRatingKey != null && item.Chapters == null && _plex.IsConfigured)
             _ = SafeFireAndForget(FetchPlexChaptersAsync(item));
 
-        // Cache on playback when mode is Everything (YouTube only)
-        if (_cache is { Enabled: true } && CacheMode == CacheMode.Everything && !item.IsPlex)
+        // Cache on playback when mode is Everything (cacheable sources only)
+        if (_cache is { Enabled: true } && CacheMode == CacheMode.Everything && IsItemCacheable(item))
             _ = SafeFireAndForget(_cache.CacheVideoAsync(item.VideoId, VideoQuality, StereoAudio, item.Duration, item.Chapters, item.Title));
 
         // Preemptively cache the *next* queue item as soon as this one starts —
@@ -2465,7 +2912,42 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Derives an audio stream tag for the status bar by inspecting the item's StreamUrl.
+    /// Expands a stored browse container (a Plex artist/album in a playlist) to its tracks, appends
+    /// them to the queue, and starts playing the first one — a container can't be played directly.
+    /// </summary>
+    private async Task PlayContainerAsync(VideoItem container)
+    {
+        StatusText = $"Loading tracks from {container.Title}...";
+        List<VideoItem> leaves;
+        try
+        {
+            leaves = await ExpandContainerToLeavesAsync(container, _searchCts.Token);
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Failed to play {container.Title}: {ex.Message}";
+            DebugLog.LogException("Play container", ex);
+            return;
+        }
+
+        if (leaves.Count == 0)
+        {
+            StatusText = $"No playable tracks in {container.Title}";
+            return;
+        }
+
+        int firstIndex = Queue.Count;
+        foreach (var track in leaves)
+        {
+            if (Queue.Count >= MaxQueueSize) break;
+            Queue.Add(track);
+        }
+
+        if (firstIndex < Queue.Count)
+            PlayFromQueueIndex(firstIndex);
+    }
+
+    /// <summary>
     /// Returns "" for non-Plex items, "(Stereo)" for native stereo selection,
     /// "(Stereo Transcode)" for server-side downmix, or "(Surround)" otherwise.
     /// </summary>
@@ -2500,7 +2982,7 @@ public partial class JukeboxViewModel : ObservableObject
 
     private async Task FetchPlexChaptersAsync(VideoItem item)
     {
-        var chapters = await _plex.GetChaptersAsync(item.PlexRatingKey!);
+        var chapters = await ActivePlex.GetChaptersAsync(item.PlexRatingKey!);
         if (chapters != null && chapters.Count > 0)
         {
             item.Chapters = chapters;
@@ -2831,11 +3313,11 @@ public partial class JukeboxViewModel : ObservableObject
             StatusText = $"Loading tracks from {item.Title}...";
             try
             {
-                var tracks = await _plex.GetAllTracksAsync(item.PlexRatingKey, item.PlexItemType);
+                var tracks = await ActivePlex.GetAllTracksAsync(item.PlexRatingKey, item.PlexItemType);
                 foreach (var track in tracks)
                 {
                     _playlists.AddToPlaylist(ActivePlaylistName, track);
-                    if (_cache is { Enabled: true } && !track.IsPlex)
+                    if (_cache is { Enabled: true } && IsItemCacheable(track))
                         _ = SafeFireAndForget(_cache.CacheVideoAsync(track.VideoId, duration: track.Duration, chapters: track.Chapters, title: track.Title));
                 }
                 StatusText = $"Added {tracks.Count} tracks from {item.Title} to {ActivePlaylistName}";
@@ -2854,8 +3336,8 @@ public partial class JukeboxViewModel : ObservableObject
         // Fetch accurate duration and save to playlist JSON
         _ = SafeFireAndForget(RefreshPlaylistItemDurationAsync(ActivePlaylistName, item));
 
-        // Trigger background caching for playlist items (YouTube only)
-        if (_cache is { Enabled: true } && !item.IsPlex)
+        // Trigger background caching for playlist items (cacheable sources only)
+        if (_cache is { Enabled: true } && IsItemCacheable(item))
             _ = SafeFireAndForget(_cache.CacheVideoAsync(item.VideoId, duration: item.Duration, chapters: item.Chapters, title: item.Title));
     }
 
@@ -2915,7 +3397,9 @@ public partial class JukeboxViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(SearchQuery))
             return;
 
-        _playlists.CreateLivePlaylist(name, SearchQuery, icon);
+        // Bind the playlist to the source the current search actually ran against (null = YouTube),
+        // so re-opening it queries that source rather than the default.
+        _playlists.CreateLivePlaylist(name, SearchQuery, icon, _currentSearchSourceId);
         RebuildCategories();
         StatusText = $"Created live playlist: {name}";
     }
@@ -2947,14 +3431,33 @@ public partial class JukeboxViewModel : ObservableObject
     /// Queue all videos currently shown in the results list.
     /// </summary>
     [RelayCommand]
-    private void QueueAllFromPlaylist()
+    private async Task QueueAllFromPlaylist()
     {
         if (SearchResults.Count == 0) return;
 
-        foreach (var video in SearchResults)
-            Queue.Add(video);
+        int added = 0;
+        foreach (var video in SearchResults.ToList())
+        {
+            if (Queue.Count >= MaxQueueSize) break;
+            // A stored container (Plex artist/album in a playlist) expands to its tracks.
+            if (video.IsGenericContainer)
+            {
+                var leaves = await ExpandContainerToLeavesAsync(video, _searchCts.Token);
+                foreach (var track in leaves)
+                {
+                    if (Queue.Count >= MaxQueueSize) break;
+                    Queue.Add(track);
+                    added++;
+                }
+            }
+            else
+            {
+                Queue.Add(video);
+                added++;
+            }
+        }
 
-        StatusText = $"Queued {SearchResults.Count} videos from {ActiveCategory}";
+        StatusText = $"Queued {added} videos from {ActiveCategory}";
     }
 
     /// <summary>
@@ -3037,7 +3540,7 @@ public partial class JukeboxViewModel : ObservableObject
         {
             // Load a larger pool from this genre to pick randomly from
             var results = new List<VideoItem>();
-            var enumerator = _searchEngine.SearchVideosAsync(genre.SearchTerm).GetAsyncEnumerator();
+            var enumerator = SearchVideosViaPluginOrLegacy(genre.SearchTerm, AutoDjProviderId).GetAsyncEnumerator();
             try
             {
                 int fetched = 0;
@@ -3056,21 +3559,24 @@ public partial class JukeboxViewModel : ObservableObject
             // Shuffle and pick items not already queued/played
             var shuffled = results.OrderBy(_ => _autoDjRng.Next()).ToList();
 
-            foreach (var item in shuffled)
+            await RunOnUiAsync(() =>
             {
-                if (Queue.Count >= targetSize) break;
-                var videoId = item.VideoId;
-                if (_autoDjUsedIds.Contains(videoId)) continue;
-                if (Queue.Any(q => q.VideoId == videoId)) continue;
-                if (CurrentlyPlaying?.VideoId == videoId) continue;
+                foreach (var item in shuffled)
+                {
+                    if (Queue.Count >= targetSize) break;
+                    var videoId = item.VideoId;
+                    if (_autoDjUsedIds.Contains(videoId)) continue;
+                    if (Queue.Any(q => q.VideoId == videoId)) continue;
+                    if (CurrentlyPlaying?.VideoId == videoId) continue;
 
-                Queue.Add(item);
-                _autoDjUsedIds.Add(videoId);
-                StatusText = $"AutoDJ queued: {item.Title}";
+                    Queue.Add(item);
+                    _autoDjUsedIds.Add(videoId);
+                    StatusText = $"AutoDJ queued: {item.Title}";
 
-                if (CurrentlyPlaying == null)
-                    PlayNext();
-            }
+                    if (CurrentlyPlaying == null)
+                        PlayNext();
+                }
+            });
         }
         catch (Exception ex)
         {
@@ -3103,7 +3609,7 @@ public partial class JukeboxViewModel : ObservableObject
         {
             // Fetch a page of results and randomize so we don't always pick the same top results
             var pool = new List<VideoItem>();
-            var enumerator = _searchEngine.SearchVideosAsync(query).GetAsyncEnumerator();
+            var enumerator = SearchVideosViaPluginOrLegacy(query, AutoDjProviderId).GetAsyncEnumerator();
             try
             {
                 int fetched = 0;
@@ -3121,21 +3627,24 @@ public partial class JukeboxViewModel : ObservableObject
 
             var shuffled = pool.OrderBy(_ => _autoDjRng.Next()).ToList();
 
-            foreach (var item in shuffled)
+            await RunOnUiAsync(() =>
             {
-                if (Queue.Count >= targetSize) break;
-                var videoId = item.VideoId;
-                if (_autoDjUsedIds.Contains(videoId)) continue;
-                if (Queue.Any(q => q.VideoId == videoId)) continue;
-                if (CurrentlyPlaying?.VideoId == videoId) continue;
+                foreach (var item in shuffled)
+                {
+                    if (Queue.Count >= targetSize) break;
+                    var videoId = item.VideoId;
+                    if (_autoDjUsedIds.Contains(videoId)) continue;
+                    if (Queue.Any(q => q.VideoId == videoId)) continue;
+                    if (CurrentlyPlaying?.VideoId == videoId) continue;
 
-                Queue.Add(item);
-                _autoDjUsedIds.Add(videoId);
-                StatusText = $"AutoDJ queued: {item.Title}";
+                    Queue.Add(item);
+                    _autoDjUsedIds.Add(videoId);
+                    StatusText = $"AutoDJ queued: {item.Title}";
 
-                if (CurrentlyPlaying == null)
-                    PlayNext();
-            }
+                    if (CurrentlyPlaying == null)
+                        PlayNext();
+                }
+            });
         }
         catch (Exception ex)
         {
@@ -3212,7 +3721,7 @@ public partial class JukeboxViewModel : ObservableObject
     {
         try
         {
-            var meta = await _videoEngine.GetMetadataAsync(videoId);
+            var meta = await GetYouTubeMetadataViaPluginOrLegacy(videoId);
             return meta?.Duration;
         }
         catch (Exception ex)
@@ -3231,7 +3740,7 @@ public partial class JukeboxViewModel : ObservableObject
     {
         try
         {
-            var meta = await _videoEngine.GetMetadataAsync(item.VideoId);
+            var meta = await GetYouTubeMetadataViaPluginOrLegacy(item.VideoId);
             if (meta == null) return;
 
             // Native chapters (yt-dlp) take precedence; otherwise parse the description.
@@ -3370,3 +3879,17 @@ public partial class JukeboxViewModel : ObservableObject
         }
     }
 }
+
+/// <summary>One entry in the search-box source dropdown.</summary>
+public sealed record SearchSourceOption(string InstanceId, string DisplayName)
+{
+    // Shown in the ComboBox.
+    public override string ToString() => DisplayName;
+}
+
+/// <summary>
+/// One level in the generic plug-in browse navigation stack. Carries the opaque
+/// <see cref="SourceState"/> the source hands back on browse, so drill-down and back-navigation are
+/// fully source-agnostic (the host never interprets it).
+/// </summary>
+public sealed record BrowseNode(string Title, string SourceInstanceId, string CategoryId, object? SourceState, string? Icon = null, string? SearchQuery = null);

@@ -27,8 +27,14 @@ public class CategoryVisibilityItem
     public int SortOrder { get; set; }
     public string? PlexLibraryKey { get; set; }
     public string? PlexLibraryType { get; set; }
+    public string? PlexInstanceId { get; set; }
     public bool PlexHubsEnabled { get; set; }
     public bool PlexPlaylistsEnabled { get; set; }
+    // Generic plug-in source tile identity (round-tripped so sort/visibility persist for these too).
+    public string? SourceInstanceId { get; set; }
+    public string? SourceCategoryId { get; set; }
+    public string? SourceTypeId { get; set; }
+    public bool IsGenericSource { get; set; }
     /// <summary>
     /// The search term when the settings window was opened, used to detect changes.
     /// </summary>
@@ -162,7 +168,6 @@ public partial class SettingsWindow : JukeboxWindow
     private string _originalProjectMTexturePath;
     private List<string> _originalProjectMEnabledFolders;
     private bool _originalProjectMSoftwareRender;
-    private readonly ObservableCollection<PlexLibraryMapping> _plexLibraries = new();
     private readonly List<CategoryVisibilityItem> _categoryVisibilityItems = new();
     private readonly ObservableCollection<PinupPlaylist> _pinupPlaylists = new();
     private readonly ObservableCollection<PinupPlaylist> _pinupActive = new();
@@ -875,8 +880,13 @@ public partial class SettingsWindow : JukeboxWindow
                 IsPlex = entry.IsPlex,
                 PlexLibraryKey = entry.PlexLibraryKey,
                 PlexLibraryType = entry.PlexLibraryType,
+                PlexInstanceId = entry.PlexInstanceId,
                 PlexHubsEnabled = entry.PlexHubsEnabled,
                 PlexPlaylistsEnabled = entry.PlexPlaylistsEnabled,
+                SourceInstanceId = entry.SourceInstanceId,
+                SourceCategoryId = entry.SourceCategoryId,
+                SourceTypeId = entry.SourceTypeId,
+                IsGenericSource = entry.IsGenericSource,
                 SortOrder = entry.SortOrder
             });
         }
@@ -1118,46 +1128,28 @@ public partial class SettingsWindow : JukeboxWindow
         _originalDofColorBand = settings.DofColorBand;
         _originalDofPresetChanged = settings.DofPresetChanged;
         _originalDofRomName = settings.DofRomName;
-        CbVideoQuality.Items.Add("Low (480p)");
-        CbVideoQuality.Items.Add("Medium (720p)");
-        CbVideoQuality.Items.Add("High (1080p)");
-        CbVideoQuality.Items.Add("Max (4k)");
-        CbVideoQuality.SelectedIndex = (int)settings.VideoQuality;
-        UpdateQualityHint(settings.VideoQuality);
-        CbVideoEngine.Items.Add("YoutubeExplode");
-        CbVideoEngine.Items.Add("yt-dlp");
-        CbVideoEngine.SelectedIndex = (int)settings.VideoEngine;
-        UpdateEngineHint(settings.VideoEngine);
-        CbSearchEngine.Items.Add("YoutubeExplode");
-        CbSearchEngine.Items.Add("yt-dlp");
-        CbSearchEngine.SelectedIndex = (int)settings.SearchEngine;
-        UpdateSearchEngineHint(settings.SearchEngine);
-        CbYtDlpAutoUpdate.IsChecked = settings.YtDlpAutoUpdate;
-        CbStereoAudio.IsChecked = settings.StereoAudio;
 
         // Network
         SliderNetworkCaching.Value = settings.NetworkCachingMs;
         SliderLiveCaching.Value = settings.LiveCachingMs;
         SliderFileCaching.Value = settings.FileCachingMs;
         CbHttpReconnect.IsChecked = settings.HttpReconnect;
-        SliderYouTubeTimeout.Value = settings.YouTubeTimeoutSeconds;
+        SliderNetworkTimeout.Value = settings.NetworkTimeoutSeconds;
         NetworkCachingValueText.Text = settings.NetworkCachingMs.ToString();
         LiveCachingValueText.Text = settings.LiveCachingMs.ToString();
         FileCachingValueText.Text = settings.FileCachingMs.ToString();
-        YouTubeTimeoutValueText.Text = settings.YouTubeTimeoutSeconds.ToString();
+        NetworkTimeoutValueText.Text = settings.NetworkTimeoutSeconds.ToString();
 
-        // Plex
-        TbPlexUrl.Text = settings.PlexServerUrl;
-        TbPlexToken.Text = settings.PlexToken;
-        CbPlexStereo.IsChecked = settings.PlexStereoAudio;
+        // Playback (gapless is app-owned; engine/quality/stereo moved to the Plug-ins tab).
         CbPlexGapless.IsChecked = settings.PlexGaplessPlayback;
-        foreach (var lib in settings.PlexLibraries)
-            _plexLibraries.Add(new PlexLibraryMapping { Key = lib.Key, Title = lib.Title, Type = lib.Type, HubsEnabled = lib.HubsEnabled, PlaylistsEnabled = lib.PlaylistsEnabled });
-        PlexLibraryList.ItemsSource = _plexLibraries;
 
-        // Auto-load Plex libraries if configured
-        if (!string.IsNullOrWhiteSpace(settings.PlexServerUrl) && !string.IsNullOrWhiteSpace(settings.PlexToken))
-            Loaded += async (_, _) => await TryLoadPlexLibrariesAsync();
+        // Populate the Plug-ins tab from the live source registry once the window is loaded
+        // (Owner/DataContext is available by then). Same timing for the AutoDJ provider list.
+        Loaded += (_, _) =>
+        {
+            PopulatePluginSourcesTab();
+            PopulateAutoDjProvider(settings);
+        };
 
         HistoryCountText.Text = $"{settings.KeyBindings.ToEntries().Count} bindings configured";
 
@@ -3434,38 +3426,6 @@ public partial class SettingsWindow : JukeboxWindow
         }
         _LogStep("InvalidateCache");
 
-        // Sync Plex library additions/removals into _categoryVisibilityItems
-        // so the category save below reflects the current Plex library state
-        var plexKeys = new HashSet<string>(_plexLibraries.Select(l => l.Key));
-        _categoryVisibilityItems.RemoveAll(i => i.IsPlex && !plexKeys.Contains(i.PlexLibraryKey!));
-        foreach (var lib in _plexLibraries)
-        {
-            var existing = _categoryVisibilityItems.FirstOrDefault(i => i.PlexLibraryKey == lib.Key);
-            if (existing != null)
-            {
-                existing.Name = $"Plex {lib.Title}";
-                existing.PlexLibraryType = lib.Type;
-                existing.PlexHubsEnabled = lib.HubsEnabled;
-                existing.PlexPlaylistsEnabled = lib.PlaylistsEnabled;
-            }
-            else
-            {
-                _categoryVisibilityItems.Add(new CategoryVisibilityItem
-                {
-                    Id = Guid.NewGuid().ToString("N"),
-                    Name = $"Plex {lib.Title}",
-                    Icon = "\U0001f7e0",
-                    IsPlex = true,
-                    PlexLibraryKey = lib.Key,
-                    PlexLibraryType = lib.Type,
-                    PlexHubsEnabled = lib.HubsEnabled,
-                    PlexPlaylistsEnabled = lib.PlaylistsEnabled,
-                    IsVisible = true,
-                    SortOrder = _categoryVisibilityItems.Count
-                });
-            }
-        }
-
         // Assign sequential SortOrder based on current list position
         for (int i = 0; i < _categoryVisibilityItems.Count; i++)
             _categoryVisibilityItems[i].SortOrder = i;
@@ -3484,8 +3444,12 @@ public partial class SettingsWindow : JukeboxWindow
             IsLineBreak = i.IsLineBreak,
             PlexLibraryKey = i.PlexLibraryKey,
             PlexLibraryType = i.PlexLibraryType,
+            PlexInstanceId = i.PlexInstanceId,
             PlexHubsEnabled = i.PlexHubsEnabled,
             PlexPlaylistsEnabled = i.PlexPlaylistsEnabled,
+            SourceInstanceId = i.SourceInstanceId,
+            SourceCategoryId = i.SourceCategoryId,
+            SourceTypeId = i.SourceTypeId,
             SortOrder = i.SortOrder
         }).ToList());
 
@@ -3534,6 +3498,8 @@ public partial class SettingsWindow : JukeboxWindow
             ? ageValues[CbPlexPlaylistCacheMaxAge.SelectedIndex] : 168;
         _settings.DebugLogging = CbDebugLogging.IsChecked == true;
         DebugLog.Enabled = _settings.DebugLogging;
+        // Harvest the editable Plug-ins tab into settings.PluginInstances (the plug-in path's config).
+        HarvestPluginSourcesTab();
         if (CbResultColumns.SelectedItem is int cols)
             _settings.ResultColumns = cols;
         _settings.ResultFontSizeModifier = Math.Clamp((int)SliderResultFontSize.Value, -12, 12);
@@ -3688,21 +3654,13 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.TopperLogoColorMode = RbTopperLogoColorReactive.IsChecked == true ? LogoColorMode.Reactive
             : RbTopperLogoColorMorph.IsChecked == true ? LogoColorMode.SlowMorph
             : LogoColorMode.Off;
-        _settings.VideoQuality = (VideoQualityPreference)CbVideoQuality.SelectedIndex;
-        _settings.VideoEngine = (VideoEngineKind)CbVideoEngine.SelectedIndex;
-        _settings.SearchEngine = (SearchEngineKind)CbSearchEngine.SelectedIndex;
-        _settings.YtDlpAutoUpdate = CbYtDlpAutoUpdate.IsChecked == true;
-        _settings.StereoAudio = CbStereoAudio.IsChecked == true;
         _settings.NetworkCachingMs = (int)SliderNetworkCaching.Value;
         _settings.LiveCachingMs = (int)SliderLiveCaching.Value;
         _settings.FileCachingMs = (int)SliderFileCaching.Value;
         _settings.HttpReconnect = CbHttpReconnect.IsChecked == true;
-        _settings.YouTubeTimeoutSeconds = (int)SliderYouTubeTimeout.Value;
-        _settings.PlexServerUrl = TbPlexUrl.Text.Trim();
-        _settings.PlexToken = TbPlexToken.Text.Trim();
-        _settings.PlexStereoAudio = CbPlexStereo.IsChecked == true;
+        _settings.NetworkTimeoutSeconds = (int)SliderNetworkTimeout.Value;
         _settings.PlexGaplessPlayback = CbPlexGapless.IsChecked == true;
-        _settings.PlexLibraries = _plexLibraries.ToList();
+        _settings.AutoDjProviderId = CbAutoDjProvider.SelectedValue as string;
         _LogStep("AllSettings");
         Saved = true;
         _ = _settings.SaveAsync();
@@ -3843,86 +3801,6 @@ public partial class SettingsWindow : JukeboxWindow
             System.Windows.Threading.DispatcherPriority.Background);
     }
 
-    private void CbVideoQuality_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-    {
-        if (CbVideoQuality.SelectedIndex >= 0)
-            UpdateQualityHint((VideoQualityPreference)CbVideoQuality.SelectedIndex);
-        // Stop the routed SelectionChanged from bubbling to the parent TabControl, whose
-        // handling would scroll the settings panel back to the top.
-        e.Handled = true;
-    }
-
-    private void CbVideoEngine_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-    {
-        if (CbVideoEngine.SelectedIndex >= 0)
-            UpdateEngineHint((VideoEngineKind)CbVideoEngine.SelectedIndex);
-        // Stop the routed SelectionChanged from bubbling to the parent TabControl, whose
-        // handling would scroll the settings panel back to the top.
-        e.Handled = true;
-    }
-
-    private void UpdateEngineHint(VideoEngineKind engine)
-    {
-        if (EngineHintText == null) return;
-        EngineHintText.Text = engine switch
-        {
-            VideoEngineKind.YtDlp => "yt-dlp — downloads via yt-dlp.exe",
-            _ => "YoutubeExplode — in-process (default)"
-        };
-    }
-
-    private void CbSearchEngine_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-    {
-        if (CbSearchEngine.SelectedIndex >= 0)
-            UpdateSearchEngineHint((SearchEngineKind)CbSearchEngine.SelectedIndex);
-        // Stop the routed SelectionChanged from bubbling to the parent TabControl, whose
-        // handling would scroll the settings panel back to the top.
-        e.Handled = true;
-    }
-
-    private void UpdateSearchEngineHint(SearchEngineKind engine)
-    {
-        if (SearchEngineHintText == null) return;
-        SearchEngineHintText.Text = engine switch
-        {
-            SearchEngineKind.YtDlp => "yt-dlp — out-of-process (larger pages)",
-            _ => "YoutubeExplode — in-process (default)"
-        };
-    }
-
-    private async void BtnCheckYtDlpUpdate_Click(object sender, RoutedEventArgs e)
-    {
-        BtnCheckYtDlpUpdate.IsEnabled = false;
-        YtDlpUpdateStatusText.Text = "Checking…";
-        try
-        {
-            var result = await new YtDlpUpdater().UpdateAsync();
-            YtDlpUpdateStatusText.Text = result.ToDisplayString();
-            if (_settings != null)
-                _settings.YtDlpLastUpdateCheck = DateTime.UtcNow;
-        }
-        catch (Exception ex)
-        {
-            YtDlpUpdateStatusText.Text = $"Update failed: {ex.Message}";
-        }
-        finally
-        {
-            BtnCheckYtDlpUpdate.IsEnabled = true;
-        }
-    }
-
-    private void UpdateQualityHint(VideoQualityPreference pref)
-    {
-        if (QualityHintText == null) return;
-        QualityHintText.Text = pref switch
-        {
-            VideoQualityPreference.Low => "Up to 480p — fastest, lowest bandwidth",
-            VideoQualityPreference.Medium => "Up to 720p — balanced",
-            VideoQualityPreference.High => "Up to 1080p — high quality",
-            _ => "Up to 4k — highest quality"
-        };
-    }
-
     private void SliderNetworkCaching_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (NetworkCachingValueText != null)
@@ -3941,89 +3819,1289 @@ public partial class SettingsWindow : JukeboxWindow
             FileCachingValueText.Text = ((int)e.NewValue).ToString();
     }
 
-    private void SliderYouTubeTimeout_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void SliderNetworkTimeout_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        if (YouTubeTimeoutValueText != null)
-            YouTubeTimeoutValueText.Text = ((int)e.NewValue).ToString();
+        if (NetworkTimeoutValueText != null)
+            NetworkTimeoutValueText.Text = ((int)e.NewValue).ToString();
     }
 
-    private async void PlexTest_Click(object sender, RoutedEventArgs e)
+    // Working copy of the plug-in instance configs the tab edits, plus a map from each editor
+    // control to (instanceId, settingKey) so values can be harvested back on save. DisplayName and
+    // Enabled controls are tracked separately.
+    private readonly List<Phosphor.Plugins.PluginInstanceConfig> _pluginWorkingConfigs = new();
+    private readonly List<(System.Windows.Controls.Control Control, string InstanceId, string Key)> _pluginFieldControls = new();
+    private readonly Dictionary<string, System.Windows.Controls.TextBox> _pluginDisplayNameBoxes = new();
+    private readonly Dictionary<string, System.Windows.Controls.CheckBox> _pluginEnabledBoxes = new();
+    // Per-instance caching-policy selector (Default / Always / Never → AllowCaching null/true/false).
+    private readonly Dictionary<string, System.Windows.Controls.ComboBox> _pluginCachingBoxes = new();
+
+    // Custom field harvesters for editors that don't fit the standard control switch (e.g. the
+    // FolderPath/AllowMultiple list editor). Each returns the field's current value on save.
+    private readonly List<(string InstanceId, string Key, Func<string?> GetValue)> _pluginCustomFieldGetters = new();
+
+    // Sentinel used to pre-fill a secret field so it looks populated without exposing the real
+    // value. On harvest, a field still equal to the sentinel is left unchanged.
+    private const string SecretSentinel = "\u0001\u0001SECRET-UNCHANGED\u0001\u0001";
+
+    // Shared HttpClient for transient sources built to invoke config actions.
+    private readonly System.Net.Http.HttpClient _pluginHttp = new() { Timeout = TimeSpan.FromSeconds(15) };
+
+    // Inline Plex-library editor state, keyed by instance id: the added libraries (rendered as a
+    // list with per-library Hubs/Playlists) and a lazily-fetched cache of all server libraries
+    // (for the "add" dropdown). Serialized back into the instance's "libraries" setting on change.
+    private readonly Dictionary<string, List<PlexLibraryMapping>> _pluginLibraryState = new();
+    private readonly Dictionary<string, List<PlexLibraryMapping>> _pluginLibraryAvailable = new();
+
+    // Standardized editor sizing so text/combo/password fields line up.
+    private const double EditorHeight = 28;
+    private const double EditorMinWidth = 320;
+    private static readonly Thickness EditorPadding = new(6, 2, 6, 2);
+    private static readonly Thickness RowMargin = new(0, 3, 0, 3);
+
+    /// <summary>
+    /// Populates the AutoDJ provider dropdown from the VM's searchable sources, selecting the saved
+    /// provider (or YouTube by default). Runs after Load so Owner/DataContext is available.
+    /// </summary>
+    private void PopulateAutoDjProvider(AppSettings settings)
     {
-        try
-        {
-            var plex = new PlexService();
-            plex.Configure(TbPlexUrl.Text.Trim(), TbPlexToken.Text.Trim());
-            PlexStatusText.Text = "Testing...";
-            var ok = await plex.TestConnectionAsync();
-            PlexStatusText.Text = ok ? "✓ Connected" : "✗ Connection failed";
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
-        {
-            PlexStatusText.Text = "✗ Connection failed (server unreachable)";
-        }
+        if (Owner?.DataContext is not JukeboxViewModel vm) return;
+        CbAutoDjProvider.ItemsSource = vm.SearchSources;
+        CbAutoDjProvider.SelectedValue = string.IsNullOrEmpty(settings.AutoDjProviderId)
+            ? vm.SearchSources.FirstOrDefault()?.InstanceId
+            : settings.AutoDjProviderId;
     }
 
-    private async void PlexLoadLibraries_Click(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Populates the Plug-ins tab with editable controls over a working copy of
+    /// <c>settings.PluginInstances</c>. Values are harvested back and persisted on save
+    /// (<see cref="HarvestPluginSourcesTab"/>).
+    /// </summary>
+    private void PopulatePluginSourcesTab()
     {
-        try
-        {
-            var plex = new PlexService();
-            plex.Configure(TbPlexUrl.Text.Trim(), TbPlexToken.Text.Trim());
-            PlexStatusText.Text = "Loading...";
+        if (PanelPluginSources == null) return;
+        PanelPluginSources.Children.Clear();
+        _pluginFieldControls.Clear();
+        _pluginDisplayNameBoxes.Clear();
+        _pluginEnabledBoxes.Clear();
+        _pluginCachingBoxes.Clear();
+        _pluginCustomFieldGetters.Clear();
+        // Re-parse the inline Plex-library editor state from the (rebuilt) working configs so an
+        // add/remove is reflected instead of a stale cached list.
+        _pluginLibraryState.Clear();
 
-            var libs = await plex.GetLibrariesAsync();
-            CbPlexLibrary.ItemsSource = libs;
-            if (libs.Count > 0)
+        // Edit a working copy so cancelling the dialog doesn't mutate settings.
+        _pluginWorkingConfigs.Clear();
+        foreach (var c in _settings.PluginInstances)
+        {
+            _pluginWorkingConfigs.Add(new Phosphor.Plugins.PluginInstanceConfig
             {
-                CbPlexLibrary.SelectedItem = libs[0];
-                PlexStatusText.Text = $"{libs.Count} libraries found";
+                TypeId = c.TypeId,
+                InstanceId = c.InstanceId,
+                DisplayName = c.DisplayName,
+                Enabled = c.Enabled,
+                Settings = new Dictionary<string, string?>(c.Settings),
+                AllowCaching = c.AllowCaching,
+            });
+        }
+
+        if (_pluginWorkingConfigs.Count == 0)
+        {
+            if (PluginSourcesEmptyText != null)
+                PluginSourcesEmptyText.Visibility = Visibility.Visible;
+            return;
+        }
+        if (PluginSourcesEmptyText != null)
+            PluginSourcesEmptyText.Visibility = Visibility.Collapsed;
+
+        var accent = (System.Windows.Media.Brush)FindResource("AccentBrush");
+        var text = (System.Windows.Media.Brush)FindResource("TextBrush");
+        var dim = (System.Windows.Media.Brush)FindResource("TextDimBrush");
+        var surface2 = (System.Windows.Media.Brush)FindResource("Surface2Brush");
+
+        foreach (var cfg in _pluginWorkingConfigs)
+        {
+            var info = Phosphor.Plugins.PluginSettingsFactory.DescribeProvider(cfg.TypeId);
+            var typeName = info?.DisplayName ?? cfg.TypeId;
+
+            var card = new System.Windows.Controls.Border
+            {
+                BorderBrush = accent,
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Padding = new Thickness(0, 8, 0, 14),
+                Margin = new Thickness(0, 0, 0, 12),
+            };
+            var panel = new System.Windows.Controls.StackPanel();
+
+            // ── Header row: title left, Enabled + Remove right-justified ──
+            var headerGrid = new System.Windows.Controls.Grid { Margin = new Thickness(0, 0, 0, 4) };
+            headerGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) });
+            headerGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = System.Windows.GridLength.Auto });
+            headerGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = System.Windows.GridLength.Auto });
+
+            var title = new System.Windows.Controls.TextBlock
+            {
+                Text = $"{typeName}  ({cfg.TypeId})",
+                Foreground = accent,
+                FontWeight = FontWeights.Bold,
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            System.Windows.Controls.Grid.SetColumn(title, 0);
+            headerGrid.Children.Add(title);
+
+            var enabledBox = new System.Windows.Controls.CheckBox
+            {
+                Content = "Enabled",
+                IsChecked = cfg.Enabled,
+                Foreground = text,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+                Margin = new Thickness(0, 0, 10, 0),
+            };
+            _pluginEnabledBoxes[cfg.InstanceId] = enabledBox;
+            System.Windows.Controls.Grid.SetColumn(enabledBox, 1);
+            headerGrid.Children.Add(enabledBox);
+
+            // Remove button — only for providers that support multiple instances.
+            if (info?.SupportsMultipleInstances == true)
+            {
+                var removeBtn = new System.Windows.Controls.Button
+                {
+                    Content = "🗑 Remove",
+                    Padding = new Thickness(6, 2, 6, 2),
+                    FontSize = 10,
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                var removeId = cfg.InstanceId;
+                removeBtn.Click += (_, _) => RemovePluginInstance(removeId);
+                System.Windows.Controls.Grid.SetColumn(removeBtn, 2);
+                headerGrid.Children.Add(removeBtn);
+            }
+            panel.Children.Add(headerGrid);
+
+            // Description
+            if (!string.IsNullOrWhiteSpace(info?.Description))
+            {
+                panel.Children.Add(new System.Windows.Controls.TextBlock
+                {
+                    Text = info!.Value.Description,
+                    Foreground = dim,
+                    FontSize = 11,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 0, 0, 8),
+                });
+            }
+
+            // Supported capabilities (human-readable list of the interfaces the source implements).
+            var capSource = Phosphor.Plugins.PluginSettingsFactory.BuildTransientSource(cfg, _pluginHttp);
+            if (capSource != null)
+            {
+                var caps = Phosphor.Plugins.PluginSettingsFactory.DescribeCapabilities(capSource);
+                if (caps.Count > 0)
+                {
+                    panel.Children.Add(new System.Windows.Controls.TextBlock
+                    {
+                        Text = "Supports: " + string.Join(", ", caps),
+                        Foreground = dim,
+                        FontSize = 11,
+                        FontStyle = FontStyles.Italic,
+                        TextWrapping = TextWrapping.Wrap,
+                        Margin = new Thickness(0, 0, 0, 8),
+                    });
+                }
+
+                // ── "Test connection" — for sources that support it (e.g. Plex). ──
+                if (capSource is Phosphor.Plugin.Abstractions.IConnectionTestable)
+                {
+                    var testInstanceId = cfg.InstanceId;
+                    var testRow = new System.Windows.Controls.StackPanel
+                    {
+                        Orientation = System.Windows.Controls.Orientation.Horizontal,
+                        Margin = new Thickness(0, 0, 0, 8),
+                    };
+                    var testBtn = new System.Windows.Controls.Button
+                    {
+                        Content = "Test connection", Padding = new Thickness(8, 3, 8, 3),
+                        VerticalAlignment = VerticalAlignment.Center,
+                    };
+                    var testResult = new System.Windows.Controls.TextBlock
+                    {
+                        Foreground = dim, FontSize = 11, VerticalAlignment = VerticalAlignment.Center,
+                        Margin = new Thickness(10, 0, 0, 0), TextWrapping = TextWrapping.Wrap,
+                    };
+                    testBtn.Click += async (_, _) =>
+                    {
+                        await TestPluginConnectionAsync(testInstanceId, testBtn, testResult);
+                    };
+                    testRow.Children.Add(testBtn);
+                    testRow.Children.Add(testResult);
+                    panel.Children.Add(testRow);
+                }
+
+                // ── "Update engine" — for sources whose backing tool can self-update (e.g. yt-dlp). ──
+                if (capSource is Phosphor.Plugin.Abstractions.IUpdatable { SupportsUpdate: true })
+                {
+                    var updateRow = new System.Windows.Controls.StackPanel
+                    {
+                        Orientation = System.Windows.Controls.Orientation.Horizontal,
+                        Margin = new Thickness(0, 0, 0, 4),
+                    };
+                    var updateBtn = new System.Windows.Controls.Button
+                    {
+                        Content = "Update engine", Padding = new Thickness(8, 3, 8, 3),
+                        VerticalAlignment = VerticalAlignment.Center,
+                    };
+                    var updateResult = new System.Windows.Controls.TextBlock
+                    {
+                        Foreground = dim, FontSize = 11, VerticalAlignment = VerticalAlignment.Center,
+                        Margin = new Thickness(10, 0, 0, 0), TextWrapping = TextWrapping.Wrap,
+                    };
+                    updateBtn.Click += async (_, _) =>
+                    {
+                        await UpdatePluginEngineAsync(updateBtn, updateResult);
+                    };
+                    updateRow.Children.Add(updateBtn);
+                    updateRow.Children.Add(updateResult);
+                    panel.Children.Add(updateRow);
+
+                    // Auto-update-on-startup toggle (persists to AppSettings.YtDlpAutoUpdate).
+                    var autoUpdate = new System.Windows.Controls.CheckBox
+                    {
+                        Content = "Automatically check for updates on startup",
+                        IsChecked = _settings.YtDlpAutoUpdate,
+                        Foreground = dim, FontSize = 11,
+                        Margin = new Thickness(0, 0, 0, 8),
+                    };
+                    autoUpdate.Checked += (_, _) => _settings.YtDlpAutoUpdate = true;
+                    autoUpdate.Unchecked += (_, _) => _settings.YtDlpAutoUpdate = false;
+                    panel.Children.Add(autoUpdate);
+                }
+
+                // ── "Rescan library" — for sources that build a catalog from backing content
+                // (e.g. a local-folder source, or Plex "Update Libraries"). ──
+                if (capSource is Phosphor.Plugin.Abstractions.IRefreshable)
+                {
+                    var rescanInstanceId = cfg.InstanceId;
+                    var rescanRow = new System.Windows.Controls.StackPanel
+                    {
+                        Orientation = System.Windows.Controls.Orientation.Horizontal,
+                        Margin = new Thickness(0, 0, 0, 4),
+                    };
+                    var rescanBtn = new System.Windows.Controls.Button
+                    {
+                        Content = "Rescan library", Padding = new Thickness(8, 3, 8, 3),
+                        VerticalAlignment = VerticalAlignment.Center,
+                    };
+                    var rescanProgress = new System.Windows.Controls.ProgressBar
+                    {
+                        Width = 120, Height = 6, Margin = new Thickness(10, 0, 0, 0),
+                        VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed,
+                        Minimum = 0, Maximum = 1,
+                    };
+                    var rescanResult = new System.Windows.Controls.TextBlock
+                    {
+                        Foreground = dim, FontSize = 11, VerticalAlignment = VerticalAlignment.Center,
+                        Margin = new Thickness(10, 0, 0, 0), TextWrapping = TextWrapping.Wrap,
+                    };
+                    rescanBtn.Click += async (_, _) =>
+                    {
+                        await RescanPluginLibraryAsync(rescanInstanceId, rescanBtn, rescanProgress, rescanResult);
+                    };
+                    rescanRow.Children.Add(rescanBtn);
+                    rescanRow.Children.Add(rescanProgress);
+                    rescanRow.Children.Add(rescanResult);
+                    panel.Children.Add(rescanRow);
+                }
+
+                // The transient built for capability display is no longer needed — dispose it so any
+                // resources it opened during construction are released.
+                DisposeTransientSource(capSource);
+            }
+
+            // ── Settings table: column 0 = label, column 1 = editor ──
+            var grid = new System.Windows.Controls.Grid();
+            grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new System.Windows.GridLength(130) });
+            grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) });
+
+            // Display name row
+            var nameBox = new System.Windows.Controls.TextBox
+            {
+                Text = cfg.DisplayName ?? typeName,
+                Foreground = text,
+                Background = surface2,
+                Height = EditorHeight,
+                Padding = EditorPadding,
+                MinWidth = EditorMinWidth,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+            };
+            _pluginDisplayNameBoxes[cfg.InstanceId] = nameBox;
+            AddSettingRow(grid, "Display name", null, nameBox, text, dim);
+
+            // Declarative settings fields
+            var schema = info?.Schema ?? [];
+            foreach (var d in schema)
+            {
+                cfg.Settings.TryGetValue(d.Key, out var current);
+                current ??= d.DefaultValue;
+
+                // The Plex "libraries" field gets an inline editor (dropdown + Add, and a list of
+                // added libraries with Hubs/Playlists + Remove) instead of a raw text field.
+                if (d.Key == "libraries")
+                {
+                    BuildInlineLibraryEditor(grid, cfg, d, text, dim, surface2, accent);
+                    continue;
+                }
+
+                // Multi-valued settings (e.g. a list of folders) render an add/remove list editor,
+                // storing the rows as newline-joined text. FolderPath rows use a folder picker.
+                if (d.AllowMultiple)
+                {
+                    BuildMultiValueEditor(grid, cfg, d, current, text, dim, surface2);
+                    continue;
+                }
+
+                // Single folder path: text field + a "Browse…" folder picker.
+                if (d.Type == Phosphor.Plugin.Abstractions.PluginSettingType.FolderPath)
+                {
+                    BuildFolderPathEditor(grid, cfg, d, current, text, dim, surface2);
+                    continue;
+                }
+
+                System.Windows.Controls.Control editor = d.Type switch
+                {
+                    Phosphor.Plugin.Abstractions.PluginSettingType.Bool => new System.Windows.Controls.CheckBox
+                    {
+                        IsChecked = bool.TryParse(current, out var b) && b,
+                        Foreground = text,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+                    },
+                    Phosphor.Plugin.Abstractions.PluginSettingType.Enum => MakeEnumCombo(d, current, text, surface2),
+                    Phosphor.Plugin.Abstractions.PluginSettingType.Secret => new System.Windows.Controls.PasswordBox
+                    {
+                        // Pre-fill with a sentinel so it looks populated (dots) when a secret exists.
+                        Password = string.IsNullOrEmpty(current) ? "" : SecretSentinel,
+                        Foreground = text,
+                        Background = surface2,
+                        Height = EditorHeight,
+                        Padding = EditorPadding,
+                        MinWidth = EditorMinWidth,
+                        VerticalContentAlignment = VerticalAlignment.Center,
+                        HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+                    },
+                    _ => new System.Windows.Controls.TextBox
+                    {
+                        Text = current ?? "", Foreground = text,
+                        Background = surface2,
+                        Height = EditorHeight,
+                        Padding = EditorPadding,
+                        MinWidth = EditorMinWidth,
+                        VerticalContentAlignment = VerticalAlignment.Center,
+                        HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+                    },
+                };
+                if (!string.IsNullOrWhiteSpace(d.HelpText))
+                    editor.ToolTip = d.HelpText;
+
+                _pluginFieldControls.Add((editor, cfg.InstanceId, d.Key));
+                AddSettingRow(grid, d.Label, d.HelpText, editor, text, dim);
+            }
+
+            // ── Caching policy selector — only meaningful for sources that can download/cache.
+            // Non-downloadable sources (e.g. Plex, which streams live) have nothing to configure. ──
+            if (capSource is Phosphor.Plugin.Abstractions.IDownloadable)
+            {
+                var cachingCombo = new System.Windows.Controls.ComboBox
+                {
+                    Foreground = text, Background = surface2, Height = EditorHeight,
+                    MinWidth = EditorMinWidth,
+                    VerticalContentAlignment = VerticalAlignment.Center,
+                    HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+                };
+                cachingCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = "Cache (default)", Tag = "default" });
+                cachingCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = "Never cache", Tag = "false" });
+                // true (force-on) collapses to the default for a downloadable source, so map it to "Cache".
+                cachingCombo.SelectedIndex = cfg.AllowCaching == false ? 1 : 0;
+                cachingCombo.ToolTip = "Whether videos from this source are downloaded to the disk cache.";
+                _pluginCachingBoxes[cfg.InstanceId] = cachingCombo;
+                AddSettingRow(grid, "Caching", cachingCombo.ToolTip as string, cachingCombo, text, dim);
+            }
+
+            panel.Children.Add(grid);
+
+            // ── Interactive config actions (generic) — the Plex "browse libraries" action is
+            // rendered inline above, so skip it here to avoid a duplicate popup button. ──
+            var transient = Phosphor.Plugins.PluginSettingsFactory.BuildTransientSource(cfg, _pluginHttp);
+            if (transient is Phosphor.Plugin.Abstractions.IConfigurable configurable)
+            {
+                foreach (var action in configurable.GetConfigActions())
+                {
+                    if (action.Id == Phosphor.Plugins.Plex.PlexSourceProvider.ActionBrowseLibraries)
+                        continue;
+                    var actionRow = new System.Windows.Controls.StackPanel
+                    {
+                        Orientation = System.Windows.Controls.Orientation.Horizontal,
+                        Margin = new Thickness(0, 6, 0, 0),
+                    };
+                    var actionBtn = new System.Windows.Controls.Button
+                    {
+                        Content = action.Label,
+                        Padding = new Thickness(8, 3, 8, 3),
+                    };
+                    if (!string.IsNullOrWhiteSpace(action.Description))
+                        actionBtn.ToolTip = action.Description;
+                    var instId = cfg.InstanceId;
+                    var actId = action.Id;
+                    actionBtn.Click += async (_, _) => await InvokePluginConfigActionAsync(instId, actId);
+                    actionRow.Children.Add(actionBtn);
+                    panel.Children.Add(actionRow);
+                }
+            }
+            DisposeTransientSource(transient);
+
+            card.Child = panel;
+            PanelPluginSources.Children.Add(card);
+        }
+
+        // ── "Add source" row for multi-instance providers ──
+        var addable = Phosphor.Plugins.PluginSettingsFactory.AddableProviders();
+        if (addable.Count > 0)
+        {
+            var addRow = new System.Windows.Controls.StackPanel
+            {
+                Orientation = System.Windows.Controls.Orientation.Horizontal,
+                Margin = new Thickness(0, 8, 0, 0),
+            };
+            addRow.Children.Add(new System.Windows.Controls.TextBlock
+            {
+                Text = "Add source:", Foreground = dim, VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0),
+            });
+            var addCombo = new System.Windows.Controls.ComboBox
+            {
+                Height = EditorHeight, MinWidth = 160, VerticalContentAlignment = VerticalAlignment.Center,
+            };
+            foreach (var (typeId, dn) in addable)
+                addCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = dn, Tag = typeId });
+            addCombo.SelectedIndex = 0;
+            addRow.Children.Add(addCombo);
+
+            var addBtn = new System.Windows.Controls.Button
+            {
+                Content = "＋ Add", Padding = new Thickness(8, 2, 8, 2), Margin = new Thickness(8, 0, 0, 0),
+            };
+            addBtn.Click += (_, _) =>
+            {
+                if (addCombo.SelectedItem is System.Windows.Controls.ComboBoxItem item && item.Tag is string typeId)
+                    AddPluginInstance(typeId);
+            };
+            addRow.Children.Add(addBtn);
+            PanelPluginSources.Children.Add(addRow);
+        }
+    }
+
+    /// <summary>Adds a new instance of a multi-instance provider and re-renders the tab.</summary>
+    private void AddPluginInstance(string typeId)
+    {
+        HarvestPluginSourcesTab(); // preserve current edits before re-render
+
+        var info = Phosphor.Plugins.PluginSettingsFactory.DescribeProvider(typeId);
+        var baseName = info?.DisplayName ?? typeId;
+
+        // Unique instance id: typeId, typeId-2, typeId-3, …
+        var existing = new HashSet<string>(_settings.PluginInstances.Select(c => c.InstanceId), StringComparer.OrdinalIgnoreCase);
+        var instanceId = typeId;
+        for (int n = 2; existing.Contains(instanceId); n++)
+            instanceId = $"{typeId}-{n}";
+
+        // Count existing instances of this type for a friendly default name.
+        int typeCount = _settings.PluginInstances.Count(c => c.TypeId == typeId);
+        var displayName = typeCount > 0 ? $"{baseName} {typeCount + 1}" : baseName;
+
+        _settings.PluginInstances.Add(new Phosphor.Plugins.PluginInstanceConfig
+        {
+            TypeId = typeId,
+            InstanceId = instanceId,
+            DisplayName = displayName,
+            Enabled = true,
+            Settings = new Dictionary<string, string?>(),
+        });
+
+        PopulatePluginSourcesTab();
+    }
+
+    /// <summary>Removes an instance and re-renders the tab.</summary>
+    private void RemovePluginInstance(string instanceId)
+    {
+        HarvestPluginSourcesTab(); // preserve current edits before re-render
+        _settings.PluginInstances.RemoveAll(c => c.InstanceId == instanceId);
+        PopulatePluginSourcesTab();
+    }
+
+    /// <summary>
+    /// Parses the added libraries for an instance from its "libraries" setting into the in-memory
+    /// editor state (once per instance per tab session).
+    /// </summary>
+    private List<PlexLibraryMapping> GetInstanceLibraries(Phosphor.Plugins.PluginInstanceConfig cfg)
+    {
+        if (_pluginLibraryState.TryGetValue(cfg.InstanceId, out var libs))
+            return libs;
+
+        libs = new List<PlexLibraryMapping>();
+        if (cfg.Settings.TryGetValue("libraries", out var json) && !string.IsNullOrWhiteSpace(json))
+        {
+            try
+            {
+                var parsed = System.Text.Json.JsonSerializer.Deserialize<List<PlexLibraryMapping>>(json);
+                if (parsed != null) libs = parsed;
+            }
+            catch { /* ignore malformed */ }
+        }
+        _pluginLibraryState[cfg.InstanceId] = libs;
+        return libs;
+    }
+
+    /// <summary>Serializes an instance's in-memory library list back into its "libraries" setting.</summary>
+    private void SaveInstanceLibraries(string instanceId)
+    {
+        var cfg = _pluginWorkingConfigs.FirstOrDefault(c => c.InstanceId == instanceId);
+        if (cfg == null || !_pluginLibraryState.TryGetValue(instanceId, out var libs)) return;
+        cfg.Settings["libraries"] = System.Text.Json.JsonSerializer.Serialize(libs);
+    }
+
+    /// <summary>
+    /// Renders a single <c>FolderPath</c> setting: a read-only-ish text box plus a "Browse…" button
+    /// that opens a folder picker. Harvests via a custom getter (newline is irrelevant for one path).
+    /// </summary>
+    private void BuildFolderPathEditor(
+        System.Windows.Controls.Grid grid, Phosphor.Plugins.PluginInstanceConfig cfg,
+        Phosphor.Plugin.Abstractions.PluginSettingDescriptor d, string? current,
+        System.Windows.Media.Brush text, System.Windows.Media.Brush dim, System.Windows.Media.Brush surface2)
+    {
+        var row = new System.Windows.Controls.DockPanel();
+        var browseBtn = new System.Windows.Controls.Button
+        {
+            Content = "Browse…", Padding = new Thickness(8, 3, 8, 3), Margin = new Thickness(8, 0, 0, 0),
+        };
+        System.Windows.Controls.DockPanel.SetDock(browseBtn, System.Windows.Controls.Dock.Right);
+        var box = new System.Windows.Controls.TextBox
+        {
+            Text = current ?? "", Foreground = text, Background = surface2, Height = EditorHeight,
+            Padding = EditorPadding, VerticalContentAlignment = VerticalAlignment.Center,
+        };
+        browseBtn.Click += (_, _) =>
+        {
+            var picked = PickFolder(box.Text);
+            if (picked != null) box.Text = picked;
+        };
+        row.Children.Add(browseBtn);
+        row.Children.Add(box);
+
+        if (!string.IsNullOrWhiteSpace(d.HelpText)) box.ToolTip = d.HelpText;
+        _pluginCustomFieldGetters.Add((cfg.InstanceId, d.Key, () => box.Text));
+        AddSettingRow(grid, d.Label, d.HelpText, row, text, dim);
+    }
+
+    /// <summary>
+    /// Renders a multi-valued setting as an add/remove list editor: each configured value is a row
+    /// (with a Remove button), plus an "Add" affordance. For <c>FolderPath</c> the Add opens a folder
+    /// picker; otherwise it adds an editable text row. Values are harvested newline-joined.
+    /// </summary>
+    private void BuildMultiValueEditor(
+        System.Windows.Controls.Grid grid, Phosphor.Plugins.PluginInstanceConfig cfg,
+        Phosphor.Plugin.Abstractions.PluginSettingDescriptor d, string? current,
+        System.Windows.Media.Brush text, System.Windows.Media.Brush dim, System.Windows.Media.Brush surface2)
+    {
+        var isFolder = d.Type == Phosphor.Plugin.Abstractions.PluginSettingType.FolderPath;
+
+        // Backing list of the current values (one per non-empty line).
+        var values = new System.Collections.ObjectModel.ObservableCollection<string>(
+            (current ?? "").Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+        var container = new System.Windows.Controls.StackPanel { Margin = new Thickness(0, 2, 0, 0) };
+
+        var listPanel = new System.Windows.Controls.StackPanel();
+        container.Children.Add(listPanel);
+
+        void Rebuild()
+        {
+            listPanel.Children.Clear();
+            if (values.Count == 0)
+            {
+                listPanel.Children.Add(new System.Windows.Controls.TextBlock
+                {
+                    Text = isFolder ? "No folders added yet." : "No entries yet.",
+                    Foreground = dim, FontSize = 11, Margin = new Thickness(0, 0, 0, 4),
+                });
+            }
+            for (int i = 0; i < values.Count; i++)
+            {
+                int index = i;
+                var rowDock = new System.Windows.Controls.DockPanel { Margin = new Thickness(0, 2, 0, 2) };
+                var removeBtn = new System.Windows.Controls.Button
+                {
+                    Content = "✕", Padding = new Thickness(6, 1, 6, 1), Margin = new Thickness(8, 0, 0, 0), FontSize = 12,
+                };
+                System.Windows.Controls.DockPanel.SetDock(removeBtn, System.Windows.Controls.Dock.Right);
+                removeBtn.Click += (_, _) => { values.RemoveAt(index); Rebuild(); };
+                rowDock.Children.Add(removeBtn);
+
+                var valueBox = new System.Windows.Controls.TextBox
+                {
+                    Text = values[index], Foreground = text, Background = surface2, Height = EditorHeight,
+                    Padding = EditorPadding, VerticalContentAlignment = VerticalAlignment.Center,
+                    IsReadOnly = isFolder, // folders are set via the picker; free text otherwise
+                };
+                valueBox.TextChanged += (_, _) => values[index] = valueBox.Text;
+                rowDock.Children.Add(valueBox);
+                listPanel.Children.Add(rowDock);
+            }
+        }
+        Rebuild();
+
+        var addBtn = new System.Windows.Controls.Button
+        {
+            Content = isFolder ? "＋ Add folder…" : "＋ Add",
+            Padding = new Thickness(8, 3, 8, 3), Margin = new Thickness(0, 4, 0, 0),
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+        };
+        addBtn.Click += (_, _) =>
+        {
+            if (isFolder)
+            {
+                var picked = PickFolder(null);
+                if (picked != null && !values.Contains(picked, StringComparer.OrdinalIgnoreCase))
+                {
+                    values.Add(picked);
+                    Rebuild();
+                }
             }
             else
             {
-                PlexStatusText.Text = "No libraries found";
+                values.Add("");
+                Rebuild();
+            }
+        };
+        container.Children.Add(addBtn);
+
+        _pluginCustomFieldGetters.Add((cfg.InstanceId, d.Key,
+            () => string.Join("\n", values.Where(v => !string.IsNullOrWhiteSpace(v)))));
+        AddSettingRow(grid, d.Label, d.HelpText, container, text, dim);
+    }
+
+    /// <summary>Opens a folder picker seeded with <paramref name="initial"/>; returns the chosen path or null.</summary>
+    private static string? PickFolder(string? initial)
+    {
+        using var dlg = new System.Windows.Forms.FolderBrowserDialog();
+        if (!string.IsNullOrWhiteSpace(initial) && System.IO.Directory.Exists(initial))
+            dlg.SelectedPath = initial;
+        return dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK ? dlg.SelectedPath : null;
+    }
+
+    /// <summary>
+    /// Renders the inline Plex-library editor into the settings grid: an "add library" dropdown +
+    /// button, and a list of added libraries each with Hubs/Playlists checkboxes and a Remove
+    /// button. Mirrors the legacy Plex tab (no popup, cabinet-friendly).
+    /// </summary>
+    private void BuildInlineLibraryEditor(
+        System.Windows.Controls.Grid grid, Phosphor.Plugins.PluginInstanceConfig cfg,
+        Phosphor.Plugin.Abstractions.PluginSettingDescriptor d,
+        System.Windows.Media.Brush text, System.Windows.Media.Brush dim,
+        System.Windows.Media.Brush surface2, System.Windows.Media.Brush accent)
+    {
+        var added = GetInstanceLibraries(cfg);
+        var instId = cfg.InstanceId;
+
+        // Container for the added-libraries list (spans both columns, below the add row).
+        var container = new System.Windows.Controls.StackPanel { Margin = new Thickness(0, 4, 0, 0) };
+
+        // ── Add row: dropdown of not-yet-added libraries + Add button (rendered as the editor in
+        // column 1, with a "Libraries" label in column 0 so the whole thing is one line). ──
+        var addRow = new System.Windows.Controls.DockPanel();
+        var addBtn = new System.Windows.Controls.Button
+        {
+            Content = "＋ Add", Padding = new Thickness(8, 3, 8, 3), Margin = new Thickness(8, 0, 0, 0),
+        };
+        System.Windows.Controls.DockPanel.SetDock(addBtn, System.Windows.Controls.Dock.Right);
+        var combo = new System.Windows.Controls.ComboBox
+        {
+            Foreground = text, Background = surface2, Height = EditorHeight,
+            VerticalContentAlignment = VerticalAlignment.Center,
+        };
+
+        // Populate the dropdown from the available cache (if already fetched), excluding added.
+        void RefreshCombo()
+        {
+            combo.Items.Clear();
+            var addedKeys = new HashSet<string>(added.Select(l => l.Key));
+            if (_pluginLibraryAvailable.TryGetValue(instId, out var avail))
+            {
+                foreach (var lib in avail.Where(l => !addedKeys.Contains(l.Key)))
+                    combo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = $"{lib.Title} ({lib.Type})", Tag = lib });
+                combo.Text = combo.Items.Count > 0 ? "" : "All libraries added";
+            }
+            else
+            {
+                combo.Text = "Click to load libraries…";
+            }
+            if (combo.Items.Count > 0) combo.SelectedIndex = 0;
+        }
+        RefreshCombo();
+
+        // Lazily fetch on first dropdown open.
+        combo.DropDownOpened += async (_, _) =>
+        {
+            if (!_pluginLibraryAvailable.ContainsKey(instId))
+            {
+                combo.Text = "Loading…";
+                await FetchAvailableLibrariesAsync(instId);
+                RefreshCombo();
+                combo.IsDropDownOpen = true;
+            }
+        };
+
+        addBtn.Click += (_, _) =>
+        {
+            if (combo.SelectedItem is System.Windows.Controls.ComboBoxItem item && item.Tag is PlexLibraryMapping lib
+                && !added.Any(l => l.Key == lib.Key))
+            {
+                // Mutate + save the library list first, THEN harvest, so the addition reaches
+                // _settings.PluginInstances (Populate rebuilds the working configs from there).
+                added.Add(new PlexLibraryMapping { Key = lib.Key, Title = lib.Title, Type = lib.Type });
+                SaveInstanceLibraries(instId);
+                HarvestPluginSourcesTab();
+                PopulatePluginSourcesTab();
+            }
+        };
+        addRow.Children.Add(addBtn);
+        addRow.Children.Add(combo);
+        AddSettingRow(grid, "Libraries", "Add a library to show as a browsable tile.", addRow, text, dim);
+
+        // ── Added libraries list: Title + Hubs + Playlists + Remove ──
+        if (added.Count == 0)
+        {
+            container.Children.Add(new System.Windows.Controls.TextBlock
+            {
+                Text = "No libraries added yet.", Foreground = dim, FontSize = 11,
+            });
+        }
+        foreach (var lib in added)
+        {
+            var libKey = lib.Key;
+            var row = new System.Windows.Controls.DockPanel { Margin = new Thickness(0, 3, 0, 3) };
+
+            var removeBtn = new System.Windows.Controls.Button
+            {
+                Content = "✕", Padding = new Thickness(6, 1, 6, 1), Margin = new Thickness(8, 0, 0, 0), FontSize = 12,
+            };
+            System.Windows.Controls.DockPanel.SetDock(removeBtn, System.Windows.Controls.Dock.Right);
+            removeBtn.Click += (_, _) =>
+            {
+                // Update the library list first, THEN harvest, so the removal is included when the
+                // working configs are pushed to _settings.PluginInstances (Populate rebuilds from there).
+                added.RemoveAll(l => l.Key == libKey);
+                SaveInstanceLibraries(instId);
+                HarvestPluginSourcesTab();
+                PopulatePluginSourcesTab();
+            };
+            row.Children.Add(removeBtn);
+
+            var playlistsCb = new System.Windows.Controls.CheckBox
+            {
+                Content = "Playlists", IsChecked = lib.PlaylistsEnabled, Foreground = dim,
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
+                ToolTip = "Show a Playlists tile",
+            };
+            playlistsCb.Checked += (_, _) => { lib.PlaylistsEnabled = true; SaveInstanceLibraries(instId); };
+            playlistsCb.Unchecked += (_, _) => { lib.PlaylistsEnabled = false; SaveInstanceLibraries(instId); };
+            System.Windows.Controls.DockPanel.SetDock(playlistsCb, System.Windows.Controls.Dock.Right);
+            row.Children.Add(playlistsCb);
+
+            var hubsCb = new System.Windows.Controls.CheckBox
+            {
+                Content = "Hubs", IsChecked = lib.HubsEnabled, Foreground = dim,
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
+                ToolTip = "Show a Hubs tile (Recently Added, etc.)",
+            };
+            hubsCb.Checked += (_, _) => { lib.HubsEnabled = true; SaveInstanceLibraries(instId); };
+            hubsCb.Unchecked += (_, _) => { lib.HubsEnabled = false; SaveInstanceLibraries(instId); };
+            System.Windows.Controls.DockPanel.SetDock(hubsCb, System.Windows.Controls.Dock.Right);
+            row.Children.Add(hubsCb);
+
+            row.Children.Add(new System.Windows.Controls.TextBlock
+            {
+                Text = $"{lib.Title} ({lib.Type})", Foreground = text,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            container.Children.Add(row);
+        }
+
+        // Add the container spanning both columns.
+        int gridRow = grid.RowDefinitions.Count;
+        grid.RowDefinitions.Add(new System.Windows.Controls.RowDefinition { Height = System.Windows.GridLength.Auto });
+        System.Windows.Controls.Grid.SetRow(container, gridRow);
+        System.Windows.Controls.Grid.SetColumn(container, 0);
+        System.Windows.Controls.Grid.SetColumnSpan(container, 2);
+        container.Margin = new Thickness(0, 6, 0, 0);
+        grid.Children.Add(container);
+    }
+
+    /// <summary>
+    /// Lazily fetches the full library list from the server for the "add" dropdown, using the
+    /// instance's current (harvested) URL/token. Cached per instance for the tab session.
+    /// </summary>
+    private async Task<List<PlexLibraryMapping>> FetchAvailableLibrariesAsync(string instanceId)
+    {
+        if (_pluginLibraryAvailable.TryGetValue(instanceId, out var cached))
+            return cached;
+
+        HarvestPluginSourcesTab();
+        var cfg = _settings.PluginInstances.FirstOrDefault(c => c.InstanceId == instanceId);
+        var libs = new List<PlexLibraryMapping>();
+        if (cfg != null)
+        {
+            var source = Phosphor.Plugins.PluginSettingsFactory.BuildTransientSource(cfg, _pluginHttp);
+            if (source is Phosphor.Plugin.Abstractions.IConfigurable configurable)
+            {
+                try
+                {
+                    var sel = await configurable.InvokeConfigActionAsync(Phosphor.Plugins.Plex.PlexSourceProvider.ActionBrowseLibraries);
+                    // Options carry Id = library key, Label = "Title (Type)". Recover Title/Type.
+                    foreach (var o in sel.Options)
+                    {
+                        var label = o.Label;
+                        string title = label, type = "";
+                        var lp = label.LastIndexOf(" (", StringComparison.Ordinal);
+                        if (lp >= 0 && label.EndsWith(")"))
+                        {
+                            title = label[..lp];
+                            type = label[(lp + 2)..^1];
+                        }
+                        libs.Add(new PlexLibraryMapping { Key = o.Id, Title = title, Type = type });
+                    }
+                }
+                catch { /* fetch failure handled by caller (empty list) */ }
             }
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
+        _pluginLibraryAvailable[instanceId] = libs;
+        return libs;
+    }
+
+    /// <summary>
+    /// Runs a source's <see cref="Phosphor.Plugin.Abstractions.IConnectionTestable"/> check using the
+    /// current (harvested) settings and shows the ✓/✗ result inline. Builds and disposes a transient
+    /// source for the one-off test.
+    /// </summary>
+    private async Task TestPluginConnectionAsync(
+        string instanceId,
+        System.Windows.Controls.Button button,
+        System.Windows.Controls.TextBlock result)
+    {
+        HarvestPluginSourcesTab();
+        var cfg = _settings.PluginInstances.FirstOrDefault(c => c.InstanceId == instanceId);
+        if (cfg == null) return;
+
+        var source = Phosphor.Plugins.PluginSettingsFactory.BuildTransientSource(cfg, _pluginHttp);
+        if (source is not Phosphor.Plugin.Abstractions.IConnectionTestable testable)
         {
-            PlexStatusText.Text = "✗ Connection failed (server unreachable)";
+            DisposeTransientSource(source);
+            return;
+        }
+
+        button.IsEnabled = false;
+        result.Text = "Testing…";
+        result.Foreground = System.Windows.Media.Brushes.Gray;
+        try
+        {
+            if (source is Phosphor.Plugin.Abstractions.IPhosphorSource ps)
+                await ps.InitializeAsync(new Phosphor.Plugins.Host.PluginHost(cfg.InstanceId, _pluginHttp));
+
+            var r = await testable.TestConnectionAsync();
+            var latency = r.Latency is { } l ? $" ({l.TotalMilliseconds:F0} ms)" : "";
+            result.Text = (r.Success ? "✓ " : "✗ ") + r.Message + latency;
+            result.Foreground = r.Success
+                ? System.Windows.Media.Brushes.MediumSeaGreen
+                : System.Windows.Media.Brushes.IndianRed;
+        }
+        catch (Exception ex)
+        {
+            result.Text = "✗ " + ex.Message;
+            result.Foreground = System.Windows.Media.Brushes.IndianRed;
+        }
+        finally
+        {
+            button.IsEnabled = true;
+            DisposeTransientSource(source);
         }
     }
 
-    private void Hyperlink_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
+    /// <summary>
+    /// Runs a source's <see cref="Phosphor.Plugin.Abstractions.IRefreshable"/> rescan using the
+    /// current (harvested) settings, showing a progress bar and the result inline. Builds and
+    /// disposes a transient source for the pass (the source persists its own catalog to disk).
+    /// </summary>
+    private async Task RescanPluginLibraryAsync(
+        string instanceId,
+        System.Windows.Controls.Button button,
+        System.Windows.Controls.ProgressBar progressBar,
+        System.Windows.Controls.TextBlock result)
     {
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
-        e.Handled = true;
+        HarvestPluginSourcesTab();
+        var cfg = _settings.PluginInstances.FirstOrDefault(c => c.InstanceId == instanceId);
+        if (cfg == null) return;
+
+        var source = Phosphor.Plugins.PluginSettingsFactory.BuildTransientSource(cfg, _pluginHttp);
+        if (source is not Phosphor.Plugin.Abstractions.IRefreshable refreshable)
+        {
+            DisposeTransientSource(source);
+            return;
+        }
+        if (!refreshable.CanRefresh)
+        {
+            result.Text = "Nothing to rescan (no folders configured).";
+            result.Foreground = System.Windows.Media.Brushes.Gray;
+            DisposeTransientSource(source);
+            return;
+        }
+
+        button.IsEnabled = false;
+        progressBar.Visibility = Visibility.Visible;
+        progressBar.IsIndeterminate = false;
+        progressBar.Value = 0;
+        result.Text = "Scanning…";
+        result.Foreground = System.Windows.Media.Brushes.Gray;
+
+        var progress = new Progress<Phosphor.Plugin.Abstractions.RefreshProgress>(p =>
+        {
+            if (p.Fraction < 0)
+            {
+                progressBar.IsIndeterminate = true;
+            }
+            else
+            {
+                progressBar.IsIndeterminate = false;
+                progressBar.Value = Math.Clamp(p.Fraction, 0, 1);
+            }
+            if (!string.IsNullOrEmpty(p.CurrentItem))
+                result.Text = "Scanning: " + p.CurrentItem;
+        });
+
+        try
+        {
+            if (source is Phosphor.Plugin.Abstractions.IPhosphorSource ps)
+                await ps.InitializeAsync(new Phosphor.Plugins.Host.PluginHost(cfg.InstanceId, _pluginHttp));
+
+            var r = await refreshable.RefreshAsync(progress);
+            result.Text = (r.Success ? "✓ " : "✗ ") + r.Message;
+            result.Foreground = r.Success
+                ? System.Windows.Media.Brushes.MediumSeaGreen
+                : System.Windows.Media.Brushes.IndianRed;
+        }
+        catch (Exception ex)
+        {
+            result.Text = "✗ " + ex.Message;
+            result.Foreground = System.Windows.Media.Brushes.IndianRed;
+        }
+        finally
+        {
+            progressBar.Visibility = Visibility.Collapsed;
+            button.IsEnabled = true;
+            DisposeTransientSource(source);
+        }
     }
 
-    private async Task TryLoadPlexLibrariesAsync()
+    /// <summary>Disposes a transient UI-built source (best-effort) so it releases any resources.</summary>
+    private static void DisposeTransientSource(Phosphor.Plugin.Abstractions.IPhosphorSource? source)
     {
         try
         {
-            var plex = new PlexService();
-            plex.Configure(TbPlexUrl.Text.Trim(), TbPlexToken.Text.Trim());
-            var libs = await plex.GetLibrariesAsync();
-            CbPlexLibrary.ItemsSource = libs;
-            if (libs.Count > 0)
-                CbPlexLibrary.SelectedItem = libs[0];
+            switch (source)
+            {
+                case IAsyncDisposable ad: _ = ad.DisposeAsync(); break;
+                case IDisposable d: d.Dispose(); break;
+            }
         }
-        catch
+        catch { /* best-effort teardown */ }
+    }
+
+    /// <summary>
+    /// Runs the live source's self-update (<see cref="Phosphor.Plugin.Abstractions.IUpdatable"/>,
+    /// e.g. yt-dlp) via the VM and shows the result inline. Targets the active engine, not a
+    /// transient, so the running app picks up the new version.
+    /// </summary>
+    private async Task UpdatePluginEngineAsync(
+        System.Windows.Controls.Button button,
+        System.Windows.Controls.TextBlock result)
+    {
+        button.IsEnabled = false;
+        result.Text = "Checking…";
+        result.Foreground = System.Windows.Media.Brushes.Gray;
+        try
         {
-            // Fail silently
+            var vm = Owner?.DataContext as JukeboxViewModel;
+            var status = vm != null
+                ? await vm.UpdatePluginEngineOrLegacyAsync()
+                : (await new YtDlpUpdater().UpdateAsync()).ToDisplayString();
+            result.Text = status;
+            result.Foreground = System.Windows.Media.Brushes.Gray;
+            _settings.YtDlpLastUpdateCheck = DateTime.UtcNow;
+        }
+        catch (Exception ex)
+        {
+            result.Text = $"Update failed: {ex.Message}";
+            result.Foreground = System.Windows.Media.Brushes.IndianRed;
+        }
+        finally
+        {
+            button.IsEnabled = true;
         }
     }
 
-    private void PlexAddLibrary_Click(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Invokes an <see cref="Phosphor.Plugin.Abstractions.IConfigurable"/> action for an instance
+    /// (e.g. Plex "browse libraries"): harvests current edits, builds a transient source from the
+    /// instance config, runs the action, shows a checkbox selection dialog, applies the result via
+    /// the source, and merges the returned settings back into the instance. Re-renders the tab.
+    /// </summary>
+    private async Task InvokePluginConfigActionAsync(string instanceId, string actionId)
     {
-        if (CbPlexLibrary.SelectedItem is not PlexLibrary selected) return;
-        if (_plexLibraries.Any(l => l.Key == selected.Key)) return;
-        _plexLibraries.Add(new PlexLibraryMapping { Key = selected.Key, Title = selected.Title, Type = selected.Type });
-        PlexStatusText.Text = $"Added: {selected.Title}";
+        HarvestPluginSourcesTab();
+        var cfg = _settings.PluginInstances.FirstOrDefault(c => c.InstanceId == instanceId);
+        if (cfg == null) return;
+
+        var source = Phosphor.Plugins.PluginSettingsFactory.BuildTransientSource(cfg, _pluginHttp);
+        if (source is not Phosphor.Plugin.Abstractions.IConfigurable configurable) return;
+
+        try
+        {
+            var selection = await configurable.InvokeConfigActionAsync(actionId);
+            if (selection.Options.Count == 0)
+            {
+                MessageBox.Show(this, "Nothing to configure (no items returned).", "Phosphor",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var chosen = ShowConfigSelectionDialog(selection);
+            if (chosen == null) return; // cancelled
+
+            var updated = await configurable.ApplyConfigActionAsync(actionId, chosen, cfg.Settings);
+            cfg.Settings = new Dictionary<string, string?>(updated);
+            PopulatePluginSourcesTab();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Action failed: {ex.Message}", "Phosphor",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
-    private void PlexRemoveLibrary_Click(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Shows a checkbox-list dialog for a <see cref="Phosphor.Plugin.Abstractions.ConfigSelection"/>,
+    /// rendering each option with any indented sub-option checkboxes. Returns the per-option results
+    /// (selected + chosen sub-option ids), or null if cancelled.
+    /// </summary>
+    private List<Phosphor.Plugin.Abstractions.ConfigOptionResult>? ShowConfigSelectionDialog(
+        Phosphor.Plugin.Abstractions.ConfigSelection selection)
     {
-        if (sender is Button { Tag: PlexLibraryMapping mapping })
-            _plexLibraries.Remove(mapping);
+        var dlg = new Window
+        {
+            Title = selection.Title ?? "Select",
+            Owner = this,
+            Width = 420,
+            SizeToContent = SizeToContent.Height,
+            MaxHeight = 640,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Background = (System.Windows.Media.Brush)FindResource("SurfaceBrush"),
+        };
+        var text = (System.Windows.Media.Brush)FindResource("TextBrush");
+        var dim = (System.Windows.Media.Brush)FindResource("TextDimBrush");
+
+        var root = new System.Windows.Controls.DockPanel { Margin = new Thickness(12) };
+
+        // Buttons docked at the bottom so the list scrolls independently.
+        var buttons = new System.Windows.Controls.StackPanel
+        {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+            Margin = new Thickness(0, 12, 0, 0),
+        };
+        System.Windows.Controls.DockPanel.SetDock(buttons, System.Windows.Controls.Dock.Bottom);
+
+        var list = new System.Windows.Controls.StackPanel();
+        var rows = new List<(System.Windows.Controls.CheckBox Main, string OptId,
+            List<(System.Windows.Controls.CheckBox Box, string SubId)> Subs)>();
+
+        foreach (var opt in selection.Options)
+        {
+            var main = new System.Windows.Controls.CheckBox
+            {
+                Content = opt.Label, IsChecked = opt.IsSelected, Foreground = text,
+                Margin = new Thickness(0, 5, 0, 2), FontWeight = FontWeights.SemiBold,
+            };
+            list.Children.Add(main);
+
+            var subBoxes = new List<(System.Windows.Controls.CheckBox, string)>();
+            foreach (var sub in opt.SubOptions ?? [])
+            {
+                var subCb = new System.Windows.Controls.CheckBox
+                {
+                    Content = sub.Label, IsChecked = sub.IsSelected, Foreground = dim,
+                    Margin = new Thickness(22, 1, 0, 1), FontSize = 12,
+                };
+                subBoxes.Add((subCb, sub.Id));
+                list.Children.Add(subCb);
+            }
+            rows.Add((main, opt.Id, subBoxes));
+        }
+
+        bool ok = false;
+        var okBtn = new System.Windows.Controls.Button { Content = "OK", Padding = new Thickness(12, 3, 12, 3), Margin = new Thickness(0, 0, 8, 0), IsDefault = true };
+        okBtn.Click += (_, _) => { ok = true; dlg.Close(); };
+        var cancelBtn = new System.Windows.Controls.Button { Content = "Cancel", Padding = new Thickness(12, 3, 12, 3), IsCancel = true };
+        cancelBtn.Click += (_, _) => dlg.Close();
+        buttons.Children.Add(okBtn);
+        buttons.Children.Add(cancelBtn);
+
+        root.Children.Add(buttons);
+        root.Children.Add(new System.Windows.Controls.ScrollViewer
+        {
+            VerticalScrollBarVisibility = System.Windows.Controls.ScrollBarVisibility.Auto,
+            Content = list,
+        });
+
+        dlg.Content = root;
+        dlg.ShowDialog();
+
+        if (!ok) return null;
+        return rows.Select(r => new Phosphor.Plugin.Abstractions.ConfigOptionResult(
+            r.OptId,
+            r.Main.IsChecked == true,
+            r.Subs.Where(s => s.Box.IsChecked == true).Select(s => s.SubId).ToList()))
+            .ToList();
+    }
+
+    /// <summary>Adds a two-column row (label | editor) to a settings grid.</summary>
+    private static void AddSettingRow(
+        System.Windows.Controls.Grid grid, string label, string? helpText,
+        System.Windows.UIElement editor, System.Windows.Media.Brush text, System.Windows.Media.Brush dim)
+    {
+        int row = grid.RowDefinitions.Count;
+        grid.RowDefinitions.Add(new System.Windows.Controls.RowDefinition { Height = System.Windows.GridLength.Auto });
+
+        var labelBlock = new System.Windows.Controls.TextBlock
+        {
+            Text = label,
+            Foreground = text,
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 10, 0),
+        };
+        if (!string.IsNullOrWhiteSpace(helpText))
+            labelBlock.ToolTip = helpText;
+        System.Windows.Controls.Grid.SetRow(labelBlock, row);
+        System.Windows.Controls.Grid.SetColumn(labelBlock, 0);
+        grid.Children.Add(labelBlock);
+
+        if (editor is System.Windows.FrameworkElement fe)
+            fe.Margin = RowMargin;
+        System.Windows.Controls.Grid.SetRow(editor, row);
+        System.Windows.Controls.Grid.SetColumn(editor, 1);
+        grid.Children.Add(editor);
+    }
+
+    private System.Windows.Controls.ComboBox MakeEnumCombo(
+        Phosphor.Plugin.Abstractions.PluginSettingDescriptor d, string? current,
+        System.Windows.Media.Brush text, System.Windows.Media.Brush background)
+    {
+        var combo = new System.Windows.Controls.ComboBox
+        {
+            Foreground = text,
+            Background = background,
+            Height = EditorHeight,
+            Padding = EditorPadding,
+            MinWidth = EditorMinWidth,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+        };
+        foreach (var v in d.EnumValues ?? [])
+            combo.Items.Add(v);
+        if (current != null && combo.Items.Contains(current))
+            combo.SelectedItem = current;
+        else if (combo.Items.Count > 0)
+            combo.SelectedIndex = 0;
+        return combo;
+    }
+
+    /// <summary>
+    /// Harvests the editable Plug-ins tab controls back into the working configs and writes them to
+    /// <c>_settings.PluginInstances</c>. Secrets are only overwritten when the user typed a value.
+    /// </summary>
+    private void HarvestPluginSourcesTab()
+    {
+        if (_pluginWorkingConfigs.Count == 0) return;
+
+        foreach (var cfg in _pluginWorkingConfigs)
+        {
+            if (_pluginEnabledBoxes.TryGetValue(cfg.InstanceId, out var en))
+                cfg.Enabled = en.IsChecked == true;
+            if (_pluginDisplayNameBoxes.TryGetValue(cfg.InstanceId, out var nb))
+                cfg.DisplayName = string.IsNullOrWhiteSpace(nb.Text) ? null : nb.Text.Trim();
+            if (_pluginCachingBoxes.TryGetValue(cfg.InstanceId, out var cache))
+                cfg.AllowCaching = ((cache.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string) switch
+                {
+                    "true" => true,
+                    "false" => false,
+                    _ => null,
+                };
+        }
+
+        foreach (var (control, instanceId, key) in _pluginFieldControls)
+        {
+            var cfg = _pluginWorkingConfigs.FirstOrDefault(c => c.InstanceId == instanceId);
+            if (cfg == null) continue;
+
+            switch (control)
+            {
+                case System.Windows.Controls.PasswordBox pb:
+                    // Overwrite the stored secret only when the user actually changed it (a value
+                    // still equal to the pre-filled sentinel means "unchanged").
+                    if (!string.IsNullOrEmpty(pb.Password) && pb.Password != SecretSentinel)
+                        cfg.Settings[key] = pb.Password;
+                    break;
+                case System.Windows.Controls.CheckBox cb:
+                    cfg.Settings[key] = (cb.IsChecked == true).ToString();
+                    break;
+                case System.Windows.Controls.ComboBox combo:
+                    cfg.Settings[key] = combo.SelectedItem?.ToString() ?? "";
+                    break;
+                case System.Windows.Controls.TextBox tb:
+                    cfg.Settings[key] = tb.Text;
+                    break;
+            }
+        }
+
+        // Custom editors (folder-path / multi-value list) harvest via their getter.
+        foreach (var (instanceId, key, getValue) in _pluginCustomFieldGetters)
+        {
+            var cfg = _pluginWorkingConfigs.FirstOrDefault(c => c.InstanceId == instanceId);
+            if (cfg == null) continue;
+            cfg.Settings[key] = getValue();
+        }
+
+        _settings.PluginInstances = _pluginWorkingConfigs
+            .Select(c => new Phosphor.Plugins.PluginInstanceConfig
+            {
+                TypeId = c.TypeId,
+                InstanceId = c.InstanceId,
+                DisplayName = c.DisplayName,
+                Enabled = c.Enabled,
+                Settings = new Dictionary<string, string?>(c.Settings),
+                AllowCaching = c.AllowCaching,
+            })
+            .ToList();
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)

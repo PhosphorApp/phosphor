@@ -155,10 +155,33 @@
                      IsEnabled="False"/>
             <Button x:Name="SearchButtonCtrl" Content="&#x1F50D;" DockPanel.Dock="Right" Padding="14,8" FontSize="16"
                      Click="SearchButton_Click" Margin="6,0,0,0"
-                     ToolTip="Search YouTube"/>
+                     ToolTip="Search"/>
             <Button x:Name="HomeButton" Content="&#x1F3E0;" DockPanel.Dock="Right" Padding="14,8" FontSize="16"
                      Command="{Binding ShowCategoryListCommand}" Click="HomeButton_Click" Margin="6,0,0,0"
                      ToolTip="Back to Categories"/>
+            <!-- Search source selector — between the text box and Home. Only shown when more than
+                 one searchable source exists. Themed via the app's dark ComboBox style. -->
+            <ComboBox x:Name="SearchSourceBox" DockPanel.Dock="Right" Margin="6,0,0,0"
+                      MinWidth="110" FontSize="14" VerticalContentAlignment="Center"
+                      ItemsSource="{Binding SearchSources}"
+                      SelectedValuePath="InstanceId"
+                      SelectedValue="{Binding ActiveSearchSourceId, Mode=TwoWay}"
+                      IsEnabled="{Binding IsSearchSourceSelectable}"
+                      ToolTip="Which source the search box queries (locked while browsing a library)">
+                <ComboBox.Style>
+                    <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+                        <Setter Property="Visibility" Value="Visible"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding SearchSources.Count}" Value="1">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding SearchSources.Count}" Value="0">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ComboBox.Style>
+            </ComboBox>
             <Button x:Name="BackNavButton" Content="&#x2190;" DockPanel.Dock="Left" Padding="14,8" FontSize="18"
                      Click="BackNavButton_Click" Margin="0,0,6,0"
                      ToolTip="Go Back" IsEnabled="False"/>
@@ -173,7 +196,7 @@
                           KeyDown="SearchBox_KeyDown" SelectionChanged="SearchBox_SelectionChanged"
                           IsTextSearchEnabled="False"
                           IsKeyboardFocusWithinChanged="SearchBox_FocusChanged"
-                          ToolTip="Search YouTube &#x0a;&#x0a;Modifiers:&#x0a;  channel:&lt;name&gt;&#x0a;  playlist:&lt;name&gt;&#x0a;  min:5m  max:30m"/>
+                          ToolTip="Search the selected source &#x0a;&#x0a;Modifiers (YouTube):&#x0a;  channel:&lt;name&gt;&#x0a;  playlist:&lt;name&gt;&#x0a;  min:5m  max:30m"/>
                 <TextBlock x:Name="SearchPlaceholder"
                            FontSize="18" Foreground="#888" IsHitTestVisible="False"
                            VerticalAlignment="Center" Margin="14,0,0,0">
@@ -273,37 +296,12 @@
                 </StackPanel>
             </DockPanel>
 
-            <!-- Plex music browse bar (shown when viewing a Plex music library) -->
+            <!-- Generic plug-in browse bar (source-agnostic drill-down breadcrumb) -->
             <DockPanel Grid.Row="1" Margin="0,0,0,4"
-                       Visibility="{Binding IsViewingPlexMusic, Converter={StaticResource BoolVis}}">
+                       Visibility="{Binding IsGenericBrowsing, Converter={StaticResource BoolVis}}">
 
-                <TextBlock x:Name="PlexBreadcrumbText" Text="{Binding PlexBreadcrumb}" DockPanel.Dock="Left"
+                <TextBlock x:Name="BrowseBreadcrumbText" Text="{Binding BrowseBreadcrumb}" DockPanel.Dock="Left"
                            Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="12" Tag="NavText"
-                           VerticalAlignment="Center" Margin="0,0,12,0"/>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <TextBlock Text="Search:" Foreground="{StaticResource TextDimBrush}" FontSize="11"
-                               VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <RadioButton x:Name="PlexSearchArtist" Content="Artists" GroupName="PlexSearch"
-                                 IsChecked="True" Foreground="{StaticResource TextBrush}" FontSize="11"
-                                 VerticalAlignment="Center" Margin="0,0,8,0"
-                                 Checked="PlexSearchMode_Changed"/>
-                    <RadioButton x:Name="PlexSearchAlbum" Content="Albums" GroupName="PlexSearch"
-                                 Foreground="{StaticResource TextBrush}" FontSize="11"
-                                 VerticalAlignment="Center" Margin="0,0,8,0"
-                                 Checked="PlexSearchMode_Changed"/>
-                    <RadioButton x:Name="PlexSearchTrack" Content="Tracks" GroupName="PlexSearch"
-                                 Foreground="{StaticResource TextBrush}" FontSize="11"
-                                 VerticalAlignment="Center"
-                                 Checked="PlexSearchMode_Changed"/>
-                </StackPanel>
-            </DockPanel>
-
-            <!-- Plex hub/playlist browse bar -->
-            <DockPanel Grid.Row="1" Margin="0,0,0,4"
-                       Visibility="{Binding IsViewingPlexHubOrPlaylist, Converter={StaticResource BoolVis}}">
-
-                <TextBlock x:Name="PlexHubBreadcrumbText" Text="{Binding PlexHubBreadcrumb}" DockPanel.Dock="Left"
-                           Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="12"
                            VerticalAlignment="Center" Margin="0,0,12,0"/>
             </DockPanel>
 
@@ -349,6 +347,13 @@
                                                 <DataTrigger Binding="{Binding PlexItemType}" Value="Hub">
                                                     <Setter Property="Visibility" Value="Collapsed"/>
                                                 </DataTrigger>
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition Binding="{Binding IsGenericContainer}" Value="True"/>
+                                                        <Condition Binding="{Binding ThumbnailUrl}" Value=""/>
+                                                    </MultiDataTrigger.Conditions>
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </MultiDataTrigger>
                                             </Style.Triggers>
                                         </Style>
                                     </Image.Style>
@@ -372,6 +377,15 @@
                                                     </MultiDataTrigger.Conditions>
                                                     <Setter Property="Visibility" Value="Visible"/>
                                                     <Setter Property="Text" Value="📋"/>
+                                                </MultiDataTrigger>
+                                                <!-- Generic browse container with an inherited/own icon and no thumbnail -->
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition Binding="{Binding IsGenericContainer}" Value="True"/>
+                                                        <Condition Binding="{Binding ThumbnailUrl}" Value=""/>
+                                                    </MultiDataTrigger.Conditions>
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Setter Property="Text" Value="{Binding ContainerIcon}"/>
                                                 </MultiDataTrigger>
                                             </Style.Triggers>
                                         </Style>
@@ -429,6 +443,10 @@
                                                         <DataTrigger Binding="{Binding PlexItemType}" Value="Playlist">
                                                             <Setter Property="Content" Value="⏎"/>
                                                             <Setter Property="ToolTip" Value="Browse Playlist"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsGenericContainer}" Value="True">
+                                                            <Setter Property="Content" Value="⏎"/>
+                                                            <Setter Property="ToolTip" Value="Open"/>
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>

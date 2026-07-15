@@ -21,6 +21,13 @@ public class PrefetchCache
     /// </summary>
     public IVideoEngine VideoEngine { get; set; } = new YoutubeExplodeVideoEngine();
 
+    /// <summary>
+    /// Optional download override. When set (by the ViewModel when the plug-in source path is
+    /// enabled), it is used instead of <see cref="VideoEngine"/> to fetch raw streams. Null
+    /// means use the engine directly — the default, byte-identical legacy behavior.
+    /// </summary>
+    public Func<string, VideoQualityPreference, bool, string, CancellationToken, Task<VideoDownload?>>? DownloadOverride { get; set; }
+
     private string? _cachedVideoId;
     private string? _filePath;
     private string? _resolution;
@@ -84,7 +91,9 @@ public class PrefetchCache
 
         try
         {
-            var download = await VideoEngine.DownloadStreamsAsync(videoId, quality, preferStereo, PrefetchDir, cts.Token);
+            var download = DownloadOverride != null
+                ? await DownloadOverride(videoId, quality, preferStereo, PrefetchDir, cts.Token)
+                : await VideoEngine.DownloadStreamsAsync(videoId, quality, preferStereo, PrefetchDir, cts.Token);
             if (download == null) return;
 
             var videoFile = download.VideoFilePath;

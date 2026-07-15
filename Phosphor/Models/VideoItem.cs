@@ -61,6 +61,21 @@ public class VideoItem : ObservableObject
     /// </summary>
     public bool IsAudioOnly { get; set; }
 
+    // ── Generic plug-in browse (source-agnostic drill-down) ──
+    /// <summary>When true, this result is a browsable container: activating it drills in via the
+    /// generic browse stack rather than playing. Carries <see cref="GenericSourceInstanceId"/> +
+    /// <see cref="GenericSourceState"/> so the source resolves the node.</summary>
+    public bool IsGenericContainer { get; set; }
+    /// <summary>The plug-in source instance id for a generic browse container/leaf.</summary>
+    public string? GenericSourceInstanceId { get; set; }
+    /// <summary>The opaque <c>SourceCategory.SourceState</c> handed back to the source on drill-in.</summary>
+    public object? GenericSourceState { get; set; }
+    /// <summary>The opaque <c>SourceCategory.CategoryId</c> for a generic browse container.</summary>
+    public string? GenericCategoryId { get; set; }
+    /// <summary>Optional glyph/emoji shown on a generic browse container tile (e.g. a Plex library's
+    /// music note, inherited by its Hubs/Playlists sub-tiles when they don't set their own).</summary>
+    public string? ContainerIcon { get; set; }
+
     /// <summary>
     /// For Plex items, indicates what audio stream selection was made (native stereo, transcode, or other).
     /// </summary>

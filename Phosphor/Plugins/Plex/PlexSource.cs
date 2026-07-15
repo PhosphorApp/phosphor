@@ -1,0 +1,388 @@
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using Phosphor.Plugin.Abstractions;
+
+namespace Phosphor.Plugins.Plex;
+
+/// <summary>
+/// In-box Plex source. Wraps the existing <see cref="PlexService"/> REST client and presents
+/// its search + drill-down + playback surface through the plug-in contract. Implements
+/// <see cref="IBrowsable"/> (the hierarchical shape that stress-tests
+/// <see cref="SourceCategory"/>/<see cref="BrowseResult"/>) and <see cref="IConfigurable"/>
+/// (the "browse libraries" setup action). Multiple instances (two Plex servers) are supported
+/// via the provider.
+/// </summary>
+/// <remarks>
+/// In-box, so it uses <see cref="PlexService"/>, <see cref="VideoItem"/>, and the Plex enums
+/// directly. Pure data producer: no UI, no thread assumptions.
+/// </remarks>
+public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable, IPagedBrowsable, IScopedSearchable, IPlayableResolver, IConfigurable, IGaplessCapable, IConnectionTestable
+{
+    private readonly PlexService _plex = new();
+    private IPluginHost? _host;
+
+    private string _serverUrl = "";
+    private string _token = "";
+    private bool _stereoAudio;
+    private List<PlexLibraryMapping> _libraries = [];
+
+    public PlexSource(string instanceId, IReadOnlyDictionary<string, string?> settings)
+    {
+        InstanceId = instanceId;
+        ApplySettingsInternal(settings);
+    }
+
+    public string InstanceId { get; }
+    public string TypeId => PlexSourceProvider.PlexTypeId;
+    public string DisplayName { get; set; } = "Plex";
+
+    public bool IsConfigured => _plex.IsConfigured;
+    public bool IsEnabled { get; set; } = true;
+
+    public Task InitializeAsync(IPluginHost host, CancellationToken ct = default)
+    {
+        _host = host;
+        return Task.CompletedTask;
+    }
+
+    public void ApplySettings(IReadOnlyDictionary<string, string?> values) => ApplySettingsInternal(values);
+
+    private void ApplySettingsInternal(IReadOnlyDictionary<string, string?> values)
+    {
+        _serverUrl = Get(values, PlexSourceProvider.KeyServerUrl) ?? "";
+        _token = Get(values, PlexSourceProvider.KeyToken) ?? "";
+        _stereoAudio = bool.TryParse(Get(values, PlexSourceProvider.KeyStereoAudio), out var s) && s;
+        _libraries = ParseLibraries(Get(values, PlexSourceProvider.KeyLibraries));
+
+        _plex.Configure(_serverUrl, _token, _stereoAudio);
+        _host?.Log($"PlexSource: server={_serverUrl} stereo={_stereoAudio} libraries={_libraries.Count}");
+    }
+
+    // ── IConnectionTestable ────────────────────────────────────────────────────
+
+    public async Task<ConnectionTestResult> TestConnectionAsync(CancellationToken ct = default)
+    {
+        if (!_plex.IsConfigured)
+            return new ConnectionTestResult(false, "Server URL and token are required.");
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            // A successful library fetch confirms both reachability and a valid token, and gives a
+            // friendly count for the result line.
+            var libs = await _plex.GetLibrariesAsync();
+            sw.Stop();
+            return new ConnectionTestResult(
+                true,
+                $"Connected — {libs.Count} librar{(libs.Count == 1 ? "y" : "ies")} found.",
+                sw.Elapsed);
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            return new ConnectionTestResult(false, $"Connection failed: {ex.Message}", sw.Elapsed);
+        }
+    }
+
+    // ── ITextSearchCapable ─────────────────────────────────────────────────────
+
+    public async IAsyncEnumerable<SourceItem> SearchAsync(
+        string query, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var results = await _plex.SearchAsync(query);
+        foreach (var v in results)
+        {
+            ct.ThrowIfCancellationRequested();
+            yield return PlexMappings.ToSourceItem(v, InstanceId);
+        }
+    }
+
+    // ── IBrowsable ─────────────────────────────────────────────────────────────
+
+    public async IAsyncEnumerable<SourceCategory> GetRootCategoriesAsync(
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await Task.CompletedTask;
+        foreach (var lib in _libraries)
+            yield return PlexMappings.ToRootCategory(lib, InstanceId);
+    }
+
+    public async Task<BrowseResult> BrowseAsync(SourceCategory category, CancellationToken ct = default)
+    {
+        if (category.SourceState is not PlexNode node)
+            return new BrowseResult();
+
+        return node.Kind switch
+        {
+            PlexNodeKind.Library => await BrowseLibraryAsync(node, ct),
+            PlexNodeKind.Artist => await BrowseChildrenAsync(node, PlexItemType.Album, PlexNodeKind.Album, ct),
+            PlexNodeKind.Album => await BrowseTracksAsync(node, ct),
+            PlexNodeKind.HubList => await BrowseHubListAsync(node, ct),
+            PlexNodeKind.Hub => await BrowseHubAsync(node, ct),
+            PlexNodeKind.PlaylistList => await BrowsePlaylistListAsync(node, ct),
+            PlexNodeKind.Playlist => await BrowsePlaylistAsync(node, ct),
+            _ => new BrowseResult(),
+        };
+    }
+
+    private async Task<BrowseResult> BrowseLibraryAsync(PlexNode node, CancellationToken ct)
+    {
+        await Task.CompletedTask;
+        // A library expands to its "Hubs" and "Playlists" grouping nodes only. Its actual children
+        // (artists for music, videos otherwise) are served through the paged path (BrowsePageAsync)
+        // so large libraries lazy-load and aren't rendered twice (the host runs both BrowseAsync and,
+        // because the library is IPagedBrowsable, the paged path). Container children (artists/albums)
+        // come back as leaf SourceItems flagged IsContainer, which the host drills into.
+        var categories = new List<SourceCategory>
+        {
+            new()
+            {
+                SourceInstanceId = InstanceId,
+                CategoryId = $"hublist:{node.Key}",
+                Title = "Hubs",
+                // No own icon → inherits the parent library's icon (music note / clapperboard).
+                HasSubCategories = true,
+                SourceState = new PlexNode(PlexNodeKind.HubList, node.Key, node.LibraryType),
+            },
+            new()
+            {
+                SourceInstanceId = InstanceId,
+                CategoryId = $"playlistlist:{node.Key}",
+                Title = "Playlists",
+                // No own icon → inherits the parent library's icon.
+                HasSubCategories = true,
+                SourceState = new PlexNode(PlexNodeKind.PlaylistList, node.Key, node.LibraryType),
+            },
+        };
+
+        return new BrowseResult { Categories = categories };
+    }
+
+    private async Task<BrowseResult> BrowseChildrenAsync(
+        PlexNode node, PlexItemType childType, PlexNodeKind childKind, CancellationToken ct)
+    {
+        var children = await _plex.GetChildrenAsync(node.Key, childType, ct);
+        var categories = children
+            .Select(v => PlexMappings.ToCategory(v, InstanceId,
+                new PlexNode(childKind, v.PlexRatingKey ?? "", node.LibraryType)))
+            .ToList();
+        return new BrowseResult { Categories = categories };
+    }
+
+    private async Task<BrowseResult> BrowseTracksAsync(PlexNode node, CancellationToken ct)
+    {
+        var tracks = await _plex.GetChildrenAsync(node.Key, PlexItemType.Track, ct);
+        return new BrowseResult { Items = tracks.Select(v => PlexMappings.ToSourceItem(v, InstanceId)).ToList() };
+    }
+
+    private async Task<BrowseResult> BrowseHubListAsync(PlexNode node, CancellationToken ct)
+    {
+        var hubs = await _plex.GetLibraryHubsAsync(node.Key, ct);
+        return new BrowseResult { Categories = hubs.Select(h => PlexMappings.ToCategory(h, InstanceId)).ToList() };
+    }
+
+    private async Task<BrowseResult> BrowseHubAsync(PlexNode node, CancellationToken ct)
+    {
+        var items = await _plex.GetHubItemsAsync(node.Key, node.LibraryType ?? "", ct);
+        return new BrowseResult { Items = items.Select(v => PlexMappings.ToSourceItem(v, InstanceId)).ToList() };
+    }
+
+    private async Task<BrowseResult> BrowsePlaylistListAsync(PlexNode node, CancellationToken ct)
+    {
+        var playlistType = node.LibraryType == "artist" ? "audio" : "video";
+        var playlists = await _plex.GetPlaylistsAsync(playlistType, ct);
+        return new BrowseResult { Categories = playlists.Select(p => PlexMappings.ToCategory(p, InstanceId)).ToList() };
+    }
+
+    private async Task<BrowseResult> BrowsePlaylistAsync(PlexNode node, CancellationToken ct)
+    {
+        var items = await _plex.GetPlaylistItemsAsync(node.Key, ct);
+        return new BrowseResult { Items = items.Select(v => PlexMappings.ToSourceItem(v, InstanceId)).ToList() };
+    }
+
+    // ── IPagedBrowsable ────────────────────────────────────────────────────────
+
+    public async Task<BrowsePage> BrowsePageAsync(
+        SourceCategory category, int offset, int count, CancellationToken ct = default)
+    {
+        if (category.SourceState is not PlexNode node)
+            return new BrowsePage();
+
+        // Route to the paginated Plex endpoint matching the node kind. Hubs, libraries, and
+        // playlists all page by offset/count and report a total size.
+        PlexPage page = node.Kind switch
+        {
+            PlexNodeKind.Hub => await _plex.GetHubItemsPageAsync(node.Key, node.LibraryType ?? "", offset, count, ct),
+            PlexNodeKind.Library => await _plex.GetLibraryVideosPageAsync(node.Key, offset, count, node.LibraryType, ct),
+            PlexNodeKind.Playlist => await _plex.GetPlaylistItemsPageAsync(node.Key, offset, count, ct),
+            _ => new PlexPage(),
+        };
+
+        return new BrowsePage
+        {
+            Items = page.Items.Select(v => PlexMappings.ToSourceItem(v, InstanceId)).ToList(),
+            TotalSize = page.TotalSize,
+        };
+    }
+
+    // ── IScopedSearchable ──────────────────────────────────────────────────────
+
+    public async Task<BrowseResult> SearchInCategoryAsync(
+        SourceCategory node, string query, CancellationToken ct = default)
+    {
+        // Only library-scoped search is supported; other nodes return nothing.
+        if (node.SourceState is not PlexNode plexNode || plexNode.Kind != PlexNodeKind.Library)
+            return new BrowseResult();
+
+        if (plexNode.LibraryType == "artist")
+        {
+            // Music: fan out across artist (8), album (9), and track (10) and merge. Matching
+            // artists/albums become drill-in containers; matching tracks are playable leaves.
+            var artists = await _plex.SearchLibraryAsync(
+                plexNode.Key, query, plexNode.LibraryType, PlexSearchMode.Artist, ct);
+            var albums = await _plex.SearchLibraryAsync(
+                plexNode.Key, query, plexNode.LibraryType, PlexSearchMode.Album, ct);
+            var tracks = await _plex.SearchLibraryAsync(
+                plexNode.Key, query, plexNode.LibraryType, PlexSearchMode.Track, ct);
+
+            var categories = new List<SourceCategory>();
+            foreach (var a in artists)
+                categories.Add(PlexMappings.ToCategory(a, InstanceId,
+                    new PlexNode(PlexNodeKind.Artist, a.PlexRatingKey ?? "", plexNode.LibraryType)));
+            foreach (var al in albums)
+                categories.Add(PlexMappings.ToCategory(al, InstanceId,
+                    new PlexNode(PlexNodeKind.Album, al.PlexRatingKey ?? "", plexNode.LibraryType)));
+
+            return new BrowseResult
+            {
+                Categories = categories,
+                Items = tracks.Select(v => PlexMappings.ToSourceItem(v, InstanceId)).ToList(),
+            };
+        }
+
+        // Video: plain section-scoped title search — all leaves.
+        var videos = await _plex.SearchLibraryAsync(plexNode.Key, query, plexNode.LibraryType, null, ct);
+        return new BrowseResult
+        {
+            Items = videos.Select(v => PlexMappings.ToSourceItem(v, InstanceId)).ToList(),
+        };
+    }
+
+    // ── IPlayableResolver ──────────────────────────────────────────────────────
+
+    public Task<ResolvedStream?> ResolveAsync(SourceItem item, PlaybackPreferences prefs, CancellationToken ct = default)
+    {
+        // Plex items already carry a ready-to-play StreamUrl (built at browse time).
+        var v = PlexMappings.VideoItemOf(item);
+        return Task.FromResult(v == null ? null : PlexMappings.ToResolvedStream(v));
+    }
+
+    public async Task<SourceMetadata?> GetMetadataAsync(SourceItem item, CancellationToken ct = default)
+    {
+        var v = PlexMappings.VideoItemOf(item);
+        if (v == null) return null;
+
+        // Fetch chapters on demand when the item didn't already carry them.
+        if ((v.Chapters == null || v.Chapters.Count == 0) && !string.IsNullOrEmpty(v.PlexRatingKey))
+        {
+            var chapters = await _plex.GetChaptersAsync(v.PlexRatingKey);
+            if (chapters != null) v.Chapters = chapters;
+        }
+
+        return PlexMappings.ToSourceMetadata(v);
+    }
+
+    // ── IGaplessCapable ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Plex audio tracks carry a stable, direct audio <c>StreamUrl</c> built at browse time, which
+    /// can be pre-loaded on the idle decoder for gapless transitions. Returns it for audio-only
+    /// items; null otherwise.
+    /// </summary>
+    public string? GetGaplessStreamUrl(SourceItem item)
+    {
+        var v = PlexMappings.VideoItemOf(item);
+        if (v == null || !v.IsAudioOnly || string.IsNullOrEmpty(v.StreamUrl)) return null;
+        return v.StreamUrl;
+    }
+
+    // ── IConfigurable ──────────────────────────────────────────────────────────
+
+    public IReadOnlyList<ConfigAction> GetConfigActions() =>
+    [
+        new(PlexSourceProvider.ActionBrowseLibraries, "Browse libraries…",
+            "List the server's libraries and choose which become tiles."),
+    ];
+
+    public async Task<ConfigSelection> InvokeConfigActionAsync(string actionId, CancellationToken ct = default)
+    {
+        if (actionId != PlexSourceProvider.ActionBrowseLibraries)
+            return new ConfigSelection([]);
+
+        var enabled = _libraries.ToDictionary(l => l.Key, l => l);
+        var libs = await _plex.GetLibrariesAsync();
+        var options = libs
+            .Select(l =>
+            {
+                enabled.TryGetValue(l.Key, out var prev);
+                return new ConfigOption(l.Key, $"{l.Title} ({l.Type})", prev != null,
+                    new[]
+                    {
+                        new ConfigSubOption("hubs", "Hubs", prev?.HubsEnabled ?? false),
+                        new ConfigSubOption("playlists", "Playlists", prev?.PlaylistsEnabled ?? false),
+                    });
+            })
+            .ToList();
+
+        return new ConfigSelection(options, AllowMultiple: true, Title: "Plex libraries");
+    }
+
+    public async Task<IReadOnlyDictionary<string, string?>> ApplyConfigActionAsync(
+        string actionId,
+        IReadOnlyList<ConfigOptionResult> results,
+        IReadOnlyDictionary<string, string?> currentSettings,
+        CancellationToken ct = default)
+    {
+        var result = new Dictionary<string, string?>(currentSettings);
+        if (actionId != PlexSourceProvider.ActionBrowseLibraries)
+            return result;
+
+        // Turn selected libraries + their sub-flags into the rich mapping, taking Title/Type from
+        // the server and Hubs/Playlists from the user's per-library sub-option choices.
+        var libs = (await _plex.GetLibrariesAsync()).ToDictionary(l => l.Key, l => l);
+        var mapped = new List<PlexLibraryMapping>();
+        foreach (var r in results)
+        {
+            if (!r.IsSelected || !libs.TryGetValue(r.OptionId, out var lib)) continue;
+            mapped.Add(new PlexLibraryMapping
+            {
+                Key = lib.Key,
+                Title = lib.Title,
+                Type = lib.Type,
+                HubsEnabled = r.SelectedSubOptionIds.Contains("hubs"),
+                PlaylistsEnabled = r.SelectedSubOptionIds.Contains("playlists"),
+            });
+        }
+
+        result[PlexSourceProvider.KeyLibraries] = JsonSerializer.Serialize(mapped);
+        return result;
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+
+    private static string? Get(IReadOnlyDictionary<string, string?> values, string key)
+        => values.TryGetValue(key, out var v) ? v : null;
+
+    private static List<PlexLibraryMapping> ParseLibraries(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try
+        {
+            return JsonSerializer.Deserialize<List<PlexLibraryMapping>>(json) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+}

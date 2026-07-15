@@ -151,8 +151,7 @@ public partial class DmdWindow : JukeboxWindow
                 vmLoaded.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(JukeboxViewModel.ShowCategories)) Dispatcher.BeginInvoke(() => UpdateBackNavButton(vmLoaded)); };
                 vmLoaded.PropertyChanged += (_, args) =>
                 {
-                    if (args.PropertyName is nameof(JukeboxViewModel.IsViewingPlexMusic)
-                        or nameof(JukeboxViewModel.IsViewingPlexHubOrPlaylist)
+                    if (args.PropertyName is nameof(JukeboxViewModel.IsGenericBrowsing)
                         or nameof(JukeboxViewModel.IsPlexBrowsing)
                         or nameof(JukeboxViewModel.ActiveCategory))
                         Dispatcher.BeginInvoke(UpdateSearchPlaceholder);
@@ -903,9 +902,6 @@ public partial class DmdWindow : JukeboxWindow
             vm.NewPlaylistRequested += () => NewPlaylist_Click(this, new RoutedEventArgs());
         }
 
-        if (DataContext is JukeboxViewModel vm2b)
-            vm2b.PlexDrillDownRequested += HandlePlexDrillDown;
-
         StartDirectInputPoller();
         DebugLog.Log("DMD", "SetAppContext: complete");
     }
@@ -960,8 +956,7 @@ public partial class DmdWindow : JukeboxWindow
                     break;
                 case JukeboxAction.Back:
                     if (_inActionMode) ExitActionMode();
-                    else if (vm.IsViewingPlexMusic) { Dispatcher.BeginInvoke(async () => { if (!await vm.PlexDrillBackAsync()) { vm.ShowCategoryListCommand.Execute(null); ClearSearchBar(); ApplyNavHighlight(vm); } }); }
-                    else if (vm.IsViewingPlexHubOrPlaylist) { vm.PlexHubGoBack(); Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => ApplyNavHighlight(vm)); }
+                    else if (vm.IsGenericBrowsing) { Dispatcher.BeginInvoke(async () => { if (!await vm.GenericBrowseBackAsync()) { vm.ShowCategoryListCommand.Execute(null); ClearSearchBar(); ApplyNavHighlight(vm); } }); }
                     else { vm.ShowCategoryListCommand.Execute(null); ClearSearchBar(); Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => ApplyNavHighlight(vm)); }
                     break;
                 case JukeboxAction.Skip:
@@ -1116,7 +1111,7 @@ public partial class DmdWindow : JukeboxWindow
             ? Visibility.Visible
             : Visibility.Collapsed;
 
-        if (DataContext is JukeboxViewModel vm && (vm.IsViewingPlexMusic || vm.IsViewingPlexHubOrPlaylist || vm.IsPlexBrowsing))
+        if (DataContext is JukeboxViewModel vm && (vm.IsGenericBrowsing || vm.IsPlexBrowsing))
             SearchHintRun.Text = $"  items in {vm.ActiveCategory}";
         else
             SearchHintRun.Text = "  ...try channel:<name>, playlist:<name>, min:5m, max:30m";
@@ -1183,35 +1178,15 @@ public partial class DmdWindow : JukeboxWindow
 
     // ── Plex music drill-down handlers ──
 
-    private void PlexBack_Click(object sender, RoutedEventArgs e)
-    {
-        if (DataContext is JukeboxViewModel vm)
-        {
-            Dispatcher.BeginInvoke(async () =>
-            {
-                if (!await vm.PlexDrillBackAsync())
-                    vm.ShowCategoryListCommand.Execute(null);
-                UpdateBackNavButton(vm);
-            });
-        }
-    }
-
-    private void PlexHubBack_Click(object sender, RoutedEventArgs e)
-    {
-        if (DataContext is not JukeboxViewModel vm) return;
-        vm.PlexHubGoBack();
-        UpdateBackNavButton(vm);
-    }
-
     private void BackNavButton_Click(object sender, RoutedEventArgs e)
     {
         if (DataContext is not JukeboxViewModel vm) return;
 
-        if (vm.IsViewingPlexMusic)
+        if (vm.IsGenericBrowsing)
         {
             Dispatcher.BeginInvoke(async () =>
             {
-                if (!await vm.PlexDrillBackAsync())
+                if (!await vm.GenericBrowseBackAsync())
                 {
                     vm.ShowCategoryListCommand.Execute(null);
                     ClearSearchBar();
@@ -1219,12 +1194,6 @@ public partial class DmdWindow : JukeboxWindow
                 }
                 UpdateBackNavButton(vm);
             });
-        }
-        else if (vm.IsViewingPlexHubOrPlaylist)
-        {
-            vm.PlexHubGoBack();
-            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => ApplyNavHighlight(vm));
-            UpdateBackNavButton(vm);
         }
         else
         {
@@ -1243,35 +1212,6 @@ public partial class DmdWindow : JukeboxWindow
     private void HomeButton_Click(object sender, RoutedEventArgs e)
     {
         ClearSearchBar();
-    }
-
-    private void PlexSearchMode_Changed(object sender, RoutedEventArgs e)
-    {
-        if (DataContext is not JukeboxViewModel vm) return;
-
-        if (PlexSearchArtist?.IsChecked == true)
-            vm.PlexSearchMode = PlexSearchMode.Artist;
-        else if (PlexSearchAlbum?.IsChecked == true)
-            vm.PlexSearchMode = PlexSearchMode.Album;
-        else if (PlexSearchTrack?.IsChecked == true)
-            vm.PlexSearchMode = PlexSearchMode.Track;
-    }
-
-    /// <summary>
-    /// Handle clicks on Plex artist/album/hub/playlist items for drill-down navigation.
-    /// </summary>
-    private void HandlePlexDrillDown(VideoItem item)
-    {
-        if (DataContext is not JukeboxViewModel vm) return;
-
-        if (item.PlexItemType == PlexItemType.Artist && item.PlexRatingKey != null)
-            _ = vm.PlexDrillIntoArtistAsync(item.PlexRatingKey, item.Title);
-        else if (item.PlexItemType == PlexItemType.Album && item.PlexRatingKey != null)
-            _ = vm.PlexDrillIntoAlbumAsync(item.PlexRatingKey, item.Title);
-        else if (item.PlexItemType == PlexItemType.Hub && item.PlexHubKey != null)
-            _ = vm.BrowsePlexHubContentAsync(item.PlexHubKey, item.PlexHubType, item.Title);
-        else if (item.PlexItemType == PlexItemType.Playlist && item.PlexRatingKey != null)
-            _ = vm.BrowsePlexPlaylistContentAsync(item.PlexRatingKey, item.Title);
     }
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
@@ -1339,22 +1279,17 @@ public partial class DmdWindow : JukeboxWindow
                     {
                         ExitActionMode();
                     }
-                    else if (vm.IsViewingPlexMusic)
+                    else if (vm.IsGenericBrowsing)
                     {
                         Dispatcher.BeginInvoke(async () =>
                         {
-                            if (!await vm.PlexDrillBackAsync())
+                            if (!await vm.GenericBrowseBackAsync())
                             {
                                 vm.ShowCategoryListCommand.Execute(null);
                                 ClearSearchBar();
                                 ApplyNavHighlight(vm);
                             }
                         });
-                    }
-                    else if (vm.IsViewingPlexHubOrPlaylist)
-                    {
-                        vm.PlexHubGoBack();
-                        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () => ApplyNavHighlight(vm));
                     }
                     else
                     {
@@ -1609,6 +1544,12 @@ public partial class DmdWindow : JukeboxWindow
             if (_resultsIndex >= 0 && _resultsIndex < vm.SearchResults.Count)
             {
                 var item = vm.SearchResults[_resultsIndex];
+                // Generic plug-in browse container → drill in (PlayNow routes it to the nav stack).
+                if (item.IsGenericContainer)
+                {
+                    vm.PlayNowCommand.Execute(item);
+                    return;
+                }
                 if (item.PlexItemType is PlexItemType.Artist or PlexItemType.Album or PlexItemType.Hub or PlexItemType.Playlist)
                 {
                     vm.PlayNowCommand.Execute(item);
@@ -2373,15 +2314,22 @@ public partial class DmdWindow : JukeboxWindow
         // Update cache settings
         if (DataContext is JukeboxViewModel vm)
         {
-            // Configure Plex first so SyncPlexLibraries updates categories.json before reload
-            if (!string.IsNullOrWhiteSpace(_appSettings.PlexServerUrl) && !string.IsNullOrWhiteSpace(_appSettings.PlexToken))
-                vm.ConfigurePlex(_appSettings.PlexServerUrl, _appSettings.PlexToken, _appSettings.PlexLibraries, _appSettings.PlexStereoAudio, skipRebuild: true);
-            LogStep("ConfigurePlex");
+            // Reload the persisted categories FIRST so the VM picks up any reorder/visibility the
+            // settings window just saved. Then Plex + source-tile sync run on that fresh list (their
+            // sync preserves user order/customizations), instead of clobbering it with a stale copy.
             vm.ReloadGenreCategories();
             LogStep("ReloadGenreCategories");
-            vm.SetVideoEngine(_appSettings.VideoEngine);
-            vm.SetSearchEngine(_appSettings.SearchEngine);
-            vm.Cache?.UpdateSettings(_appSettings.CacheEnabled, _appSettings.CacheMaxSizeGb, _appSettings.CacheMaxClipLengthMinutes);
+            // Configure Plex tiles/services from the enabled plug-in instances (skips rebuild; the
+            // registry build below rebuilds once after source tiles are synced).
+            vm.ConfigurePlexFromSettings(_appSettings, skipRebuild: true);
+            LogStep("ConfigurePlex");
+            // Engine/quality/stereo come from the YouTube plug-in config (the Plug-ins tab is the
+            // single source of truth now that the General→Video section is retired).
+            var ytPlayback = Phosphor.Plugins.PluginSettingsFactory.ReadYouTubePlayback(_appSettings.PluginInstances);
+            vm.SetVideoEngine(ytPlayback.Video);
+            vm.SetSearchEngine(ytPlayback.Search);
+            // Rebuild the plug-in source registry so Plex/engine changes take effect without a restart.
+            _ = vm.BuildSourceRegistryAsync(_appSettings);
             vm.SetupPrefetch(_appSettings.PrefetchEnabled);
             vm.SetupThumbnailCache(_appSettings.ThumbnailCacheEnabled, _appSettings.ThumbnailCacheMaxSizeMb);
             vm.SetupCategoryCache(_appSettings.CategoryCacheEnabled, _appSettings.CategoryCacheMaxAgeHours);
@@ -2389,16 +2337,17 @@ public partial class DmdWindow : JukeboxWindow
             vm.SetupPlexPlaylistCache(_appSettings.PlexPlaylistCacheEnabled, _appSettings.PlexPlaylistCacheMaxAgeHours);
             LogStep("CacheSetup");
             ThumbnailCacheConverter.Cache = vm.ThumbnailCache;
-            vm.VideoQuality = _appSettings.VideoQuality;
-            vm.StereoAudio = _appSettings.StereoAudio;
+            vm.VideoQuality = ytPlayback.Quality;
+            vm.StereoAudio = ytPlayback.PreferStereo;
             vm.NetworkCachingMs = _appSettings.NetworkCachingMs;
             vm.LiveCachingMs = _appSettings.LiveCachingMs;
             vm.FileCachingMs = _appSettings.FileCachingMs;
             vm.HttpReconnect = _appSettings.HttpReconnect;
-            vm.SetYouTubeTimeout(_appSettings.YouTubeTimeoutSeconds);
+            vm.SetNetworkTimeout(_appSettings.NetworkTimeoutSeconds);
             vm.CacheMode = _appSettings.CacheMode;
             vm.PreemptiveCache = _appSettings.PreemptiveCache;
             vm.GaplessPlayback = _appSettings.PlexGaplessPlayback;
+            vm.AutoDjProviderId = _appSettings.AutoDjProviderId;
             LogStep("VmProperties");
         }
         LogStep("Cache/ViewModel");
@@ -2644,15 +2593,6 @@ public partial class DmdWindow : JukeboxWindow
         PlaylistClearBtn.Padding = btnThickness;
         PlaylistDeleteBtn.FontSize = fontSize;
         PlaylistDeleteBtn.Padding = btnThickness;
-
-        // Plex music browse bar
-        PlexBreadcrumbText.FontSize = Math.Max(10, 12 + modifier);
-        PlexSearchArtist.FontSize = fontSize;
-        PlexSearchAlbum.FontSize = fontSize;
-        PlexSearchTrack.FontSize = fontSize;
-
-        // Plex hub/playlist browse bar
-        PlexHubBreadcrumbText.FontSize = Math.Max(10, 12 + modifier);
 
         // Back nav button
         BackNavButton.FontSize = Math.Max(14, 18 + modifier);

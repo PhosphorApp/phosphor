@@ -377,12 +377,8 @@ public class AppSettings
     public string TitleText { get; set; } = "\uD83C\uDFB5 PHOSPHOR";
     public string LogoText { get; set; } = "\u2022 PHOSPHOR \u2022 PHOSPHOR ";
     public bool PrefetchEnabled { get; set; } = true;
-    public VideoQualityPreference VideoQuality { get; set; } = VideoQualityPreference.High;
-    public VideoEngineKind VideoEngine { get; set; } = VideoEngineKind.YoutubeExplode;
-    public SearchEngineKind SearchEngine { get; set; } = SearchEngineKind.YoutubeExplode;
     public bool YtDlpAutoUpdate { get; set; }
     public DateTime YtDlpLastUpdateCheck { get; set; } = DateTime.MinValue;
-    public bool StereoAudio { get; set; } = true;
     public int Volume { get; set; } = 100;
 
     // Network
@@ -390,14 +386,35 @@ public class AppSettings
     public int LiveCachingMs { get; set; } = 1000;
     public int FileCachingMs { get; set; } = 300;
     public bool HttpReconnect { get; set; } = true;
-    public int YouTubeTimeoutSeconds { get; set; } = 30;
 
-    // Plex integration
-    public string PlexServerUrl { get; set; } = "";
-    public string PlexToken { get; set; } = "";
-    public List<PlexLibraryMapping> PlexLibraries { get; set; } = [];
-    public bool PlexStereoAudio { get; set; }
+    /// <summary>
+    /// Timeout (seconds) for the host's shared HttpClient used by source plug-ins for their REST
+    /// calls (search, metadata, library fetches). App-owned network infrastructure, not per-source.
+    /// </summary>
+    public int NetworkTimeoutSeconds { get; set; } = 30;
+
+    /// <summary>
+    /// The source instance id AutoDJ uses to find/queue similar tracks. <c>null</c> or empty =
+    /// YouTube (the default; its large catalog suits discovery). A stop-gap steering knob until a
+    /// richer AutoDJ model exists.
+    /// </summary>
+    public string? AutoDjProviderId { get; set; }
+
+    /// <summary>
+    /// Gapless playback for audio-only tracks (pre-loads the next track's stream). App-owned
+    /// playback-pipeline behavior — not per-source config. (YouTube/Plex/engine config now lives
+    /// per-source on the Plug-ins tab.)
+    /// </summary>
     public bool PlexGaplessPlayback { get; set; }
+
+    /// <summary>
+    /// Host-owned persistence for plug-in source instances. In this phase the flat Plex/engine
+    /// fields remain the edit surface, so this list is <em>derived</em> from them on each registry
+    /// build and written back for round-trip visibility (the persisted section exists and reflects
+    /// current config). A later increment (editable Plug-ins tab) makes this the authoritative edit
+    /// surface and stops deriving. See PLUGIN_ARCHITECTURE_ANALYSIS.md.
+    /// </summary>
+    public List<Phosphor.Plugins.PluginInstanceConfig> PluginInstances { get; set; } = [];
     public bool RepeatEnabled { get; set; }
     public bool AutoDjEnabled { get; set; }
     public bool AutoPlayQueueOnStart { get; set; }

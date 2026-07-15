@@ -18,9 +18,21 @@ public class GenreCategoryEntry
     // Plex fields (when set, this entry represents a Plex library tile)
     public string? PlexLibraryKey { get; set; }
     public string? PlexLibraryType { get; set; }
+    /// <summary>The Plex source instance this entry belongs to (multi-server). Null = legacy/first server.</summary>
+    public string? PlexInstanceId { get; set; }
     public bool PlexHubsEnabled { get; set; }
     public bool PlexPlaylistsEnabled { get; set; }
     public bool IsPlex => PlexLibraryKey != null;
+
+    // Generic plug-in source tile fields (when set, this entry is a root tile for an IBrowsable
+    // plug-in source — local-folder, future Jellyfin, …). Only serializable identity is persisted;
+    // the opaque browse SourceState is recovered at runtime from the live registry by matching
+    // (SourceInstanceId, SourceCategoryId).
+    public string? SourceInstanceId { get; set; }
+    public string? SourceCategoryId { get; set; }
+    public string? SourceTypeId { get; set; }
+    public bool IsGenericSource => SourceInstanceId != null;
+
     public int SortOrder { get; set; }
 }
 
@@ -83,43 +95,48 @@ public static class GenreCategoryStore
         return [];
     }
 
+    /// <summary>One root tile for a generic IBrowsable plug-in source.</summary>
+    public sealed record SourceTile(string InstanceId, string CategoryId, string DisplayName, string Icon, string TypeId);
+
     /// <summary>
-    /// Ensures the genre category list contains entries for all current Plex libraries
-    /// and removes entries for libraries that no longer exist. Preserves user customizations
-    /// (icon, position) for existing entries. New entries are appended at the end.
+    /// Syncs generic plug-in source root tiles (Plex, local-folder, future Jellyfin, …) into the
+    /// entry list: prune entries whose (instance, category) is no longer present, preserve user
+    /// customizations (icon/name/position/visibility) for survivors, and add new tiles. Keyed by
+    /// (SourceInstanceId, SourceCategoryId). Also one-time-prunes legacy bespoke Plex tile entries.
     /// </summary>
-    public static void SyncPlexLibraries(List<GenreCategoryEntry> entries, IReadOnlyList<PlexLibraryMapping> libraries)
+    public static void SyncSourceTiles(List<GenreCategoryEntry> entries, IReadOnlyList<SourceTile> tiles)
     {
-        // Build set of current library keys
-        var currentKeys = new HashSet<string>(libraries.Select(l => l.Key));
+        // One-time cleanup: legacy bespoke Plex tile entries (IsPlex, no SourceInstanceId) are
+        // superseded by generic source tiles. Prune them so they don't linger as dead entries.
+        entries.RemoveAll(e => e.IsPlex && !e.IsGenericSource);
 
-        // Remove entries for libraries that no longer exist
-        entries.RemoveAll(e => e.IsPlex && !currentKeys.Contains(e.PlexLibraryKey!));
+        var validPairs = new HashSet<(string, string)>(
+            tiles.Select(t => (t.InstanceId, t.CategoryId)));
 
-        // Add/update entries for each library
-        foreach (var lib in libraries)
+        // Prune generic-source entries no longer backed by a live tile.
+        entries.RemoveAll(e => e.IsGenericSource
+            && !validPairs.Contains((e.SourceInstanceId!, e.SourceCategoryId ?? "")));
+
+        foreach (var t in tiles)
         {
-            var existing = entries.FirstOrDefault(e => e.PlexLibraryKey == lib.Key);
+            var existing = entries.FirstOrDefault(e =>
+                e.SourceInstanceId == t.InstanceId && (e.SourceCategoryId ?? "") == t.CategoryId);
             if (existing != null)
             {
-                // Update title and hub/playlist flags (user may have toggled these)
-                existing.Name = $"Plex {lib.Title}";
-                existing.PlexHubsEnabled = lib.HubsEnabled;
-                existing.PlexPlaylistsEnabled = lib.PlaylistsEnabled;
-                existing.PlexLibraryType = lib.Type;
+                // Preserve user icon/name/position/visibility; keep type id current.
+                existing.SourceTypeId = t.TypeId;
             }
             else
             {
                 entries.Add(new GenreCategoryEntry
                 {
                     Id = Guid.NewGuid().ToString("N"),
-                    Name = $"Plex {lib.Title}",
-                    Icon = "\U0001f7e0",
-                    PlexLibraryKey = lib.Key,
-                    PlexLibraryType = lib.Type,
-                    PlexHubsEnabled = lib.HubsEnabled,
-                    PlexPlaylistsEnabled = lib.PlaylistsEnabled,
-                    IsVisible = true
+                    Name = t.DisplayName,
+                    Icon = t.Icon,
+                    SourceInstanceId = t.InstanceId,
+                    SourceCategoryId = t.CategoryId,
+                    SourceTypeId = t.TypeId,
+                    IsVisible = true,
                 });
             }
         }

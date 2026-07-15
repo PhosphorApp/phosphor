@@ -146,60 +146,25 @@
                                             <Button Content="+ Add…" Padding="10,4"
                                                     Click="AddStartupDitti_Click"/>
                                         </StackPanel>
+                                        <CheckBox x:Name="CbPlexGapless" Content="Gapless playback (audio tracks)"
+                                                  Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
+                                                  Margin="0,4,0,4"
+                                                  ToolTip="Eliminate silence between audio-only tracks by pre-loading the next track"/>
 
-                                        <!-- ═══ SECTION: Video ═══ -->
-                                        <TextBlock Text="VIDEO" FontSize="12" FontWeight="Bold"
+                                        <!-- ═══ SECTION: Search ═══ -->
+                                        <TextBlock Text="SEARCH" FontSize="12" FontWeight="Bold"
                                                    Foreground="{StaticResource AccentBrush}" Margin="0,16,0,6"/>
-                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                            <TextBlock Text="Quality:" Foreground="{StaticResource TextBrush}"
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                            <TextBlock Text="Default AutoDJ Provider:" Foreground="{StaticResource TextBrush}"
                                                        VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                            <ComboBox x:Name="CbVideoQuality" Width="150"
+                                            <ComboBox x:Name="CbAutoDjProvider" MinWidth="160"
                                                       VerticalAlignment="Center"
-                                                      SelectionChanged="CbVideoQuality_SelectionChanged"/>
-                                            <TextBlock x:Name="QualityHintText" Foreground="{StaticResource TextDimBrush}"
-                                                       VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11"/>
+                                                      SelectedValuePath="InstanceId"
+                                                      DisplayMemberPath="DisplayName"/>
                                         </StackPanel>
-                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                            <TextBlock Text="Engine:" Foreground="{StaticResource TextBrush}"
-                                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                            <ComboBox x:Name="CbVideoEngine" Width="150"
-                                                      VerticalAlignment="Center"
-                                                      SelectionChanged="CbVideoEngine_SelectionChanged"/>
-                                            <TextBlock x:Name="EngineHintText" Foreground="{StaticResource TextDimBrush}"
-                                                       VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11"/>
-                                        </StackPanel>
-                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                            <TextBlock Text="Search:" Foreground="{StaticResource TextBrush}"
-                                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                            <ComboBox x:Name="CbSearchEngine" Width="150"
-                                                      VerticalAlignment="Center"
-                                                      SelectionChanged="CbSearchEngine_SelectionChanged"/>
-                                            <TextBlock x:Name="SearchEngineHintText" Foreground="{StaticResource TextDimBrush}"
-                                                       VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11"/>
-                                        </StackPanel>
-                                        <CheckBox x:Name="CbStereoAudio" Content="Prefer stereo audio (instead of 5.1 surround)"
-                                                  Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
-                                                  Margin="0,0,0,4"/>
-                                        <CheckBox x:Name="CbPrefetchEnabled" Content="Prefetch next track for instant transitions"
-                                                  Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
-                                                  Margin="0,0,0,0"/>
-
-                                        <!-- ═══ SECTION: Updates ═══ -->
-                                        <TextBlock Text="UPDATES" FontSize="12" FontWeight="Bold"
-                                                   Foreground="{StaticResource AccentBrush}" Margin="0,16,0,6"/>
-                                        <TextBlock Text="The yt-dlp engine can update itself between app releases to keep working as YouTube changes."
-                                                    FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,8"
-                                                    TextWrapping="Wrap"/>
-                                        <StackPanel Orientation="Horizontal" Margin="0,2,0,10">
-                                            <Button x:Name="BtnCheckYtDlpUpdate" Content="Check for yt-dlp updates"
-                                                    Padding="8,4" VerticalAlignment="Center"
-                                                    Click="BtnCheckYtDlpUpdate_Click"/>
-                                            <TextBlock x:Name="YtDlpUpdateStatusText" Foreground="{StaticResource TextDimBrush}"
-                                                       VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11"/>
-                                        </StackPanel>
-                                        <CheckBox x:Name="CbYtDlpAutoUpdate" Content="Automatically check for yt-dlp updates on startup"
-                                                  Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
-                                                  Margin="0,0,0,0"/>
+                                        <TextBlock Text="Which source AutoDJ uses to find and queue similar tracks. Defaults to YouTube (its large catalog suits discovery). A stop-gap while a richer AutoDJ model is designed."
+                                                   FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,8"
+                                                   TextWrapping="Wrap"/>
 
                                         <!-- ═══ SECTION: Network ═══ -->
                                         <TextBlock Text="NETWORK" FontSize="12" FontWeight="Bold"
@@ -209,16 +174,16 @@
                                                     TextWrapping="Wrap"/>
 
                                         <DockPanel Margin="0,4,0,0">
-                                            <TextBlock Text="YouTube Timeout (s):" Foreground="{StaticResource TextBrush}"
+                                            <TextBlock Text="Network Timeout (s):" Foreground="{StaticResource TextBrush}"
                                                        VerticalAlignment="Center" Width="160"/>
-                                            <TextBlock x:Name="YouTubeTimeoutValueText" Text="30" Foreground="{StaticResource TextDimBrush}"
+                                            <TextBlock x:Name="NetworkTimeoutValueText" Text="30" Foreground="{StaticResource TextDimBrush}"
                                                        VerticalAlignment="Center" DockPanel.Dock="Right" Width="50"
                                                        TextAlignment="Right"/>
-                                            <Slider x:Name="SliderYouTubeTimeout" Minimum="5" Maximum="120"
+                                            <Slider x:Name="SliderNetworkTimeout" Minimum="5" Maximum="120"
                                                     Value="30" TickFrequency="5" IsSnapToTickEnabled="True"
                                                     VerticalAlignment="Center" IsMoveToPointEnabled="True"
-                                                    ValueChanged="SliderYouTubeTimeout_ValueChanged"
-                                                    ToolTip="Maximum time to wait for YouTube search and playlist responses. Increase on slow connections."/>
+                                                    ValueChanged="SliderNetworkTimeout_ValueChanged"
+                                                    ToolTip="Maximum time source plug-ins wait for network responses (search, metadata, library fetches). Increase on slow connections."/>
                                         </DockPanel>
 
                                         <DockPanel Margin="0,8,0,0">
@@ -1618,6 +1583,9 @@
                                                                     <DataTrigger Binding="{Binding IsPlex}" Value="True">
                                                                         <Setter Property="Visibility" Value="Collapsed"/>
                                                                     </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsGenericSource}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
                                                                     <DataTrigger Binding="{Binding IsPlaylist}" Value="True">
                                                                         <Setter Property="Visibility" Value="Collapsed"/>
                                                                     </DataTrigger>
@@ -1729,6 +1697,11 @@
                                                                         <Setter Property="IsEnabled" Value="False"/>
                                                                         <Setter Property="Opacity" Value="0.4"/>
                                                                         <Setter Property="ToolTip" Value="Plex library"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsGenericSource}" Value="True">
+                                                                        <Setter Property="IsEnabled" Value="False"/>
+                                                                        <Setter Property="Opacity" Value="0.4"/>
+                                                                        <Setter Property="ToolTip" Value="Plug-in source"/>
                                                                     </DataTrigger>
                                                                     <DataTrigger Binding="{Binding IsPlaylist}" Value="True">
                                                                         <Setter Property="Visibility" Value="Collapsed"/>
@@ -2452,83 +2425,22 @@
                 </ScrollViewer>
             </TabItem>
 
-            <!-- ═══ TAB: Plex ═══ -->
-            <TabItem Header="PLEX">
+            <!-- ═══ TAB: Plug-ins ═══ -->
+            <TabItem Header="PLUG-INS">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,5,0">
                     <Border Background="{StaticResource SurfaceBrush}" CornerRadius="6"
                             Padding="12" Margin="0,8,0,0">
                         <StackPanel>
-                            <TextBlock Text="PLEX SETUP" FontSize="12" FontWeight="Bold"
-                            Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
-                            <TextBlock FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
-                                       TextWrapping="Wrap">
-                                <Run Text="Allows you to connect to a Plex server. This requires you to know your authentication token. Once configured, you can select which libraries to add as tiles, and optionally include playlists and hubs from Plex for those libraries. "/>
-                                <Hyperlink NavigateUri="https://www.google.com/search?q=find+plex+auth+token"
-                                           RequestNavigate="Hyperlink_RequestNavigate">Here's how to find your Plex auth token.</Hyperlink>
-                            </TextBlock>
-                            <DockPanel Margin="0,0,0,6">
-                                <TextBlock Text="Server URL:"
-                                           VerticalAlignment="Center" Width="80"/>
-                                <TextBox x:Name="TbPlexUrl" VerticalAlignment="Center"
-                                         ToolTip="e.g. http://192.168.1.100:32400"/>
-                            </DockPanel>
-                            <DockPanel Margin="0,0,0,6">
-                                <TextBlock Text="Token:" Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Width="80"/>
-                                <TextBox x:Name="TbPlexToken" VerticalAlignment="Center"
-                                         ToolTip="Your Plex authentication token"/>
-                            </DockPanel>
-                            <DockPanel Margin="0,0,0,6">
-                                <TextBlock Text="Add library:" Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Width="80"/>
-                                <Button Content="＋ Add" Click="PlexAddLibrary_Click" Padding="8,4"
-                                        DockPanel.Dock="Right" Margin="8,0,0,0"/>
-                                <ComboBox x:Name="CbPlexLibrary" MinWidth="150"
-                                          VerticalAlignment="Center" DisplayMemberPath="Title"
-                                          SelectedValuePath="Key"
-                                          IsEditable="True" IsReadOnly="True"
-                                          Text="No libraries loaded"
-                                          Background="{StaticResource Surface2Brush}"
-                                          Foreground="{StaticResource TextBrush}"/>
-                            </DockPanel>
-                            <TextBlock Text="LIBRARY TILES" Foreground="{StaticResource TextDimBrush}"
-                                       FontSize="10" FontWeight="Bold" Margin="0,9,0,9"/>
-                            <ItemsControl x:Name="PlexLibraryList">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <DockPanel Margin="0,7">
-                                            <Button Content="✕" Click="PlexRemoveLibrary_Click"
-                                                    Tag="{Binding}" DockPanel.Dock="Right"
-                                                    Padding="6,2" Margin="8,0,0,0" FontSize="14"/>
-                                            <CheckBox IsChecked="{Binding PlaylistsEnabled}" Content="Playlists"
-                                                      Foreground="{StaticResource TextDimBrush}"
-                                                      DockPanel.Dock="Right" Margin="8,0,0,0"
-                                                      VerticalAlignment="Center" FontSize="14"
-                                                      ToolTip="Show a Playlists tile to browse Plex playlists"/>
-                                            <CheckBox IsChecked="{Binding HubsEnabled}" Content="Hubs"
-                                                      Foreground="{StaticResource TextDimBrush}"
-                                                      DockPanel.Dock="Right" Margin="8,0,0,0"
-                                                      VerticalAlignment="Center" FontSize="14"
-                                                      ToolTip="Show a Hubs tile (Recently Played, Recently Added, etc.)"/>
-                                            <TextBlock Text="{Binding Title}" Foreground="{StaticResource TextBrush}"
-                                                       VerticalAlignment="Center" FontSize="14"/>
-                                        </DockPanel>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                                <Button Content="Test Connection" Click="PlexTest_Click" Padding="12,6"
-                                        Margin="0,0,8,0"/>
-                                <Button Content="Load Libraries" Click="PlexLoadLibraries_Click" Padding="12,6"/>
-                                <TextBlock x:Name="PlexStatusText" Foreground="{StaticResource TextDimBrush}"
-                                           VerticalAlignment="Center" Margin="12,0,0,0" FontSize="11"/>
-                            </StackPanel>
-                            <CheckBox x:Name="CbPlexStereo" Content="Force stereo audio (downmix surround)"
-                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
-                                      ToolTip="Request stereo audio from Plex instead of surround sound"/>
-                            <CheckBox x:Name="CbPlexGapless" Content="Gapless playback"
-                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
-                                      ToolTip="Eliminate silence between audio-only Plex tracks by pre-loading the next track"/>
+                            <TextBlock Text="SOURCE PLUG-INS" FontSize="12" FontWeight="Bold"
+                                       Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
+                            <TextBlock Text="Music and video sources are provided by plug-ins. This tab lists the configured sources and their settings — add or remove sources, enable/disable them, and edit their configuration here."
+                                       FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
+                                       TextWrapping="Wrap"/>
+                            <StackPanel x:Name="PanelPluginSources"/>
+                            <TextBlock x:Name="PluginSourcesEmptyText"
+                                       Text="No plug-in sources configured yet."
+                                       FontSize="11" Foreground="{StaticResource TextDimBrush}"
+                                       Visibility="Collapsed" Margin="0,4,0,0"/>
                         </StackPanel>
                     </Border>
                 </ScrollViewer>
@@ -2579,10 +2491,17 @@
                                           Foreground="{StaticResource TextBrush}"
                                           FontSize="12" BorderBrush="#333"/>
                             </DockPanel>
-                            <CheckBox x:Name="CbPreemptiveCache" Content="Preemptively cache next queue item"
+                            <CheckBox x:Name="CbPreemptiveCache" Content="Preemptively cache next track (persistent)"
+                                      IsEnabled="{Binding IsChecked, ElementName=CbCacheEnabled}"
                                       Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
                                       Margin="0,0,0,2"/>
-                            <TextBlock Text="Starts downloading the next track as soon as the current one starts playing (requires Cache enabled). Makes transitions instant and the next track fully seekable."
+                            <TextBlock Text="Downloads the next track into the persistent cache as soon as the current one starts (requires Cache enabled). Makes transitions instant, the track fully seekable, and keeps it cached for replay."
+                                       FontSize="11" Foreground="{StaticResource TextDimBrush}"
+                                       Margin="22,0,0,8" TextWrapping="Wrap"/>
+                            <CheckBox x:Name="CbPrefetchEnabled" Content="Prefetch next track (temporary)"
+                                      Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
+                                      Margin="0,0,0,2"/>
+                            <TextBlock Text="Downloads the next track to a short-lived buffer that's purged right after it plays — for instant transitions and scrubbing WITHOUT keeping a persistent cache. Works even when Cache is disabled. Only applies to cacheable sources."
                                        FontSize="11" Foreground="{StaticResource TextDimBrush}"
                                        Margin="22,0,0,8" TextWrapping="Wrap"/>
                             <CheckBox x:Name="CbPurgeCacheOnShutdown" Content="Purge cache on shutdown"
@@ -2770,6 +2689,7 @@
 
             <!-- ═══ TAB: About ═══ -->
             <TabItem Header="ABOUT">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,5,0">
                 <Border Background="{StaticResource SurfaceBrush}" CornerRadius="6"
                         Padding="12" Margin="0,8,0,0">
                         <StackPanel>
@@ -2827,6 +2747,7 @@
                                    Text="• ProjectM renders on its own OpenGL thread, so it bypasses WPF rendering overhead. On systems with a capable GPU it may perform better than WPF-based visuals, but on lower-end hardware the extra OpenGL context adds load."/>
                     </StackPanel>
                 </Border>
+                </ScrollViewer>
             </TabItem>
 
         </TabControl>

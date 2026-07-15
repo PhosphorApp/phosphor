@@ -84,5 +84,37 @@
     </Content>
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Phosphor.Plugin.Abstractions\Phosphor.Plugin.Abstractions.csproj" />
+    <!--
+      Build-order-only reference to the reference plug-in: ReferenceOutputAssembly=false keeps it OUT
+      of the host's runtime dependencies (it must be discovered dynamically from plugins/, not linked),
+      while ensuring it builds before the host so the copy target below has fresh output.
+    -->
+    <ProjectReference Include="..\Phosphor.Plugins.LocalFolder\Phosphor.Plugins.LocalFolder.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <Private>false</Private>
+    </ProjectReference>
+  </ItemGroup>
+
+  <!--
+    Deploy the local-folder plug-in into the host's plugins/LocalFolder/ folder so the dynamic loader
+    (PluginLoader) discovers it as a real external DLL. Only the plug-in's own assembly is copied — the
+    shared contract (Phosphor.Plugin.Abstractions) is supplied by the host at runtime, never duplicated.
+  -->
+  <Target Name="DeployLocalFolderPlugin" AfterTargets="Build">
+    <PropertyGroup>
+      <LocalFolderPluginDir>$(MSBuildThisFileDirectory)..\Phosphor.Plugins.LocalFolder\bin\$(Configuration)\net8.0</LocalFolderPluginDir>
+      <LocalFolderPluginDest>$(OutDir)plugins\LocalFolder</LocalFolderPluginDest>
+    </PropertyGroup>
+    <ItemGroup>
+      <LocalFolderPluginFiles Include="$(LocalFolderPluginDir)\Phosphor.Plugins.LocalFolder.dll" />
+      <LocalFolderPluginFiles Include="$(LocalFolderPluginDir)\Phosphor.Plugins.LocalFolder.pdb" Condition="Exists('$(LocalFolderPluginDir)\Phosphor.Plugins.LocalFolder.pdb')" />
+    </ItemGroup>
+    <MakeDir Directories="$(LocalFolderPluginDest)" />
+    <Copy SourceFiles="@(LocalFolderPluginFiles)" DestinationFolder="$(LocalFolderPluginDest)" SkipUnchangedFiles="true" />
+    <Message Importance="high" Text="Deployed Local Folder plug-in to $(LocalFolderPluginDest)" />
+  </Target>
+
 
   </Project>
