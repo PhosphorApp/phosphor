@@ -82,6 +82,20 @@ public class VideoItem : ObservableObject
     public PlexAudioStream PlexAudioStream { get; set; }
 
     /// <summary>
+    /// A short, human-readable audio-stream tag for the status bar (e.g. " (Stereo)", " (Surround)"),
+    /// or "" when there's nothing noteworthy. Derived from the item's own data so the ViewModel's
+    /// play path stays source-agnostic — a source populates <see cref="PlexAudioStream"/> (or, in
+    /// future, another audio descriptor) and the tag follows.
+    /// </summary>
+    public string AudioTag => PlexAudioStream switch
+    {
+        PlexAudioStream.Stereo => " (Stereo)",
+        PlexAudioStream.StereoTranscode => " (Stereo Transcode)",
+        PlexAudioStream.Surround => " (Surround)",
+        _ => ""
+    };
+
+    /// <summary>
     /// Chapter markers for Plex video items, if available.
     /// </summary>
     public List<ChapterMarker>? Chapters { get; set; }

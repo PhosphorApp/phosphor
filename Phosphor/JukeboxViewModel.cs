@@ -2956,8 +2956,7 @@ public partial class JukeboxViewModel : ObservableObject
         PlayTransitioning = true;
         SetStatusPrefix("Transitioning");
         CurrentlyPlaying = item;
-        var audioTag = GetPlexAudioTag(item);
-        StatusText = $"Playing: {item.Title}{audioTag}";
+        StatusText = $"Playing: {item.Title}{item.AudioTag}";
         _history.Add(item);
         PlayRequested?.Invoke(item.VideoId);
 
@@ -3016,20 +3015,6 @@ public partial class JukeboxViewModel : ObservableObject
     /// Returns "" for non-Plex items, "(Stereo)" for native stereo selection,
     /// "(Stereo Transcode)" for server-side downmix, or "(Surround)" otherwise.
     /// </summary>
-    private string GetPlexAudioTag(VideoItem item)
-    {
-        if (!item.IsPlex)
-            return "";
-
-        return item.PlexAudioStream switch
-        {
-            PlexAudioStream.Stereo => " (Stereo)",
-            PlexAudioStream.StereoTranscode => " (Stereo Transcode)",
-            PlexAudioStream.Surround => " (Surround)",
-            _ => ""
-        };
-    }
-
     [RelayCommand]
     private void StopPlayback()
     {
@@ -3099,8 +3084,7 @@ public partial class JukeboxViewModel : ObservableObject
         if (!IsPlaying || !IsPaused) return;
         ResumeRequested?.Invoke();
         IsPaused = false;
-        var audioTag = CurrentlyPlaying != null ? GetPlexAudioTag(CurrentlyPlaying) : "";
-        StatusText = $"Playing: {CurrentlyPlaying?.Title}{audioTag}";
+        StatusText = $"Playing: {CurrentlyPlaying?.Title}{CurrentlyPlaying?.AudioTag}";
     }
 
     [RelayCommand]
@@ -3320,8 +3304,7 @@ public partial class JukeboxViewModel : ObservableObject
         QueueIndex = nextIndex;
         var item = Queue[nextIndex];
         CurrentlyPlaying = item;
-        var audioTag = GetPlexAudioTag(item);
-        StatusText = $"Playing: {item.Title}{audioTag}";
+        StatusText = $"Playing: {item.Title}{item.AudioTag}";
         _history.Add(item);
         PlayTransitioning = false;
         _statusPrefixCts?.Cancel();
