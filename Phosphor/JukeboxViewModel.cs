@@ -1283,6 +1283,35 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Resolves the plug-in source a playing <see cref="VideoItem"/> belongs to. Plex items
+    /// (<c>plex:</c> ids) route to the active Plex instance; everything else routes to YouTube.
+    /// Mirrors the source lookup used by <see cref="IsItemCacheable"/>. Returns null if the
+    /// registry is unavailable.
+    /// </summary>
+    private Phosphor.Plugin.Abstractions.IPhosphorSource? SourceForItem(VideoItem item)
+    {
+        if (_sourceRegistry == null) return null;
+        return item.IsPlex ? ActivePlexSource : _sourceRegistry.YouTube;
+    }
+
+    /// <summary>
+    /// Builds a probe <see cref="Phosphor.Plugin.Abstractions.SourceItem"/> for a playing host
+    /// <see cref="VideoItem"/>, suitable for <c>IPlayableResolver.GetMetadataAsync</c>. Carries the
+    /// whole <see cref="VideoItem"/> in <c>SourceState</c> (Plex reads it back for its rating key)
+    /// while <c>ItemId</c> holds the id (YouTube's <c>VideoIdOf</c> falls back to it, since a
+    /// <see cref="VideoItem"/> isn't a string). One shape serves every source.
+    /// </summary>
+    private static Phosphor.Plugin.Abstractions.SourceItem ProbeSourceItem(
+        VideoItem item, string sourceInstanceId) => new()
+    {
+        SourceInstanceId = sourceInstanceId,
+        ItemId = item.VideoId,
+        Title = item.Title,
+        IsAudioOnly = item.IsAudioOnly,
+        SourceState = item,
+    };
+
+    /// <summary>
     /// Runs <paramref name="action"/> on the UI (dispatcher) thread. A no-op marshal when the
     /// caller is already on the UI thread, so it is safe and cheap on any path. Needed because
     /// async continuations can resume on a threadpool thread (e.g. the plug-in search path),
@@ -2932,13 +2961,10 @@ public partial class JukeboxViewModel : ObservableObject
         _history.Add(item);
         PlayRequested?.Invoke(item.VideoId);
 
-        // Refresh duration and fetch chapters for YouTube items (skip if already populated from cache/playlist)
-        if (!item.IsPlex && item.Chapters == null)
-            _ = SafeFireAndForget(FetchYouTubeChaptersAsync(item));
-
-        // Fetch chapter markers for Plex items (requires individual metadata lookup)
-        if (item.IsPlex && item.PlexRatingKey != null && item.Chapters == null && _plex.IsConfigured)
-            _ = SafeFireAndForget(FetchPlexChaptersAsync(item));
+        // Fetch duration/chapters from the item's own source (source-agnostic). Fire-and-forget so
+        // playback starts immediately; results apply to the now-playing item when they arrive.
+        if (item.Chapters == null)
+            _ = SafeFireAndForget(FetchChaptersViaSourceAsync(item));
 
         // Cache on playback when mode is Everything (cacheable sources only)
         if (_cache is { Enabled: true } && CacheMode == CacheMode.Everything && IsItemCacheable(item))
@@ -3017,21 +3043,6 @@ public partial class JukeboxViewModel : ObservableObject
         PlaybackPosition = 0;
         PlaybackDuration = 1;
         StatusText = "Playback stopped";
-    }
-
-    private async Task FetchPlexChaptersAsync(VideoItem item)
-    {
-        var chapters = await ActivePlex.GetChaptersAsync(item.PlexRatingKey!);
-        if (chapters != null && chapters.Count > 0)
-        {
-            item.Chapters = chapters;
-            if (ReferenceEquals(item, _currentlyPlaying))
-            {
-                UpdateChapterTickPositions();
-                OnPropertyChanged(nameof(ShouldSnapToChapters));
-                UpdateCurrentChapter();
-            }
-        }
     }
 
     /// <summary>
@@ -3316,8 +3327,9 @@ public partial class JukeboxViewModel : ObservableObject
         _statusPrefixCts?.Cancel();
         StatusPrefix = "";
 
-        if (item.IsPlex && item.PlexRatingKey != null && item.Chapters == null && _plex.IsConfigured)
-            _ = SafeFireAndForget(FetchPlexChaptersAsync(item));
+        // Fetch chapters for the transitioned track from its own source (source-agnostic).
+        if (item.Chapters == null)
+            _ = SafeFireAndForget(FetchChaptersViaSourceAsync(item));
 
         if (_autoDjEnabled)
             _ = SafeFireAndForget(AutoDjFillQueue());
@@ -3771,27 +3783,42 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Fetch YouTube video metadata and extract chapters. Prefers the engine's native
-    /// chapter markers (yt-dlp) and falls back to parsing the description when none are
-    /// present (always the case for YoutubeExplode). Also refreshes the item's duration.
+    /// Fetch metadata (duration, upload date, chapters) for a playing item from <em>its own source</em>
+    /// via <c>IPlayableResolver.GetMetadataAsync</c>, and apply it to the item on the UI thread.
+    /// Source-agnostic: Plex returns chapters from its rating key, YouTube returns native yt-dlp
+    /// chapters (or, when it has none, we fall back to parsing the description). Any future source that
+    /// implements the capability participates for free. Falls back to the legacy engine when no source
+    /// resolver is available. Safe to fire-and-forget after playback starts.
     /// </summary>
-    private async Task FetchYouTubeChaptersAsync(VideoItem item)
+    private async Task FetchChaptersViaSourceAsync(VideoItem item)
     {
         try
         {
-            var meta = await GetYouTubeMetadataViaPluginOrLegacy(item.VideoId);
+            var source = SourceForItem(item);
+            Video.VideoMetadata? meta;
+            if (source is Phosphor.Plugin.Abstractions.IPlayableResolver resolver)
+            {
+                var probe = ProbeSourceItem(item, source!.InstanceId);
+                var raw = await resolver.GetMetadataAsync(probe);
+                meta = raw == null ? null : MapPluginMetadata(raw);
+            }
+            else
+            {
+                // Registry unavailable — legacy in-VM engine (YouTube only).
+                meta = await _videoEngine.GetMetadataAsync(item.VideoId);
+            }
             if (meta == null) return;
 
-            // Native chapters (yt-dlp) take precedence; otherwise parse the description.
+            // Native chapters take precedence; when the source reported none, fall back to parsing a
+            // description (YouTube-style). Non-YouTube sources simply have no description → no-op.
             var chapters = meta.Chapters.Count > 0
                 ? meta.Chapters
                 : ParseYouTubeChapters(meta.Description ?? "", meta.Duration);
             var chapterSource = meta.Chapters.Count > 0 ? "native" : "description";
 
-            // Apply item/UI mutations on the UI thread. GetMetadataAsync may resume on a
-            // thread-pool thread (the yt-dlp engine awaits an external process), and raising
-            // PropertyChanged for bound VideoItem properties off the UI thread silently
-            // fails to refresh the queue bindings.
+            // Apply item/UI mutations on the UI thread — GetMetadataAsync may resume on a thread-pool
+            // thread (yt-dlp external process), and raising PropertyChanged for bound VideoItem
+            // properties off the UI thread silently fails to refresh the queue bindings.
             void Apply()
             {
                 if (meta.Duration.HasValue)
@@ -3800,7 +3827,6 @@ public partial class JukeboxViewModel : ObservableObject
                 if (meta.UploadDate.HasValue)
                 {
                     item.UploadDate = meta.UploadDate;
-                    // Refresh the now-playing header so the date appears for the live track.
                     if (ReferenceEquals(item, _currentlyPlaying))
                         OnPropertyChanged(nameof(NowPlayingTitle));
                 }
@@ -3808,7 +3834,7 @@ public partial class JukeboxViewModel : ObservableObject
                 if (chapters.Count > 0)
                 {
                     item.Chapters = chapters;
-                    DebugLog.Log("Chapters", $"YouTube chapters ({chapterSource}): {chapters.Count}");
+                    DebugLog.Log("Chapters", $"Chapters ({chapterSource}): {chapters.Count}");
                     if (ReferenceEquals(item, _currentlyPlaying))
                     {
                         UpdateChapterTickPositions();
@@ -3816,20 +3842,16 @@ public partial class JukeboxViewModel : ObservableObject
                         UpdateCurrentChapter();
                     }
 
-                    // Persist chapters to video cache if the item is cached
+                    // Persist chapters to video cache if the item is cached.
                     _cache?.UpdateChapters(item.VideoId, chapters);
                 }
             }
 
-            var dispatcher = System.Windows.Application.Current?.Dispatcher;
-            if (dispatcher != null && !dispatcher.CheckAccess())
-                await dispatcher.InvokeAsync(Apply);
-            else
-                Apply();
+            await RunOnUiAsync(Apply);
         }
         catch (Exception ex)
         {
-            DebugLog.LogException($"YouTube chapters ({item.VideoId})", ex);
+            DebugLog.LogException($"Fetch chapters ({item.VideoId})", ex);
         }
     }
 
