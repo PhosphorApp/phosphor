@@ -347,6 +347,13 @@
                                                 <DataTrigger Binding="{Binding PlexItemType}" Value="Hub">
                                                     <Setter Property="Visibility" Value="Collapsed"/>
                                                 </DataTrigger>
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition Binding="{Binding IsGenericContainer}" Value="True"/>
+                                                        <Condition Binding="{Binding ThumbnailUrl}" Value=""/>
+                                                    </MultiDataTrigger.Conditions>
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </MultiDataTrigger>
                                             </Style.Triggers>
                                         </Style>
                                     </Image.Style>
@@ -370,6 +377,15 @@
                                                     </MultiDataTrigger.Conditions>
                                                     <Setter Property="Visibility" Value="Visible"/>
                                                     <Setter Property="Text" Value="📋"/>
+                                                </MultiDataTrigger>
+                                                <!-- Generic browse container with an inherited/own icon and no thumbnail -->
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition Binding="{Binding IsGenericContainer}" Value="True"/>
+                                                        <Condition Binding="{Binding ThumbnailUrl}" Value=""/>
+                                                    </MultiDataTrigger.Conditions>
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Setter Property="Text" Value="{Binding ContainerIcon}"/>
                                                 </MultiDataTrigger>
                                             </Style.Triggers>
                                         </Style>

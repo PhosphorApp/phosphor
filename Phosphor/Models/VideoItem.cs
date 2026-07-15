@@ -72,6 +72,9 @@ public class VideoItem : ObservableObject
     public object? GenericSourceState { get; set; }
     /// <summary>The opaque <c>SourceCategory.CategoryId</c> for a generic browse container.</summary>
     public string? GenericCategoryId { get; set; }
+    /// <summary>Optional glyph/emoji shown on a generic browse container tile (e.g. a Plex library's
+    /// music note, inherited by its Hubs/Playlists sub-tiles when they don't set their own).</summary>
+    public string? ContainerIcon { get; set; }
 
     /// <summary>
     /// For Plex items, indicates what audio stream selection was made (native stereo, transcode, or other).

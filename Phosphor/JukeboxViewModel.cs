@@ -224,7 +224,8 @@ public partial class JukeboxViewModel : ObservableObject
             category.Name,
             category.SourceInstanceId!,
             category.SourceCategoryId ?? category.Name,
-            category.SourceState);
+            category.SourceState,
+            category.Icon);
         await EnterBrowseNodeAsync(root, pushOntoStack: true);
     }
 
@@ -238,7 +239,8 @@ public partial class JukeboxViewModel : ObservableObject
             item.Title,
             item.GenericSourceInstanceId!,
             item.GenericCategoryId ?? item.Title,
-            item.GenericSourceState);
+            item.GenericSourceState,
+            item.ContainerIcon);
         return EnterBrowseNodeAsync(node, pushOntoStack: true);
     }
 
@@ -293,13 +295,23 @@ public partial class JukeboxViewModel : ObservableObject
 
             // Sub-categories first (drill-in containers), then leaf items (playable).
             foreach (var cat in result.Categories)
-                SearchResults.Add(ToGenericContainerItem(cat));
+                SearchResults.Add(ToGenericContainerItem(cat, node.Icon));
 
             var resolver = source as Phosphor.Plugin.Abstractions.IPlayableResolver;
 
-            // Leaf items: if the source is paginated, drive leaves through the paged path (so large
-            // libraries lazy-load on "load more"); otherwise render the single-shot Items.
-            if (source is Phosphor.Plugin.Abstractions.IPagedBrowsable paged)
+            // Leaf items. If BrowseAsync already returned leaves (e.g. an album's tracks), render
+            // those directly. Otherwise, if the source is paginated, drive leaves through the paged
+            // path so large collections lazy-load on "load more". A node yields leaves one way or the
+            // other — never both — so this avoids rendering the same items twice.
+            if (result.Items.Count > 0)
+            {
+                _genericPaged = null;
+                foreach (var item in result.Items)
+                    await AddResolvedLeafAsync(item, resolver, ct);
+                CanLoadMore = false;
+                StatusText = $"{SearchResults.Count} item(s) in {node.Title}";
+            }
+            else if (source is Phosphor.Plugin.Abstractions.IPagedBrowsable paged)
             {
                 _genericPaged = paged;
                 _genericPagedCategory = sourceCategory;
@@ -311,8 +323,6 @@ public partial class JukeboxViewModel : ObservableObject
             else
             {
                 _genericPaged = null;
-                foreach (var item in result.Items)
-                    await AddResolvedLeafAsync(item, resolver, ct);
                 CanLoadMore = false;
                 StatusText = $"{SearchResults.Count} item(s) in {node.Title}";
             }
@@ -328,16 +338,39 @@ public partial class JukeboxViewModel : ObservableObject
         }
     }
 
-    /// <summary>Maps a browse sub-category into a drill-in container <see cref="VideoItem"/>.</summary>
-    private static VideoItem ToGenericContainerItem(Phosphor.Plugin.Abstractions.SourceCategory cat) => new()
+    /// <summary>Maps a browse sub-category into a drill-in container <see cref="VideoItem"/>.
+    /// Sub-categories without their own <see cref="Phosphor.Plugin.Abstractions.SourceCategory.Icon"/>
+    /// inherit <paramref name="parentIcon"/> so grouping tiles (e.g. Hubs/Playlists) take on the
+    /// parent library's personality.</summary>
+    private static VideoItem ToGenericContainerItem(
+        Phosphor.Plugin.Abstractions.SourceCategory cat, string? parentIcon = null) => new()
     {
         Title = cat.Title,
         ThumbnailUrl = cat.ThumbnailUrl ?? "",
         VideoId = cat.CategoryId,
         IsGenericContainer = true,
+        ContainerIcon = string.IsNullOrWhiteSpace(cat.Icon) ? parentIcon : cat.Icon,
         GenericSourceInstanceId = cat.SourceInstanceId,
         GenericSourceState = cat.SourceState,
         GenericCategoryId = cat.CategoryId,
+    };
+
+    /// <summary>
+    /// Maps a leaf <see cref="SourceItem"/> that is actually a browsable container
+    /// (<see cref="SourceItem.IsContainer"/> — e.g. a Plex artist/album returned inside a hub,
+    /// playlist, or search result) into a drill-in container <see cref="VideoItem"/>. Carries the
+    /// item's opaque <c>SourceState</c> so the source resolves the node on drill-in.
+    /// </summary>
+    private static VideoItem ToContainerLeafItem(Phosphor.Plugin.Abstractions.SourceItem item) => new()
+    {
+        Title = item.Title,
+        Author = item.Subtitle ?? "",
+        ThumbnailUrl = item.ThumbnailUrl ?? "",
+        VideoId = item.ItemId,
+        IsGenericContainer = true,
+        GenericSourceInstanceId = item.SourceInstanceId,
+        GenericSourceState = item.SourceState,
+        GenericCategoryId = item.ItemId,
     };
 
     // ── Generic paged browse state ──
@@ -353,6 +386,14 @@ public partial class JukeboxViewModel : ObservableObject
         Phosphor.Plugin.Abstractions.IPlayableResolver? resolver,
         CancellationToken ct)
     {
+        // A "leaf" flagged IsContainer is really a browsable node (e.g. a Plex artist/album returned
+        // inside a hub/playlist/search) — render it as a drill-in container, not a playable row.
+        if (item.IsContainer)
+        {
+            SearchResults.Add(ToContainerLeafItem(item));
+            return;
+        }
+
         var vi = ToVideoItem(item);
         // Resolve a playable URL now (local files are a cheap path check); the player checks
         // VideoItem.StreamUrl first and plays it directly.
@@ -3661,4 +3702,4 @@ public sealed record SearchSourceOption(string InstanceId, string DisplayName)
 /// <see cref="SourceState"/> the source hands back on browse, so drill-down and back-navigation are
 /// fully source-agnostic (the host never interprets it).
 /// </summary>
-public sealed record BrowseNode(string Title, string SourceInstanceId, string CategoryId, object? SourceState);
+public sealed record BrowseNode(string Title, string SourceInstanceId, string CategoryId, object? SourceState, string? Icon = null);

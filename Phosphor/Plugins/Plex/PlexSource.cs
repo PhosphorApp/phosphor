@@ -127,9 +127,12 @@ public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable
 
     private async Task<BrowseResult> BrowseLibraryAsync(PlexNode node, CancellationToken ct)
     {
-        // A library expands to its top-level items (artists for music, videos otherwise),
-        // plus "Hubs" and "Playlists" grouping nodes mirroring the ViewModel's tiles.
-        var items = await _plex.GetLibraryVideosAsync(node.Key);
+        await Task.CompletedTask;
+        // A library expands to its "Hubs" and "Playlists" grouping nodes only. Its actual children
+        // (artists for music, videos otherwise) are served through the paged path (BrowsePageAsync)
+        // so large libraries lazy-load and aren't rendered twice (the host runs both BrowseAsync and,
+        // because the library is IPagedBrowsable, the paged path). Container children (artists/albums)
+        // come back as leaf SourceItems flagged IsContainer, which the host drills into.
         var categories = new List<SourceCategory>
         {
             new()
@@ -137,7 +140,7 @@ public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable
                 SourceInstanceId = InstanceId,
                 CategoryId = $"hublist:{node.Key}",
                 Title = "Hubs",
-                Icon = "⭐",
+                // No own icon → inherits the parent library's icon (music note / clapperboard).
                 HasSubCategories = true,
                 SourceState = new PlexNode(PlexNodeKind.HubList, node.Key, node.LibraryType),
             },
@@ -146,28 +149,13 @@ public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable
                 SourceInstanceId = InstanceId,
                 CategoryId = $"playlistlist:{node.Key}",
                 Title = "Playlists",
-                Icon = "🎶",
+                // No own icon → inherits the parent library's icon.
                 HasSubCategories = true,
                 SourceState = new PlexNode(PlexNodeKind.PlaylistList, node.Key, node.LibraryType),
             },
         };
 
-        var leafItems = new List<SourceItem>();
-        foreach (var v in items)
-        {
-            if (v.PlexItemType is PlexItemType.Artist or PlexItemType.Album)
-            {
-                var childKind = v.PlexItemType == PlexItemType.Artist ? PlexNodeKind.Artist : PlexNodeKind.Album;
-                categories.Add(PlexMappings.ToCategory(v, InstanceId,
-                    new PlexNode(childKind, v.PlexRatingKey ?? "", node.LibraryType)));
-            }
-            else
-            {
-                leafItems.Add(PlexMappings.ToSourceItem(v, InstanceId));
-            }
-        }
-
-        return new BrowseResult { Categories = categories, Items = leafItems };
+        return new BrowseResult { Categories = categories };
     }
 
     private async Task<BrowseResult> BrowseChildrenAsync(

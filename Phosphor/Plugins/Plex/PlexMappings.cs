@@ -22,6 +22,15 @@ internal static class PlexMappings
     public static SourceItem ToSourceItem(VideoItem v, string instanceId)
     {
         bool isContainer = v.PlexItemType is PlexItemType.Artist or PlexItemType.Album;
+        // Containers (artist/album) drill in via IBrowsable, so they must carry a PlexNode the host
+        // hands back to BrowseAsync — NOT the VideoItem (which is for playback/resolve of leaves).
+        // Artists/albums only exist in music ("artist") libraries, so LibraryType is always "artist".
+        object? state = isContainer
+            ? new PlexNode(
+                v.PlexItemType == PlexItemType.Artist ? PlexNodeKind.Artist : PlexNodeKind.Album,
+                v.PlexRatingKey ?? "",
+                "artist")
+            : v;
         return new SourceItem
         {
             SourceInstanceId = instanceId,
@@ -33,9 +42,9 @@ internal static class PlexMappings
             IsContainer = isContainer,
             Duration = v.Duration,
             Chapters = v.Chapters?.Select(ToPluginChapter).ToList(),
-            // Keep the whole source VideoItem so resolve/metadata need no re-fetch, and
-            // container drill-down can read PlexItemType/PlexRatingKey.
-            SourceState = v,
+            // Leaves keep the whole source VideoItem so resolve/metadata need no re-fetch; containers
+            // carry a PlexNode (above) so the host can drill into them.
+            SourceState = state,
         };
     }
 
