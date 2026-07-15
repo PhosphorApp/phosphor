@@ -148,7 +148,7 @@ public partial class JukeboxViewModel : ObservableObject
                     tiles.Add(new Category
                     {
                         Name = cat.Title,
-                        Icon = "📁",
+                        Icon = string.IsNullOrWhiteSpace(cat.Icon) ? "📁" : cat.Icon!,
                         IsPluginBrowse = true,
                         SourceInstanceId = source.InstanceId,
                         SourceCategoryId = cat.CategoryId,
