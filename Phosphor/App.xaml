@@ -271,6 +271,11 @@
                                 <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible"/>
                                 <Setter TargetName="ContentSite" Property="Visibility" Value="Hidden"/>
                             </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ContentSite" Property="TextBlock.Foreground" Value="{StaticResource TextDimBrush}"/>
+                                <Setter TargetName="ContentSite" Property="Opacity" Value="0.6"/>
+                                <Setter TargetName="ToggleButton" Property="Opacity" Value="0.5"/>
+                            </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
