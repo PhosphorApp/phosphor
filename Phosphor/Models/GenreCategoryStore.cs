@@ -99,10 +99,10 @@ public static class GenreCategoryStore
     public sealed record SourceTile(string InstanceId, string CategoryId, string DisplayName, string Icon, string TypeId);
 
     /// <summary>
-    /// Syncs generic plug-in source root tiles (local-folder, future Jellyfin, …) into the entry
-    /// list, mirroring <see cref="SyncAllPlexLibraries"/>: prune entries whose (instance, category)
-    /// is no longer present, preserve user customizations (icon/name/position/visibility) for
-    /// survivors, and add new tiles. Keyed by (SourceInstanceId, SourceCategoryId).
+    /// Syncs generic plug-in source root tiles (Plex, local-folder, future Jellyfin, …) into the
+    /// entry list: prune entries whose (instance, category) is no longer present, preserve user
+    /// customizations (icon/name/position/visibility) for survivors, and add new tiles. Keyed by
+    /// (SourceInstanceId, SourceCategoryId). Also one-time-prunes legacy bespoke Plex tile entries.
     /// </summary>
     public static void SyncSourceTiles(List<GenreCategoryEntry> entries, IReadOnlyList<SourceTile> tiles)
     {

@@ -44,7 +44,7 @@ Create a **.NET 8 class library** that references **only** the contract, compile
 	<!-- Reference the contract COMPILE-ONLY. The host ships the single shared runtime copy, so
 		 you must NOT bundle your own — otherwise contract types won't unify across the load
 		 boundary and casts to IPhosphorSourceProvider will fail. -->
-	<PackageReference Include="Phosphor.Plugin.Abstractions" Version="0.11.0">
+	<PackageReference Include="Phosphor.Plugin.Abstractions" Version="0.12.0">
 	  <ExcludeAssets>runtime</ExcludeAssets>
 	</PackageReference>
 	<!-- (In-tree, you can use a ProjectReference with <Private>false</Private>/<ExcludeAssets>runtime</ExcludeAssets>
@@ -193,6 +193,7 @@ what you implement, and enables the matching features.
 | `ITextSearchCapable` | `SearchAsync(query)` → items | Search box routes to you |
 | `IBrowsable` | root categories + `BrowseAsync(node)` | **Home-screen tiles** + drill-down |
 | `IPagedBrowsable` | `BrowsePageAsync(node, offset, count)` | Lazy "load more" for huge lists |
+| `IScopedSearchable` | `SearchInCategoryAsync(node, query)` | Search **within** the open browse node (fan-out allowed) |
 | `IPlayableResolver` | `ResolveAsync(item)` → stream; `GetMetadataAsync` | **Playback** |
 | `IDownloadable` | `DownloadAsync(item, …, destDir)` | Disk caching / prefetch |
 | `IGaplessCapable` | `GetGaplessStreamUrl(item)` | Gapless audio transitions |
@@ -209,6 +210,8 @@ what you implement, and enables the matching features.
   the opaque **`SourceState`** — the host stores it and hands it back to you untouched, so you never
   re-derive ids. (The reference stashes the file path.)
 - **`SourceCategory`** — a browse-tree node (a tile). Same `SourceState` trick for the node's identity.
+  Set the optional **`Icon`** (a glyph/emoji, e.g. `"🎵"`) to theme the tile; the host falls back to a
+  default folder glyph when it's null/empty.
 - **`BrowseResult`** — `{ Categories, Items }`. Return sub-categories, leaf items, or both.
 - **`ResolvedStream`** — how to play an item: a `StreamTransport` (`Http`, `File`, `Other`), a
   `StreamLayout` (`Muxed`, `SeparateVideoAudio`, `AudioOnly`), and the URI(s). Local files return

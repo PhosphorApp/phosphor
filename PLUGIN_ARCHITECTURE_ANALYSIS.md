@@ -822,6 +822,25 @@ Each phase is independently shippable and reversible.
      local-folder tile can now be reordered, hidden, and mingled with everything else. Reload→sync→
      rebuild ordering on settings-apply preserves user ordering.
 
+     **Increment C (done):** Plex's **bespoke tile/browse/drill/search machinery is retired** — Plex now
+     runs entirely on the generic path A/B built, becoming "just another `IBrowsable` source." The
+     contract was bumped to **0.12.0** (breaking, testers-only, no shims): `SourceCategory.Icon` (a
+     glyph the host shows on tiles; falls back to a folder glyph) and **`IScopedSearchable`**
+     (`SearchInCategoryAsync(node, query)` → `BrowseResult`) — search *within* the open browse node.
+     `PlexSource` now implements `IScopedSearchable` with **fan-out** for music libraries (searches
+     artist/album/track and merges: matching artists/albums become drill-in containers, tracks become
+     leaves) and plain section-scoped title search for video; the old `PlexSearchMode` radios are gone.
+     Host-side: `EnterBrowseNodeAsync` drives leaf paging through `IPagedBrowsable` (generic "load
+     more"); the search box routes through `IScopedSearchable` when `IsGenericBrowsing`. Deleted: the
+     five `SelectCategoryAsync` Plex branches, all `BrowsePlex*`/`PlexDrill*`/`LoadMorePlex*` methods +
+     `UpdatePlexBreadcrumb`/`GetPlexLibrariesAsync`, `PlexHubGoBack`, `PlexDrillDownRequested` +
+     `HandlePlexDrillDown`, the Plex music/hub breadcrumb bars + `IsViewingPlexMusic`/
+     `IsViewingPlexHubOrPlaylist`/`PlexBreadcrumb`/`PlexHubBreadcrumb`, `ConfigurePlex` (legacy) +
+     `SyncPlexLibraries`/`SyncAllPlexLibraries`, and the `Category` Plex flags. **Kept:** `_plex`/
+     `_plexServiceByInstance`/`ConfigurePlexFromSettings`/`ActivePlex` (playback/chapters/gapless still
+     route through a `PlexService`) and `GenreCategoryEntry`'s Plex fields (used only to prune legacy
+     persisted tiles once). One tile per Plex library now, with Hubs/Playlists as drill-in sub-tiles.
+
      `FetchPlexChaptersAsync` vs `FetchYouTubeChaptersAsync`, and `GetPlexAudioTag` is Plex-shaped
      (cosmetic status text). The capability already exists (`IPlayableResolver.GetMetadataAsync`
      returns chapters and is used on the browse path) — the play path just doesn't route through it
