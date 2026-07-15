@@ -4262,12 +4262,11 @@ public partial class SettingsWindow : JukeboxWindow
                         Content = "Rescan library", Padding = new Thickness(8, 3, 8, 3),
                         VerticalAlignment = VerticalAlignment.Center,
                     };
-                    var rescanProgress = new System.Windows.Controls.ProgressBar
-                    {
-                        Width = 120, Height = 6, Margin = new Thickness(10, 0, 0, 0),
-                        VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed,
-                        Minimum = 0, Maximum = 1,
-                    };
+                    // Small indeterminate spinner (a per-folder ProgressBar looks broken for a
+                    // single-folder source, which jumps straight from 0 to 1). Mirrors the little
+                    // now-playing spinner. Hidden until a rescan is running.
+                    var rescanSpinner = CreateSmallSpinner();
+                    rescanSpinner.Visibility = Visibility.Collapsed;
                     var rescanResult = new System.Windows.Controls.TextBlock
                     {
                         Foreground = dim, FontSize = 11, VerticalAlignment = VerticalAlignment.Center,
@@ -4275,10 +4274,10 @@ public partial class SettingsWindow : JukeboxWindow
                     };
                     rescanBtn.Click += async (_, _) =>
                     {
-                        await RescanPluginLibraryAsync(rescanInstanceId, rescanBtn, rescanProgress, rescanResult);
+                        await RescanPluginLibraryAsync(rescanInstanceId, rescanBtn, rescanSpinner, rescanResult);
                     };
                     rescanRow.Children.Add(rescanBtn);
-                    rescanRow.Children.Add(rescanProgress);
+                    rescanRow.Children.Add(rescanSpinner);
                     rescanRow.Children.Add(rescanResult);
                     panel.Children.Add(rescanRow);
                 }
@@ -4917,7 +4916,7 @@ public partial class SettingsWindow : JukeboxWindow
     private async Task RescanPluginLibraryAsync(
         string instanceId,
         System.Windows.Controls.Button button,
-        System.Windows.Controls.ProgressBar progressBar,
+        System.Windows.FrameworkElement spinner,
         System.Windows.Controls.TextBlock result)
     {
         HarvestPluginSourcesTab();
@@ -4939,23 +4938,13 @@ public partial class SettingsWindow : JukeboxWindow
         }
 
         button.IsEnabled = false;
-        progressBar.Visibility = Visibility.Visible;
-        progressBar.IsIndeterminate = false;
-        progressBar.Value = 0;
+        StartSpinner(spinner);
         result.Text = "Scanning…";
         result.Foreground = System.Windows.Media.Brushes.Gray;
 
         var progress = new Progress<Phosphor.Plugin.Abstractions.RefreshProgress>(p =>
         {
-            if (p.Fraction < 0)
-            {
-                progressBar.IsIndeterminate = true;
-            }
-            else
-            {
-                progressBar.IsIndeterminate = false;
-                progressBar.Value = Math.Clamp(p.Fraction, 0, 1);
-            }
+            // A spinner conveys "busy" without a misleading fraction; surface the current item text.
             if (!string.IsNullOrEmpty(p.CurrentItem))
                 result.Text = "Scanning: " + p.CurrentItem;
         });
@@ -4978,10 +4967,64 @@ public partial class SettingsWindow : JukeboxWindow
         }
         finally
         {
-            progressBar.Visibility = Visibility.Collapsed;
+            StopSpinner(spinner);
             button.IsEnabled = true;
             DisposeTransientSource(source);
         }
+    }
+
+    /// <summary>
+    /// Builds a small (16px) indeterminate spinner — an accent ring with an orbiting dot — for
+    /// inline "busy" affordances (e.g. a library rescan). Start/stop its rotation with
+    /// <see cref="StartSpinner"/>/<see cref="StopSpinner"/>. Mirrors the now-playing spinner.
+    /// </summary>
+    private System.Windows.Controls.Canvas CreateSmallSpinner()
+    {
+        var accent = (System.Windows.Media.Brush)FindResource("AccentBrush");
+        const double size = 16;
+        var canvas = new System.Windows.Controls.Canvas
+        {
+            Width = size, Height = size, Margin = new Thickness(10, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            RenderTransformOrigin = new System.Windows.Point(0.5, 0.5),
+            RenderTransform = new System.Windows.Media.RotateTransform(0),
+        };
+        canvas.Children.Add(new System.Windows.Shapes.Ellipse
+        {
+            Width = size, Height = size, Stroke = accent, StrokeThickness = 2,
+            Fill = System.Windows.Media.Brushes.Transparent, Opacity = 0.35,
+        });
+        var dot = new System.Windows.Shapes.Ellipse
+        {
+            Width = 5, Height = 5, Fill = accent,
+        };
+        System.Windows.Controls.Canvas.SetLeft(dot, size / 2 - 2.5);
+        System.Windows.Controls.Canvas.SetTop(dot, -1);
+        canvas.Children.Add(dot);
+        return canvas;
+    }
+
+    private static void StartSpinner(System.Windows.FrameworkElement spinner)
+    {
+        spinner.Visibility = Visibility.Visible;
+        if (spinner.RenderTransform is not System.Windows.Media.RotateTransform rt)
+        {
+            rt = new System.Windows.Media.RotateTransform(0);
+            spinner.RenderTransform = rt;
+            spinner.RenderTransformOrigin = new System.Windows.Point(0.5, 0.5);
+        }
+        var spin = new System.Windows.Media.Animation.DoubleAnimation(0, 360, new Duration(TimeSpan.FromSeconds(1)))
+        {
+            RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever,
+        };
+        rt.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, spin);
+    }
+
+    private static void StopSpinner(System.Windows.FrameworkElement spinner)
+    {
+        if (spinner.RenderTransform is System.Windows.Media.RotateTransform rt)
+            rt.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, null);
+        spinner.Visibility = Visibility.Collapsed;
     }
 
     /// <summary>Disposes a transient UI-built source (best-effort) so it releases any resources.</summary>

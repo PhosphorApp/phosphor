@@ -11,9 +11,11 @@ namespace Phosphor.Plugins.Loader;
 /// are statically referenced and are NOT loaded here — this only adds external providers.
 /// </summary>
 /// <remarks>
-/// Each plug-in assembly is loaded into its own collectible <see cref="AssemblyLoadContext"/> so a
-/// bad or incompatible plug-in is isolated (its failure is logged and skipped, never fatal to
-/// startup). The shared contract assembly (<c>Phosphor.Plugin.Abstractions</c>) is deliberately
+/// Each plug-in assembly is loaded into its own <see cref="AssemblyLoadContext"/> so a bad or
+/// incompatible plug-in is isolated (its failure is logged and skipped, never fatal to startup).
+/// Contexts are non-collectible and retained for the process lifetime — plug-ins load once at
+/// startup and their private dependencies load lazily on first use, so the context must stay alive.
+/// The shared contract assembly (<c>Phosphor.Plugin.Abstractions</c>) is deliberately
 /// resolved from the host's already-loaded copy — never from the plug-in's own folder — so the
 /// provider type the plug-in implements unifies with the host's <see cref="IPhosphorSourceProvider"/>
 /// (otherwise casts across the boundary would fail).
@@ -22,6 +24,11 @@ public static class PluginLoader
 {
     /// <summary>The subfolder (under the app base directory) scanned for plug-ins.</summary>
     public const string PluginsFolderName = "plugins";
+
+    // Strong references to every loaded plug-in context, kept for the life of the process so a
+    // context is never garbage-collected/unloaded while its provider (and lazily-loaded private
+    // dependencies) are still in use.
+    private static readonly List<PluginLoadContext> _retainedContexts = [];
 
     /// <summary>
     /// Scans the plug-ins folder and returns a descriptor for each discovered provider (loaded or
@@ -59,6 +66,11 @@ public static class PluginLoader
     private static void TryLoadAssembly(string dllPath, List<LoadedPlugin> results)
     {
         var alc = new PluginLoadContext(dllPath);
+        // Retain a strong, process-lifetime reference to the context. Plug-ins are loaded once at
+        // startup and never unloaded, and a plug-in's dependencies (e.g. TagLibSharp) load lazily
+        // on first use — long after discovery. Without holding the context object alive the CLR can
+        // begin unloading it, and a later dependency load throws "AssemblyLoadContext is unloading".
+        _retainedContexts.Add(alc);
         try
         {
             var asm = alc.LoadFromAssemblyPath(dllPath);
@@ -112,17 +124,20 @@ public static class PluginLoader
 }
 
 /// <summary>
-/// A collectible load context for one plug-in assembly. Resolves the plug-in's private dependencies
-/// from its own folder, but delegates the shared contract assembly (and any already-loaded host
-/// assembly) to the default context so contract types unify across the boundary.
+/// A load context for one plug-in assembly. Resolves the plug-in's private dependencies from its
+/// own folder, but delegates the shared contract assembly (and any already-loaded host assembly) to
+/// the default context so contract types unify across the boundary. Non-collectible and retained by
+/// <see cref="PluginLoader"/> for the process lifetime.
 /// </summary>
 internal sealed class PluginLoadContext : AssemblyLoadContext
 {
     private readonly AssemblyDependencyResolver _resolver;
+    private readonly string _pluginDir;
 
-    public PluginLoadContext(string pluginPath) : base(isCollectible: true)
+    public PluginLoadContext(string pluginPath) : base(isCollectible: false)
     {
         _resolver = new AssemblyDependencyResolver(pluginPath);
+        _pluginDir = Path.GetDirectoryName(pluginPath)!;
     }
 
     protected override Assembly? Load(AssemblyName assemblyName)
@@ -130,6 +145,16 @@ internal sealed class PluginLoadContext : AssemblyLoadContext
         // The shared contract must come from the host's default context, never a second copy.
         if (assemblyName.Name == typeof(IPhosphorSourceProvider).Assembly.GetName().Name)
             return null; // null => fall back to the default context
+
+        // Prefer a dependency shipped alongside the plug-in (our deploy flattens private deps like
+        // TagLibSharp into the plug-in folder). This is more reliable than the deps.json/NuGet-cache
+        // resolution, which needs runtime probing config the flattened deployment doesn't carry.
+        if (assemblyName.Name is { Length: > 0 } name)
+        {
+            var local = Path.Combine(_pluginDir, name + ".dll");
+            if (File.Exists(local))
+                return LoadFromAssemblyPath(local);
+        }
 
         var path = _resolver.ResolveAssemblyToPath(assemblyName);
         return path != null ? LoadFromAssemblyPath(path) : null;

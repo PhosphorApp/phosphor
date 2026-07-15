@@ -449,6 +449,7 @@ public partial class JukeboxViewModel : ObservableObject
             }
         }
         vi.IsAudioOnly = item.IsAudioOnly;
+        vi.SourceInstanceId ??= item.SourceInstanceId;
         return vi;
     }
 
@@ -1270,7 +1271,7 @@ public partial class JukeboxViewModel : ObservableObject
             // YouTube items have no "scheme:" prefix; Plex items are "plex:...". Route the item to
             // its source and ask whether that source supports downloading, then let the instance's
             // AllowCaching policy (if set) override that capability default.
-            var source = item.IsPlex ? ActivePlexSource : _sourceRegistry.YouTube;
+            var source = SourceForItem(item);
             if (source == null) return false;
 
             var policy = _sourceRegistry.CachingPolicy(source.InstanceId);
@@ -1291,6 +1292,11 @@ public partial class JukeboxViewModel : ObservableObject
     private Phosphor.Plugin.Abstractions.IPhosphorSource? SourceForItem(VideoItem item)
     {
         if (_sourceRegistry == null) return null;
+        // Prefer the explicit source link when the producing source recorded it; fall back to the
+        // id-shape heuristic (plex: → Plex, else YouTube) for legacy items and the built-in engine.
+        if (item.SourceInstanceId is { Length: > 0 } id
+            && _sourceRegistry.ByInstance(id) is { } owner)
+            return owner;
         return item.IsPlex ? ActivePlexSource : _sourceRegistry.YouTube;
     }
 
@@ -1413,6 +1419,7 @@ public partial class JukeboxViewModel : ObservableObject
             ThumbnailUrl = item.ThumbnailUrl ?? "",
             VideoId = item.ItemId,
             Duration = item.Duration,
+            SourceInstanceId = item.SourceInstanceId,
         };
     }
 
@@ -1706,13 +1713,14 @@ public partial class JukeboxViewModel : ObservableObject
         {
             // Route the item to its source and ask the gapless capability. Plex reads the carried
             // VideoItem from SourceState, so wrap it accordingly.
-            var source = item.IsPlex ? _sourceRegistry.PlexInstances.FirstOrDefault() : _sourceRegistry.YouTube;
+            var source = SourceForItem(item);
             if (source is Phosphor.Plugin.Abstractions.IGaplessCapable g)
             {
                 var probe = new Phosphor.Plugin.Abstractions.SourceItem
                 {
                     SourceInstanceId = source.InstanceId,
                     ItemId = item.VideoId,
+                    IsAudioOnly = item.IsAudioOnly,
                     SourceState = item,
                 };
                 return g.GetGaplessStreamUrl(probe);

@@ -22,6 +22,13 @@ public class VideoItem : ObservableObject
     /// </summary>
     public string? StreamUrl { get; set; }
 
+    /// <summary>
+    /// The plug-in source instance that produced this playable item, when known. Lets the host
+    /// route metadata/gapless/caching requests back to the owning source instead of guessing from
+    /// the id shape (the Plex/YouTube fallback). Null for legacy items or the built-in engine path.
+    /// </summary>
+    public string? SourceInstanceId { get; set; }
+
     public bool IsPlex => VideoId.StartsWith("plex:");
 
     /// <summary>

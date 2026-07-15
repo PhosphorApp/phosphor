@@ -667,6 +667,21 @@ public partial class BackglassWindow : JukeboxWindow
 
             var vm = DataContext as JukeboxViewModel;
 
+            // Apply the VM's volume once VLC actually starts playing. libVLC ignores volume set
+            // before a track is playing, and _mediaPlayer.Volume defaults to 0/-1 until a
+            // VolumeChanged event has fired — so without this, direct-stream/local playback is
+            // silent on a fresh start (the gapless PCM path applies volume separately). One-shot
+            // per play; re-subscribed on each call.
+            if (vm != null)
+            {
+                void OnPlayingApplyVolume(object? s, EventArgs a)
+                {
+                    _mediaPlayer.Playing -= OnPlayingApplyVolume;
+                    try { _mediaPlayer.Volume = vm.Volume; } catch { /* player may be tearing down */ }
+                }
+                _mediaPlayer.Playing += OnPlayingApplyVolume;
+            }
+
             // Reset scrubber and duration for the transition; leave volume untouched
             if (vm != null)
             {

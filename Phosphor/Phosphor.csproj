@@ -99,8 +99,10 @@
 
   <!--
     Deploy the local-folder plug-in into the host's plugins/LocalFolder/ folder so the dynamic loader
-    (PluginLoader) discovers it as a real external DLL. Only the plug-in's own assembly is copied — the
-    shared contract (Phosphor.Plugin.Abstractions) is supplied by the host at runtime, never duplicated.
+    (PluginLoader) discovers it as a real external DLL. The plug-in's own assembly and its third-party
+    dependencies (e.g. TagLibSharp) are copied — the shared contract (Phosphor.Plugin.Abstractions) is
+    supplied by the host at runtime and is deliberately excluded so it's never duplicated across the
+    load boundary.
   -->
   <Target Name="DeployLocalFolderPlugin" AfterTargets="Build">
     <PropertyGroup>
@@ -108,8 +110,15 @@
       <LocalFolderPluginDest>$(OutDir)plugins\LocalFolder</LocalFolderPluginDest>
     </PropertyGroup>
     <ItemGroup>
-      <LocalFolderPluginFiles Include="$(LocalFolderPluginDir)\Phosphor.Plugins.LocalFolder.dll" />
+      <!-- All assemblies the plug-in emits/needs, minus the host-owned contract. -->
+      <LocalFolderPluginFiles Include="$(LocalFolderPluginDir)\*.dll"
+                              Exclude="$(LocalFolderPluginDir)\Phosphor.Plugin.Abstractions.dll" />
       <LocalFolderPluginFiles Include="$(LocalFolderPluginDir)\Phosphor.Plugins.LocalFolder.pdb" Condition="Exists('$(LocalFolderPluginDir)\Phosphor.Plugins.LocalFolder.pdb')" />
+      <!--
+        The .deps.json is required: the loader's AssemblyDependencyResolver reads it to locate the
+        plug-in's private dependencies (e.g. TagLibSharp). Without it, dependency resolution fails.
+      -->
+      <LocalFolderPluginFiles Include="$(LocalFolderPluginDir)\Phosphor.Plugins.LocalFolder.deps.json" Condition="Exists('$(LocalFolderPluginDir)\Phosphor.Plugins.LocalFolder.deps.json')" />
     </ItemGroup>
     <MakeDir Directories="$(LocalFolderPluginDest)" />
     <Copy SourceFiles="@(LocalFolderPluginFiles)" DestinationFolder="$(LocalFolderPluginDest)" SkipUnchangedFiles="true" />
