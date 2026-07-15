@@ -841,6 +841,27 @@ Each phase is independently shippable and reversible.
      route through a `PlexService`) and `GenreCategoryEntry`'s Plex fields (used only to prune legacy
      persisted tiles once). One tile per Plex library now, with Hubs/Playlists as drill-in sub-tiles.
 
+     **Post-Increment-C fixes (done):** shaking out the cutover surfaced four issues, all fixed:
+     (1) *Artists/albums played instead of drilling* — the host ignored `SourceItem.IsContainer`, so
+     container leaves returned inside hubs/playlists/search/paging rendered as playable. Fixed: the
+     host now renders `IsContainer` leaves as drill-in containers (`ToContainerLeafItem`), and Plex
+     container `SourceItem`s carry a drillable `PlexNode` (not the `VideoItem`) in `SourceState`.
+     `BrowseLibraryAsync` now returns only the Hubs/Playlists groupings and defers all library children
+     to the paged path (removing a double-render, since a library is `IPagedBrowsable`); the host
+     prefers `BrowseAsync`'s inline items and only pages when there are none (so album→tracks still
+     works). (2) *Container queued/played as an un-playable row* — added a source-agnostic
+     `ExpandContainerToLeavesAsync` (recursive artist→albums→tracks via `IBrowsable`/`IPagedBrowsable`,
+     depth/leaf capped). `AddToQueueAsync` and `QueueAllFromPlaylist` expand containers; playlists still
+     *store* the container (as designed) but `PlayNow` on a container in a playlist view expands+plays
+     via `PlayContainerAsync`. (3) *Back after a scoped search jumped to the library root* — a scoped
+     search is now a real browse-stack frame (`BrowseNode.SearchQuery`); `EnterBrowseNodeAsync` re-runs
+     the in-view search for such a frame, so drilling a result then Back returns to the results. (4) *The
+     search-source combobox didn't disable while scoped* — `IsSearchScoped` reads the stack top, but the
+     `IsGenericBrowsing` setter fired the notification before the post-await push; added
+     `RaiseSearchScopeChanged()` after each stack mutation. Cosmetic: the disabled ComboBox now dims its
+     content + chevron (App.xaml `IsEnabled=False` trigger). Sub-tiles (Hubs/Playlists) inherit the
+     parent library's icon via `BrowseNode.Icon` → `VideoItem.ContainerIcon`.
+
      `FetchPlexChaptersAsync` vs `FetchYouTubeChaptersAsync`, and `GetPlexAudioTag` is Plex-shaped
      (cosmetic status text). The capability already exists (`IPlayableResolver.GetMetadataAsync`
      returns chapters and is used on the browse path) — the play path just doesn't route through it
@@ -916,6 +937,34 @@ Stop after any phase and still have a working app. Phases 1–4 deliver most of 
 > patterns. It is deliberately *not* part of this effort — sources are the priority
 > and visuals already have their own `IBlobPattern` seam and pattern factory. Worth
 > revisiting only after the source plug-in model is proven.
+
+---
+
+## 📋 Backlog — ready to pick up
+
+Increments A–C are complete and merged; Plex is fully on the generic plug-in path. Remaining
+work, roughly in priority order (each is self-contained and can be started independently):
+
+1. **Play-path chapters/metadata refactor (#B).** The *browse* path already resolves chapters via
+   `IPlayableResolver.GetMetadataAsync`, but the *play* path still branches on `item.IsPlex`
+   (`FetchPlexChaptersAsync` vs `FetchYouTubeChaptersAsync`) and `GetPlexAudioTag` is Plex-shaped
+   cosmetic status text. Route the play path through the same capability so chapters/audio-tags are
+   source-agnostic. Contained but touches the thread-sensitive `GaplessAudioPlayer`/play path —
+   stage carefully with a rollback tag.
+2. **Second reference source: Jellyfin.** Validates the contract end-to-end against a real second
+   media server (multi-instance, `IBrowsable`/`IPagedBrowsable`/`IScopedSearchable`/`IPlayableResolver`).
+   Mirrors `Phosphor.Plugins.LocalFolder` as a net8.0 plug-in deployed to `plugins/Jellyfin/`. Confirms
+   no core changes are needed — the acid test for "everything is a plug-in."
+3. **Secret storage (DPAPI), deferred.** Tokens/keys currently persist in plaintext settings. Add
+   DPAPI-at-rest for `PluginInstanceConfig` secret-typed settings. Deferred during the rework to avoid
+   churn; no contract change needed (the setting descriptor already has a secret type).
+4. **Untrusted-code policy for the dynamic loader.** The collectible `AssemblyLoadContext` loader ships,
+   but there's no trust boundary — document/gate a "build from source" vs "signed only" policy before
+   encouraging third-party DLLs. See Open Questions above.
+
+**Rollback tags:** `plugin-rework-baseline` (original), `pre-increment-c-baseline` (`c4d9886`).
+**Contract version:** `0.12.0` (`PluginApi.Current`/`MinimumSupported`). Bump minor for additive
+capabilities; testers-only user base means breaking changes are acceptable with no migration shims.
 
 ---
 
