@@ -4,30 +4,22 @@ namespace Phosphor;
 
 /// <summary>
 /// Shared helper that loads the Pinup Popper integration data (playlists + resolved games)
-/// on a background thread and pushes the resulting playfield video file list to the
-/// <see cref="PlayfieldProxy"/>. Used both at app startup and on live settings-apply so the
-/// heavy DB work never runs on the UI thread.
+/// on a background thread and returns the canonical playfield video globs. The
+/// <see cref="PinupSyncCoordinator"/> consumes this list to drive all screens in sync; each
+/// follower re-points the playfield glob to its own screen folder. Kept off the UI thread
+/// because the DB work can be heavy on large Pinup installations.
 /// </summary>
 public static class PinupPlaylistLoader
 {
     /// <summary>
     /// On a low-priority background task: loads <see cref="PinupSettings"/>, syncs playlists
-    /// against the live database, rebuilds the resolved game list, persists it, and applies the
-    /// resolved playfield video files + durations to <paramref name="playfield"/>. Does nothing
-    /// unless the Pinup Playlist feature is active (playfield shown, mode == PinupPlaylist).
+    /// against the live database, rebuilds the resolved game list, persists it, and invokes
+    /// <paramref name="onLoaded"/> with the canonical playfield globs (…\Playfield\&lt;base&gt;.*).
+    /// The callback runs on the background thread — marshal to a dispatcher if needed. Invokes
+    /// with an empty list when no DB/playlists are configured.
     /// </summary>
-    public static void LoadAndApplyAsync(AppSettings settings, PlayfieldProxy? playfield)
+    public static void LoadGamesAsync(Action<IReadOnlyList<string>> onLoaded)
     {
-        if (playfield == null)
-            return;
-        if (!settings.ShowPlayfield || settings.PlayfieldDisplayMode != PlayfieldMode.PinupPlaylist)
-            return;
-
-        // Always push the current duration options (cheap, no DB needed).
-        playfield.SetPinupOptions(
-            settings.PlayfieldPinupMinDurationSeconds,
-            settings.PlayfieldPinupMaxDurationSeconds);
-
         System.Threading.Tasks.Task.Factory.StartNew(() =>
         {
             try
@@ -38,6 +30,7 @@ public static class PinupPlaylistLoader
                     pinup.Playlists.Count == 0)
                 {
                     DebugLog.Log("Pinup", "Load skipped: no DB path or playlists configured.");
+                    onLoaded(Array.Empty<string>());
                     return;
                 }
 
@@ -54,11 +47,12 @@ public static class PinupPlaylistLoader
                     .Select(g => g.PlayfieldVideoFilename)
                     .Where(s => !string.IsNullOrWhiteSpace(s))
                     .ToList();
-                playfield.SetPinupFiles(globs);
+                onLoaded(globs);
             }
             catch (Exception ex)
             {
                 DebugLog.Log("Pinup", $"Load failed: {ex.Message}");
+                onLoaded(Array.Empty<string>());
             }
         }, System.Threading.CancellationToken.None,
            System.Threading.Tasks.TaskCreationOptions.LongRunning,

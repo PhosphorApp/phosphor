@@ -7,7 +7,7 @@ namespace Phosphor;
 /// STA thread.  Every method dispatches to the playfield's <see cref="Dispatcher"/>
 /// so callers on the main UI thread don't need to worry about cross-thread access.
 /// </summary>
-public sealed class PlayfieldProxy
+public sealed class PlayfieldProxy : IPinupFollower
 {
     private readonly PlayfieldWindow _window;
     private readonly Dispatcher _dispatcher;
@@ -139,11 +139,14 @@ public sealed class PlayfieldProxy
     public void SetVideoFolderOptions(VideoFolderPlayMode playMode, int minDurationSec, int maxDurationSec) =>
         _dispatcher.BeginInvoke(() => _window.SetVideoFolderOptions(playMode, minDurationSec, maxDurationSec));
 
-    public void SetPinupFiles(IReadOnlyList<string>? globs) =>
-        _dispatcher.BeginInvoke(() => _window.SetPinupFiles(globs));
+    // ── IPinupFollower ─────────────────────────────────────────────────
+    public string PinupScreenFolder => "Playfield";
 
-    public void SetPinupOptions(int minDurationSec, int maxDurationSec) =>
-        _dispatcher.BeginInvoke(() => _window.SetPinupOptions(minDurationSec, maxDurationSec));
+    public void PlayPinupGame(string canonicalPlayfieldGlob) =>
+        _dispatcher.BeginInvoke(() => _window.SetPinupCurrentFile(canonicalPlayfieldGlob));
+
+    public void StopPinup() =>
+        _dispatcher.BeginInvoke(() => _window.SetPinupCurrentFile(null));
 
     public void SetVideoAudio(bool enabled, int volume) =>
         _dispatcher.BeginInvoke(() => _window.SetVideoAudio(enabled, volume));

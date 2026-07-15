@@ -16,6 +16,14 @@
         <!-- VideoView is added/removed from the tree dynamically in code-behind
              to avoid the WinForms HWND forcing software rendering during idle -->
 
+        <!-- Ambient content layer (image / ambient video), shown when idle or during
+             audio-only tracks. Sits beneath the jukebox video and the idle overlay.
+             The ambient VideoView is inserted into this grid dynamically in code-behind. -->
+        <Grid x:Name="AmbientLayer" Background="Black" ClipToBounds="True"
+              Visibility="Collapsed" Panel.ZIndex="0">
+            <Image x:Name="AmbientImage" Stretch="UniformToFill" Visibility="Collapsed"/>
+        </Grid>
+
         <!-- Overlay when nothing is playing -->
         <Grid x:Name="IdleOverlay" Background="Black" ClipToBounds="True" Panel.ZIndex="1">
             <!-- Animated glow blobs -->

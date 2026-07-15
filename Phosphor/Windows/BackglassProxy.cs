@@ -8,7 +8,7 @@ namespace Phosphor;
 /// STA thread.  Every method dispatches to the backglass's <see cref="Dispatcher"/>
 /// so callers on the main UI thread don't need to worry about cross-thread access.
 /// </summary>
-public sealed class BackglassProxy
+public sealed class BackglassProxy : IPinupFollower
 {
     private readonly BackglassWindow _window;
     private readonly Dispatcher _dispatcher;
@@ -82,6 +82,34 @@ public sealed class BackglassProxy
 
     public void ResetPosition(double left, double top, double width, double height) =>
         _dispatcher.BeginInvoke(() => _window.ResetPosition(left, top, width, height));
+
+    // ── Ambient content (independent of the playfield) ──────────────────
+    public void SetBackglassMode(PlayfieldMode mode) =>
+        _dispatcher.BeginInvoke(() => _window.SetBackglassMode(mode));
+
+    public void SetBackglassStaticImage(string? path) =>
+        _dispatcher.BeginInvoke(() => _window.SetBackglassStaticImage(path));
+
+    public void SetBackglassVideoPath(string? path) =>
+        _dispatcher.BeginInvoke(() => _window.SetBackglassVideoPath(path));
+
+    public void SetBackglassVideoFolders(IReadOnlyList<string>? folders) =>
+        _dispatcher.BeginInvoke(() => _window.SetBackglassVideoFolders(folders));
+
+    public void SetBackglassVideoFolderOptions(VideoFolderPlayMode playMode, int minDurationSec, int maxDurationSec) =>
+        _dispatcher.BeginInvoke(() => _window.SetBackglassVideoFolderOptions(playMode, minDurationSec, maxDurationSec));
+
+    // ── IPinupFollower ─────────────────────────────────────────────────
+    public string PinupScreenFolder => "BackGlass";
+
+    public void PlayPinupGame(string canonicalPlayfieldGlob) =>
+        _dispatcher.BeginInvoke(() => _window.SetBackglassPinupCurrentFile(canonicalPlayfieldGlob));
+
+    public void StopPinup() =>
+        _dispatcher.BeginInvoke(() => _window.SetBackglassPinupCurrentFile(null));
+
+    public void SetBackglassVideoAudio(bool enabled, int volume) =>
+        _dispatcher.BeginInvoke(() => _window.SetBackglassVideoAudio(enabled, volume));
 
     /// <summary>
     /// Reads the backglass window's current bounds (synchronously on its thread).
