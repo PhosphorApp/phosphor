@@ -138,7 +138,6 @@ public partial class JukeboxViewModel : ObservableObject
         foreach (var source in registry.Sources)
         {
             if (source.TypeId == Phosphor.Plugins.YouTube.YouTubeSourceProvider.YouTubeTypeId) continue;
-            if (source.TypeId == Phosphor.Plugins.Plex.PlexSourceProvider.PlexTypeId) continue;
             if (source is not Phosphor.Plugin.Abstractions.IBrowsable browsable) continue;
 
             try
@@ -519,8 +518,10 @@ public partial class JukeboxViewModel : ObservableObject
                 ParsePlexLibraries(GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyLibraries))))
             .ToList();
         _plexLibraries = instLibs.SelectMany(i => i.Libraries).ToList();
-        GenreCategoryStore.SyncAllPlexLibraries(_genreCategories, instLibs);
-        GenreCategoryStore.SaveInBackground(_genreCategories);
+        // NOTE: Plex home tiles are no longer synced here — Plex flows through the generic browse
+        // path (BuildPluginBrowseTilesAsync → SyncSourceTiles), one tile per library like any other
+        // IBrowsable source. This method now only wires up the PlexService instances used for
+        // playback/chapters/gapless. _plexLibraries is retained for those non-tile lookups.
         if (!skipRebuild)
             RebuildCategories();
     }
@@ -1763,22 +1764,11 @@ public partial class JukeboxViewModel : ObservableObject
                 continue;
             }
             if (!entry.IsVisible) continue;
+            // Legacy Plex tile entries (pre-generic-path) are ignored — Plex now renders through the
+            // generic source path (IsGenericSource). They're pruned from disk on next source build.
+            if (entry.IsPlex && !entry.IsGenericSource) continue;
 
-            if (entry.IsPlex)
-            {
-                var group = new List<Category>();
-                group.Add(new Category { Name = entry.Name, Icon = entry.Icon, PlexLibraryKey = entry.PlexLibraryKey, PlexLibraryType = entry.PlexLibraryType, PlexInstanceId = entry.PlexInstanceId });
-
-                var title = entry.Name.StartsWith("Plex ") ? entry.Name[5..] : entry.Name;
-                if (entry.PlexHubsEnabled)
-                    group.Add(new Category { Name = $"{title}: Hubs", Icon = "📡", PlexLibraryKey = entry.PlexLibraryKey, PlexLibraryType = entry.PlexLibraryType, PlexInstanceId = entry.PlexInstanceId, IsPlexHubList = true });
-
-                if (entry.PlexPlaylistsEnabled)
-                    group.Add(new Category { Name = $"{title}: Playlists", Icon = "📋", PlexLibraryKey = entry.PlexLibraryKey, PlexLibraryType = entry.PlexLibraryType, PlexInstanceId = entry.PlexInstanceId, IsPlexPlaylistList = true });
-
-                sortable.Add((entry.SortOrder, group));
-            }
-            else if (entry.IsGenericSource)
+            if (entry.IsGenericSource)
             {
                 // Generic plug-in source root tile — recover the opaque SourceState from the live
                 // tile list (persisted entry holds only serializable identity + sort/visibility).

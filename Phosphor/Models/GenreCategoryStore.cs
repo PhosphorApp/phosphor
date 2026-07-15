@@ -206,6 +206,10 @@ public static class GenreCategoryStore
     /// </summary>
     public static void SyncSourceTiles(List<GenreCategoryEntry> entries, IReadOnlyList<SourceTile> tiles)
     {
+        // One-time cleanup: legacy bespoke Plex tile entries (IsPlex, no SourceInstanceId) are
+        // superseded by generic source tiles. Prune them so they don't linger as dead entries.
+        entries.RemoveAll(e => e.IsPlex && !e.IsGenericSource);
+
         var validPairs = new HashSet<(string, string)>(
             tiles.Select(t => (t.InstanceId, t.CategoryId)));
 
