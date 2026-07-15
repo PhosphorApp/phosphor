@@ -4529,6 +4529,9 @@ public partial class SettingsWindow : JukeboxWindow
             Foreground = text, Background = surface2, Height = EditorHeight,
             VerticalContentAlignment = VerticalAlignment.Center,
         };
+        // Prevent the parent ScrollViewer from scrolling when the selection changes: WPF raises
+        // RequestBringIntoView on selection, which bubbles up and moves the settings scroll position.
+        combo.RequestBringIntoView += (_, e) => e.Handled = true;
 
         // Populate the dropdown from the available cache (if already fetched), excluding added.
         void RefreshCombo()

@@ -1337,8 +1337,34 @@ public partial class JukeboxViewModel : ObservableObject
         string query,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
     {
+        // YouTube resolves its stream lazily at play time (an expensive yt-dlp probe per item). Any
+        // other source that can resolve (local folders, Plex, …) resolves eagerly here so the result
+        // carries a playable StreamUrl — otherwise playback falls through to the YouTube engine and
+        // fails (e.g. a local file path shoved into a youtube.com URL). Mirrors the browse path.
+        var resolver = source is Phosphor.Plugin.Abstractions.IPlayableResolver r
+            && source is Phosphor.Plugin.Abstractions.IPhosphorSource s
+            && s.TypeId != Phosphor.Plugins.YouTube.YouTubeSourceProvider.YouTubeTypeId
+            ? r : null;
+
         await foreach (var item in source.SearchAsync(query, ct).WithCancellation(ct))
-            yield return ToVideoItem(item);
+        {
+            var vi = ToVideoItem(item);
+            if (resolver != null && string.IsNullOrEmpty(vi.StreamUrl))
+            {
+                try
+                {
+                    var stream = await resolver.ResolveAsync(
+                        item, new Phosphor.Plugin.Abstractions.PlaybackPreferences(), ct);
+                    if (stream != null) vi.StreamUrl = stream.PrimaryUri;
+                }
+                catch (Exception ex)
+                {
+                    DebugLog.LogException($"Search resolve '{item.ItemId}'", ex);
+                }
+                vi.IsAudioOnly = item.IsAudioOnly;
+            }
+            yield return vi;
+        }
     }
 
     /// <summary>Maps a plug-in <see cref="Phosphor.Plugin.Abstractions.SourceItem"/> to a host
@@ -2112,6 +2138,16 @@ public partial class JukeboxViewModel : ObservableObject
             return;
         }
 
+        // Browsing a generic node whose source is searchable source-wide (ITextSearchCapable but not
+        // IScopedSearchable, e.g. local folders): route the search to THAT source, not YouTube, and
+        // keep results in the flat list. The source resolves its own StreamUrl (MapPluginSearch).
+        if (IsGenericBrowsing && _browseStack.Count > 0
+            && _sourceRegistry?.ByInstance(_browseStack[^1].SourceInstanceId)
+               is Phosphor.Plugin.Abstractions.ITextSearchCapable)
+        {
+            sourceInstanceId = _browseStack[^1].SourceInstanceId;
+        }
+
         if (_searchEnumerator != null)
         {
             try { await _searchEnumerator.DisposeAsync(); }
@@ -2380,13 +2416,16 @@ public partial class JukeboxViewModel : ObservableObject
     public bool IsSearchScoped => IsPlexBrowsing || IsGenericScopedSearchAvailable;
 
     /// <summary>
-    /// True when the active generic browse node's source implements <see cref="IScopedSearchable"/>,
-    /// so typing in the search box searches within that node rather than the global source.
+    /// True while browsing a generic plug-in node whose source can search — either in-view
+    /// (<see cref="IScopedSearchable"/>, e.g. a Plex library) or source-wide
+    /// (<see cref="ITextSearchCapable"/>, e.g. local folders). In both cases the search box is
+    /// bound to that source, so the global search-source selector doesn't apply.
     /// </summary>
     private bool IsGenericScopedSearchAvailable =>
         IsGenericBrowsing && _browseStack.Count > 0
         && _sourceRegistry?.ByInstance(_browseStack[^1].SourceInstanceId)
-           is Phosphor.Plugin.Abstractions.IScopedSearchable;
+           is Phosphor.Plugin.Abstractions.IScopedSearchable
+              or Phosphor.Plugin.Abstractions.ITextSearchCapable;
 
     /// <summary>
     /// Whether the search-source dropdown is meaningful right now — false when the view scopes search
