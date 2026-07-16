@@ -382,7 +382,7 @@ public partial class BackglassWindow
         try
         {
             mp.Mute = !_ambientAudioEnabled;
-            mp.Volume = _ambientAudioEnabled ? _ambientVolume : 0;
+            mp.Volume = _ambientAudioEnabled ? VolumeTaper.VlcVolume(_ambientVolume) : 0;
         }
         catch { /* volume can be rejected before a vout exists; reapplied on next play */ }
     }

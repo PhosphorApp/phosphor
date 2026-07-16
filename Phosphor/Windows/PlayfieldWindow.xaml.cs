@@ -852,7 +852,7 @@ public partial class PlayfieldWindow : JukeboxWindow
         try
         {
             mp.Mute = !_videoAudioEnabled;
-            mp.Volume = _videoAudioEnabled ? _videoVolume : 0;
+            mp.Volume = _videoAudioEnabled ? VolumeTaper.VlcVolume(_videoVolume) : 0;
         }
         catch { /* volume can be rejected before a vout exists; reapplied on next play */ }
     }

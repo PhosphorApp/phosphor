@@ -362,7 +362,7 @@ public partial class BackglassWindow : JukeboxWindow
         {
             if (_usingGaplessPlayer && _gaplessPlayer != null)
                 _gaplessPlayer.SetVolume(v);
-            EnsureVlcInitialized().Volume = v;
+            EnsureVlcInitialized().Volume = VolumeTaper.VlcVolume(v);
             DebugLog.Log("Volume", $"Volume set to {v}");
         });
 
@@ -677,7 +677,7 @@ public partial class BackglassWindow : JukeboxWindow
                 void OnPlayingApplyVolume(object? s, EventArgs a)
                 {
                     _mediaPlayer.Playing -= OnPlayingApplyVolume;
-                    try { _mediaPlayer.Volume = vm.Volume; } catch { /* player may be tearing down */ }
+                    try { _mediaPlayer.Volume = VolumeTaper.VlcVolume(vm.Volume); } catch { /* player may be tearing down */ }
                 }
                 _mediaPlayer.Playing += OnPlayingApplyVolume;
             }
