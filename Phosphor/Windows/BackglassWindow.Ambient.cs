@@ -250,6 +250,10 @@ public partial class BackglassWindow
             AmbientImage.Visibility = Visibility.Collapsed;
             AmbientLayer.Visibility = Visibility.Collapsed;
             PauseAmbientVideo();
+            // The idle blob screensaver (if that's the ambient mode) is now covered by the
+            // jukebox video — pause its render loop to free CPU/GPU while it's hidden. State
+            // is preserved so it resumes seamlessly when the video stops.
+            PauseIdleBlobs();
             return;
         }
 
@@ -275,6 +279,9 @@ public partial class BackglassWindow
                 // out against a 0-size canvas and the blobs clustered in the corner.
                 // Rebuild it now that the overlay is visible and sized.
                 RestartIdleBlobs();
+                // Resume the (paused) render loop so a pattern that was suspended while a
+                // jukebox video covered it continues seamlessly from where it left off.
+                ResumeIdleBlobs();
                 break;
 
             case PlayfieldMode.StaticImage:

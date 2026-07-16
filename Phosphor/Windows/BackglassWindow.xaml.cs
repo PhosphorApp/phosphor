@@ -1571,6 +1571,35 @@ public partial class BackglassWindow : JukeboxWindow
     }
 
     /// <summary>
+    /// Suspends the idle blob screensaver's render loop while it is hidden behind a jukebox
+    /// video, freeing CPU/GPU (self-rendering patterns like Game of Life / ProjectM keep
+    /// burning cycles otherwise). Visual state is preserved so <see cref="ResumeIdleBlobs"/>
+    /// continues seamlessly. Also stops the color-cycle timer. No-op for patterns that
+    /// don't implement <see cref="IPausable"/>'s pausing (they keep running, which is cheap).
+    /// </summary>
+    private void PauseIdleBlobs()
+    {
+        if (_currentPattern is IPausable p && !p.IsPaused)
+        {
+            p.Pause();
+            _colorTimer.Stop();
+        }
+    }
+
+    /// <summary>
+    /// Resumes a previously-paused idle blob screensaver from its frozen state (no rebuild,
+    /// no fly-in). Restarts the color-cycle timer. Safe to call when nothing was paused.
+    /// </summary>
+    private void ResumeIdleBlobs()
+    {
+        if (_currentPattern is IPausable p && p.IsPaused)
+        {
+            p.Resume();
+            _colorTimer.Start();
+        }
+    }
+
+    /// <summary>
     /// Pauses only the idle blob screensaver when the window is hidden so its
     /// self-rendering render loop (Game of Life, ProjectM) stops consuming
     /// CPU/GPU. Any playing video/audio is intentionally left running — a user

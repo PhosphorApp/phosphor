@@ -53,7 +53,7 @@ public sealed class BlobPatternConfig
 /// animation, and cleanup. Subclasses implement <see cref="StartMotion"/> and
 /// <see cref="StopMotion"/> for their pattern-specific animation loop.
 /// </summary>
-public abstract class BlobPatternBase : IBlobPattern
+public abstract class BlobPatternBase : IBlobPattern, IPausable
 {
     protected readonly Canvas _canvas;
     protected readonly Random _rng;
@@ -465,5 +465,28 @@ public abstract class BlobPatternBase : IBlobPattern
         _disposed = true;
         StopMotion();
         CleanupCanvas();
+    }
+
+    // ── IPausable ──────────────────────────────────────────────────────
+    // Default: suspend/resume the pattern's motion loop via StopMotion()/StartMotion(),
+    // leaving all blobs and state on the canvas so Resume continues seamlessly. This is
+    // correct for every continuous-loop pattern (Game of Life, ProjectM, Mandelbrot, Matrix,
+    // Gravity, …) whose StopMotion detaches its render callback. Patterns with special needs
+    // (e.g. freezing WPF storyboard clocks) may override Pause/Resume.
+    protected bool _paused;
+    public bool IsPaused => _paused;
+
+    public virtual void Pause()
+    {
+        if (_paused || _disposed) return;
+        _paused = true;
+        StopMotion();
+    }
+
+    public virtual void Resume()
+    {
+        if (!_paused || _disposed) return;
+        _paused = false;
+        StartMotion();
     }
 }
