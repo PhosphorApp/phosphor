@@ -76,6 +76,23 @@ public static class PluginSettingsFactory
         return p == null ? null : (p.DisplayName, p.Description, p.SupportsMultipleInstances, p.GetSettingsSchema());
     }
 
+    /// <summary>
+    /// Returns the setting keys a provider declares as secret (masked, DPAPI-encryptable) — i.e. any
+    /// descriptor whose <see cref="PluginSettingDescriptor.Type"/> is <see cref="PluginSettingType.Secret"/>
+    /// or whose <see cref="PluginSettingDescriptor.Secret"/> flag is set. Used by <c>AppSettings</c> to
+    /// know which values in an instance's settings blob to encrypt/decrypt at the persistence boundary.
+    /// Returns an empty set for unknown providers.
+    /// </summary>
+    public static IReadOnlyCollection<string> SecretKeysFor(string typeId)
+    {
+        var info = DescribeProvider(typeId);
+        if (info == null) return [];
+        return info.Value.Schema
+            .Where(d => d.Type == PluginSettingType.Secret || d.Secret)
+            .Select(d => d.Key)
+            .ToHashSet(StringComparer.Ordinal);
+    }
+
     /// <summary>Provider type ids that can be added by the user (i.e. support multiple instances).</summary>
     public static IReadOnlyList<(string TypeId, string DisplayName)> AddableProviders()
     {

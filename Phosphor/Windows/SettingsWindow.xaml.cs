@@ -4290,6 +4290,33 @@ public partial class SettingsWindow : JukeboxWindow
         // add/remove is reflected instead of a stale cached list.
         _pluginLibraryState.Clear();
 
+        // ── Encryption toggle (top of tab) — app-level, but only plug-in secrets use it, so it
+        // lives here where the portability caveat is most relevant. ──
+        {
+            var dimBrush = (System.Windows.Media.Brush)FindResource("TextDimBrush");
+            var textBrush = (System.Windows.Media.Brush)FindResource("TextBrush");
+            var encBox = new System.Windows.Controls.CheckBox
+            {
+                Content = "Encrypt sensitive settings (API tokens, passwords)",
+                IsChecked = _settings.EncryptSecrets,
+                Foreground = textBrush,
+                Margin = new Thickness(0, 0, 0, 2),
+            };
+            encBox.Checked += (_, _) => _settings.EncryptSecrets = true;
+            encBox.Unchecked += (_, _) => _settings.EncryptSecrets = false;
+            PanelPluginSources.Children.Add(encBox);
+            PanelPluginSources.Children.Add(new System.Windows.Controls.TextBlock
+            {
+                Text = "Encrypts secret plug-in settings at rest using Windows DPAPI, tied to your "
+                     + "Windows user account on this PC. The settings file is then no longer portable "
+                     + "to another machine or user. Leave off to keep secrets as plain text.",
+                Foreground = dimBrush,
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 14),
+            });
+        }
+
         // Edit a working copy so cancelling the dialog doesn't mutate settings.
         _pluginWorkingConfigs.Clear();
         foreach (var c in _settings.PluginInstances)

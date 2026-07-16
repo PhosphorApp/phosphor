@@ -14,7 +14,7 @@ by third parties dropping a DLL into a `plug-ins` folder scanned at startup.
 > (`Phosphor.Plugins.LocalFolder`). **Mid-phase notes below that say "todo", "deferred",
 > "when the flag is on/off", or "still single-server" are historical** — later entries and
 > this banner supersede them. For authoring a plug-in, see **`PLUGIN_AUTHORING_GUIDE.md`**.
-> Remaining items are conscious deferrals only: DPAPI secret encryption, the untrusted-code
+> Remaining items are conscious deferrals only: the untrusted-code
 > policy for third-party DLLs, and an optional second reference source (Jellyfin/Subsonic).
 
 ---
@@ -955,9 +955,13 @@ work, roughly in priority order (each is self-contained and can be started indep
    media server (multi-instance, `IBrowsable`/`IPagedBrowsable`/`IScopedSearchable`/`IPlayableResolver`).
    Mirrors `Phosphor.Plugins.LocalFolder` as a net8.0 plug-in deployed to `plugins/Jellyfin/`. Confirms
    no core changes are needed — the acid test for "everything is a plug-in."
-3. **Secret storage (DPAPI), deferred.** Tokens/keys currently persist in plaintext settings. Add
-   DPAPI-at-rest for `PluginInstanceConfig` secret-typed settings. Deferred during the rework to avoid
-   churn; no contract change needed (the setting descriptor already has a secret type).
+3. **Secret storage (DPAPI), implemented (opt-in).** An `AppSettings.EncryptSecrets` toggle (default
+   **off**, at the top of the Plug-ins tab) encrypts schema-`Secret` values in `PluginInstanceConfig`
+   at rest via Windows DPAPI (`SecretProtector`, `CurrentUser` scope). Values are stored inline in
+   `settings.json` as a self-describing `enc:dpapi:<base64>` wrapper and transparently en/decrypted at
+   the `AppSettings.Save`/`Load` boundary — plug-ins always receive plaintext, and no contract change
+   was needed (the setting descriptor already carries the secret type). Default-off keeps the settings
+   file portable; enabling it trades portability for at-rest protection (per-user, per-machine).
 4. **Untrusted-code policy for the dynamic loader.** The collectible `AssemblyLoadContext` loader ships,
    but there's no trust boundary — document/gate a "build from source" vs "signed only" policy before
    encouraging third-party DLLs. See Open Questions above.

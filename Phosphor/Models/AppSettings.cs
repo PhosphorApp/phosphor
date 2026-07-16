@@ -510,6 +510,17 @@ public class AppSettings
     /// surface and stops deriving. See PLUGIN_ARCHITECTURE_ANALYSIS.md.
     /// </summary>
     public List<Phosphor.Plugins.PluginInstanceConfig> PluginInstances { get; set; } = [];
+
+    /// <summary>
+    /// When true, plug-in settings values declared <c>Secret</c> in their schema (e.g. API tokens)
+    /// are encrypted at rest in <c>settings.json</c> using Windows DPAPI (bound to the current
+    /// Windows user on this machine). Default false — secrets are stored as plaintext, keeping the
+    /// settings file portable. Enabling this trades portability for at-rest protection; the value is
+    /// self-describing (<c>enc:dpapi:</c> prefix) so existing encrypted values still decrypt after
+    /// the option is turned off again. See PLUGIN_ARCHITECTURE_ANALYSIS.md.
+    /// </summary>
+    public bool EncryptSecrets { get; set; }
+
     public bool RepeatEnabled { get; set; }
     public bool AutoDjEnabled { get; set; }
     public bool AutoPlayQueueOnStart { get; set; }
@@ -553,9 +564,86 @@ public class AppSettings
     /// </summary>
     public static AppSettings Defaults { get; private set; } = new();
 
+    /// <summary>
+    /// Serializes for persistence, applying the plug-in secret transform first: secret-flagged
+    /// settings values are encrypted (when <see cref="EncryptSecrets"/> is on) or written as
+    /// plaintext (when off), without mutating the live in-memory config. Everything else is
+    /// serialized verbatim.
+    /// </summary>
+    private string SerializeForSave()
+    {
+        var original = PluginInstances;
+        try
+        {
+            PluginInstances = TransformSecrets(original, encrypt: EncryptSecrets);
+            return JsonSerializer.Serialize(this, JsonOptions);
+        }
+        finally
+        {
+            // Restore the live plaintext instances regardless of what we serialized.
+            PluginInstances = original;
+        }
+    }
+
+    /// <summary>
+    /// Returns a deep-enough copy of <paramref name="instances"/> where each provider's secret-flagged
+    /// settings values are either encrypted (<paramref name="encrypt"/> == true) or decrypted back to
+    /// plaintext (== false). Non-secret keys and all other fields are copied verbatim. The source list
+    /// and its dictionaries are never mutated.
+    /// </summary>
+    private static List<Phosphor.Plugins.PluginInstanceConfig> TransformSecrets(
+        List<Phosphor.Plugins.PluginInstanceConfig> instances, bool encrypt)
+    {
+        var result = new List<Phosphor.Plugins.PluginInstanceConfig>(instances.Count);
+        foreach (var c in instances)
+        {
+            var secretKeys = Phosphor.Plugins.PluginSettingsFactory.SecretKeysFor(c.TypeId);
+            var settings = new Dictionary<string, string?>(c.Settings);
+            if (secretKeys.Count > 0)
+            {
+                foreach (var key in secretKeys)
+                {
+                    if (!settings.TryGetValue(key, out var value) || string.IsNullOrEmpty(value))
+                        continue;
+                    settings[key] = encrypt
+                        ? Phosphor.Plugins.Host.SecretProtector.Protect(value)
+                        : Phosphor.Plugins.Host.SecretProtector.Unprotect(value);
+                }
+            }
+            result.Add(new Phosphor.Plugins.PluginInstanceConfig
+            {
+                TypeId = c.TypeId,
+                InstanceId = c.InstanceId,
+                DisplayName = c.DisplayName,
+                Enabled = c.Enabled,
+                Settings = settings,
+                AllowCaching = c.AllowCaching,
+            });
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Decrypts any <c>enc:dpapi:</c>-tagged plug-in secret values in place, so the rest of the app
+    /// (and plug-ins) always see plaintext regardless of the <see cref="EncryptSecrets"/> toggle. A
+    /// value that fails to decrypt (settings file copied to another user/machine) becomes empty.
+    /// </summary>
+    private void DecryptLoadedSecrets()
+    {
+        foreach (var c in PluginInstances)
+        {
+            foreach (var key in c.Settings.Keys.ToList())
+            {
+                var value = c.Settings[key];
+                if (Phosphor.Plugins.Host.SecretProtector.IsEncrypted(value))
+                    c.Settings[key] = Phosphor.Plugins.Host.SecretProtector.Unprotect(value) ?? "";
+            }
+        }
+    }
+
     public void Save()
     {
-        var json = JsonSerializer.Serialize(this, JsonOptions);
+        var json = SerializeForSave();
         for (int attempt = 0; attempt < 3; attempt++)
         {
             try
@@ -576,7 +664,7 @@ public class AppSettings
 
     public Task SaveAsync()
     {
-        var json = JsonSerializer.Serialize(this, JsonOptions);
+        var json = SerializeForSave();
         return Task.Run(async () =>
         {
             for (int attempt = 0; attempt < 3; attempt++)
@@ -615,6 +703,9 @@ public class AppSettings
             {
                 var json = File.ReadAllText(SettingsPath);
                 var loaded = JsonSerializer.Deserialize<AppSettings>(json) ?? Defaults;
+                // Decrypt any DPAPI-encrypted plug-in secrets back to plaintext so the rest of the
+                // app and plug-ins always operate on plaintext, regardless of the EncryptSecrets flag.
+                loaded.DecryptLoadedSecrets();
                 // Migrate legacy single StartupDittiPath into the list-based StartupDittiPaths
                 if (!string.IsNullOrWhiteSpace(loaded.StartupDittiPath) &&
                     !loaded.StartupDittiPaths.Contains(loaded.StartupDittiPath))

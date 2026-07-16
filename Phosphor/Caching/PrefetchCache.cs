@@ -78,6 +78,13 @@ public class PrefetchCache
     /// </summary>
     public async Task PrefetchAsync(string videoId, VideoQualityPreference quality = VideoQualityPreference.High, bool preferStereo = false, CancellationToken ct = default)
     {
+        // Only YouTube-style ids are downloadable here — prefetch resolves via the YouTube engine.
+        // A "scheme:" prefix (e.g. "plex:") is a non-YouTube source that streams directly and can
+        // never be downloaded, so skip it instead of letting the engine throw "Invalid YouTube
+        // video ID". Callers normally gate this via IsItemCacheable; this is a safety net.
+        if (string.IsNullOrEmpty(videoId) || videoId.Contains(':'))
+            return;
+
         // Already have this one?
         lock (_lock)
         {
