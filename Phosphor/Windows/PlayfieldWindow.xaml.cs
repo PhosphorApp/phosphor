@@ -792,7 +792,12 @@ public partial class PlayfieldWindow : JukeboxWindow
     /// </summary>
     private string[] BuildVlcArgs()
     {
-        var args = new List<string> { "--no-video-title-show" };
+        // --aout=directsound: apply Volume/Mute as a per-stream software gain on this
+        // instance's own DirectSound secondary buffer, instead of the default mmdevice
+        // backend which writes to the shared process-wide Windows mixer session (that
+        // path muted/attenuated the backglass main audio too). Keeps a single mixer
+        // entry for the app while making the playfield ambient volume independent.
+        var args = new List<string> { "--no-video-title-show", "--aout=directsound" };
         if (_videoRotation is 90 or 180 or 270)
         {
             args.Add("--video-filter=transform");
