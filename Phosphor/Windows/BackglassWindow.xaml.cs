@@ -31,6 +31,12 @@ public partial class BackglassWindow : JukeboxWindow
     private BlobPattern _blobPatternSetting = BlobPattern.Random;
     private bool _transitioning;
     private IBlobPattern? _currentPattern;
+    // True when _currentPattern was created against a valid (non-zero) IdleCanvas size.
+    // When the app starts in a media/Pinup ambient mode the IdleCanvas is collapsed
+    // (0-size), so a pattern built then clusters the blobs in the corner; this flag lets
+    // the Screensaver transition rebuild ONLY in that case, preserving continuity when
+    // returning from a video whose canvas was already correctly sized.
+    private bool _idlePatternLaidOut;
     private AudioReactiveService? _audioReactive;
     private double _reactiveHueBoost;
     private int _blobCount = 6;
@@ -1520,12 +1526,48 @@ public partial class BackglassWindow : JukeboxWindow
 
             _currentPattern = BlobTransition.Create(_blobPattern, MakeConfig());
             _currentPattern.Enter(() => { });
+            // Record whether this was built against a real canvas. If the app started
+            // in a media/Pinup ambient mode the IdleCanvas is collapsed (0-size), so the
+            // pattern is clustered and must be rebuilt when Screensaver mode is entered.
+            _idlePatternLaidOut = IdleCanvas.ActualWidth >= 1 && IdleCanvas.ActualHeight >= 1;
         }
 
         _colorTimer.Start();
 
         DrawRecordOverlay(RecordOverlay, _logoRings);
         DrawCircularTitle(TitleCanvas, _logoSpin);
+    }
+
+    /// <summary>
+    /// Rebuilds the idle blob pattern against the current IdleCanvas size, but ONLY when the
+    /// current pattern was created against a 0-size canvas (e.g. the app started in a media/
+    /// Pinup ambient mode, which clusters the blobs in the top-left corner). When the pattern
+    /// was already laid out at a valid size — the normal case when returning from a video —
+    /// nothing is rebuilt, so the running pattern reappears seamlessly (continuity). If the
+    /// canvas isn't laid out yet, the check/rebuild is deferred to Loaded priority.
+    /// </summary>
+    private void RestartIdleBlobs()
+    {
+        if (!_idleAnimStarted || !IsVisible || _idlePatternLaidOut)
+            return;
+
+        void Rebuild()
+        {
+            if (_ambientMode != PlayfieldMode.Screensaver || !IsVisible || _idlePatternLaidOut)
+                return;
+            if (IdleCanvas.ActualWidth < 1 || IdleCanvas.ActualHeight < 1)
+                return; // still no valid size — leave for a later entry
+            _currentPattern?.Dispose();
+            _currentPattern = BlobTransition.Create(_blobPattern, MakeConfig());
+            _currentPattern.Enter(() => { });
+            _idlePatternLaidOut = true;
+            _colorTimer.Start();
+        }
+
+        if (IdleCanvas.ActualWidth >= 1 && IdleCanvas.ActualHeight >= 1)
+            Rebuild();
+        else
+            Dispatcher.BeginInvoke(new Action(Rebuild), DispatcherPriority.Loaded);
     }
 
     /// <summary>
@@ -1549,6 +1591,7 @@ public partial class BackglassWindow : JukeboxWindow
                 {
                     _currentPattern = BlobTransition.Create(_blobPattern, MakeConfig());
                     _currentPattern.Enter(() => { });
+                    _idlePatternLaidOut = IdleCanvas.ActualWidth >= 1 && IdleCanvas.ActualHeight >= 1;
                 }
                 _colorTimer.Start();
             }
@@ -1667,6 +1710,7 @@ public partial class BackglassWindow : JukeboxWindow
         _currentPattern = BlobTransition.Create(pattern, MakeConfig());
         _currentPattern.Enter(() => { });
         _idleAnimStarted = true;
+        _idlePatternLaidOut = true;
     }
 
     /// <summary>

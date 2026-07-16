@@ -270,6 +270,11 @@ public partial class BackglassWindow
                 AmbientLayer.Visibility = Visibility.Collapsed;
                 StopAmbientVideo();
                 IdleOverlay.Visibility = Visibility.Visible;
+                // The blob pattern may have been created while the overlay was collapsed
+                // (e.g. the app started in a media/Pinup mode), in which case it was laid
+                // out against a 0-size canvas and the blobs clustered in the corner.
+                // Rebuild it now that the overlay is visible and sized.
+                RestartIdleBlobs();
                 break;
 
             case PlayfieldMode.StaticImage:
