@@ -96,6 +96,13 @@ if (playIdx >= 0 && playIdx + 1 < args.Length)
     return await ProvePlaybackAsync(ch);
 }
 
+// ── Optional Step 5: dump the category taxonomy (`--categories`) ──
+if (args.Any(a => a is "--categories" or "-c"))
+{
+    DumpCategories(channelsJson);
+    return 0;
+}
+
 foreach (var c in channels.OrderBy(c => c.SortNumber))
     Console.WriteLine($"  {c.Number,4}  {c.ChannelId,-28}  {c.Name}");
 
@@ -110,6 +117,57 @@ return channels.Count > 0 ? 0 : 1;
 
 // Static, publicly-known HLS segment AES-128 key (same constant the sxm-client proxy serves).
 byte[] HlsAesKey() => Convert.FromBase64String("0Nsco7MAgxowGvkUT8aYag==");
+
+// Dumps the category taxonomy: each channel's categories.categories[] name/key/order, aggregated
+// so we can seed the Music/Talk/Sports super-group map from real account data.
+void DumpCategories(JsonElement? response)
+{
+    if (response is not { } r) { Console.Error.WriteLine("No lineup to inspect."); return; }
+    // name -> (key, order, channel names)
+    var cats = new SortedDictionary<string, (string? key, int order, List<string> chans)>(StringComparer.OrdinalIgnoreCase);
+    int channelCount = 0;
+    try
+    {
+        var channels = r.GetProperty("moduleList").GetProperty("modules")[0]
+            .GetProperty("moduleResponse").GetProperty("contentData")
+            .GetProperty("channelListing").GetProperty("channels");
+        foreach (var ch in channels.EnumerateArray())
+        {
+            channelCount++;
+            var chName = ch.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+            if (!ch.TryGetProperty("categories", out var categories) ||
+                !categories.TryGetProperty("categories", out var arr))
+                continue;
+            foreach (var cat in arr.EnumerateArray())
+            {
+                var name = cat.TryGetProperty("name", out var cn) ? cn.GetString() : null;
+                if (string.IsNullOrWhiteSpace(name)) continue;
+                var key = cat.TryGetProperty("key", out var ck) ? ck.GetString() : null;
+                var order = cat.TryGetProperty("order", out var co) && co.TryGetInt32(out var ov) ? ov : 0;
+                if (!cats.TryGetValue(name, out var entry))
+                    entry = (key, order, new List<string>());
+                entry.chans.Add(chName);
+                cats[name] = entry;
+            }
+        }
+    }
+    catch (Exception ex) { Console.Error.WriteLine($"Category parse failed: {ex.Message}"); return; }
+
+    Console.WriteLine($"[categories] {cats.Count} distinct categories across {channelCount} channels");
+    Console.WriteLine();
+    Console.WriteLine($"{"CATEGORY",-28} {"KEY",-22} {"#",4}  SAMPLE CHANNELS");
+    Console.WriteLine(new string('─', 100));
+    foreach (var kv in cats.OrderByDescending(k => k.Value.chans.Count))
+    {
+        var sample = string.Join(", ", kv.Value.chans.Take(4));
+        if (kv.Value.chans.Count > 4) sample += ", …";
+        Console.WriteLine($"{Trunc(kv.Key, 27),-28} {Trunc(kv.Value.key ?? "", 21),-22} {kv.Value.chans.Count,4}  {sample}");
+    }
+    Console.WriteLine();
+    Console.WriteLine("Copy the CATEGORY column to seed the Music/Talk/Sports super-group JSON.");
+
+    static string Trunc(string s, int n) => s.Length <= n ? s : s[..(n - 1)] + "…";
+}
 
 // Proves a channel's live stream is reachable + decryptable end to end:
 //  1. fetch the HLS root substitutions (get/configuration)

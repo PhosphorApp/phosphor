@@ -18,6 +18,9 @@ public partial class BackglassWindow : JukeboxWindow
     private readonly Random _rng = new();
     private readonly DispatcherTimer _colorTimer;
     private DispatcherTimer? _positionTimer;
+    // Wall-clock start of the current live stream, used to show elapsed time (LibVLC's Time reflects
+    // the live DVR window, not elapsed-since-start). Null when not playing a live stream.
+    private DateTime? _liveStartUtc;
     private double _hueOffset;
     private bool _idleAnimStarted;
     private bool _showVideoInfo;
@@ -391,6 +394,19 @@ public partial class BackglassWindow : JukeboxWindow
             }
 
             if (_mediaPlayer == null) return;
+
+            // Live streams (e.g. SiriusXM): LibVLC's Time is the position within the live DVR window
+            // (SXM buffers ~2 min), which makes elapsed jump to ~2:20 at start. Instead, count elapsed
+            // from a wall-clock stamp taken when playback began, and report no fixed duration.
+            if (v.CurrentlyPlaying?.IsLiveStream == true)
+            {
+                if (_liveStartUtc == null) _liveStartUtc = DateTime.UtcNow;
+                v.PlaybackDuration = 1; // no seekable duration
+                v.PlaybackPosition = Math.Max(0, (DateTime.UtcNow - _liveStartUtc.Value).TotalMilliseconds);
+                return;
+            }
+            _liveStartUtc = null;
+
             v.PlaybackDuration = Math.Max(1, _mediaPlayer.Length);
             v.PlaybackPosition = Math.Max(0, _mediaPlayer.Time);
 
@@ -568,6 +584,8 @@ public partial class BackglassWindow : JukeboxWindow
         _lastAudioStreamUrl = null;
         _lastMuxedStreamUrl = null;
         _lastLocalFilePath = null;
+        // Fresh live-stream elapsed clock (restamped on the first position tick).
+        _liveStartUtc = null;
 
         // Wait for background LibVLC initialization to complete if it's still
         // in flight (e.g. user hit play within the first few seconds of launch).

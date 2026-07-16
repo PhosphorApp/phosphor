@@ -842,7 +842,13 @@
                                      Value="{Binding PlaybackPosition}"
                                      Style="{StaticResource NowPlayingSliderStyle}"
                                      VerticalAlignment="Center" IsMoveToPointEnabled="True"
-                                     IsEnabled="{Binding IsPlaying}"/>
+                                     IsEnabled="{Binding IsPlaying}"
+                                     Visibility="{Binding IsLiveStream, Converter={StaticResource BoolVis}, ConverterParameter=Invert}"/>
+                                <!-- Live streams (e.g. SiriusXM) have no seekable timeline — show a LIVE badge instead of the scrub bar. -->
+                                <TextBlock Text="● LIVE" Foreground="{StaticResource AccentBrush}"
+                                           FontWeight="Bold" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                           Margin="8,0,0,0"
+                                           Visibility="{Binding IsLiveStream, Converter={StaticResource BoolVis}}"/>
                                 <!-- Chapter tick marks overlay -->
                                 <ItemsControl x:Name="ChapterTicksOverlay" ItemsSource="{Binding ChapterTickPositions}" IsHitTestVisible="False"
                                               VerticalAlignment="Center" Margin="8,0"

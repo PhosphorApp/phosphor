@@ -880,7 +880,14 @@ public partial class JukeboxViewModel : ObservableObject
     {
         get
         {
-            var source = _currentlyPlaying switch
+            if (_currentlyPlaying == null) return "";
+
+            // Prefer the owning plug-in source's display name (source-agnostic), falling back to the
+            // legacy Plex/YouTube id-shape heuristic for items without a source link.
+            string? source = null;
+            if (_currentlyPlaying.SourceInstanceId is { Length: > 0 } id)
+                source = _sourceRegistry?.ByInstance(id)?.DisplayName;
+            source ??= _currentlyPlaying switch
             {
                 { IsPlex: true } => "Plex",
                 { IsYouTube: true } => "YouTube",
