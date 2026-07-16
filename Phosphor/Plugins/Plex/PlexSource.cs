@@ -16,7 +16,7 @@ namespace Phosphor.Plugins.Plex;
 /// In-box, so it uses <see cref="PlexService"/>, <see cref="VideoItem"/>, and the Plex enums
 /// directly. Pure data producer: no UI, no thread assumptions.
 /// </remarks>
-public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable, IPagedBrowsable, IScopedSearchable, IPlayableResolver, IConfigurable, IGaplessCapable, IConnectionTestable
+public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IFilterableSearch, IBrowsable, IPagedBrowsable, IScopedSearchable, IPlayableResolver, IConfigurable, IGaplessCapable, IConnectionTestable
 {
     private readonly PlexService _plex = new();
     private IPluginHost? _host;
@@ -94,6 +94,76 @@ public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IBrowsable
         {
             ct.ThrowIfCancellationRequested();
             yield return PlexMappings.ToSourceItem(v, InstanceId);
+        }
+    }
+
+    // ── IFilterableSearch ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Server-side filtered search. Pushes duration bounds (and an optional <c>library:</c> scope)
+    /// down to Plex's section-scoped endpoint so large servers filter server-side instead of the
+    /// host scanning results. When a library name is given it resolves to a single configured
+    /// section; otherwise it fans out across every configured library and merges. Reports the
+    /// duration + library filters as applied so the host doesn't re-filter client-side.
+    /// </summary>
+    public FilteredSearchResult SearchFiltered(string query, SearchFilters filters, CancellationToken ct = default)
+    {
+        // Resolve the target section(s): a named library (case-insensitive exact, then contains),
+        // or all configured libraries when no name was given.
+        var targets = _libraries.AsEnumerable();
+        var appliedLibrary = filters.Library;
+        if (!string.IsNullOrWhiteSpace(filters.Library))
+        {
+            var name = filters.Library.Trim();
+            var match = _libraries.FirstOrDefault(l =>
+                            string.Equals(l.Title, name, StringComparison.OrdinalIgnoreCase))
+                        ?? _libraries.FirstOrDefault(l =>
+                            l.Title.Contains(name, StringComparison.OrdinalIgnoreCase));
+            if (match != null)
+            {
+                targets = new[] { match };
+                appliedLibrary = match.Title;
+            }
+            else
+            {
+                // Unknown library name — nothing scoped, so don't claim the filter was applied.
+                targets = _libraries;
+                appliedLibrary = null;
+            }
+        }
+
+        // Duration bounds are always applied server-side.
+        var applied = filters with { Library = appliedLibrary };
+        return new FilteredSearchResult(SearchFilteredCore(query, filters, targets.ToList(), ct), applied);
+    }
+
+    private async IAsyncEnumerable<SourceItem> SearchFilteredCore(
+        string query,
+        SearchFilters filters,
+        List<PlexLibraryMapping> targets,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        foreach (var lib in targets)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            List<VideoItem> results;
+            try
+            {
+                results = await _plex.SearchLibraryWithFiltersAsync(
+                    lib.Key, query, lib.Type, filters.MinDuration, filters.MaxDuration, ct);
+            }
+            catch (Exception ex)
+            {
+                _host?.Log($"PlexSource: filtered search failed for '{lib.Title}': {ex.Message}");
+                continue;
+            }
+
+            foreach (var v in results)
+            {
+                ct.ThrowIfCancellationRequested();
+                yield return PlexMappings.ToSourceItem(v, InstanceId);
+            }
         }
     }
 

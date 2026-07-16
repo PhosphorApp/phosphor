@@ -189,6 +189,84 @@ public class PlexService
     }
 
     /// <summary>
+    /// Section-scoped search with native server-side filters (duration bounds). Uses the same
+    /// <c>/library/sections/{key}/all</c> endpoint as <see cref="SearchLibraryAsync"/>, adding
+    /// Plex's advanced-filter params so large libraries are filtered on the server instead of
+    /// scanned client-side. For music (artist) libraries the search targets tracks (type 10) so
+    /// duration bounds apply to playable items; for video libraries it is a plain title search.
+    /// <paramref name="minDuration"/>/<paramref name="maxDuration"/> are optional bounds.
+    /// </summary>
+    public async Task<List<VideoItem>> SearchLibraryWithFiltersAsync(
+        string sectionKey,
+        string query,
+        string? libraryType = null,
+        TimeSpan? minDuration = null,
+        TimeSpan? maxDuration = null,
+        CancellationToken ct = default)
+    {
+        var encoded = Uri.EscapeDataString(query);
+
+        // Plex advanced integer filters use "field>>=" (>=) and "field<<=" (<=); the ">>"/"<<"
+        // operator glyphs must be URL-encoded. Duration is in milliseconds.
+        var durationFilter = "";
+        if (minDuration is { } min)
+            durationFilter += $"&duration%3E%3E={(long)min.TotalMilliseconds}";
+        if (maxDuration is { } max)
+            durationFilter += $"&duration%3C%3C={(long)max.TotalMilliseconds}";
+
+        // Music (artist) libraries: search playable tracks (type 10). A plain title= filter only
+        // matches the track title, so also match the artist name (grandparentTitle) and merge — this
+        // is what users expect from "rush" in a music library (all of Rush's tracks, not just tracks
+        // literally titled "…rush…"). Video libraries do a plain section-scoped title search.
+        if (libraryType == "artist")
+        {
+            var byTitle = await FetchTracksAsync(
+                $"{_serverUrl}/library/sections/{sectionKey}/all"
+                + $"?X-Plex-Token={_token}&type=10&title={encoded}{durationFilter}{StreamParam}", ct);
+
+            List<VideoItem> byArtist;
+            try
+            {
+                byArtist = await FetchTracksAsync(
+                    $"{_serverUrl}/library/sections/{sectionKey}/all"
+                    + $"?X-Plex-Token={_token}&type=10&artist.title={encoded}{durationFilter}{StreamParam}", ct);
+            }
+            catch (Exception ex)
+            {
+                // Some servers/library configs may not expose the artist.title filter field; the
+                // title-only results still stand.
+                DiagLog($"SearchLibraryWithFiltersAsync artist.title filter failed: {ex.Message}");
+                byArtist = new List<VideoItem>();
+            }
+
+            // Merge, de-duplicating by rating key (a track can match both title and artist).
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var merged = new List<VideoItem>();
+            foreach (var v in byTitle.Concat(byArtist))
+            {
+                var key = v.PlexRatingKey ?? v.VideoId ?? "";
+                if (key.Length == 0 || seen.Add(key))
+                    merged.Add(v);
+            }
+            return merged;
+        }
+
+        var titleFilter = string.IsNullOrWhiteSpace(query) ? "" : $"&title={encoded}";
+        var url = $"{_serverUrl}/library/sections/{sectionKey}/all"
+            + $"?X-Plex-Token={_token}{titleFilter}{durationFilter}{StreamParam}";
+        var doc = await FetchJsonAsync(url, ct);
+        return ParseVideos(doc);
+    }
+
+    /// <summary>Fetches a Plex item list URL and parses playable items (with stream URLs).</summary>
+    private async Task<List<VideoItem>> FetchTracksAsync(string url, CancellationToken ct)
+    {
+        var doc = await FetchJsonAsync(url, ct);
+        return ParseVideos(doc);
+    }
+
+
+    /// <summary>
     /// Get children of a Plex metadata item (e.g. artist → albums, album → tracks).
     /// For artists, also searches for albums by artist name to catch compilations
     /// that may not be directly linked in the parent-child hierarchy.

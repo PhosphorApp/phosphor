@@ -12,6 +12,57 @@ public interface ITextSearchCapable
 }
 
 /// <summary>
+/// A set of structured search filters parsed from the query box (e.g. <c>min:</c>/<c>max:</c>
+/// duration, <c>library:</c> scope). Complements the free-text <see cref="ITextSearchCapable"/>
+/// path: sources that can push these filters down to their backend (see
+/// <see cref="IFilterableSearch"/>) do so server-side; the host still applies any filter the
+/// source didn't claim client-side. All members are optional — an all-null instance means "no
+/// structured filters, plain text search".
+/// </summary>
+/// <param name="MinDuration">Lower bound on item length, or <c>null</c> for no minimum.</param>
+/// <param name="MaxDuration">Upper bound on item length, or <c>null</c> for no maximum.</param>
+/// <param name="Library">A library/section name to scope the search to, or <c>null</c> for all.</param>
+public sealed record SearchFilters(
+    TimeSpan? MinDuration = null,
+    TimeSpan? MaxDuration = null,
+    string? Library = null)
+{
+    /// <summary>True when at least one filter is set.</summary>
+    public bool HasAny => MinDuration != null || MaxDuration != null || !string.IsNullOrWhiteSpace(Library);
+
+    /// <summary>True when a duration bound (min and/or max) is set.</summary>
+    public bool HasDuration => MinDuration != null || MaxDuration != null;
+}
+
+/// <summary>
+/// Capability: free-text search with structured filters pushed down to the source's backend
+/// (e.g. Plex filtering by <c>duration</c> and library section server-side, so large libraries
+/// aren't scanned client-side). Complements <see cref="ITextSearchCapable"/>: a source implements
+/// both, and the host prefers this overload when the parsed query carries filters. The result
+/// reports which filters the source actually applied, so the host can apply the remainder itself.
+/// </summary>
+public interface IFilterableSearch
+{
+    /// <summary>
+    /// Searches for <paramref name="query"/> with the given <paramref name="filters"/> applied at
+    /// the source. Returns the (incrementally-yielded) matches plus the subset of
+    /// <paramref name="filters"/> the source honored, so the host skips re-applying those and still
+    /// applies any it didn't.
+    /// </summary>
+    FilteredSearchResult SearchFiltered(string query, SearchFilters filters, CancellationToken ct = default);
+}
+
+/// <summary>
+/// Result of an <see cref="IFilterableSearch.SearchFiltered"/> call: the matching items and the
+/// filters the source applied server-side.
+/// </summary>
+/// <param name="Items">The matching items, yielded incrementally.</param>
+/// <param name="Applied">The subset of the requested filters the source honored at its backend.</param>
+public sealed record FilteredSearchResult(
+    IAsyncEnumerable<SourceItem> Items,
+    SearchFilters Applied);
+
+/// <summary>
 /// Capability: hierarchical browsing. Implemented by sources with a navigable tree
 /// (Plex libraries → artists → albums → tracks; a local-folder source; …). The host asks
 /// for root categories, then expands one node at a time.

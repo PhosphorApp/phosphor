@@ -1112,6 +1112,11 @@ public partial class DmdWindow : JukeboxWindow
             UpdateSearchPlaceholder();
     }
 
+    private void SearchSourceBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateSearchPlaceholder();
+    }
+
     private void UpdateSearchPlaceholder()
     {
         SearchPlaceholder.Visibility = string.IsNullOrEmpty(SearchBox.Text) && !SearchBox.IsKeyboardFocusWithin
@@ -1120,8 +1125,19 @@ public partial class DmdWindow : JukeboxWindow
 
         if (DataContext is JukeboxViewModel vm && (vm.IsGenericBrowsing || vm.IsPlexBrowsing))
             SearchHintRun.Text = $"  items in {vm.ActiveCategory}";
+        else if (DataContext is JukeboxViewModel v)
+        {
+            SearchHintRun.Text = v.ActiveSearchSourceTypeId switch
+            {
+                Phosphor.Plugins.YouTube.YouTubeSourceProvider.YouTubeTypeId
+                    => "  ...try channel:<name>, playlist:<name>, min:5m, max:30m",
+                Phosphor.Plugins.Plex.PlexSourceProvider.PlexTypeId
+                    => "  ...try min:5m, max:30m, library:<name>",
+                _ => "",
+            };
+        }
         else
-            SearchHintRun.Text = "  ...try channel:<name>, playlist:<name>, min:5m, max:30m";
+            SearchHintRun.Text = "";
     }
 
     private void ClearSearchBar()

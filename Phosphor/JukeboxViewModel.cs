@@ -44,6 +44,16 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
+    /// The <c>TypeId</c> of the currently-selected search source (e.g. "youtube", "plex"), or
+    /// <c>null</c> if unresolved. Lets the UI tailor hints per source type without knowing instance
+    /// ids (Plex is multi-instance). YouTube is the implicit default when nothing is selected.
+    /// </summary>
+    public string? ActiveSearchSourceTypeId =>
+        (_activeSearchSourceId != null ? _sourceRegistry?.ByInstance(_activeSearchSourceId) : _sourceRegistry?.YouTube)
+            ?.TypeId
+        ?? (_activeSearchSourceId == null ? Phosphor.Plugins.YouTube.YouTubeSourceProvider.YouTubeTypeId : null);
+
+    /// <summary>
     /// The source AutoDJ uses to find/queue similar tracks (from settings). <c>null</c>/empty =
     /// YouTube. A stop-gap steering knob until a richer AutoDJ model exists.
     /// </summary>
@@ -1372,16 +1382,42 @@ public partial class JukeboxViewModel : ObservableObject
         string query,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
     {
-        // YouTube resolves its stream lazily at play time (an expensive yt-dlp probe per item). Any
-        // other source that can resolve (local folders, Plex, …) resolves eagerly here so the result
-        // carries a playable StreamUrl — otherwise playback falls through to the YouTube engine and
-        // fails (e.g. a local file path shoved into a youtube.com URL). Mirrors the browse path.
+        await foreach (var vi in MapPluginItems(source, source.SearchAsync(query, ct), ct).WithCancellation(ct))
+            yield return vi;
+    }
+
+    /// <summary>
+    /// Maps a <see cref="Phosphor.Plugin.Abstractions.IFilterableSearch"/> result stream to
+    /// <see cref="VideoItem"/>s, resolving playable streams eagerly for non-YouTube sources (same
+    /// contract as <see cref="MapPluginSearch"/>).
+    /// </summary>
+    private static async IAsyncEnumerable<VideoItem> MapPluginFilteredSearch(
+        Phosphor.Plugin.Abstractions.IFilterableSearch source,
+        Phosphor.Plugin.Abstractions.FilteredSearchResult result,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await foreach (var vi in MapPluginItems(source, result.Items, ct).WithCancellation(ct))
+            yield return vi;
+    }
+
+    /// <summary>
+    /// Shared search-result mapper: turns a source's <see cref="Phosphor.Plugin.Abstractions.SourceItem"/>
+    /// stream into <see cref="VideoItem"/>s. YouTube resolves its stream lazily at play time (an
+    /// expensive yt-dlp probe per item); any other source that can resolve (local folders, Plex, …)
+    /// resolves eagerly here so the result carries a playable StreamUrl — otherwise playback falls
+    /// through to the YouTube engine and fails. Mirrors the browse path.
+    /// </summary>
+    private static async IAsyncEnumerable<VideoItem> MapPluginItems(
+        object source,
+        IAsyncEnumerable<Phosphor.Plugin.Abstractions.SourceItem> items,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
         var resolver = source is Phosphor.Plugin.Abstractions.IPlayableResolver r
             && source is Phosphor.Plugin.Abstractions.IPhosphorSource s
             && s.TypeId != Phosphor.Plugins.YouTube.YouTubeSourceProvider.YouTubeTypeId
             ? r : null;
 
-        await foreach (var item in source.SearchAsync(query, ct).WithCancellation(ct))
+        await foreach (var item in items.WithCancellation(ct))
         {
             var vi = ToVideoItem(item);
             if (resolver != null && string.IsNullOrEmpty(vi.StreamUrl))
@@ -1874,6 +1910,8 @@ public partial class JukeboxViewModel : ObservableObject
     private TimeSpan? _durationMin;
     private TimeSpan? _durationMax;
     private int _durationScanned;
+    // Parsed "library:<name>" scope token from the search box (Plex server-side filter). Null = none.
+    private string? _libraryFilter;
 
     // ── Pagination state ──
     private IAsyncEnumerator<VideoItem>? _searchEnumerator;
@@ -2198,6 +2236,9 @@ public partial class JukeboxViewModel : ObservableObject
         // Parse and strip duration filters (min:/max:) from the query
         query = ParseDurationFilters(query);
 
+        // Parse and strip a library: scope token (Plex server-side section filter).
+        query = ParseLibraryFilter(query);
+
         // Check for playlist: prefix
         // Quoted form: playlist:"Classic Rock Hits" guitar → name=Classic Rock Hits, filter=guitar
         // Unquoted ID: playlist:PLxxxxxxx guitar → id=PLxxxxxxx, filter=guitar
@@ -2299,9 +2340,29 @@ public partial class JukeboxViewModel : ObservableObject
         }
         else
         {
-            _searchEnumerator = SearchVideosViaPluginOrLegacy(query, sourceInstanceId).GetAsyncEnumerator();
-        }
+            // If the query carries structured filters (min:/max:/library:) and the target source can
+            // apply them server-side, route through the filterable path and suppress the equivalent
+            // client-side filtering for whatever the source claimed to handle.
+            var filters = BuildSearchFilters();
+            var filterableSource = filters.HasAny
+                ? (sourceInstanceId != null ? _sourceRegistry?.ByInstance(sourceInstanceId) : _sourceRegistry?.YouTube)
+                  as Phosphor.Plugin.Abstractions.IFilterableSearch
+                : null;
 
+            if (filterableSource != null)
+            {
+                var filtered = filterableSource.SearchFiltered(query, filters, _searchCts.Token);
+                _searchEnumerator = MapPluginFilteredSearch(filterableSource, filtered).GetAsyncEnumerator();
+
+                // The source applied these bounds server-side — don't re-scan client-side.
+                if (filtered.Applied.MinDuration != null) _durationMin = null;
+                if (filtered.Applied.MaxDuration != null) _durationMax = null;
+            }
+            else
+            {
+                _searchEnumerator = SearchVideosViaPluginOrLegacy(query, sourceInstanceId).GetAsyncEnumerator();
+            }
+        }
         _hasMoreResults = true;
 
         // Determine cache key from active category or live playlist. Only the YouTube-bound path
@@ -2354,6 +2415,40 @@ public partial class JukeboxViewModel : ObservableObject
 
         return query.Trim();
     }
+
+    /// <summary>
+    /// Parses a <c>library:</c> scope token from the query into <see cref="_libraryFilter"/> and
+    /// returns the query with that token removed. Supports a quoted name
+    /// (<c>library:"Live Concerts"</c>) or a single unquoted word (<c>library:concerts</c>).
+    /// </summary>
+    private string ParseLibraryFilter(string query)
+    {
+        _libraryFilter = null;
+
+        var quoted = Regex.Match(query, @"library:""([^""]+)""", RegexOptions.IgnoreCase);
+        if (quoted.Success)
+        {
+            _libraryFilter = quoted.Groups[1].Value.Trim();
+            return Regex.Replace(query, @"library:""[^""]+""", "", RegexOptions.IgnoreCase).Trim();
+        }
+
+        var unquoted = Regex.Match(query, @"library:(\S+)", RegexOptions.IgnoreCase);
+        if (unquoted.Success)
+        {
+            _libraryFilter = unquoted.Groups[1].Value.Trim();
+            return Regex.Replace(query, @"library:\S+", "", RegexOptions.IgnoreCase).Trim();
+        }
+
+        return query;
+    }
+
+    /// <summary>
+    /// Builds a <see cref="Phosphor.Plugin.Abstractions.SearchFilters"/> from the currently-parsed
+    /// duration bounds and <c>library:</c> scope. Call after <see cref="ParseDurationFilters"/> and
+    /// <see cref="ParseLibraryFilter"/> have run for the active query.
+    /// </summary>
+    private Phosphor.Plugin.Abstractions.SearchFilters BuildSearchFilters()
+        => new(_durationMin, _durationMax, _libraryFilter);
 
     /// <summary>
     /// Parses a duration string like "5m", "1.5h", or "90" (seconds) into a TimeSpan.
