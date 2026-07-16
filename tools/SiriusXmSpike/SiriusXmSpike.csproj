@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+	<OutputType>Exe</OutputType>
+	<TargetFramework>net8.0</TargetFramework>
+	<ImplicitUsings>enable</ImplicitUsings>
+	<Nullable>enable</Nullable>
+	<RootNamespace>SiriusXmSpike</RootNamespace>
+	<AssemblyName>SiriusXmSpike</AssemblyName>
+	<!-- Experimental throwaway harness (siriusxm branch). Not part of the app; run standalone. -->
+  </PropertyGroup>
+
+</Project>

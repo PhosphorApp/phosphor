@@ -444,19 +444,32 @@ public partial class JukeboxViewModel : ObservableObject
     {
         var vi = ToVideoItem(item);
         // Resolve a playable URL now (local files are a cheap path check); the player checks
-        // VideoItem.StreamUrl first and plays it directly.
-        if (resolver != null)
+        // VideoItem.StreamUrl first and plays it directly. EXCEPTION: live streams (e.g. SiriusXM
+        // radio) are resolved lazily at play time — eagerly resolving every browse leaf would fire
+        // one authenticated round-trip per channel (hundreds), so we only carry the flag here and
+        // resolve on demand in the play path.
+        if (resolver != null && !item.IsLiveStream)
         {
             try
             {
                 var stream = await resolver.ResolveAsync(
                     item, new Phosphor.Plugin.Abstractions.PlaybackPreferences(), ct);
-                if (stream != null) vi.StreamUrl = stream.PrimaryUri;
+                if (stream != null)
+                {
+                    vi.StreamUrl = stream.PrimaryUri;
+                    if (stream.IsLiveStream) vi.IsLiveStream = true;
+                }
             }
             catch (Exception ex)
             {
                 DebugLog.LogException($"Plugin resolve '{item.ItemId}'", ex);
             }
+        }
+        else if (item.IsLiveStream)
+        {
+            // Defer resolution to play time; keep the SourceItem so PlayNow can resolve it.
+            vi.IsLiveStream = true;
+            vi.PendingLiveSourceItem = item;
         }
         vi.IsAudioOnly = item.IsAudioOnly;
         vi.SourceInstanceId ??= item.SourceInstanceId;
@@ -761,6 +774,8 @@ public partial class JukeboxViewModel : ObservableObject
                     OnPropertyChanged(nameof(ShouldSnapToChapters));
                     OnPropertyChanged(nameof(NowPlayingTitle));
                     OnPropertyChanged(nameof(NowPlayingSourceText));
+                    OnPropertyChanged(nameof(IsLiveStream));
+                    OnPropertyChanged(nameof(PlaybackTimeText));
                 }
         }
     }
@@ -1146,6 +1161,13 @@ public partial class JukeboxViewModel : ObservableObject
     {
         get
         {
+            // Live streams have no fixed duration — show elapsed-since-start against "*".
+            if (_currentlyPlaying?.IsLiveStream == true)
+            {
+                var elapsed = TimeSpan.FromMilliseconds(Math.Max(0, PlaybackPosition));
+                var lfmt = elapsed.TotalHours >= 1 ? @"h\:mm\:ss" : @"m\:ss";
+                return $"{elapsed.ToString(lfmt)} / *";
+            }
             if (PlaybackDuration <= 1) return "0:00 / 0:00";
             var pos = TimeSpan.FromMilliseconds(PlaybackPosition);
             var dur = TimeSpan.FromMilliseconds(PlaybackDuration);
@@ -1154,13 +1176,29 @@ public partial class JukeboxViewModel : ObservableObject
         }
     }
 
-    public void SeekTo(long timeMs) => SeekRequested?.Invoke(timeMs);
+    /// <summary>True when the currently-playing item is a continuous live stream (e.g. SiriusXM).
+    /// The UI hides the scrub bar/duration and seek is a no-op; playback shows elapsed "M:SS / *".</summary>
+    public bool IsLiveStream => _currentlyPlaying?.IsLiveStream == true;
+
+    public void SeekTo(long timeMs)
+    {
+        if (IsLiveStream) return; // live streams are not seekable
+        SeekRequested?.Invoke(timeMs);
+    }
 
     [RelayCommand]
-    private void SeekForward() => SeekRequested?.Invoke((long)PlaybackPosition + 15000);
+    private void SeekForward()
+    {
+        if (IsLiveStream) return;
+        SeekRequested?.Invoke((long)PlaybackPosition + 15000);
+    }
 
     [RelayCommand]
-    private void SeekBack() => SeekRequested?.Invoke(Math.Max(0, (long)PlaybackPosition - 15000));
+    private void SeekBack()
+    {
+        if (IsLiveStream) return;
+        SeekRequested?.Invoke(Math.Max(0, (long)PlaybackPosition - 15000));
+    }
 
     // ── Video cache ──
     public VideoCache? Cache => _cache;
@@ -1456,6 +1494,8 @@ public partial class JukeboxViewModel : ObservableObject
             VideoId = item.ItemId,
             Duration = item.Duration,
             SourceInstanceId = item.SourceInstanceId,
+            IsAudioOnly = item.IsAudioOnly,
+            IsLiveStream = item.IsLiveStream,
         };
     }
 
@@ -3061,6 +3101,15 @@ public partial class JukeboxViewModel : ObservableObject
         CurrentlyPlaying = item;
         StatusText = $"Playing: {item.Title}{item.AudioTag}";
         _history.Add(item);
+
+        // Live streams (e.g. SiriusXM) resolve lazily at play time — resolve the local proxy URL
+        // now, then start playback. Everything else already has its StreamUrl (or plays by id).
+        if (item.IsLiveStream && item.StreamUrl == null && item.PendingLiveSourceItem != null)
+        {
+            _ = SafeFireAndForget(ResolveAndPlayLiveAsync(item));
+            return;
+        }
+
         PlayRequested?.Invoke(item.VideoId);
 
         // Fetch duration/chapters from the item's own source (source-agnostic). Fire-and-forget so
@@ -3076,6 +3125,49 @@ public partial class JukeboxViewModel : ObservableObject
         // gives the download a full track-length head start so the next transition
         // is effectively instant and the next track is also fully seekable.
         KickoffPreemptiveCacheForNext();
+    }
+
+    /// <summary>
+    /// Resolves a live-stream item's playable URL on demand (SiriusXM channels are resolved at play
+    /// time, not during browse), sets <see cref="VideoItem.StreamUrl"/>, and starts playback. The
+    /// player checks <c>StreamUrl</c> first, so the URL must be set before <see cref="PlayRequested"/>.
+    /// </summary>
+    private async Task ResolveAndPlayLiveAsync(VideoItem item)
+    {
+        SetStatusPrefix("Tuning");
+        var source = SourceForItem(item);
+        if (source is not Phosphor.Plugin.Abstractions.IPlayableResolver resolver
+            || item.PendingLiveSourceItem is not Phosphor.Plugin.Abstractions.SourceItem sourceItem)
+        {
+            StatusText = $"Can't play {item.Title}: source unavailable.";
+            PlayTransitioning = false;
+            return;
+        }
+
+        try
+        {
+            var stream = await resolver.ResolveAsync(
+                sourceItem, new Phosphor.Plugin.Abstractions.PlaybackPreferences(), _searchCts.Token);
+            if (stream?.PrimaryUri is { Length: > 0 } url)
+            {
+                item.StreamUrl = url;
+                item.PendingLiveSourceItem = null; // resolved
+                // Guard against the user having moved on while we were tuning.
+                if (ReferenceEquals(CurrentlyPlaying, item))
+                    PlayRequested?.Invoke(item.VideoId);
+            }
+            else
+            {
+                StatusText = $"Can't tune {item.Title} — stream unavailable.";
+                PlayTransitioning = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            DebugLog.LogException($"Live resolve '{item.VideoId}'", ex);
+            StatusText = $"Can't tune {item.Title}: {ex.Message}";
+            PlayTransitioning = false;
+        }
     }
 
     /// <summary>

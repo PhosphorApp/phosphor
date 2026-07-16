@@ -38,7 +38,7 @@ Every candidate is judged against what the architecture already gives a source:
 | **SoundCloud** | On-demand audio | yt-dlp extractor (proven) | Low–Med | Free (+API gating) | ✅ Best audio candidate |
 | **Bandcamp** | On-demand audio | yt-dlp extractor (proven) | Low–Med | Free | ✅ Feasible (discovery is the work) |
 | **iHeartRadio** | Live stations + podcasts | yt-dlp (partial) / stream URLs | Med | Free | 🟡 Partial (on-demand fits; live needs stream handling) |
-| **SiriusXM** | Live channels (auth) + some on-demand | yt-dlp supports w/ subscriber login | Med–High | Paid sub | 🟡 Possible — **leaning candidate** (see below) |
+| **SiriusXM** | Live channels (auth) + some on-demand | Custom C# client (auth+lineup ✅ proven) + HLS AES proxy | Med–High | Paid sub | 🟢 **In progress** — auth+lineup validated (see below) |
 | **Tidal** | On-demand audio | ❌ DRM, no legal stream URL | High/blocked | Paid sub | ❌ Not viable |
 | **Pandora** | Personalized radio session | ❌ DRM + session model | High/blocked | Free/Paid | ❌ Not viable |
 
@@ -81,21 +81,70 @@ skip Tidal & Pandora.**
 
 ## 🟡 Partial fits (live-radio UX mismatch)
 
-### SiriusXM — **leaning candidate**
-- **Why we're leaning in:** (a) already a subscriber, (b) an interesting challenge to see how
-  **infinite streams** fit into the jukebox model.
+### SiriusXM — **in progress (Phase 0 proven)**
+- **Why:** (a) already a subscriber, (b) an interesting challenge to see how **infinite streams** fit
+  into the jukebox model.
 - **Compatibility:** Almost entirely **live channels**, plus some on-demand shows.
-- **Playback:** yt-dlp *has* a SiriusXM extractor that works **with subscriber credentials**,
-  resolving the authenticated HLS stream. Playback is technically feasible for a logged-in subscriber.
+- **Playback:** ⚠️ **yt-dlp does NOT support SiriusXM** (verified against yt-dlp 2026.07.04 — no
+  extractor; 0 of 1,752 match). The earlier "yt-dlp works" note was wrong. A real integration needs a
+  **custom C# client** that (1) authenticates, (2) fetches the lineup, and (3) runs a local HLS proxy
+  that rewrites the channel `.m3u8` and serves the segment AES key. The HLS AES key is a **static,
+  publicly-known constant** (`0Nsco7MAgxowGvkUT8aYag==`), which significantly de-risks the proxy phase.
 - **Discovery:** Channel lineup via the authenticated session; not a searchable on-demand catalog.
-- **Cost:** Paid subscription (already held). Credentials must be stored — the host has a
-  credential-store seam, but note the **deferred DPAPI secret-encryption** item in the architecture doc.
+- **Cost:** Paid subscription (already held). Credentials stored as `Secret` settings — covered by the
+  shipped opt-in DPAPI encryption.
 - **Limitations:** Live-stream model (no track boundaries/gapless/progress/auto-advance), auth/session
   refresh complexity, ToS sensitivity, ads on lower tiers.
-- **Proposed approach — `IsLiveStream` / `IsInfinite` flag:** Add a flag on the item/stream model that
-  marks a source as a continuous live stream, so the host can handle it appropriately:
-  - Suppress the progress bar / seek UI and duration display.
-  - Never auto-advance the playlist (the stream never "ends"); "next" becomes a channel change.
+
+#### ✅ Phase 0 spike — auth + lineup (DONE, `siriusxm` branch)
+A standalone pure-C# console spike (`tools/SiriusXmSpike/`) proved the two hardest unknowns against
+live subscriber credentials — **no browser, no Python, no yt-dlp**:
+- **Login** → `POST /rest/v2/experience/modules/modify/authentication` (deviceInfo + standardAuth) →
+  `SXMAUTHNEW` cookie.
+- **Authenticate** → `POST .../resume?OAtrial=false` → `AWSALB` + `JSESSIONID` cookies.
+- **Lineup** → `POST /rest/v4/experience/modules/get?type=2` → **436 channels** enumerated with clean
+  `channelId` slugs (e.g. `octane`, `howardstern100`, `thepulse`), numbers, and names.
+- All POST bodies wrap `{"moduleList":{"modules":[{"moduleRequest":…}]}}`; responses unwrap via
+  `["ModuleListResponse"]`. Constants: `SXM_APP_VERSION=5.36.514`, `SXM_DEVICE_MODEL=EverestWebClient`.
+- Flow reverse-engineered from `AngellusMortis/sxm-client`.
+
+**Go/No-Go decision: GO.** Auth is reproducible with `HttpClient` + `CookieContainer` and no bot/JS
+challenge; the lineup is complete and clean.
+
+#### ✅ Phase 1 spike — playback (DONE, `siriusxm` branch)
+The spike's `--play <channelId>` mode proved the **entire playback chain** end-to-end in pure C#:
+- `GET get/configuration` → HLS root substitutions (`siriusxm-priprodlive.akamaized.net`).
+- `GET tune/now-playing-live` (assetGUID + channelId + timestamps) → master `.m3u8` URL templated with
+  `%Live_Primary_HLS%`.
+- Master → variant playlist; segments are AES-128 with `#EXT-X-KEY:METHOD=AES-128,URI="key/1"`.
+- Downloaded a 315 KB segment and **AES-128-CBC decrypted it with the static key**
+  (`0Nsco7MAgxowGvkUT8aYag==`) — no per-session key needed.
+- A tiny local `HttpListener` HLS proxy rewrites the playlist (strips `EXT-X-KEY`, serves
+  decrypted-in-transit AAC). The host's bundled **ffmpeg decoded it to AAC LC 44100 Hz stereo 256k →
+  valid WAV**, confirming a real, playable audio stream.
+
+**Both unknowns are now solved.** A native `Phosphor.Plugins.SiriusXM` plug-in is fully viable with
+**no Python and no yt-dlp**: auth + lineup + a local decrypt proxy, all in C#.
+
+#### ✅ Phase 2 — lean plug-in (BUILT, `siriusxm` branch)
+`Phosphor.Plugins.SiriusXM` now exists and builds/deploys to `plugins/SiriusXM/`:
+- `SxmClient` (auth + lineup + master-playlist resolve), `SxmProxy` (local HLS proxy),
+  `SiriusXmSource` (`IBrowsable` + `IPlayableResolver` + `IConnectionTestable`),
+  `SiriusXmSourceProvider` (username/password/region schema).
+- **Proxy style B (LibVLC decrypts) — chosen.** The proxy keeps `EXT-X-KEY`, rewrites its URI to a
+  local `/key` endpoint serving the static key, and injects SXM auth tokens onto segment requests;
+  **LibVLC does the AES-128 decryption**. Rationale: less work in our hot path and a thinner proxy.
+  Style A (we decrypt in-transit, proven in the spike) is the fallback. See the plug-in README.
+- Host plays the local proxy URL via the existing `StreamUrl → new Media → Play` path (no ffmpeg).
+- Live handling: `IsLiveStream` flows `ResolvedStream → SourceItem → VideoItem → VM`, giving
+  `M:SS / *` time, disabled seek, and no auto-advance.
+- **Deferred (lean v1):** channel grouping/hiding (~200 sports channels shown flat), robust
+  session/token refresh (one-shot 403 re-auth for now), now-playing metadata, tuner UI polish.
+
+#### `IsLiveStream` flag (implemented)
+Marks a source item/stream as a continuous live stream so the host:
+  - Suppresses the progress bar / seek UI and duration display (shows `M:SS / *`).
+  - Never auto-advances the playlist (the stream never "ends"); "next" becomes a channel change.
   - Treat the visualizer as always-on over the live audio.
   - Possibly a distinct "tuner" navigation surface (channel list) vs. the track/playlist surface.
   - **This is an architecture decision, not just a plug-in** — the host must learn about endless items.

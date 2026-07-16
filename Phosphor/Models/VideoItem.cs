@@ -68,6 +68,20 @@ public class VideoItem : ObservableObject
     /// </summary>
     public bool IsAudioOnly { get; set; }
 
+    /// <summary>
+    /// When true, this item is a continuous live stream with no fixed duration or seekable timeline
+    /// (e.g. a SiriusXM radio channel). The host suppresses the progress bar/seek, shows elapsed time
+    /// as "M:SS / *", and does not auto-advance the playlist when it "ends".
+    /// </summary>
+    public bool IsLiveStream { get; set; }
+
+    /// <summary>
+    /// For live-stream leaves, the originating plug-in <c>SourceItem</c> (opaque to the host) kept so
+    /// the stream can be resolved <em>lazily at play time</em> rather than eagerly during browse
+    /// (which would fire one authenticated request per channel). Null for non-live items.
+    /// </summary>
+    public object? PendingLiveSourceItem { get; set; }
+
     // ── Generic plug-in browse (source-agnostic drill-down) ──
     /// <summary>When true, this result is a browsable container: activating it drills in via the
     /// generic browse stack rather than playing. Carries <see cref="GenericSourceInstanceId"/> +

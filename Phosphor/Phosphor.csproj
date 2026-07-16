@@ -96,6 +96,11 @@
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <Private>false</Private>
     </ProjectReference>
+    <!-- Build-order-only reference to the SiriusXM plug-in (same rationale as LocalFolder above). -->
+    <ProjectReference Include="..\Phosphor.Plugins.SiriusXM\Phosphor.Plugins.SiriusXM.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <Private>false</Private>
+    </ProjectReference>
   </ItemGroup>
 
   <!--
@@ -124,6 +129,27 @@
     <MakeDir Directories="$(LocalFolderPluginDest)" />
     <Copy SourceFiles="@(LocalFolderPluginFiles)" DestinationFolder="$(LocalFolderPluginDest)" SkipUnchangedFiles="true" />
     <Message Importance="high" Text="Deployed Local Folder plug-in to $(LocalFolderPluginDest)" />
+  </Target>
+
+  <!--
+    Deploy the SiriusXM plug-in into the host's plugins/SiriusXM/ folder (same pattern as the
+    Local Folder plug-in above): copy the plug-in assembly + its .deps.json (and pdb), excluding
+    the host-owned shared contract so it's never duplicated across the load boundary.
+  -->
+  <Target Name="DeploySiriusXmPlugin" AfterTargets="Build">
+    <PropertyGroup>
+      <SiriusXmPluginDir>$(MSBuildThisFileDirectory)..\Phosphor.Plugins.SiriusXM\bin\$(Configuration)\net8.0</SiriusXmPluginDir>
+      <SiriusXmPluginDest>$(OutDir)plugins\SiriusXM</SiriusXmPluginDest>
+    </PropertyGroup>
+    <ItemGroup>
+      <SiriusXmPluginFiles Include="$(SiriusXmPluginDir)\*.dll"
+                           Exclude="$(SiriusXmPluginDir)\Phosphor.Plugin.Abstractions.dll" />
+      <SiriusXmPluginFiles Include="$(SiriusXmPluginDir)\Phosphor.Plugins.SiriusXM.pdb" Condition="Exists('$(SiriusXmPluginDir)\Phosphor.Plugins.SiriusXM.pdb')" />
+      <SiriusXmPluginFiles Include="$(SiriusXmPluginDir)\Phosphor.Plugins.SiriusXM.deps.json" Condition="Exists('$(SiriusXmPluginDir)\Phosphor.Plugins.SiriusXM.deps.json')" />
+    </ItemGroup>
+    <MakeDir Directories="$(SiriusXmPluginDest)" />
+    <Copy SourceFiles="@(SiriusXmPluginFiles)" DestinationFolder="$(SiriusXmPluginDest)" SkipUnchangedFiles="true" />
+    <Message Importance="high" Text="Deployed SiriusXM plug-in to $(SiriusXmPluginDest)" />
   </Target>
 
 

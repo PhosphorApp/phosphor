@@ -1270,6 +1270,15 @@ public partial class BackglassWindow : JukeboxWindow
             _infoTimer?.Stop();
             VideoInfoChanged?.Invoke("");
 
+            // Live streams (e.g. SiriusXM) have no natural end — an EndReached means the stream
+            // dropped. Don't auto-advance the queue; just log it (lean v1). Reconnect/robustness
+            // is a later refinement.
+            if (DataContext is JukeboxViewModel liveVm && liveVm.CurrentlyPlaying?.IsLiveStream == true)
+            {
+                DebugLog.Log("MediaEnded", "Live stream ended (dropped) — not auto-advancing.");
+                return;
+            }
+
             if (DataContext is JukeboxViewModel vm && vm.HasNextTrack)
             {
                 // Gapless: if a next player is primed, swap it in immediately

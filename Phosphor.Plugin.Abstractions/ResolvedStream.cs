@@ -55,4 +55,12 @@ public sealed record ResolvedStream(
     /// when the transport is <see cref="StreamTransport.Http"/>. Ignored for other transports.
     /// </summary>
     public IReadOnlyDictionary<string, string>? HttpHeaders { get; init; }
+
+    /// <summary>
+    /// True when this is a continuous <em>live</em> stream with no fixed duration or seekable
+    /// timeline (e.g. a radio channel). The host treats these specially: no progress/seek UI, no
+    /// duration, and no playlist auto-advance (the stream never "ends"). Defaults to <c>false</c>
+    /// for ordinary finite media.
+    /// </summary>
+    public bool IsLiveStream { get; init; }
 }

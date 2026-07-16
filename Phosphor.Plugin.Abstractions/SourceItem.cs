@@ -23,6 +23,13 @@ public sealed class SourceItem
     public bool IsAudioOnly { get; init; }
 
     /// <summary>
+    /// True when this item is a continuous <em>live</em> stream with no fixed duration or seekable
+    /// timeline (e.g. a radio channel). Lets the host render it as a "tuner"-style entry and skip
+    /// duration/progress affordances. Defaults to <c>false</c>.
+    /// </summary>
+    public bool IsLiveStream { get; init; }
+
+    /// <summary>
     /// When true, this item is a container the user drills into rather than plays
     /// (e.g. a Plex artist/album). The host calls <see cref="IBrowsable"/> to expand it.
     /// </summary>

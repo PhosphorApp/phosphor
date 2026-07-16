@@ -35,3 +35,7 @@ Desktop.ini
 
 # ProjectM presets (extracted locally, not tracked)
 dependencies/projectM/presets-cream-of-the-crop-master/
+
+# SiriusXM spike — never commit local credentials
+tools/SiriusXmSpike/sxm.local.json
+tools/SiriusXmSpike/*.local
