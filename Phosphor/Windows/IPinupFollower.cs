@@ -20,6 +20,13 @@ public interface IPinupFollower
     string PinupScreenFolder { get; }
 
     /// <summary>
+    /// Sets the media sub-folder this follower re-points the coordinator's canonical
+    /// playfield glob to (e.g. "BackGlass", "Topper", "Menu"). Driven by the configurable
+    /// window→folder map on the General tab. Should be applied before the coordinator starts.
+    /// </summary>
+    void SetPinupFolder(string folder);
+
+    /// <summary>
     /// Plays the given game on this screen, looping seamlessly until the coordinator
     /// advances. <paramref name="canonicalPlayfieldGlob"/> is the playfield-relative glob
     /// (…\Playfield\&lt;base&gt;.*); the follower re-points it to <see cref="PinupScreenFolder"/>

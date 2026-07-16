@@ -105,6 +105,60 @@ public class AppSettings
     /// </summary>
     public int BackglassVideoAudioVolume { get; set; } = 50;
 
+    // ── Topper ambient display (independent of the playfield and backglass) ──
+    // These mirror the Playfield* ambient options. The topper has no jukebox video
+    // player of its own, so — like the playfield — the ambient content occupies the
+    // whole window (there is no jukebox layer to yield to).
+    /// <summary>
+    /// Content shown on the topper (static image, single video, video folders, Pinup
+    /// playlist, screensaver, or blank). Defaults to <see cref="PlayfieldMode.Screensaver"/>.
+    /// </summary>
+    public PlayfieldMode TopperDisplayMode { get; set; } = PlayfieldMode.Screensaver;
+    public string TopperStaticImagePath { get; set; } = "";
+    public string TopperVideoPath { get; set; } = "";
+    /// <summary>
+    /// Folders scanned for video files when <see cref="TopperDisplayMode"/> is
+    /// <see cref="PlayfieldMode.VideoFolders"/>. Mirrors <see cref="PlayfieldVideoFolders"/>.
+    /// </summary>
+    public List<string> TopperVideoFolders { get; set; } = [];
+    /// <summary>
+    /// Default folder suggested for <see cref="TopperVideoFolders"/> when the user
+    /// has not added any and this path exists on disk (standard vPinball Topper media).
+    /// </summary>
+    public const string DefaultTopperVideoFolder =
+        @"C:\vPinball\PinUPSystem\POPMedia\Visual Pinball X\Topper";
+    /// <summary>Order in which <see cref="TopperVideoFolders"/> files are played.</summary>
+    public VideoFolderPlayMode TopperVideoFolderPlayMode { get; set; } = VideoFolderPlayMode.Random;
+    /// <summary>Minimum on-screen time (seconds) for a topper folder-mode clip.</summary>
+    public int TopperVideoFolderMinDurationSeconds { get; set; } = 15;
+    /// <summary>Maximum runtime (seconds) for a topper folder-mode clip. 0 = no maximum.</summary>
+    public int TopperVideoFolderMaxDurationSeconds { get; set; }
+    /// <summary>
+    /// When true, topper ambient video audio is played (all ambient video modes).
+    /// Default false — ambient video is normally a silent loop.
+    /// </summary>
+    public bool TopperVideoAudioEnabled { get; set; }
+    /// <summary>
+    /// Topper ambient video audio volume (0–100) when <see cref="TopperVideoAudioEnabled"/> is true.
+    /// </summary>
+    public int TopperVideoAudioVolume { get; set; } = 50;
+
+    /// <summary>
+    /// Maps each display window to the Pinup Popper media sub-folder its synchronized
+    /// Pinup clips are pulled from. Keys are window names ("Playfield", "Backglass",
+    /// "Topper"); values are folder-option names that double as the on-disk media
+    /// sub-folder ("Playfield", "BackGlass", "Topper", "Menu", "DMD", "Loading").
+    /// The Pinup sync coordinator drives all screens off the canonical playfield glob;
+    /// each follower re-points that glob to its mapped folder. Defaults preserve the
+    /// prior hardcoded behavior (each window uses its own same-named folder).
+    /// </summary>
+    public Dictionary<string, string> PinupFolderMap { get; set; } = new()
+    {
+        ["Playfield"] = "Playfield",
+        ["Backglass"] = "BackGlass",
+        ["Topper"] = "Topper",
+    };
+
     public bool ShowVideoInfo { get; set; }
     public bool ShowBackglass { get; set; } = true;
     public bool ShowPlayfield { get; set; } = true;

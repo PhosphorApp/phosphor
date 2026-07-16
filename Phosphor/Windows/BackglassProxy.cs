@@ -102,6 +102,9 @@ public sealed class BackglassProxy : IPinupFollower
     // ── IPinupFollower ─────────────────────────────────────────────────
     public string PinupScreenFolder => "BackGlass";
 
+    public void SetPinupFolder(string folder) =>
+        _dispatcher.BeginInvoke(() => _window.SetBackglassPinupFolder(folder));
+
     public void PlayPinupGame(string canonicalPlayfieldGlob) =>
         _dispatcher.BeginInvoke(() => _window.SetBackglassPinupCurrentFile(canonicalPlayfieldGlob));
 

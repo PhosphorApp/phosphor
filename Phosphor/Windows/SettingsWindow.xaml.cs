@@ -185,6 +185,7 @@ public partial class SettingsWindow : JukeboxWindow
 
     public PlayfieldMode SelectedPlayfieldMode { get; private set; }
     public PlayfieldMode SelectedBackglassMode { get; private set; }
+    public PlayfieldMode SelectedTopperMode { get; private set; }
     public bool Saved { get; private set; }
     public bool WindowsReset { get; private set; }
 
@@ -418,6 +419,18 @@ public partial class SettingsWindow : JukeboxWindow
             Math.Clamp(settings.PinupClipDurationSeconds, 5, 300);
         UpdatePinupClipDurationLabel();
 
+        // Pinup window→media-folder mapping.
+        _pinupFolderMapRows.Clear();
+        foreach (var window in PinupFolderMapping.WindowNames)
+        {
+            _pinupFolderMapRows.Add(new PinupFolderMapRow
+            {
+                WindowName = window,
+                Folder = PinupFolderMapping.GetFolder(settings.PinupFolderMap, window),
+            });
+        }
+        PinupFolderMapList.ItemsSource = _pinupFolderMapRows;
+
         // Populate playfield video folders list
         _playfieldVideoFolders.Clear();
         foreach (var f in settings.PlayfieldVideoFolders)
@@ -552,6 +565,41 @@ public partial class SettingsWindow : JukeboxWindow
             ? VideoFolderMaxNoLimitTick
             : Math.Clamp(settings.BackglassVideoFolderMaxDurationSeconds, 10, 600);
         UpdateBackglassVideoFolderDurationLabels();
+
+        // ── Topper ambient content (independent of the playfield/backglass) ──
+        switch (settings.TopperDisplayMode)
+        {
+            case PlayfieldMode.Blank: RbTpBlank.IsChecked = true; break;
+            case PlayfieldMode.Screensaver: RbTpScreensaver.IsChecked = true; break;
+            case PlayfieldMode.StaticImage: RbTpStatic.IsChecked = true; break;
+            case PlayfieldMode.Video: RbTpVideo.IsChecked = true; break;
+            case PlayfieldMode.VideoFolders: RbTpVideoFolders.IsChecked = true; break;
+            case PlayfieldMode.PinupPlaylist: RbTpPinupPlaylist.IsChecked = true; break;
+        }
+        TbTpStaticImagePath.Text = settings.TopperStaticImagePath;
+        TbTpVideoPath.Text = settings.TopperVideoPath;
+        CbTpVideoAudioEnabled.IsChecked = settings.TopperVideoAudioEnabled;
+        SliderTpVideoAudioVolume.Value = Math.Clamp(settings.TopperVideoAudioVolume, 0, 100);
+        UpdateTopperVideoAudioControls();
+
+        _topperVideoFolders.Clear();
+        foreach (var f in settings.TopperVideoFolders)
+            if (!string.IsNullOrWhiteSpace(f))
+                _topperVideoFolders.Add(f);
+        LbTopperVideoFolders.ItemsSource = _topperVideoFolders;
+
+        CbTpVideoFolderPlayMode.Items.Clear();
+        CbTpVideoFolderPlayMode.Items.Add("Random");
+        CbTpVideoFolderPlayMode.Items.Add("Most Recent First");
+        CbTpVideoFolderPlayMode.SelectedIndex =
+            settings.TopperVideoFolderPlayMode == VideoFolderPlayMode.MostRecentFirst ? 1 : 0;
+
+        SliderTpVideoFolderMinDuration.Value =
+            Math.Clamp(settings.TopperVideoFolderMinDurationSeconds, 5, 300);
+        SliderTpVideoFolderMaxDuration.Value = settings.TopperVideoFolderMaxDurationSeconds <= 0
+            ? VideoFolderMaxNoLimitTick
+            : Math.Clamp(settings.TopperVideoFolderMaxDurationSeconds, 10, 600);
+        UpdateTopperVideoFolderDurationLabels();
 
         CbDmdScreensaverDim.IsChecked = settings.DmdScreensaverDimEnabled;
         CbDmdDimDarkBlobs.IsChecked = settings.DmdScreensaverDimDarkBlobs;
@@ -1452,6 +1500,154 @@ public partial class SettingsWindow : JukeboxWindow
 
     // ── Backglass ambient content handlers (independent of the playfield) ──
     private readonly ObservableCollection<string> _backglassVideoFolders = new();
+
+    private readonly ObservableCollection<string> _topperVideoFolders = new();
+
+    /// <summary>Bindable row for the Pinup window→media-folder mapping list.</summary>
+    private sealed class PinupFolderMapRow
+    {
+        public string WindowName { get; init; } = "";
+        public IReadOnlyList<string> FolderOptions { get; } = PinupFolderMapping.FolderOptions;
+        public string Folder { get; set; } = "";
+    }
+
+    private readonly ObservableCollection<PinupFolderMapRow> _pinupFolderMapRows = new();
+
+    // ── Topper ambient content ──────────────────────────────────────────
+
+    private void BrowseTopperStaticImage_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Select Topper Image",
+            Filter = "Image files|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tiff|All files|*.*"
+        };
+        if (!string.IsNullOrWhiteSpace(TbTpStaticImagePath.Text))
+        {
+            var dir = System.IO.Path.GetDirectoryName(TbTpStaticImagePath.Text);
+            if (!string.IsNullOrEmpty(dir) && System.IO.Directory.Exists(dir))
+                dlg.InitialDirectory = dir;
+        }
+        if (dlg.ShowDialog(this) == true)
+            TbTpStaticImagePath.Text = dlg.FileName;
+    }
+
+    private void ClearTopperStaticImage_Click(object sender, RoutedEventArgs e)
+    {
+        TbTpStaticImagePath.Text = "";
+    }
+
+    private void BrowseTopperVideo_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Select Topper Video",
+            Filter = "Video files|*.mp4;*.avi;*.wmv;*.mkv;*.mov|All files|*.*"
+        };
+        if (!string.IsNullOrWhiteSpace(TbTpVideoPath.Text))
+        {
+            var dir = System.IO.Path.GetDirectoryName(TbTpVideoPath.Text);
+            if (!string.IsNullOrEmpty(dir) && System.IO.Directory.Exists(dir))
+                dlg.InitialDirectory = dir;
+        }
+        if (dlg.ShowDialog(this) == true)
+            TbTpVideoPath.Text = dlg.FileName;
+    }
+
+    private void ClearTopperVideo_Click(object sender, RoutedEventArgs e)
+    {
+        TbTpVideoPath.Text = "";
+    }
+
+    private void AddTopperVideoFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = "Select Topper Video Folder",
+            Multiselect = true
+        };
+        string? seed = null;
+        if (_topperVideoFolders.Count > 0)
+        {
+            var first = _topperVideoFolders[0];
+            seed = System.IO.Path.IsPathRooted(first)
+                ? first
+                : System.IO.Path.Combine(AppContext.BaseDirectory, first);
+        }
+        else if (System.IO.Directory.Exists(AppSettings.DefaultTopperVideoFolder))
+        {
+            seed = AppSettings.DefaultTopperVideoFolder;
+        }
+        if (!string.IsNullOrEmpty(seed) && System.IO.Directory.Exists(seed))
+            dlg.InitialDirectory = seed;
+
+        if (dlg.ShowDialog(this) != true) return;
+
+        foreach (var folder in dlg.FolderNames)
+        {
+            var stored = MakePortableDittiPath(folder);
+            if (!_topperVideoFolders.Contains(stored))
+                _topperVideoFolders.Add(stored);
+        }
+    }
+
+    private void RemoveTopperVideoFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button btn && btn.DataContext is string path)
+            _topperVideoFolders.Remove(path);
+    }
+
+    private void SliderTpVideoFolderMinDuration_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (SliderTpVideoFolderMaxDuration != null)
+        {
+            double max = SliderTpVideoFolderMaxDuration.Value;
+            if (max < VideoFolderMaxNoLimitTick && max < e.NewValue)
+                SliderTpVideoFolderMaxDuration.Value = Math.Min(VideoFolderMaxNoLimitTick, e.NewValue);
+        }
+        UpdateTopperVideoFolderDurationLabels();
+    }
+
+    private void SliderTpVideoFolderMaxDuration_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (SliderTpVideoFolderMinDuration != null &&
+            e.NewValue < VideoFolderMaxNoLimitTick && e.NewValue < SliderTpVideoFolderMinDuration.Value)
+        {
+            SliderTpVideoFolderMaxDuration.Value = SliderTpVideoFolderMinDuration.Value;
+            return;
+        }
+        UpdateTopperVideoFolderDurationLabels();
+    }
+
+    private void UpdateTopperVideoFolderDurationLabels()
+    {
+        if (TxtTpVideoFolderMinDuration != null)
+            TxtTpVideoFolderMinDuration.Text = $"{(int)SliderTpVideoFolderMinDuration.Value}s";
+        if (TxtTpVideoFolderMaxDuration != null)
+        {
+            TxtTpVideoFolderMaxDuration.Text = SliderTpVideoFolderMaxDuration.Value >= VideoFolderMaxNoLimitTick
+                ? "No Maximum"
+                : $"{(int)SliderTpVideoFolderMaxDuration.Value}s";
+        }
+    }
+
+    private void CbTpVideoAudioEnabled_Changed(object sender, RoutedEventArgs e)
+    {
+        UpdateTopperVideoAudioControls();
+    }
+
+    private void SliderTpVideoAudioVolume_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        UpdateTopperVideoAudioControls();
+    }
+
+    private void UpdateTopperVideoAudioControls()
+    {
+        if (TxtTpVideoAudioVolume != null)
+            TxtTpVideoAudioVolume.Text = $"{(int)SliderTpVideoAudioVolume.Value}%";
+        if (SliderTpVideoAudioVolume != null)
+            SliderTpVideoAudioVolume.IsEnabled = CbTpVideoAudioEnabled.IsChecked == true;
+    }
 
     private void BrowseBackglassStaticImage_Click(object sender, RoutedEventArgs e)
     {
@@ -3486,6 +3682,10 @@ public partial class SettingsWindow : JukeboxWindow
 
         _settings.PinupClipDurationSeconds = (int)SliderPinupClipDuration.Value;
 
+        // Pinup window→media-folder mapping.
+        _settings.PinupFolderMap = _pinupFolderMapRows
+            .ToDictionary(r => r.WindowName, r => r.Folder, StringComparer.Ordinal);
+
         _settings.PlayfieldVideoAudioEnabled = CbVideoAudioEnabled.IsChecked == true;
         _settings.PlayfieldVideoAudioVolume = (int)SliderVideoAudioVolume.Value;
 
@@ -3551,6 +3751,37 @@ public partial class SettingsWindow : JukeboxWindow
                 : (int)SliderBgVideoFolderMaxDuration.Value;
 
         _settings.BackglassVideoAudioVolume = (int)SliderBgVideoAudioVolume.Value;
+
+        // ── Topper ambient content (independent of the playfield/backglass) ──
+        if (RbTpBlank.IsChecked == true)
+            _settings.TopperDisplayMode = PlayfieldMode.Blank;
+        else if (RbTpScreensaver.IsChecked == true)
+            _settings.TopperDisplayMode = PlayfieldMode.Screensaver;
+        else if (RbTpVideo.IsChecked == true)
+            _settings.TopperDisplayMode = PlayfieldMode.Video;
+        else if (RbTpVideoFolders.IsChecked == true)
+            _settings.TopperDisplayMode = PlayfieldMode.VideoFolders;
+        else if (RbTpPinupPlaylist.IsChecked == true)
+            _settings.TopperDisplayMode = PlayfieldMode.PinupPlaylist;
+        else if (RbTpStatic.IsChecked == true)
+            _settings.TopperDisplayMode = PlayfieldMode.StaticImage;
+        else
+            _settings.TopperDisplayMode = PlayfieldMode.Screensaver;
+        SelectedTopperMode = _settings.TopperDisplayMode;
+
+        _settings.TopperStaticImagePath = TbTpStaticImagePath.Text;
+        _settings.TopperVideoPath = TbTpVideoPath.Text;
+        _settings.TopperVideoFolders = new List<string>(_topperVideoFolders);
+        _settings.TopperVideoFolderPlayMode = CbTpVideoFolderPlayMode.SelectedIndex == 1
+            ? VideoFolderPlayMode.MostRecentFirst
+            : VideoFolderPlayMode.Random;
+        _settings.TopperVideoFolderMinDurationSeconds = (int)SliderTpVideoFolderMinDuration.Value;
+        _settings.TopperVideoFolderMaxDurationSeconds =
+            SliderTpVideoFolderMaxDuration.Value >= VideoFolderMaxNoLimitTick
+                ? 0
+                : (int)SliderTpVideoFolderMaxDuration.Value;
+        _settings.TopperVideoAudioEnabled = CbTpVideoAudioEnabled.IsChecked == true;
+        _settings.TopperVideoAudioVolume = (int)SliderTpVideoAudioVolume.Value;
 
         _settings.DmdScreensaverDimEnabled = CbDmdScreensaverDim.IsChecked == true;
         _settings.DmdScreensaverDimDarkBlobs = CbDmdDimDarkBlobs.IsChecked == true;

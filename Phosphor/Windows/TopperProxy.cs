@@ -8,7 +8,7 @@ namespace Phosphor;
 /// STA thread.  Every method dispatches to the topper's <see cref="Dispatcher"/>
 /// so callers on the main UI thread don't need to worry about cross-thread access.
 /// </summary>
-public sealed class TopperProxy
+public sealed class TopperProxy : IPinupFollower
 {
     private readonly TopperWindow _window;
     private readonly Dispatcher _dispatcher;
@@ -139,6 +139,38 @@ public sealed class TopperProxy
 
     public void OnSongChanged() =>
         _dispatcher.BeginInvoke(() => _window.OnSongChanged());
+
+    // ── Ambient content ─────────────────────────────────────────────────
+
+    public void SetMode(PlayfieldMode mode) =>
+        _dispatcher.BeginInvoke(() => _window.SetMode(mode));
+
+    public void SetStaticImage(string? path) =>
+        _dispatcher.BeginInvoke(() => _window.SetStaticImage(path));
+
+    public void SetVideoPath(string? path) =>
+        _dispatcher.BeginInvoke(() => _window.SetVideoPath(path));
+
+    public void SetVideoFolders(IReadOnlyList<string>? folders) =>
+        _dispatcher.BeginInvoke(() => _window.SetVideoFolders(folders));
+
+    public void SetVideoFolderOptions(VideoFolderPlayMode playMode, int minDurationSec, int maxDurationSec) =>
+        _dispatcher.BeginInvoke(() => _window.SetVideoFolderOptions(playMode, minDurationSec, maxDurationSec));
+
+    public void SetVideoAudio(bool enabled, int volume) =>
+        _dispatcher.BeginInvoke(() => _window.SetVideoAudio(enabled, volume));
+
+    public void SetPinupFolder(string folder) =>
+        _dispatcher.BeginInvoke(() => _window.SetPinupFolder(folder));
+
+    // ── IPinupFollower ──────────────────────────────────────────────────
+    public string PinupScreenFolder => _dispatcher.Invoke(() => _window.PinupScreenFolder);
+
+    public void PlayPinupGame(string canonicalPlayfieldGlob) =>
+        _dispatcher.BeginInvoke(() => _window.SetPinupCurrentFile(canonicalPlayfieldGlob));
+
+    public void StopPinup() =>
+        _dispatcher.BeginInvoke(() => _window.SetPinupCurrentFile(null));
 
     // ── Cursor ──────────────────────────────────────────────────────────
 

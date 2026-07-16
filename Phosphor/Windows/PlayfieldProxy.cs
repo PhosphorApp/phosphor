@@ -142,6 +142,9 @@ public sealed class PlayfieldProxy : IPinupFollower
     // ── IPinupFollower ─────────────────────────────────────────────────
     public string PinupScreenFolder => "Playfield";
 
+    public void SetPinupFolder(string folder) =>
+        _dispatcher.BeginInvoke(() => _window.SetPinupFolder(folder));
+
     public void PlayPinupGame(string canonicalPlayfieldGlob) =>
         _dispatcher.BeginInvoke(() => _window.SetPinupCurrentFile(canonicalPlayfieldGlob));
 

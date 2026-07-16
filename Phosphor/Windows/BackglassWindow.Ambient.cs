@@ -56,6 +56,9 @@ public partial class BackglassWindow
     // file via SetBackglassPinupCurrentFile. Playback is a seamless single-clip loop.
     private string? _ambientPinupCurrentPath;
     private const string BackglassScreenFolder = "BackGlass";
+    // Configurable Pinup media folder (default "BackGlass"); the coordinator's canonical
+    // playfield glob is re-pointed to this folder before resolving the actual file.
+    private string _ambientPinupFolder = BackglassScreenFolder;
 
     // Transition / timing.
     private DispatcherTimer? _ambientPositionTimer;
@@ -191,19 +194,24 @@ public partial class BackglassWindow
     }
 
     /// <summary>
-    /// Re-points a canonical playfield glob (…\Playfield\Game.*) to its backglass counterpart
-    /// (…\BackGlass\Game.*). Returns the original when no Playfield segment is present.
+    /// Re-points a canonical playfield glob (…\Playfield\Game.*) to the backglass's mapped
+    /// media folder (…\&lt;folder&gt;\Game.*). Returns the original when no Playfield segment
+    /// is present.
     /// </summary>
-    private static string? RepointToBackglass(string? playfieldGlob)
-    {
-        if (string.IsNullOrWhiteSpace(playfieldGlob))
-            return null;
-        return playfieldGlob.Replace(
-            "\\" + PlayfieldFolderToken + "\\", "\\" + BackglassScreenFolder + "\\",
-            StringComparison.OrdinalIgnoreCase);
-    }
+    private string? RepointToBackglass(string? playfieldGlob) =>
+        PinupFolderMapping.RepointToFolder(playfieldGlob, _ambientPinupFolder);
 
     private const string PlayfieldFolderToken = "Playfield";
+
+    /// <summary>
+    /// Sets the Pinup media sub-folder the backglass pulls its coordinated clips from. The
+    /// canonical playfield glob is re-pointed to this folder (extension-agnostic resolve).
+    /// </summary>
+    public void SetBackglassPinupFolder(string folder)
+    {
+        if (!string.IsNullOrWhiteSpace(folder))
+            _ambientPinupFolder = folder;
+    }
 
     public void SetBackglassVideoAudio(bool enabled, int volume)
     {

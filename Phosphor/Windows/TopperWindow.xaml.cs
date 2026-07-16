@@ -61,9 +61,19 @@ public partial class TopperWindow : JukeboxWindow
             return;
 
         if (visible)
-            ResumeScreensaver();
+        {
+            // Resume whatever the current content mode needs. Media modes defer their
+            // (expensive) LibVLC playback until the window is actually shown.
+            if (_contentMode is PlayfieldMode.Video or PlayfieldMode.VideoFolders or PlayfieldMode.PinupPlaylist)
+                StartVideoPlayback();
+            else if (_contentMode == PlayfieldMode.Screensaver)
+                ResumeScreensaver();
+        }
         else
+        {
             PauseScreensaver();
+            StopVideoPlayback();
+        }
     }
 
     private void PauseScreensaver()

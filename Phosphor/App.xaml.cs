@@ -160,7 +160,23 @@ public partial class App : Application
                 _settings.BackglassVideoAudioVolume);
             _backglassProxy.SetBackglassMode(_settings.BackglassDisplayMode);
 
-            // Always initialize backglass so its visual tree and media player are ready.
+            // Set topper ambient content (independent of the playfield/backglass)
+            _topperProxy.SetStaticImage(_settings.TopperStaticImagePath);
+            _topperProxy.SetVideoPath(_settings.TopperVideoPath);
+            _topperProxy.SetVideoFolders(_settings.TopperVideoFolders);
+            _topperProxy.SetVideoFolderOptions(
+                _settings.TopperVideoFolderPlayMode,
+                _settings.TopperVideoFolderMinDurationSeconds,
+                _settings.TopperVideoFolderMaxDurationSeconds);
+            _topperProxy.SetVideoAudio(
+                _settings.TopperVideoAudioEnabled,
+                _settings.TopperVideoAudioVolume);
+            _topperProxy.SetMode(_settings.TopperDisplayMode);
+
+            // Apply the Pinup window→media-folder mapping to each follower.
+            _playfieldProxy.SetPinupFolder(PinupFolderMapping.GetFolder(_settings.PinupFolderMap, "Playfield"));
+            _backglassProxy.SetPinupFolder(PinupFolderMapping.GetFolder(_settings.PinupFolderMap, "Backglass"));
+            _topperProxy.SetPinupFolder(PinupFolderMapping.GetFolder(_settings.PinupFolderMap, "Topper"));
             // If hidden on launch, briefly show off-screen then hide to ensure initialization.
             if (!_settings.ShowBackglass)
             {

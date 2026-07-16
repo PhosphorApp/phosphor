@@ -2088,6 +2088,15 @@ public partial class DmdWindow : JukeboxWindow
         if (_backglassProxy != null && _appSettings.ShowBackglass &&
             _appSettings.BackglassDisplayMode == PlayfieldMode.PinupPlaylist)
             followers.Add(_backglassProxy);
+        if (_topperProxy != null && _appSettings.ShowTopper &&
+            _appSettings.TopperDisplayMode == PlayfieldMode.PinupPlaylist)
+            followers.Add(_topperProxy);
+
+        // Apply each follower's configured media folder before (re)starting so the
+        // coordinator's canonical playfield globs are re-pointed correctly.
+        _playfieldProxy?.SetPinupFolder(PinupFolderMapping.GetFolder(_appSettings.PinupFolderMap, "Playfield"));
+        _backglassProxy?.SetPinupFolder(PinupFolderMapping.GetFolder(_appSettings.PinupFolderMap, "Backglass"));
+        _topperProxy?.SetPinupFolder(PinupFolderMapping.GetFolder(_appSettings.PinupFolderMap, "Topper"));
 
         _pinupSync.SetFollowers(followers);
 
@@ -2134,6 +2143,19 @@ public partial class DmdWindow : JukeboxWindow
             _appSettings.BackglassVideoAudioEnabled,
             _appSettings.BackglassVideoAudioVolume);
         _backglassProxy?.SetBackglassMode(settingsWindow.SelectedBackglassMode);
+
+        // Topper ambient content (independent of the playfield/backglass)
+        _topperProxy?.SetStaticImage(_appSettings.TopperStaticImagePath);
+        _topperProxy?.SetVideoPath(_appSettings.TopperVideoPath);
+        _topperProxy?.SetVideoFolders(_appSettings.TopperVideoFolders);
+        _topperProxy?.SetVideoFolderOptions(
+            _appSettings.TopperVideoFolderPlayMode,
+            _appSettings.TopperVideoFolderMinDurationSeconds,
+            _appSettings.TopperVideoFolderMaxDurationSeconds);
+        _topperProxy?.SetVideoAudio(
+            _appSettings.TopperVideoAudioEnabled,
+            _appSettings.TopperVideoAudioVolume);
+        _topperProxy?.SetMode(settingsWindow.SelectedTopperMode);
 
         // Pinup sync: (re)build the coordinator across all screens now in Pinup mode.
         RefreshPinupSync();

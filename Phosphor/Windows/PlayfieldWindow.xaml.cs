@@ -105,6 +105,9 @@ public partial class PlayfieldWindow : JukeboxWindow
     private bool _pinupMode;
     private string? _pinupCurrentPath;
     private const string PlayfieldScreenFolder = "Playfield";
+    // Configurable Pinup media folder (default "Playfield"); the coordinator's canonical
+    // playfield glob is re-pointed to this folder before resolving the actual file.
+    private string _pinupFolder = PlayfieldScreenFolder;
 
     //added to try to prevent window from stealing focus
     private const int WS_EX_NOACTIVATE = 0x08000000;
@@ -952,11 +955,22 @@ public partial class PlayfieldWindow : JukeboxWindow
     /// to a real file (extension-agnostic). The clip loops seamlessly until the coordinator
     /// supplies the next game. Shows black if no matching file exists.
     /// </summary>
+    /// <summary>
+    /// Sets the Pinup media sub-folder this screen pulls its coordinated clips from. The
+    /// canonical playfield glob is re-pointed to this folder (extension-agnostic resolve).
+    /// </summary>
+    public void SetPinupFolder(string folder)
+    {
+        if (!string.IsNullOrWhiteSpace(folder))
+            _pinupFolder = folder;
+    }
+
     public void SetPinupCurrentFile(string? canonicalPlayfieldGlob)
     {
-        var file = string.IsNullOrWhiteSpace(canonicalPlayfieldGlob)
+        var glob = PinupFolderMapping.RepointToFolder(canonicalPlayfieldGlob, _pinupFolder);
+        var file = string.IsNullOrWhiteSpace(glob)
             ? null
-            : ResolvePinupGlob(canonicalPlayfieldGlob);
+            : ResolvePinupGlob(glob);
 
         _pinupCurrentPath = file;
         if (file == null)
