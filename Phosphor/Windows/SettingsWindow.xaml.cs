@@ -4466,6 +4466,31 @@ public partial class SettingsWindow : JukeboxWindow
                     panel.Children.Add(testRow);
                 }
 
+                // ── "Manage hidden channels…" — for sources that support hiding (e.g. SiriusXM). ──
+                if (capSource is Phosphor.Plugin.Abstractions.IHideable)
+                {
+                    var hideInstanceId = cfg.InstanceId;
+                    var hideRow = new System.Windows.Controls.StackPanel
+                    {
+                        Orientation = System.Windows.Controls.Orientation.Horizontal,
+                        Margin = new Thickness(0, 0, 0, 8),
+                    };
+                    var hideBtn = new System.Windows.Controls.Button
+                    {
+                        Content = "Manage hidden channels…", Padding = new Thickness(8, 3, 8, 3),
+                        VerticalAlignment = VerticalAlignment.Center,
+                    };
+                    var hideResult = new System.Windows.Controls.TextBlock
+                    {
+                        Foreground = dim, FontSize = 11, VerticalAlignment = VerticalAlignment.Center,
+                        Margin = new Thickness(10, 0, 0, 0), TextWrapping = TextWrapping.Wrap,
+                    };
+                    hideBtn.Click += (_, _) => ManageHiddenItems(hideInstanceId, hideResult);
+                    hideRow.Children.Add(hideBtn);
+                    hideRow.Children.Add(hideResult);
+                    panel.Children.Add(hideRow);
+                }
+
                 // ── "Update engine" — for sources whose backing tool can self-update (e.g. yt-dlp). ──
                 if (capSource is Phosphor.Plugin.Abstractions.IUpdatable { SupportsUpdate: true })
                 {
@@ -5162,6 +5187,63 @@ public partial class SettingsWindow : JukeboxWindow
         finally
         {
             button.IsEnabled = true;
+            DisposeTransientSource(source);
+        }
+    }
+
+    /// <summary>
+    /// Opens the "manage hidden items" dual-list modal for an <see cref="Phosphor.Plugin.Abstractions.IHideable"/>
+    /// source: two side-by-side Extended-multi-select lists (Visible ⇄ Hidden) with move buttons and a
+    /// "Hide sports teams" quick action. Persists via <c>SetHidden</c> and reports a summary.
+    /// </summary>
+    private void ManageHiddenItems(string instanceId, System.Windows.Controls.TextBlock result)
+    {
+        HarvestPluginSourcesTab();
+        var cfg = _settings.PluginInstances.FirstOrDefault(c => c.InstanceId == instanceId);
+        if (cfg == null) return;
+
+        var source = Phosphor.Plugins.PluginSettingsFactory.BuildTransientSource(cfg, _pluginHttp);
+        if (source is not Phosphor.Plugin.Abstractions.IHideable hideable)
+        {
+            DisposeTransientSource(source);
+            return;
+        }
+
+        try
+        {
+            if (source is Phosphor.Plugin.Abstractions.IPhosphorSource ps)
+                ps.InitializeAsync(new Phosphor.Plugins.Host.PluginHost(cfg.InstanceId, _pluginHttp)).GetAwaiter().GetResult();
+
+            var all = hideable.GetHideableItems();
+            if (all.Count == 0)
+            {
+                result.Text = "No channels to manage yet — open the source once to load its lineup.";
+                result.Foreground = (System.Windows.Media.Brush)FindResource("TextDimBrush");
+                return;
+            }
+            var hidden = new HashSet<string>(hideable.GetHiddenIds(), StringComparer.Ordinal);
+
+            var dlg = new Phosphor.Windows.ManageHiddenWindow(all, hidden) { Owner = this };
+            dlg.ShowDialog();
+            if (!dlg.Applied) return;
+            var nowHidden = dlg.HiddenIds;
+
+            // Apply as a full diff: hide the new set, unhide everything else.
+            var toHide = nowHidden.ToList();
+            var toShow = all.Select(i => i.Id).Where(id => !nowHidden.Contains(id)).ToList();
+            hideable.SetHidden(toHide, true);
+            hideable.SetHidden(toShow, false);
+
+            result.Text = $"{nowHidden.Count} channel(s) hidden. Reopen the source to see the change.";
+            result.Foreground = (System.Windows.Media.Brush)FindResource("TextDimBrush");
+        }
+        catch (Exception ex)
+        {
+            result.Text = "✗ " + ex.Message;
+            result.Foreground = System.Windows.Media.Brushes.IndianRed;
+        }
+        finally
+        {
             DisposeTransientSource(source);
         }
     }

@@ -301,3 +301,29 @@ public interface IFavoritable
     /// <summary>The currently favorited item ids, for building a "Favorites" view.</summary>
     IReadOnlyCollection<string> GetFavoriteIds();
 }
+
+/// <summary>One item a source exposes for the host's hide-management UI.</summary>
+/// <param name="Id">The item's stable id (an <see cref="SourceItem.ItemId"/>).</param>
+/// <param name="Label">A user-facing label (e.g. "37 · Octane").</param>
+/// <param name="Group">Optional top-level grouping (e.g. a super-group like "Music"). May be null.</param>
+/// <param name="SubGroup">Optional second-level grouping (e.g. a category like "Country"). May be null.</param>
+public sealed record HideableItem(string Id, string Label, string? Group = null, string? SubGroup = null);
+
+/// <summary>
+/// Capability: the user can hide specific items from a source's browse lists (e.g. suppress the
+/// hundreds of SiriusXM sports-team channels). Optional and generic — any source may adopt it. The
+/// host offers a "manage hidden items" affordance <em>only</em> when the source implements this, and
+/// the source is responsible for persisting the hidden set and excluding hidden items from its own
+/// browse results. Bulk <see cref="SetHidden"/> supports block/multi-select edits efficiently.
+/// </summary>
+public interface IHideable
+{
+    /// <summary>All items eligible to be hidden (the full set the manage-UI presents).</summary>
+    IReadOnlyList<HideableItem> GetHideableItems();
+
+    /// <summary>The ids currently hidden.</summary>
+    IReadOnlyCollection<string> GetHiddenIds();
+
+    /// <summary>Hides or unhides a batch of ids at once, and persists the change.</summary>
+    void SetHidden(IReadOnlyCollection<string> itemIds, bool hidden);
+}
