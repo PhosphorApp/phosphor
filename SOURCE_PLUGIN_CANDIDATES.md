@@ -34,6 +34,7 @@ Every candidate is judged against what the architecture already gives a source:
 
 | Source | Content shape | Playback path | Difficulty | Cost | Verdict |
 |---|---|---|---|---|---|
+| **Jellyfin** | On-demand music + video (self-hosted server) | Custom C# REST client, direct HTTP stream URLs | Low–Med | Free (self-host) | 🟢 **Shipped** — `Phosphor.Plugins.Jellyfin` (see below) |
 | **Vimeo** | On-demand video+audio | yt-dlp extractor (proven) | Low–Med | Free | ✅ Good fit |
 | **SoundCloud** | On-demand audio | yt-dlp extractor (proven) | Low–Med | Free (+API gating) | ✅ Best audio candidate |
 | **Bandcamp** | On-demand audio | yt-dlp extractor (proven) | Low–Med | Free | ✅ Feasible (discovery is the work) |
@@ -48,6 +49,24 @@ skip Tidal & Pandora.**
 ---
 
 ## ✅ Good fits
+
+### Jellyfin — **shipped (v1)**
+- **Why:** the on-demand, finite/seekable counterpart to SiriusXM — a self-hosted media server
+  (music + video) that validates the browse contract without any live-stream complications.
+- **Compatibility:** Excellent — the **Plex shape**. Token auth, hierarchical browse
+  (library → artist → album → track, plus movies/videos), and **direct long-lived HTTP stream URLs**,
+  so **no local proxy** and **no `IsLiveStream`** needed.
+- **Playback:** custom pure-`HttpClient` REST client (`JellyfinClient`) — `POST /Users/AuthenticateByName`
+  (`X-Emby-Authorization`) → `AccessToken`; `/Users/{id}/Views` + `/Users/{id}/Items` for browse;
+  `/Audio/{id}/universal` + `/Videos/{id}/stream` for playback. Plays through the host's normal
+  `StreamUrl → Media → Play` path — no ffmpeg, no yt-dlp.
+- **Stereo (2.1):** a **"Stereo audio"** setting (default on) forces `MaxAudioChannels=2` — imperative
+  on pinball cabs whose surround channels drive mechanical/ball exciters, mirroring the Plex stereo option.
+- **Capabilities:** `IBrowsable` + `ITextSearchCapable` + `IPlayableResolver` + `IConnectionTestable`.
+  Multi-instance (home + friend's server).
+- **Effort:** Low–Med — shares the Plex interaction shape; built out-of-tree exactly like SiriusXM
+  (self-deploy → auto-discovery, **zero host changes**).
+- **Deferred:** favorites (`IFavoritable`, server-side like Plex), paged browse, scoped search, gapless.
 
 ### Vimeo
 - **Compatibility:** Excellent. On-demand video, maps onto the YouTube-shaped model (video items,

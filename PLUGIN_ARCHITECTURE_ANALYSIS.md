@@ -15,10 +15,14 @@ by third parties dropping a DLL into a `plug-ins` folder scanned at startup.
 > "when the flag is on/off", or "still single-server" are historical** — later entries and
 > this banner supersede them. For authoring a plug-in, see **`PLUGIN_AUTHORING_GUIDE.md`**.
 > Remaining items are conscious deferrals only: the untrusted-code
-> policy for third-party DLLs, and an optional second in-box reference source (Jellyfin/Subsonic).
+> policy for third-party DLLs.
 > A working third-party live-radio source (**SiriusXM**) now ships on the `siriusxm`/`master` branch,
 > exercising live/infinite streams (`IsLiveStream`), favorites (`IFavoritable`), and item hiding
-> (`IHideable`) — the capabilities added in v0.13.0.
+> (`IHideable`) — the capabilities added in v0.13.0. A second reference **media-server** source
+> (**Jellyfin**, `Phosphor.Plugins.Jellyfin`) now also ships out-of-tree — the on-demand
+> (finite/seekable) Plex-shaped counterpart: `IBrowsable` + `ITextSearchCapable` + `IPlayableResolver`
+> + `IConnectionTestable`, direct HTTP stream URLs (no proxy), and a stereo (2-channel) downmix option
+> that is imperative on pinball cabs whose surround channels drive mechanical/ball exciters.
 
 ---
 

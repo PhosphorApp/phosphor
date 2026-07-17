@@ -174,7 +174,7 @@ public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IFilterabl
     {
         await Task.CompletedTask;
         foreach (var lib in _libraries)
-            yield return PlexMappings.ToRootCategory(lib, InstanceId);
+            yield return PlexMappings.ToRootCategory(lib, InstanceId, DisplayName);
     }
 
     public async Task<BrowseResult> BrowseAsync(SourceCategory category, CancellationToken ct = default)

@@ -53,12 +53,14 @@ internal static class PlexMappings
 
     // ── Categories ─────────────────────────────────────────────────────────────
 
-    /// <summary>Maps a configured library mapping to a root <see cref="SourceCategory"/>.</summary>
-    public static SourceCategory ToRootCategory(PlexLibraryMapping lib, string instanceId) => new()
+    /// <summary>Maps a configured library mapping to a root <see cref="SourceCategory"/>. The
+    /// instance <paramref name="displayNamePrefix"/> is prepended to the tile title (e.g.
+    /// "Plex Movies") so libraries don't collide with same-named tiles from other servers/sources.</summary>
+    public static SourceCategory ToRootCategory(PlexLibraryMapping lib, string instanceId, string? displayNamePrefix = null) => new()
     {
         SourceInstanceId = instanceId,
         CategoryId = $"library:{lib.Key}",
-        Title = lib.Title,
+        Title = string.IsNullOrWhiteSpace(displayNamePrefix) ? lib.Title : $"{displayNamePrefix} {lib.Title}",
         Icon = lib.Type == "artist" ? "🎵" : "🎬",
         HasSubCategories = true,
         SourceState = new PlexNode(PlexNodeKind.Library, lib.Key, lib.Type),

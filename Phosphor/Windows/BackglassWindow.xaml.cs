@@ -407,16 +407,23 @@ public partial class BackglassWindow : JukeboxWindow
             }
             _liveStartUtc = null;
 
-            v.PlaybackDuration = Math.Max(1, _mediaPlayer.Length);
+            // LibVLC reports Length = 0 for some transcoded/chunked HTTP streams (e.g. a Jellyfin
+            // HLS transcode), which would pin the scrub bar "at the end". Fall back to the item's
+            // known duration (Jellyfin RunTimeTicks, Plex duration, …) so time/seek still work.
+            long lengthMs = _mediaPlayer.Length;
+            if (lengthMs <= 0 && v.CurrentlyPlaying?.Duration is { } known && known > TimeSpan.Zero)
+                lengthMs = (long)known.TotalMilliseconds;
+
+            v.PlaybackDuration = Math.Max(1, lengthMs);
             v.PlaybackPosition = Math.Max(0, _mediaPlayer.Time);
 
             // Prefetch next track when within 30 seconds of the end
-            var remaining2 = _mediaPlayer.Length - _mediaPlayer.Time;
-            if (_mediaPlayer.Length > 0 && remaining2 > 0 && remaining2 <= 30_000)
+            var remaining2 = lengthMs - _mediaPlayer.Time;
+            if (lengthMs > 0 && remaining2 > 0 && remaining2 <= 30_000)
                 v.PrefetchNextTrack();
 
             // Gapless: prime the next audio-only Plex track ~5 seconds before end
-            if (_mediaPlayer.Length > 0 && remaining2 > 0 && remaining2 <= 5_000 && !_gaplessPrimed)
+            if (lengthMs > 0 && remaining2 > 0 && remaining2 <= 5_000 && !_gaplessPrimed)
                 PrepareGaplessNext(v);
         };
     }

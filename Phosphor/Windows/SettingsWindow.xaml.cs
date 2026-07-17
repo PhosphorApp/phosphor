@@ -4689,7 +4689,12 @@ public partial class SettingsWindow : JukeboxWindow
             {
                 foreach (var action in configurable.GetConfigActions())
                 {
-                    if (action.Id == Phosphor.Plugins.Plex.PlexSourceProvider.ActionBrowseLibraries)
+                    // These "browse libraries" actions are surfaced by the inline library editor
+                    // (BuildInlineLibraryEditor on the "libraries" field), so skip them here to avoid
+                    // a duplicate popup button. Jellyfin is an out-of-tree plug-in (no type ref), so
+                    // match its action id by string.
+                    if (action.Id == Phosphor.Plugins.Plex.PlexSourceProvider.ActionBrowseLibraries ||
+                        action.Id == "jellyfinBrowseLibraries")
                         continue;
                     var actionRow = new System.Windows.Controls.StackPanel
                     {
@@ -4994,13 +4999,20 @@ public partial class SettingsWindow : JukeboxWindow
             {
                 foreach (var lib in avail.Where(l => !addedKeys.Contains(l.Key)))
                     combo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = $"{lib.Title} ({lib.Type})", Tag = lib });
-                combo.Text = combo.Items.Count > 0 ? "" : "All libraries added";
+                if (combo.Items.Count == 0)
+                    // Show a non-selectable hint when everything is already added (a non-editable
+                    // ComboBox ignores combo.Text, so it must be an item to be visible).
+                    combo.Items.Add(new System.Windows.Controls.ComboBoxItem
+                    { Content = "All libraries added", Tag = null, IsEnabled = false });
             }
             else
             {
-                combo.Text = "Click to load libraries…";
+                // Not yet fetched — a placeholder item explains the blank list + the lazy load.
+                // (combo.Text is ignored on a non-editable ComboBox, so use a real item.)
+                combo.Items.Add(new System.Windows.Controls.ComboBoxItem
+                { Content = "(click to load libraries…)", Tag = null, IsEnabled = false });
             }
-            if (combo.Items.Count > 0) combo.SelectedIndex = 0;
+            combo.SelectedIndex = 0;
         }
         RefreshCombo();
 
@@ -5009,7 +5021,10 @@ public partial class SettingsWindow : JukeboxWindow
         {
             if (!_pluginLibraryAvailable.ContainsKey(instId))
             {
-                combo.Text = "Loading…";
+                combo.Items.Clear();
+                combo.Items.Add(new System.Windows.Controls.ComboBoxItem
+                { Content = "Loading…", Tag = null, IsEnabled = false });
+                combo.SelectedIndex = 0;
                 await FetchAvailableLibrariesAsync(instId);
                 RefreshCombo();
                 combo.IsDropDownOpen = true;
@@ -5062,27 +5077,32 @@ public partial class SettingsWindow : JukeboxWindow
             };
             row.Children.Add(removeBtn);
 
-            var playlistsCb = new System.Windows.Controls.CheckBox
+            // Hubs/Playlists are Plex-only concepts; other IConfigurable sources (e.g. Jellyfin) just
+            // pick libraries, so only render the extra flags for Plex instances.
+            if (cfg.TypeId == Phosphor.Plugins.Plex.PlexSourceProvider.PlexTypeId)
             {
-                Content = "Playlists", IsChecked = lib.PlaylistsEnabled, Foreground = dim,
-                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
-                ToolTip = "Show a Playlists tile",
-            };
-            playlistsCb.Checked += (_, _) => { lib.PlaylistsEnabled = true; SaveInstanceLibraries(instId); };
-            playlistsCb.Unchecked += (_, _) => { lib.PlaylistsEnabled = false; SaveInstanceLibraries(instId); };
-            System.Windows.Controls.DockPanel.SetDock(playlistsCb, System.Windows.Controls.Dock.Right);
-            row.Children.Add(playlistsCb);
+                var playlistsCb = new System.Windows.Controls.CheckBox
+                {
+                    Content = "Playlists", IsChecked = lib.PlaylistsEnabled, Foreground = dim,
+                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
+                    ToolTip = "Show a Playlists tile",
+                };
+                playlistsCb.Checked += (_, _) => { lib.PlaylistsEnabled = true; SaveInstanceLibraries(instId); };
+                playlistsCb.Unchecked += (_, _) => { lib.PlaylistsEnabled = false; SaveInstanceLibraries(instId); };
+                System.Windows.Controls.DockPanel.SetDock(playlistsCb, System.Windows.Controls.Dock.Right);
+                row.Children.Add(playlistsCb);
 
-            var hubsCb = new System.Windows.Controls.CheckBox
-            {
-                Content = "Hubs", IsChecked = lib.HubsEnabled, Foreground = dim,
-                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
-                ToolTip = "Show a Hubs tile (Recently Added, etc.)",
-            };
-            hubsCb.Checked += (_, _) => { lib.HubsEnabled = true; SaveInstanceLibraries(instId); };
-            hubsCb.Unchecked += (_, _) => { lib.HubsEnabled = false; SaveInstanceLibraries(instId); };
-            System.Windows.Controls.DockPanel.SetDock(hubsCb, System.Windows.Controls.Dock.Right);
-            row.Children.Add(hubsCb);
+                var hubsCb = new System.Windows.Controls.CheckBox
+                {
+                    Content = "Hubs", IsChecked = lib.HubsEnabled, Foreground = dim,
+                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
+                    ToolTip = "Show a Hubs tile (Recently Added, etc.)",
+                };
+                hubsCb.Checked += (_, _) => { lib.HubsEnabled = true; SaveInstanceLibraries(instId); };
+                hubsCb.Unchecked += (_, _) => { lib.HubsEnabled = false; SaveInstanceLibraries(instId); };
+                System.Windows.Controls.DockPanel.SetDock(hubsCb, System.Windows.Controls.Dock.Right);
+                row.Children.Add(hubsCb);
+            }
 
             row.Children.Add(new System.Windows.Controls.TextBlock
             {
@@ -5121,7 +5141,15 @@ public partial class SettingsWindow : JukeboxWindow
             {
                 try
                 {
-                    var sel = await configurable.InvokeConfigActionAsync(Phosphor.Plugins.Plex.PlexSourceProvider.ActionBrowseLibraries);
+                    if (source is Phosphor.Plugin.Abstractions.IPhosphorSource ps)
+                        await ps.InitializeAsync(new Phosphor.Plugins.Host.PluginHost(cfg.InstanceId, _pluginHttp));
+
+                    // Use the source's own first config action (Plex + Jellyfin each expose a single
+                    // "browse libraries" action; the ids differ per source).
+                    var actionId = configurable.GetConfigActions().FirstOrDefault()?.Id;
+                    if (actionId == null) { _pluginLibraryAvailable[instanceId] = libs; return libs; }
+
+                    var sel = await configurable.InvokeConfigActionAsync(actionId);
                     // Options carry Id = library key, Label = "Title (Type)". Recover Title/Type.
                     foreach (var o in sel.Options)
                     {
