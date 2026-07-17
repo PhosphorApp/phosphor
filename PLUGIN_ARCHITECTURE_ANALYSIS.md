@@ -7,7 +7,7 @@ by third parties dropping a DLL into a `plug-ins` folder scanned at startup.
 
 > **STATUS (implemented).** This document began as analysis and grew into a running
 > changelog as the work landed. The plug-in architecture is now **fully implemented** on
-> `plugin-rework`: the capability-based contract (`Phosphor.Plugin.Abstractions`, v0.11.0),
+> `plugin-rework`: the capability-based contract (`Phosphor.Plugin.Abstractions`, v0.13.0),
 > both in-box sources (YouTube, Plex) running through the registry as the sole source path
 > (the old `UsePluginSources` flag is **removed**), an editable **Plug-ins** settings tab, the
 > dynamic `AssemblyLoadContext` DLL loader, and a working third-party reference plug-in
@@ -15,7 +15,10 @@ by third parties dropping a DLL into a `plug-ins` folder scanned at startup.
 > "when the flag is on/off", or "still single-server" are historical** — later entries and
 > this banner supersede them. For authoring a plug-in, see **`PLUGIN_AUTHORING_GUIDE.md`**.
 > Remaining items are conscious deferrals only: the untrusted-code
-> policy for third-party DLLs, and an optional second reference source (Jellyfin/Subsonic).
+> policy for third-party DLLs, and an optional second in-box reference source (Jellyfin/Subsonic).
+> A working third-party live-radio source (**SiriusXM**) now ships on the `siriusxm`/`master` branch,
+> exercising live/infinite streams (`IsLiveStream`), favorites (`IFavoritable`), and item hiding
+> (`IHideable`) — the capabilities added in v0.13.0.
 
 ---
 
@@ -967,8 +970,9 @@ work, roughly in priority order (each is self-contained and can be started indep
    encouraging third-party DLLs. See Open Questions above.
 
 **Rollback tags:** `plugin-rework-baseline` (original), `pre-increment-c-baseline` (`c4d9886`).
-**Contract version:** `0.12.0` (`PluginApi.Current`/`MinimumSupported`). Bump minor for additive
-capabilities; testers-only user base means breaking changes are acceptable with no migration shims.
+**Contract version:** `0.13.0` (`PluginApi.Current`); `MinimumSupported` stays `0.12.0` since the
+0.13.0 additions (`IFavoritable`, `IHideable`, `IsLiveStream`) are purely additive. Bump minor for
+additive capabilities; testers-only user base means breaking changes are acceptable with no migration shims.
 
 ---
 

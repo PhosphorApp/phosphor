@@ -29,6 +29,13 @@ your types (two assembly identities = two different `IPhosphorSource` types).
    - `IPlayableResolver` — resolve an item to a playable `ResolvedStream`
    - `IDownloadable` — download raw streams for the host's cache
    - `IConfigurable` — interactive setup actions (e.g. "browse libraries")
+   - `IConnectionTestable` — a "test connection" button
+   - `IRefreshable` — rescan content / rebuild your catalog
+   - `IFavoritable` — let users star items (shows a per-row star + a "Favorites" view)
+   - `IHideable` — let users hide items (a themed manage dialog; you persist + filter)
+
+For continuous radio-style streams, set `IsLiveStream` on the `SourceItem`/`ResolvedStream` so the
+host suppresses seek/duration and shows a live badge.
 
 Your source is a **pure data producer**: the host calls in and gets plain data back.
 Do not touch UI, assume a thread, or call back into the host except through the

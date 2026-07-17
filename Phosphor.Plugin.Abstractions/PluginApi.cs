@@ -10,19 +10,23 @@ public static class PluginApi
 {
     /// <summary>The contract version this build of the abstractions defines.</summary>
     /// <remarks>
+    /// 0.13.0 — added <see cref="IFavoritable"/>, <see cref="IHideable"/> (+ <c>HideableItem</c>), and
+    ///          <c>ResolvedStream.IsLiveStream</c> / <c>SourceItem.IsLiveStream</c> (live/infinite streams).
+    ///          All additive — plug-ins built against 0.12 still load unchanged.
     /// 0.12.0 — added <c>SourceCategory.Icon</c> + <see cref="IScopedSearchable"/> (search within a browse node).
     /// 0.11.0 — added <c>PluginSettingType.FolderPath</c> + <c>PluginSettingDescriptor.AllowMultiple</c>.
     /// 0.10.0 — added <see cref="IRefreshable"/> (rescan content / rebuild catalog).
     /// 0.9.0 — added <see cref="IConnectionTestable"/> (optional "test connection" capability).
     /// 0.8.0 — nested config sub-options (<c>ConfigOption.SubOptions</c>).
     /// </remarks>
-    public static readonly Version Current = new(0, 12, 0);
+    public static readonly Version Current = new(0, 13, 0);
 
     /// <summary>
     /// The oldest contract version this host still accepts. A plug-in built against an older
     /// contract than this is rejected (a capability it relies on may have changed shape). While the
     /// contract is pre-1.0 and evolving, this tracks <see cref="Current"/>; once it stabilizes, this
-    /// can lag behind so older plug-ins keep loading.
+    /// can lag behind so older plug-ins keep loading. Kept at 0.12.0 because the 0.13.0 additions are
+    /// purely additive — a plug-in built against 0.12.0 doesn't use them and still works.
     /// </summary>
     public static readonly Version MinimumSupported = new(0, 12, 0);
 

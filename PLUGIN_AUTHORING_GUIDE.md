@@ -44,7 +44,7 @@ Create a **.NET 8 class library** that references **only** the contract, compile
 	<!-- Reference the contract COMPILE-ONLY. The host ships the single shared runtime copy, so
 		 you must NOT bundle your own — otherwise contract types won't unify across the load
 		 boundary and casts to IPhosphorSourceProvider will fail. -->
-	<PackageReference Include="Phosphor.Plugin.Abstractions" Version="0.12.0">
+	<PackageReference Include="Phosphor.Plugin.Abstractions" Version="0.13.0">
 	  <ExcludeAssets>runtime</ExcludeAssets>
 	</PackageReference>
 	<!-- (In-tree, you can use a ProjectReference with <Private>false</Private>/<ExcludeAssets>runtime</ExcludeAssets>
@@ -202,6 +202,8 @@ what you implement, and enables the matching features.
 | `IRefreshable` | `CanRefresh`, `RefreshAsync(progress)` | "Rescan library" button (+ progress bar) |
 | `IPlaylistChannelDiscovery` | resolve/enumerate playlists & channels | YouTube-style playlist/channel browse |
 | `IConfigurable` | interactive setup actions | Tier-2 config actions (e.g. Plex libraries) |
+| `IFavoritable` | `IsFavorite`/`SetFavorite`/`GetFavoriteIds` | Per-row **star** toggle (only shown for your source) + a "Favorites" view you surface in browse |
+| `IHideable` | `GetHideableItems`/`GetHiddenIds`/bulk `SetHidden` | "Manage hidden channels…" button → themed dual-list + group tree; you persist the hidden set and filter your own browse |
 
 ### Data-flow types you'll use
 
@@ -216,6 +218,10 @@ what you implement, and enables the matching features.
 - **`ResolvedStream`** — how to play an item: a `StreamTransport` (`Http`, `File`, `Other`), a
   `StreamLayout` (`Muxed`, `SeparateVideoAudio`, `AudioOnly`), and the URI(s). Local files return
   `StreamTransport.File` with the path — the host plays it directly.
+- **Live/infinite streams** — set **`IsLiveStream`** on the `SourceItem` (and/or the `ResolvedStream`)
+  for continuous radio-style streams with no fixed duration. The host then shows elapsed time as
+  `M:SS / *`, hides the scrub bar (a "● LIVE" badge instead), disables seek, and never auto-advances
+  the queue. (SiriusXM channels use this.)
 
 ### Tiles: you decide the shape
 
