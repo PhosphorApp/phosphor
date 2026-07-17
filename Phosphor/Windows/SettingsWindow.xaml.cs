@@ -4691,10 +4691,11 @@ public partial class SettingsWindow : JukeboxWindow
                 {
                     // These "browse libraries" actions are surfaced by the inline library editor
                     // (BuildInlineLibraryEditor on the "libraries" field), so skip them here to avoid
-                    // a duplicate popup button. Jellyfin is an out-of-tree plug-in (no type ref), so
-                    // match its action id by string.
+                    // a duplicate popup button. Jellyfin and Emby are out-of-tree plug-ins (no type
+                    // ref), so match their action ids by string.
                     if (action.Id == Phosphor.Plugins.Plex.PlexSourceProvider.ActionBrowseLibraries ||
-                        action.Id == "jellyfinBrowseLibraries")
+                        action.Id == "jellyfinBrowseLibraries" ||
+                        action.Id == "embyBrowseLibraries")
                         continue;
                     var actionRow = new System.Windows.Controls.StackPanel
                     {
@@ -5016,15 +5017,20 @@ public partial class SettingsWindow : JukeboxWindow
         }
         RefreshCombo();
 
-        // Lazily fetch on first dropdown open.
+        // Lazily fetch on first dropdown open. Also retry when the cache is empty (e.g. an earlier
+        // fetch failed on a wrong password, or the server had no libraries) so fixing credentials and
+        // reopening the dropdown reloads the list instead of staying blank.
         combo.DropDownOpened += async (_, _) =>
         {
-            if (!_pluginLibraryAvailable.ContainsKey(instId))
+            var needsFetch = !_pluginLibraryAvailable.TryGetValue(instId, out var avail) || avail.Count == 0;
+            if (needsFetch)
             {
                 combo.Items.Clear();
                 combo.Items.Add(new System.Windows.Controls.ComboBoxItem
                 { Content = "Loading…", Tag = null, IsEnabled = false });
                 combo.SelectedIndex = 0;
+                // Drop any stale empty cache so FetchAvailableLibrariesAsync actually re-queries.
+                _pluginLibraryAvailable.Remove(instId);
                 await FetchAvailableLibrariesAsync(instId);
                 RefreshCombo();
                 combo.IsDropDownOpen = true;
@@ -5134,6 +5140,7 @@ public partial class SettingsWindow : JukeboxWindow
         HarvestPluginSourcesTab();
         var cfg = _settings.PluginInstances.FirstOrDefault(c => c.InstanceId == instanceId);
         var libs = new List<PlexLibraryMapping>();
+        var fetchFailed = false;
         if (cfg != null)
         {
             var source = Phosphor.Plugins.PluginSettingsFactory.BuildTransientSource(cfg, _pluginHttp);
@@ -5144,8 +5151,8 @@ public partial class SettingsWindow : JukeboxWindow
                     if (source is Phosphor.Plugin.Abstractions.IPhosphorSource ps)
                         await ps.InitializeAsync(new Phosphor.Plugins.Host.PluginHost(cfg.InstanceId, _pluginHttp));
 
-                    // Use the source's own first config action (Plex + Jellyfin each expose a single
-                    // "browse libraries" action; the ids differ per source).
+                    // Use the source's own first config action (Plex + Jellyfin + Emby each expose a
+                    // single "browse libraries" action; the ids differ per source).
                     var actionId = configurable.GetConfigActions().FirstOrDefault()?.Id;
                     if (actionId == null) { _pluginLibraryAvailable[instanceId] = libs; return libs; }
 
@@ -5164,10 +5171,14 @@ public partial class SettingsWindow : JukeboxWindow
                         libs.Add(new PlexLibraryMapping { Key = o.Id, Title = title, Type = type });
                     }
                 }
-                catch { /* fetch failure handled by caller (empty list) */ }
+                catch { fetchFailed = true; /* don't cache a failed fetch — allow retry */ }
             }
         }
-        _pluginLibraryAvailable[instanceId] = libs;
+        // Only cache a successful fetch. A failed fetch (e.g. a wrong password → 401) must NOT be
+        // cached, so the user can fix credentials and reopen the dropdown to retry rather than being
+        // stuck with a permanently-empty list.
+        if (!fetchFailed)
+            _pluginLibraryAvailable[instanceId] = libs;
         return libs;
     }
 

@@ -144,17 +144,25 @@ public partial class JukeboxViewModel : ObservableObject
     /// </summary>
     private async Task BuildPluginBrowseTilesAsync(Phosphor.Plugins.SourceRegistry registry)
     {
-        var tiles = new List<Category>();
-        foreach (var source in registry.Sources)
-        {
-            if (source.TypeId == Phosphor.Plugins.YouTube.YouTubeSourceProvider.YouTubeTypeId) continue;
-            if (source is not Phosphor.Plugin.Abstractions.IBrowsable browsable) continue;
+        // Each browsable source's GetRootCategoriesAsync does a network round-trip (auth + list
+        // libraries) for media servers. Running them sequentially makes startup wait for the SUM of
+        // every server's latency (Plex + Emby + Jellyfin + …). Fetch all sources in PARALLEL instead,
+        // so total time ≈ the slowest single source. Results are reassembled in registry order below
+        // so tile ordering stays deterministic regardless of which server responds first.
+        var browsableSources = registry.Sources
+            .Where(s => s.TypeId != Phosphor.Plugins.YouTube.YouTubeSourceProvider.YouTubeTypeId
+                        && s is Phosphor.Plugin.Abstractions.IBrowsable)
+            .ToList();
 
+        async Task<List<Category>> FetchTilesAsync(Phosphor.Plugin.Abstractions.IPhosphorSource source)
+        {
+            var sourceTilesList = new List<Category>();
             try
             {
+                var browsable = (Phosphor.Plugin.Abstractions.IBrowsable)source;
                 await foreach (var cat in browsable.GetRootCategoriesAsync())
                 {
-                    tiles.Add(new Category
+                    sourceTilesList.Add(new Category
                     {
                         Name = cat.Title,
                         Icon = string.IsNullOrWhiteSpace(cat.Icon) ? "📁" : cat.Icon!,
@@ -169,7 +177,15 @@ public partial class JukeboxViewModel : ObservableObject
             {
                 DebugLog.LogException($"Plugin browse tiles '{source.InstanceId}'", ex);
             }
+            return sourceTilesList;
         }
+
+        var perSourceResults = await Task.WhenAll(browsableSources.Select(FetchTilesAsync));
+
+        // Flatten in source order for deterministic tile ordering.
+        var tiles = new List<Category>();
+        foreach (var result in perSourceResults)
+            tiles.AddRange(result);
 
         _pluginBrowseTiles.Clear();
         _pluginBrowseTiles.AddRange(tiles);

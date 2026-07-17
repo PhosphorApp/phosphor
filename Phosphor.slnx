@@ -3,6 +3,7 @@
   <Project Path="Phosphor.Plugin.Abstractions/Phosphor.Plugin.Abstractions.csproj" />
   <Project Path="Phosphor.Plugins.LocalFolder/Phosphor.Plugins.LocalFolder.csproj" />
   <Project Path="Phosphor.Plugins.Jellyfin/Phosphor.Plugins.Jellyfin.csproj" />
+  <Project Path="Phosphor.Plugins.Emby/Phosphor.Plugins.Emby.csproj" />
   <Project Path="Phosphor.Plugins.SiriusXM/Phosphor.Plugins.SiriusXM.csproj" />
   <Project Path="Phosphor/Phosphor.csproj" />
 </Solution>
