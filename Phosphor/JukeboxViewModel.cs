@@ -28,6 +28,12 @@ public partial class JukeboxViewModel : ObservableObject
     // Jellyfin, …), keyed by instance id. Built after each registry build; read by RebuildCategories.
     private readonly List<Category> _pluginBrowseTiles = new();
 
+    // Tracks the in-flight background fetch that populates _pluginBrowseTiles with live SourceState.
+    // Tiles render instantly from persisted categories.json; a drill-in that happens before this
+    // completes awaits it (see BrowsePluginCategoryAsync). Completed task by default so awaiting is a
+    // no-op when no fetch is in progress.
+    private Task _pluginTilesReady = Task.CompletedTask;
+
     // ── Search source selection (the ad-hoc search box only; tiles stay source-bound) ──
     /// <summary>Searchable sources for the search-box dropdown (rebuilt after each registry build).</summary>
     public ObservableCollection<SearchSourceOption> SearchSources { get; } = new();
@@ -119,7 +125,12 @@ public partial class JukeboxViewModel : ObservableObject
             _sourceRegistry = registry;
             DebugLog.Log("SourceRegistry", $"Built {registry.Sources.Count} source(s)");
             WireCacheDownloadOverride();
-            await BuildPluginBrowseTilesAsync(registry);
+
+            // Render tiles immediately from the persisted categories.json entries (no network wait),
+            // then kick off the background fetch that recovers each tile's live SourceState and
+            // reconciles new/removed tiles when it completes.
+            await RunOnUiAsync(RebuildCategories);
+            BuildPluginBrowseTiles(registry);
             BuildSearchSources(registry);
         }
         catch (Exception ex)
@@ -136,13 +147,27 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Pre-fetches root-category tiles for every generic <c>IBrowsable</c> plug-in source (local-folder,
-    /// future Jellyfin, …) into <see cref="_pluginBrowseTiles"/>, so the synchronous
-    /// <see cref="RebuildCategories"/> can emit them without an async call. Built-in YouTube/Plex are
-    /// skipped — YouTube isn't browsable and Plex has its own tile path (GenreCategoryStore). Failures
+    /// Kicks off the background fetch of root-category tiles for every generic <c>IBrowsable</c>
+    /// plug-in source (local-folder, Jellyfin, Emby, …), storing the in-flight task in
+    /// <see cref="_pluginTilesReady"/>. Returns immediately so the home screen renders from the
+    /// persisted categories.json tiles WITHOUT waiting on the network — the fetch reconciles live
+    /// tiles (recovering each tile's opaque <c>SourceState</c>) when it completes. A drill-in that
+    /// happens before completion awaits <see cref="_pluginTilesReady"/> (see
+    /// <see cref="BrowsePluginCategoryAsync"/>). Built-in YouTube is skipped (not browsable). Failures
     /// per source are logged and skipped so one bad plug-in never blocks the home screen.
     /// </summary>
-    private async Task BuildPluginBrowseTilesAsync(Phosphor.Plugins.SourceRegistry registry)
+    private void BuildPluginBrowseTiles(Phosphor.Plugins.SourceRegistry registry)
+    {
+        _pluginTilesReady = FetchAndReconcilePluginTilesAsync(registry);
+    }
+
+    /// <summary>
+    /// The background body behind <see cref="BuildPluginBrowseTiles"/>: fetches each browsable
+    /// source's root categories in parallel, populates <see cref="_pluginBrowseTiles"/> with live
+    /// <c>SourceState</c>, syncs the tiles into the persisted genre entries, and rebuilds the category
+    /// list so tiles pick up their live state.
+    /// </summary>
+    private async Task FetchAndReconcilePluginTilesAsync(Phosphor.Plugins.SourceRegistry registry)
     {
         // Each browsable source's GetRootCategoriesAsync does a network round-trip (auth + list
         // libraries) for media servers. Running them sequentially makes startup wait for the SUM of
@@ -246,11 +271,43 @@ public partial class JukeboxViewModel : ObservableObject
     private async Task BrowsePluginCategoryAsync(Category category)
     {
         _browseStack.Clear();
+
+        // The tile may have been rendered from persisted categories.json before the background fetch
+        // recovered its opaque SourceState (see BuildPluginBrowseTiles). If so, wait for that fetch —
+        // showing the center-DMD loading indicator — then recover the live SourceState. This keeps
+        // drill-in correct (e.g. Emby music roots carry a MusicLevel in SourceState that selects the
+        // entity-browse path; without it the browse would degrade to a raw folder listing).
+        var sourceState = category.SourceState;
+        if (sourceState == null && !_pluginTilesReady.IsCompleted)
+        {
+            IsSearching = true;
+            StatusText = $"Loading {category.Name}...";
+            try
+            {
+                await _pluginTilesReady;
+            }
+            finally
+            {
+                IsSearching = false;
+            }
+        }
+
+        // Re-resolve the live SourceState from the (now-populated) tile list when the tile came in
+        // without it. If it's still null (source removed/unreachable), fall back to browsing from the
+        // persisted CategoryId — sources resolve a root node from its id alone (state?.ItemId ?? id).
+        if (sourceState == null)
+        {
+            var live = _pluginBrowseTiles.FirstOrDefault(t =>
+                t.SourceInstanceId == category.SourceInstanceId
+                && (t.SourceCategoryId ?? t.Name) == (category.SourceCategoryId ?? ""));
+            sourceState = live?.SourceState;
+        }
+
         var root = new BrowseNode(
             category.Name,
             category.SourceInstanceId!,
             category.SourceCategoryId ?? category.Name,
-            category.SourceState,
+            sourceState,
             category.Icon);
         await EnterBrowseNodeAsync(root, pushOntoStack: true);
     }
@@ -2068,12 +2125,14 @@ public partial class JukeboxViewModel : ObservableObject
 
             if (entry.IsGenericSource)
             {
-                // Generic plug-in source root tile — recover the opaque SourceState from the live
-                // tile list (persisted entry holds only serializable identity + sort/visibility).
+                // Generic plug-in source root tile. The persisted entry holds all display data
+                // (name/icon/ids/sort/visibility), so we render the tile IMMEDIATELY from disk — no
+                // wait on a network fetch. The opaque browse SourceState is recovered from the live
+                // tile list when available; if the background fetch hasn't populated it yet, the tile
+                // still shows and drill-in awaits the fetch (see BrowsePluginCategoryAsync).
                 var live = _pluginBrowseTiles.FirstOrDefault(t =>
                     t.SourceInstanceId == entry.SourceInstanceId
                     && (t.SourceCategoryId ?? t.Name) == (entry.SourceCategoryId ?? ""));
-                if (live == null) continue; // source not currently available — skip its tile
 
                 sortable.Add((entry.SortOrder, new List<Category>
                 {
@@ -2084,7 +2143,7 @@ public partial class JukeboxViewModel : ObservableObject
                         IsPluginBrowse = true,
                         SourceInstanceId = entry.SourceInstanceId,
                         SourceCategoryId = entry.SourceCategoryId,
-                        SourceState = live.SourceState,
+                        SourceState = live?.SourceState, // null until the background fetch resolves it
                     }
                 }));
             }
