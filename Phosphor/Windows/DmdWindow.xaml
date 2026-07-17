@@ -453,6 +453,21 @@
                                                 </Style>
                                             </Button.Style>
                                         </Button>
+                                        <Button ToolTip="Favorite" Padding="{DynamicResource TrackButtonPadding}" FontSize="{DynamicResource TrackButtonFontSize}" Margin="4,0,0,0"
+                                                Command="{Binding DataContext.ToggleFavoriteCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                CommandParameter="{Binding}"
+                                                Visibility="{Binding CanFavorite, Converter={StaticResource BoolVis}}">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                                    <Setter Property="Content" Value="&#x2606;"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsFavorite}" Value="True">
+                                                            <Setter Property="Content" Value="&#x2605;"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
                                         <Button Content="+" ToolTip="Add to Queue" Padding="{DynamicResource TrackButtonPadding}" FontSize="{DynamicResource TrackButtonFontSize}" Margin="4,0,0,0"
                                                 Command="{Binding DataContext.AddToQueueCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding}"/>

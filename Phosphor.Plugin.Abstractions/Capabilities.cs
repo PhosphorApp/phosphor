@@ -282,3 +282,22 @@ public interface IScopedSearchable
     /// </summary>
     Task<BrowseResult> SearchInCategoryAsync(SourceCategory node, string query, CancellationToken ct = default);
 }
+
+/// <summary>
+/// Capability: the user can mark a source's items as favorites (e.g. pin a SiriusXM channel so it
+/// floats to the top). Optional and generic — any source may adopt it (Plex albums, YouTube
+/// channels, …). The host renders a star toggle on an item's row <em>only</em> when the owning
+/// source implements this, and a source typically surfaces a "Favorites" node in its browse tree.
+/// The source owns persistence (its own instance dir); the host just calls in.
+/// </summary>
+public interface IFavoritable
+{
+    /// <summary>True when <paramref name="itemId"/> (an <see cref="SourceItem.ItemId"/>) is favorited.</summary>
+    bool IsFavorite(string itemId);
+
+    /// <summary>Marks/unmarks <paramref name="itemId"/> as a favorite and persists the change.</summary>
+    void SetFavorite(string itemId, bool favorite);
+
+    /// <summary>The currently favorited item ids, for building a "Favorites" view.</summary>
+    IReadOnlyCollection<string> GetFavoriteIds();
+}

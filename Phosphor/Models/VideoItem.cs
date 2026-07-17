@@ -82,6 +82,20 @@ public class VideoItem : ObservableObject
     /// </summary>
     public object? PendingLiveSourceItem { get; set; }
 
+    /// <summary>
+    /// True when this item's owning source supports favorites (implements <c>IFavoritable</c>), so the
+    /// UI shows a star toggle on its row. Set by the host when building the item.
+    /// </summary>
+    public bool CanFavorite { get; set; }
+
+    private bool _isFavorite;
+    /// <summary>Whether this item is currently favorited. Observable so the star reflects toggles live.</summary>
+    public bool IsFavorite
+    {
+        get => _isFavorite;
+        set => SetProperty(ref _isFavorite, value);
+    }
+
     // ── Generic plug-in browse (source-agnostic drill-down) ──
     /// <summary>When true, this result is a browsable container: activating it drills in via the
     /// generic browse stack rather than playing. Carries <see cref="GenericSourceInstanceId"/> +

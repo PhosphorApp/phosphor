@@ -473,6 +473,12 @@ public partial class JukeboxViewModel : ObservableObject
         }
         vi.IsAudioOnly = item.IsAudioOnly;
         vi.SourceInstanceId ??= item.SourceInstanceId;
+        // Favorite state, when the owning source supports it (star toggle shows only then).
+        if (resolver is Phosphor.Plugin.Abstractions.IFavoritable fav)
+        {
+            vi.CanFavorite = true;
+            vi.IsFavorite = fav.IsFavorite(item.ItemId);
+        }
         return vi;
     }
 
@@ -2942,6 +2948,24 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     private const int MaxQueueSize = 500;
+
+    /// <summary>
+    /// Toggles the favorite state of an item whose source supports favorites (<c>IFavoritable</c>).
+    /// Routes to the owning source, flips the star, and refreshes the row. No-op for items whose
+    /// source doesn't support favorites (the star isn't shown for those anyway).
+    /// </summary>
+    [RelayCommand]
+    private void ToggleFavorite(VideoItem? item)
+    {
+        if (item == null || !item.CanFavorite) return;
+        var source = SourceForItem(item);
+        if (source is not Phosphor.Plugin.Abstractions.IFavoritable fav) return;
+
+        var newState = !item.IsFavorite;
+        fav.SetFavorite(item.VideoId, newState);
+        item.IsFavorite = newState;
+        StatusText = newState ? $"★ Favorited: {item.Title}" : $"Unfavorited: {item.Title}";
+    }
 
     [RelayCommand]
     private async Task AddToQueueAsync(VideoItem? item)
