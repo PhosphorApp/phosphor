@@ -1947,8 +1947,14 @@ public partial class DmdWindow : JukeboxWindow
 
     private void UpdateResultItemWidth()
     {
-        // Grouped Favorites view is single-column so full-width provider headers stack above their items.
-        if (_favoritesGrouped || _resultColumns <= 1)
+        // Grouped Favorites view keeps the multi-column wrap panel, but lets provider header rows
+        // span the full width (forcing a line break) via AllowDifferentSizedItems. Normal tiles keep
+        // their computed column width and wrap underneath each header.
+        var wrapPanel = FindVisualChildren<WpfToolkit.Controls.VirtualizingWrapPanel>(ResultsList).FirstOrDefault();
+        if (wrapPanel != null)
+            wrapPanel.AllowDifferentSizedItems = _favoritesGrouped;
+
+        if (!_favoritesGrouped && _resultColumns <= 1)
         {
             // Single column — clear width constraint
             ResultsList.ItemContainerStyle = MakeItemContainerStyle(double.NaN);
@@ -1960,16 +1966,29 @@ public partial class DmdWindow : JukeboxWindow
         if (availableWidth <= 0) return;
 
         double itemWidth = Math.Floor(availableWidth / _resultColumns);
-        ResultsList.ItemContainerStyle = MakeItemContainerStyle(itemWidth);
+        ResultsList.ItemContainerStyle = MakeItemContainerStyle(itemWidth, _favoritesGrouped ? availableWidth : (double?)null);
     }
 
-    private Style MakeItemContainerStyle(double width)
+    private Style MakeItemContainerStyle(double width, double? headerWidth = null)
     {
         var style = new Style(typeof(System.Windows.Controls.ListBoxItem));
         style.Setters.Add(new Setter(System.Windows.Controls.Control.HorizontalContentAlignmentProperty, System.Windows.HorizontalAlignment.Stretch));
         style.Setters.Add(new Setter(PaddingProperty, new Thickness(0)));
         if (!double.IsNaN(width))
             style.Setters.Add(new Setter(WidthProperty, width));
+
+        // In grouped Favorites view, provider header rows span the full panel width so each
+        // provider's tiles wrap onto a fresh line beneath the header.
+        if (headerWidth is double hw)
+        {
+            var headerTrigger = new DataTrigger
+            {
+                Binding = new System.Windows.Data.Binding(nameof(VideoItem.IsHeader)),
+                Value = true
+            };
+            headerTrigger.Setters.Add(new Setter(WidthProperty, hw));
+            style.Triggers.Add(headerTrigger);
+        }
         return style;
     }
 
