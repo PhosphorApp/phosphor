@@ -324,6 +324,42 @@ public interface IFavoritable
     SourceItem? GetFavorite(string itemId);
 }
 
+/// <summary>
+/// A snapshot of a favorited item the host hands to a source at star-time, so the source can persist
+/// enough to rebuild it later via <see cref="IFavoritable.GetFavorite"/> — including
+/// <see cref="IsContainer"/> artists/albums (whose <see cref="ContainerState"/> carries the opaque
+/// browse node). Sources that resolve by id need little; those needing more keep the whole record.
+/// </summary>
+/// <param name="ItemId">The source-native id (an <see cref="SourceItem.ItemId"/>).</param>
+/// <param name="Title">Display title.</param>
+/// <param name="Subtitle">Optional subtitle (e.g. album artist).</param>
+/// <param name="ThumbnailUrl">Optional artwork URL.</param>
+/// <param name="Duration">Optional duration (leaves only).</param>
+/// <param name="IsAudioOnly">Whether the item is audio-only.</param>
+/// <param name="IsContainer">Whether this is a container (artist/album) that expands to tracks.</param>
+/// <param name="ContainerState">For containers, the opaque browse node (a <see cref="SourceCategory.SourceState"/>).</param>
+public sealed record FavoriteCapture(
+    string ItemId,
+    string Title,
+    string? Subtitle,
+    string? ThumbnailUrl,
+    TimeSpan? Duration,
+    bool IsAudioOnly,
+    bool IsContainer,
+    object? ContainerState);
+
+/// <summary>
+/// Optional companion to <see cref="IFavoritable"/>: the host calls <see cref="RememberFavorite"/> at
+/// star-time with a <see cref="FavoriteCapture"/> so the source can persist display + node data and
+/// later rebuild the item in <see cref="IFavoritable.GetFavorite"/> — the clean way to support
+/// favoriting containers (artist/album). Sources that can rebuild purely from an id need not implement
+/// this; those that need display/container state do.
+/// </summary>
+public interface IFavoriteCapture
+{
+    void RememberFavorite(FavoriteCapture item);
+}
+
 /// <summary>One item a source exposes for the host's hide-management UI.</summary>
 /// <param name="Id">The item's stable id (an <see cref="SourceItem.ItemId"/>).</param>
 /// <param name="Label">A user-facing label (e.g. "37 · Octane").</param>

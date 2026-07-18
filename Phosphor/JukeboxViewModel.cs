@@ -3148,6 +3148,19 @@ public partial class JukeboxViewModel : ObservableObject
         if (newState && source is Phosphor.Plugins.Plex.PlexSource plex)
             plex.RememberFavorite(item);
 
+        // Generic capture for out-of-tree sources (Jellyfin/Emby): hand them a source-agnostic
+        // snapshot (incl. the opaque container node) so they can rebuild the favorite on play.
+        if (newState && source is Phosphor.Plugin.Abstractions.IFavoriteCapture capture)
+            capture.RememberFavorite(new Phosphor.Plugin.Abstractions.FavoriteCapture(
+                ItemId: item.VideoId,
+                Title: item.Title,
+                Subtitle: string.IsNullOrEmpty(item.Author) ? null : item.Author,
+                ThumbnailUrl: string.IsNullOrEmpty(item.ThumbnailUrl) ? null : item.ThumbnailUrl,
+                Duration: item.Duration,
+                IsAudioOnly: item.IsAudioOnly,
+                IsContainer: isContainer,
+                ContainerState: isContainer ? item.GenericSourceState : null));
+
         // Write-through to the host-level aggregated index (drives the global Favorites tile).
         if (source is Phosphor.Plugin.Abstractions.IPhosphorSource src)
         {
