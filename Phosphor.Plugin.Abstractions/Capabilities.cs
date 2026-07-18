@@ -136,6 +136,19 @@ public interface IPlayableResolver
 }
 
 /// <summary>
+/// Marker capability: this source's <see cref="IPlayableResolver.ResolveAsync"/> is <em>expensive</em>
+/// (e.g. it shells out to yt-dlp per item), so the host must NOT resolve streams eagerly while
+/// building search/browse results. Instead it carries the <see cref="SourceItem"/> and resolves it
+/// lazily at play time — the same deferral live streams get, but without live semantics (finite,
+/// seekable). Sources with cheap, long-lived direct URLs (Plex, Jellyfin, local files) do NOT
+/// implement this: eager resolution there gives an immediately playable URL. Implemented alongside
+/// <see cref="IPlayableResolver"/>. YouTube uses the equivalent built-in deferral.
+/// </summary>
+public interface IDeferredStreamResolution
+{
+}
+
+/// <summary>
 /// Capability: the source can supply a stable, pre-loadable audio stream for an item ahead of
 /// playback, enabling gapless transitions (the host primes the next track's stream before the
 /// current one ends). Implemented by sources whose audio items carry a long-lived, direct stream

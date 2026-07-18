@@ -83,6 +83,14 @@ public class VideoItem : ObservableObject
     public object? PendingLiveSourceItem { get; set; }
 
     /// <summary>
+    /// For finite items from a source with <c>IDeferredStreamResolution</c> (e.g. Vimeo via yt-dlp),
+    /// the originating plug-in <c>SourceItem</c> kept so the stream is resolved <em>lazily at play
+    /// time</em> instead of eagerly per search/browse row (which would fire one yt-dlp probe each).
+    /// Unlike <see cref="PendingLiveSourceItem"/> this carries no live semantics. Null otherwise.
+    /// </summary>
+    public object? PendingResolveSourceItem { get; set; }
+
+    /// <summary>
     /// True when this item's owning source supports favorites (implements <c>IFavoritable</c>), so the
     /// UI shows a star toggle on its row. Set by the host when building the item.
     /// </summary>

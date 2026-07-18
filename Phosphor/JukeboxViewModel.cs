@@ -517,11 +517,13 @@ public partial class JukeboxViewModel : ObservableObject
     {
         var vi = ToVideoItem(item);
         // Resolve a playable URL now (local files are a cheap path check); the player checks
-        // VideoItem.StreamUrl first and plays it directly. EXCEPTION: live streams (e.g. SiriusXM
-        // radio) are resolved lazily at play time — eagerly resolving every browse leaf would fire
-        // one authenticated round-trip per channel (hundreds), so we only carry the flag here and
-        // resolve on demand in the play path.
-        if (resolver != null && !item.IsLiveStream)
+        // VideoItem.StreamUrl first and plays it directly. EXCEPTIONS resolved lazily at play time:
+        //  • live streams (e.g. SiriusXM radio) — eager resolve would fire one authenticated
+        //    round-trip per channel (hundreds);
+        //  • sources marked IDeferredStreamResolution (e.g. Vimeo via yt-dlp) — eager resolve would
+        //    fire one expensive yt-dlp probe per browse row.
+        var deferResolve = resolver is Phosphor.Plugin.Abstractions.IDeferredStreamResolution;
+        if (resolver != null && !item.IsLiveStream && !deferResolve)
         {
             try
             {
@@ -543,6 +545,11 @@ public partial class JukeboxViewModel : ObservableObject
             // Defer resolution to play time; keep the SourceItem so PlayNow can resolve it.
             vi.IsLiveStream = true;
             vi.PendingLiveSourceItem = item;
+        }
+        else if (deferResolve)
+        {
+            // Finite item, but resolve is expensive — defer to play time (no live semantics).
+            vi.PendingResolveSourceItem = item;
         }
         vi.IsAudioOnly = item.IsAudioOnly;
         vi.SourceInstanceId ??= item.SourceInstanceId;
@@ -1541,10 +1548,20 @@ public partial class JukeboxViewModel : ObservableObject
             && s.TypeId != Phosphor.Plugins.YouTube.YouTubeSourceProvider.YouTubeTypeId
             ? r : null;
 
+        // Sources whose resolve is expensive (yt-dlp per item, e.g. Vimeo) opt out of eager
+        // resolution: we carry the SourceItem and resolve lazily at play time instead, exactly like
+        // YouTube. This keeps search fast (one probe on play, not one per row).
+        var deferResolve = source is Phosphor.Plugin.Abstractions.IDeferredStreamResolution;
+
         await foreach (var item in items.WithCancellation(ct))
         {
             var vi = ToVideoItem(item);
-            if (resolver != null && string.IsNullOrEmpty(vi.StreamUrl))
+            if (deferResolve)
+            {
+                vi.PendingResolveSourceItem = item;
+                vi.IsAudioOnly = item.IsAudioOnly;
+            }
+            else if (resolver != null && string.IsNullOrEmpty(vi.StreamUrl))
             {
                 try
                 {
@@ -3216,6 +3233,14 @@ public partial class JukeboxViewModel : ObservableObject
             return;
         }
 
+        // Deferred finite streams (e.g. Vimeo via yt-dlp) also resolve lazily at play time — one
+        // yt-dlp probe now instead of one per search/browse row. Resolve then start playback.
+        if (item.StreamUrl == null && item.PendingResolveSourceItem != null)
+        {
+            _ = SafeFireAndForget(ResolveAndPlayDeferredAsync(item));
+            return;
+        }
+
         PlayRequested?.Invoke(item.VideoId);
 
         // Fetch duration/chapters from the item's own source (source-agnostic). Fire-and-forget so
@@ -3272,6 +3297,50 @@ public partial class JukeboxViewModel : ObservableObject
         {
             DebugLog.LogException($"Live resolve '{item.VideoId}'", ex);
             StatusText = $"Can't tune {item.Title}: {ex.Message}";
+            PlayTransitioning = false;
+        }
+    }
+
+    /// <summary>
+    /// Resolves a deferred finite item's playable URL on demand (e.g. Vimeo, whose yt-dlp resolve is
+    /// too expensive to run per search/browse row), sets <see cref="VideoItem.StreamUrl"/>, and starts
+    /// playback. Mirrors <see cref="ResolveAndPlayLiveAsync"/> but without live semantics.
+    /// </summary>
+    private async Task ResolveAndPlayDeferredAsync(VideoItem item)
+    {
+        SetStatusPrefix("Resolving");
+        var source = SourceForItem(item);
+        if (source is not Phosphor.Plugin.Abstractions.IPlayableResolver resolver
+            || item.PendingResolveSourceItem is not Phosphor.Plugin.Abstractions.SourceItem sourceItem)
+        {
+            StatusText = $"Can't play {item.Title}: source unavailable.";
+            PlayTransitioning = false;
+            return;
+        }
+
+        try
+        {
+            var stream = await resolver.ResolveAsync(
+                sourceItem, new Phosphor.Plugin.Abstractions.PlaybackPreferences(), _searchCts.Token);
+            if (stream?.PrimaryUri is { Length: > 0 } url)
+            {
+                item.StreamUrl = url;
+                item.IsAudioOnly = sourceItem.IsAudioOnly;
+                item.PendingResolveSourceItem = null; // resolved
+                // Guard against the user having moved on while we were resolving.
+                if (ReferenceEquals(CurrentlyPlaying, item))
+                    PlayRequested?.Invoke(item.VideoId);
+            }
+            else
+            {
+                StatusText = $"Can't play {item.Title} — stream unavailable.";
+                PlayTransitioning = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            DebugLog.LogException($"Deferred resolve '{item.VideoId}'", ex);
+            StatusText = $"Can't play {item.Title}: {ex.Message}";
             PlayTransitioning = false;
         }
     }

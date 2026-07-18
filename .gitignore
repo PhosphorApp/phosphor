@@ -39,3 +39,7 @@ dependencies/projectM/presets-cream-of-the-crop-master/
 # SiriusXM spike — never commit local credentials
 tools/SiriusXmSpike/sxm.local.json
 tools/SiriusXmSpike/*.local
+
+# Spotify spike — never commit the sp_dc cookie
+tools/SpotifySpike/spotify.local.json
+tools/SpotifySpike/*.local
