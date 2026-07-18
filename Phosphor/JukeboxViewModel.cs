@@ -1122,7 +1122,11 @@ public partial class JukeboxViewModel : ObservableObject
         set
         {
             if (SetProperty(ref _isViewingPlaylist, value))
+            {
                 OnPropertyChanged(nameof(IsViewingStaticPlaylist));
+                OnPropertyChanged(nameof(IsViewingFavorites));
+                OnPropertyChanged(nameof(IsFavoritesGroupedView));
+            }
         }
     }
 
@@ -1186,6 +1190,43 @@ public partial class JukeboxViewModel : ObservableObject
 
     private bool _isAutoDjFilling;
 
+    // ── Favorites view (aggregated tile): two independent axes, persisted in AppSettings and mirrored
+    //    by the quick dropdowns on the Favorites view + the Settings → DMD → Favorites section. ──
+    private FavoritesGrouping _favoritesGrouping = FavoritesGrouping.None;
+    public FavoritesGrouping FavoritesGrouping
+    {
+        get => _favoritesGrouping;
+        set { if (SetProperty(ref _favoritesGrouping, value)) OnFavoritesViewChanged(); }
+    }
+
+    private FavoritesSort _favoritesSort = FavoritesSort.RecentlyAdded;
+    public FavoritesSort FavoritesSort
+    {
+        get => _favoritesSort;
+        set { if (SetProperty(ref _favoritesSort, value)) OnFavoritesViewChanged(); }
+    }
+
+    /// <summary>Re-renders the Favorites tile when a view axis changes (only if it's currently shown).</summary>
+    private void OnFavoritesViewChanged()
+    {
+        FavoritesViewChanged?.Invoke();
+        OnPropertyChanged(nameof(IsFavoritesGroupedView));
+        if (IsViewingFavorites)
+            SearchResults.ReplaceAll(BuildAggregatedFavorites());
+    }
+
+    /// <summary>Raised when a favorites view axis changes, so the host can persist settings.</summary>
+    public event Action? FavoritesViewChanged;
+
+    /// <summary>True while the aggregated Favorites tile is the active view (drives the quick dropdowns).</summary>
+    public bool IsViewingFavorites => IsViewingStaticPlaylist && ActivePlaylistName == "Favorites";
+
+    /// <summary>
+    /// True when the Favorites view is grouped by provider — the DMD swaps the results panel to a
+    /// vertical stack (full-width headers + rows) instead of the multi-column wrap panel.
+    /// </summary>
+    public bool IsFavoritesGroupedView => IsViewingFavorites && FavoritesGrouping == FavoritesGrouping.Provider;
+
     // ── Active playlist (for "Add to Playlist" default target) ──
     private string _activePlaylistName = "Favorites";
     private string? _activePlaylistId;
@@ -1196,6 +1237,8 @@ public partial class JukeboxViewModel : ObservableObject
         {
             if (SetProperty(ref _activePlaylistName, value) && IsViewingPlaylist)
                 LoadPlaylist(value);
+            OnPropertyChanged(nameof(IsViewingFavorites));
+            OnPropertyChanged(nameof(IsFavoritesGroupedView));
         }
     }
 
@@ -2137,7 +2180,11 @@ public partial class JukeboxViewModel : ObservableObject
         set
         {
             if (SetProperty(ref _isViewingLivePlaylist, value))
+            {
                 OnPropertyChanged(nameof(IsViewingStaticPlaylist));
+                OnPropertyChanged(nameof(IsViewingFavorites));
+                OnPropertyChanged(nameof(IsFavoritesGroupedView));
+            }
         }
     }
 
@@ -3102,7 +3149,7 @@ public partial class JukeboxViewModel : ObservableObject
     [RelayCommand]
     private async Task PlayContainerNow(VideoItem? item)
     {
-        if (item is not { IsGenericContainer: true }) return;
+        if (item is not { IsGenericContainer: true } || item.IsHeader) return;
 
         // Aggregated-favorite container carries no browse node — rehydrate it from the owning source.
         if (item.IsAggregatedFavorite)
@@ -3129,7 +3176,7 @@ public partial class JukeboxViewModel : ObservableObject
     [RelayCommand]
     private void ToggleFavorite(VideoItem? item)
     {
-        if (item == null || !item.CanFavorite) return;
+        if (item == null || item.IsHeader || !item.CanFavorite) return;
 
         // Containers (Plex/Jellyfin artist/album) route via their generic browse identity; playable
         // rows route via SourceForItem. The favorited id is the row's VideoId in both cases.
@@ -3195,37 +3242,70 @@ public partial class JukeboxViewModel : ObservableObject
 
     /// <summary>
     /// Builds the aggregated Favorites view (all sources) from the write-through index — instant, no
-    /// per-source round-trips. Each row carries only display data + (source, id); playback rebuilds a
-    /// resolvable item lazily via the owning source's <c>GetFavorite</c> (see the play path).
+    /// per-source round-trips. Applies the user's Sort + Grouping (Settings → DMD → Favorites); a
+    /// grouped view interleaves non-interactive provider header rows. Each row carries only display
+    /// data + (source, id); playback rebuilds a resolvable item lazily via the owning source's
+    /// <c>GetFavorite</c> (see the play path).
     /// </summary>
     private List<VideoItem> BuildAggregatedFavorites()
     {
-        return _favoritesIndex.All().Select(e => new VideoItem
+        var entries = _favoritesIndex.All(); // index default order = recently-added first
+        var grouping = this.FavoritesGrouping;
+        var sort = this.FavoritesSort;
+
+        IEnumerable<FavoriteEntry> Sorted(IEnumerable<FavoriteEntry> src) => sort switch
         {
-            Title = e.Title,
-            Author = e.SourceLabel,
-            ThumbnailUrl = e.ThumbnailUrl ?? "",
-            VideoId = e.ItemId,
-            SourceInstanceId = e.SourceInstanceId,
-            Duration = e.DurationSeconds is { } s ? TimeSpan.FromSeconds(s) : null,
-            IsAudioOnly = e.IsAudioOnly,
-            IsLiveStream = e.IsLiveStream,
-            IsAggregatedFavorite = true,
-            // Containers (artist/album) show a container glyph and, on play, expand to tracks. Their
-            // node identity is rehydrated lazily via the owning source's GetFavorite at play time.
-            IsGenericContainer = e.IsContainer,
-            GenericSourceInstanceId = e.IsContainer ? e.SourceInstanceId : null,
-            GenericCategoryId = e.IsContainer ? e.ItemId : null,
-            ContainerIcon = e.IsContainer ? "📀" : null,
-            CanFavorite = true,
-            IsFavorite = true,
-        }).ToList();
+            FavoritesSort.Name => src.OrderBy(e => e.Title, StringComparer.CurrentCultureIgnoreCase),
+            FavoritesSort.Source => src
+                .OrderBy(e => e.SourceLabel, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(e => e.Title, StringComparer.CurrentCultureIgnoreCase),
+            _ => src, // RecentlyAdded — keep index order
+        };
+
+        if (grouping == FavoritesGrouping.Provider)
+        {
+            // Injected full-width header rows + items. Rendered as a single-column list (grouped mode
+            // forces one column) so headers span and items stack beneath — the CollectionView-grouping
+            // path is incompatible with the virtualizing wrap panel.
+            var rows = new List<VideoItem>();
+            foreach (var group in entries
+                .GroupBy(e => e.SourceLabel)
+                .OrderBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase))
+            {
+                rows.Add(new VideoItem { IsHeader = true, HeaderText = group.Key });
+                rows.AddRange(Sorted(group).Select(ToFavoriteRow));
+            }
+            return rows;
+        }
+
+        // None / Custom (custom editor deferred → behaves like the chosen sort).
+        return Sorted(entries).Select(ToFavoriteRow).ToList();
     }
+
+    /// <summary>Maps an index <see cref="FavoriteEntry"/> to a display/play row for the Favorites view.</summary>
+    private VideoItem ToFavoriteRow(FavoriteEntry e) => new()
+    {
+        Title = e.Title,
+        Author = e.SourceLabel,
+        ThumbnailUrl = e.ThumbnailUrl ?? "",
+        VideoId = e.ItemId,
+        SourceInstanceId = e.SourceInstanceId,
+        Duration = e.DurationSeconds is { } s ? TimeSpan.FromSeconds(s) : null,
+        IsAudioOnly = e.IsAudioOnly,
+        IsLiveStream = e.IsLiveStream,
+        IsAggregatedFavorite = true,
+        // Containers (artist/album) expand to tracks on play; identity rehydrated via GetFavorite.
+        IsGenericContainer = e.IsContainer,
+        GenericSourceInstanceId = e.IsContainer ? e.SourceInstanceId : null,
+        GenericCategoryId = e.IsContainer ? e.ItemId : null,
+        CanFavorite = true,
+        IsFavorite = true,
+    };
 
     [RelayCommand]
     private async Task AddToQueueAsync(VideoItem? item)
     {
-        if (item == null) return;
+        if (item == null || item.IsHeader) return;
 
         if (Queue.Count >= MaxQueueSize)
         {
@@ -3368,7 +3448,7 @@ public partial class JukeboxViewModel : ObservableObject
     [RelayCommand]
     private void PlayNow(VideoItem? item)
     {
-        if (item == null) return;
+        if (item == null || item.IsHeader) return;
 
         // Aggregated Favorites row (leaf OR container): carries only display data. Rebuild a resolvable
         // item via the owning source's IFavoritable.GetFavorite, then play. Checked before the generic

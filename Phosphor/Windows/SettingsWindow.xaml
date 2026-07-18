@@ -1580,6 +1580,29 @@
                     <Border Background="{StaticResource SurfaceBrush}" CornerRadius="6"
                             Padding="12" Margin="0,8,0,0">
                         <StackPanel>
+                            <!-- ═══ SECTION: FAVORITES ═══ -->
+                            <TextBlock Text="FAVORITES" FontSize="12" FontWeight="Bold"
+                                Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
+                            <TextBlock Text="How the aggregated Favorites tile groups and sorts items (also adjustable inline on the Favorites view)."
+                                       FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
+                                       TextWrapping="Wrap"/>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Group by:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <ComboBox x:Name="CbFavoritesGrouping" IsEditable="False" Width="160" HorizontalAlignment="Left"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"
+                                          FontSize="12" BorderBrush="#333"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,0,0,14">
+                                <TextBlock Text="Sort by:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <ComboBox x:Name="CbFavoritesSort" IsEditable="False" Width="160" HorizontalAlignment="Left"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"
+                                          FontSize="12" BorderBrush="#333"/>
+                            </DockPanel>
+
                             <!-- ═══ SECTION: DMD WINDOW OPTIONS ═══ -->
                             <TextBlock Text="DMD UI OPTIONS" FontSize="12" FontWeight="Bold"
                                 Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>

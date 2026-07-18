@@ -550,6 +550,12 @@ public class AppSettings
     /// </summary>
     public List<string> HiddenCategories { get; set; } = [];
 
+    /// <summary>How the aggregated Favorites view groups rows (None / Provider / Custom).</summary>
+    public FavoritesGrouping FavoritesGrouping { get; set; } = FavoritesGrouping.None;
+
+    /// <summary>How the aggregated Favorites view orders rows (RecentlyAdded / Name / Source).</summary>
+    public FavoritesSort FavoritesSort { get; set; } = FavoritesSort.RecentlyAdded;
+
     private static readonly string SettingsPath = Path.Combine(
         AppDomain.CurrentDomain.BaseDirectory, "settings.json");
 
@@ -852,6 +858,28 @@ public enum IconStyle
 {
     Default,
     Colorful
+}
+
+/// <summary>How the aggregated Favorites view groups rows.</summary>
+public enum FavoritesGrouping
+{
+    /// <summary>Flat list (no group headers).</summary>
+    None,
+    /// <summary>Grouped under alphabetical provider headers (Emby, Jellyfin, Plex, …).</summary>
+    Provider,
+    /// <summary>User-defined order (custom-sort editor). Falls back to Recently added until set.</summary>
+    Custom
+}
+
+/// <summary>How the aggregated Favorites view orders rows (within groups when grouped).</summary>
+public enum FavoritesSort
+{
+    /// <summary>Newest-favorited first (the original default).</summary>
+    RecentlyAdded,
+    /// <summary>Alphabetical by title.</summary>
+    Name,
+    /// <summary>By provider/source label, then title.</summary>
+    Source
 }
 
 /// <summary>

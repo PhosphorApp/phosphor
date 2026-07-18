@@ -105,6 +105,22 @@ public class VideoItem : ObservableObject
     public bool IsAggregatedFavorite { get; set; }
 
     /// <summary>
+    /// True when this row is a non-interactive section header (e.g. a provider group label in the
+    /// grouped Favorites view). The player/queue/favorite commands ignore header rows, and the list
+    /// renders them as a plain label.
+    /// </summary>
+    public bool IsHeader { get; set; }
+    /// <summary>The label text for a header row (see <see cref="IsHeader"/>).</summary>
+    public string? HeaderText { get; set; }
+
+    /// <summary>
+    /// Grouping key for the aggregated Favorites view (the provider label) when "Group by provider" is
+    /// active — used by the ListBox's CollectionView grouping to render full-width provider headers.
+    /// Null when ungrouped.
+    /// </summary>
+    public string? GroupKey { get; set; }
+
+    /// <summary>
     /// True when this item's owning source supports favorites (implements <c>IFavoritable</c>), so the
     /// UI shows a star toggle on its row. Set by the host when building the item.
     /// </summary>

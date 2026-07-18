@@ -944,6 +944,17 @@ public partial class SettingsWindow : JukeboxWindow
             CbMinorButtonLocation.Items.Add(loc);
         CbMinorButtonLocation.SelectedIndex = (int)settings.DmdMinorButtonLocation;
 
+        // Favorites view axes (also editable inline on the Favorites view).
+        CbFavoritesGrouping.Items.Clear();
+        foreach (var g in new[] { "None", "By provider", "Custom" })
+            CbFavoritesGrouping.Items.Add(g);
+        CbFavoritesGrouping.SelectedIndex = (int)settings.FavoritesGrouping;
+
+        CbFavoritesSort.Items.Clear();
+        foreach (var s in new[] { "Recently added", "Name", "Source" })
+            CbFavoritesSort.Items.Add(s);
+        CbFavoritesSort.SelectedIndex = (int)settings.FavoritesSort;
+
         // Category visibility
         foreach (var entry in GenreCategoryStore.Load())
         {
@@ -3811,6 +3822,8 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.DmdGenreIconPaddingModifier = Math.Clamp((int)SliderGenreIconPadding.Value, -8, 8);
         _settings.DmdTrackButtonSizeModifier = Math.Clamp((int)SliderTrackButtonSize.Value, -12, 24);
         _settings.DmdMinorButtonLocation = (MinorButtonLocation)Math.Clamp(CbMinorButtonLocation.SelectedIndex, 0, 1);
+        _settings.FavoritesGrouping = (FavoritesGrouping)Math.Clamp(CbFavoritesGrouping.SelectedIndex, 0, 2);
+        _settings.FavoritesSort = (FavoritesSort)Math.Clamp(CbFavoritesSort.SelectedIndex, 0, 2);
         _settings.HiddenCategories = _categoryVisibilityItems
             .Where(i => !i.IsVisible)
             .Select(i => i.Name)

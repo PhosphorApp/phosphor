@@ -14,6 +14,18 @@
         <local:IsCurrentQueueItemConverter x:Key="IsCurrentQueueItemConverter"/>
         <local:ThumbnailCacheConverter x:Key="ThumbnailCacheConverter"/>
         <local:FractionToCanvasLeftConverter x:Key="FractionToCanvasLeft"/>
+
+        <!-- Favorites view axes: enum value lists for the two quick dropdowns. -->
+        <ObjectDataProvider x:Key="FavoritesGroupingValues" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="local:FavoritesGrouping"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+        <ObjectDataProvider x:Key="FavoritesSortValues" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="local:FavoritesSort"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
         <sys:Double x:Key="ResultTitleFontSize">13</sys:Double>
         <sys:Double x:Key="ResultDetailFontSize">11</sys:Double>
         <sys:Double x:Key="NowPlayingTitleFontSize">17</sys:Double>
@@ -272,14 +284,36 @@
                 <TextBlock x:Name="PlaylistNavTitle" Text="{Binding ActiveCategory}" Foreground="{StaticResource AccentBrush}"
                            FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" Margin="5,0,0,0"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button x:Name="PlaylistQueueAllBtn" Content="&#xFF0B; Queue All" Command="{Binding QueueAllFromPlaylistCommand}"
-                            Padding="14,10" Margin="4,0,0,0" FontSize="11"/>
-                    <Button x:Name="PlaylistClearBtn" Content="&#x1F5D1; Clear" Command="{Binding ClearPlaylistCommand}"
-                             Padding="14,10" Margin="4,0,0,0" FontSize="11"
-                             Visibility="{Binding IsViewingStaticPlaylist, Converter={StaticResource BoolVis}}"/>
-                    <Button x:Name="PlaylistDeleteBtn" Content="&#x274C; Delete" Click="DeletePlaylist_Click"
-                             Padding="14,10" Margin="4,0,0,0" FontSize="11"
-                             Visibility="{Binding IsViewingPlaylist, Converter={StaticResource BoolVis}}"/>
+                    <!-- Favorites view axes (shown only on the aggregated Favorites view) -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                Visibility="{Binding IsViewingFavorites, Converter={StaticResource BoolVis}}">
+                        <TextBlock Text="Group:" Foreground="{StaticResource TextDimBrush}"
+                                   VerticalAlignment="Center" FontSize="11" Margin="0,0,4,0"/>
+                        <ComboBox ItemsSource="{Binding Source={StaticResource FavoritesGroupingValues}}"
+                                  SelectedItem="{Binding FavoritesGrouping, Mode=TwoWay}"
+                                  Background="{StaticResource Surface2Brush}" Foreground="{StaticResource TextBrush}"
+                                  FontSize="11" MinWidth="90" BorderBrush="#333"/>
+                        <TextBlock Text="  Sort:" Foreground="{StaticResource TextDimBrush}"
+                                   VerticalAlignment="Center" FontSize="11" Margin="8,0,4,0"/>
+                        <ComboBox ItemsSource="{Binding Source={StaticResource FavoritesSortValues}}"
+                                  SelectedItem="{Binding FavoritesSort, Mode=TwoWay}"
+                                  Background="{StaticResource Surface2Brush}" Foreground="{StaticResource TextBrush}"
+                                  FontSize="11" MinWidth="110" BorderBrush="#333" Margin="0,0,8,0"/>
+                    </StackPanel>
+                    <!-- Standard playlist actions — hidden for the reserved Favorites view (Queue All can
+                         recurse through containers/live channels; Clear/Delete are destructive on a
+                         reserved list). Favorites has its own Group/Sort controls above. -->
+                    <StackPanel Orientation="Horizontal"
+                                Visibility="{Binding IsViewingFavorites, Converter={StaticResource BoolVis}, ConverterParameter=Invert}">
+                        <Button x:Name="PlaylistQueueAllBtn" Content="&#xFF0B; Queue All" Command="{Binding QueueAllFromPlaylistCommand}"
+                                Padding="14,10" Margin="4,0,0,0" FontSize="11"/>
+                        <Button x:Name="PlaylistClearBtn" Content="&#x1F5D1; Clear" Command="{Binding ClearPlaylistCommand}"
+                                 Padding="14,10" Margin="4,0,0,0" FontSize="11"
+                                 Visibility="{Binding IsViewingStaticPlaylist, Converter={StaticResource BoolVis}}"/>
+                        <Button x:Name="PlaylistDeleteBtn" Content="&#x274C; Delete" Click="DeletePlaylist_Click"
+                                 Padding="14,10" Margin="4,0,0,0" FontSize="11"
+                                 Visibility="{Binding IsViewingPlaylist, Converter={StaticResource BoolVis}}"/>
+                    </StackPanel>
                     <!-- Playlist picker (temporarily hidden) -->
                     <TextBlock Text="  Playlist:" Foreground="{StaticResource TextDimBrush}"
                                VerticalAlignment="Center" FontSize="11" Margin="8,0,4,0"
@@ -315,13 +349,34 @@
                          VirtualizingPanel.VirtualizationMode="Recycling"
                          VirtualizingPanel.ScrollUnit="Pixel"
                          x:Name="ResultsList" Background="Transparent">
-                    <ListBox.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <vwp:VirtualizingWrapPanel Orientation="Horizontal"
-                                                       SpacingMode="None"
-                                                       IsItemsHost="True"/>
-                        </ItemsPanelTemplate>
-                    </ListBox.ItemsPanel>
+                    <ListBox.Style>
+                        <Style TargetType="ListBox">
+                            <!-- Default: multi-column virtualizing wrap panel (search/browse/ungrouped). -->
+                            <Setter Property="ItemsPanel">
+                                <Setter.Value>
+                                    <ItemsPanelTemplate>
+                                        <vwp:VirtualizingWrapPanel Orientation="Horizontal"
+                                                                   SpacingMode="None"
+                                                                   IsItemsHost="True"/>
+                                    </ItemsPanelTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <!-- Favorites grouped by provider: vertical single-column stack so
+                                     full-width provider headers stack above their rows. Scoped ONLY to
+                                     this view; every other view keeps the wrap panel. -->
+                                <DataTrigger Binding="{Binding IsFavoritesGroupedView}" Value="True">
+                                    <Setter Property="ItemsPanel">
+                                        <Setter.Value>
+                                            <ItemsPanelTemplate>
+                                                <VirtualizingStackPanel Orientation="Vertical" IsItemsHost="True"/>
+                                            </ItemsPanelTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ListBox.Style>
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">
                         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -330,6 +385,25 @@
                 </ListBox.ItemContainerStyle>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
+                        <Grid>
+                            <!-- Provider group header (grouped Favorites view): accent label, no fill,
+                                 matching the "Favorites" title. Full-width single-column row. -->
+                            <TextBlock Text="{Binding HeaderText}" Foreground="{StaticResource AccentBrush}"
+                                       FontWeight="Bold" FontSize="13" Margin="2,8,0,3"
+                                       Visibility="{Binding IsHeader, Converter={StaticResource BoolVis}}"/>
+                            <!-- Normal result/favorite row. -->
+                            <ContentControl Content="{Binding}">
+                                <ContentControl.Style>
+                                    <Style TargetType="ContentControl">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsHeader}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ContentControl.Style>
+                                <ContentControl.ContentTemplate>
+                                    <DataTemplate>
                         <Border Background="{StaticResource SurfaceBrush}" CornerRadius="4"
                                 Padding="6" Margin="0,1">
                             <Grid>
@@ -494,6 +568,10 @@
                                 </Grid>
                             </Grid>
                         </Border>
+                    </DataTemplate>
+                                </ContentControl.ContentTemplate>
+                            </ContentControl>
+                        </Grid>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>

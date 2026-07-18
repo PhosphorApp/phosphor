@@ -154,6 +154,14 @@ public partial class DmdWindow : JukeboxWindow
             {
                 vmLoaded.Categories.CollectionChanged += (_, _) => InvalidateNavRing();
                 vmLoaded.Queue.CollectionChanged += (_, _) => InvalidateNavRing();
+                // Update favorites view axes in-memory when changed via the quick dropdowns; AppSettings
+                // is persisted once on exit (per project convention — no save in event handlers).
+                vmLoaded.FavoritesViewChanged += () =>
+                {
+                    if (_appSettings == null) return;
+                    _appSettings.FavoritesGrouping = vmLoaded.FavoritesGrouping;
+                    _appSettings.FavoritesSort = vmLoaded.FavoritesSort;
+                };
                 vmLoaded.PropertyChanged += (_, args) => { if (args.PropertyName == "SearchQuery") Dispatcher.BeginInvoke(UpdateSearchPlaceholder); };
                 vmLoaded.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(JukeboxViewModel.ShowCategories)) Dispatcher.BeginInvoke(() => UpdateBackNavButton(vmLoaded)); };
                 vmLoaded.PropertyChanged += (_, args) =>
@@ -182,6 +190,9 @@ public partial class DmdWindow : JukeboxWindow
                         sv?.ScrollToTop();
                     }
 
+                    // Apply/clear provider grouping on the results view (favorites "Group by provider").
+                    UpdateFavoritesGrouping(vmLoaded);
+
                     // Force the VirtualizingWrapPanel to re-measure after items arrive,
                     // fixes invisible items on first load
                     Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
@@ -198,6 +209,26 @@ public partial class DmdWindow : JukeboxWindow
                     Dispatcher.BeginInvoke(DispatcherPriority.Loaded, UpdateQueueDeleteButtonPosition);
             };
         };
+    }
+
+    /// <summary>
+    /// The aggregated Favorites view is showing provider group headers — forces a single-column layout
+    /// so full-width headers stack above their items (the virtualizing wrap panel can't do
+    /// CollectionView grouping).
+    /// </summary>
+    private bool _favoritesGrouped;
+
+    /// <summary>
+    /// Tracks whether the results list is the grouped Favorites view, and re-applies the item width so
+    /// grouped mode collapses to one column (full-width headers/rows) while other views stay
+    /// multi-column. No CollectionView grouping (incompatible with VirtualizingWrapPanel).
+    /// </summary>
+    private void UpdateFavoritesGrouping(JukeboxViewModel vm)
+    {
+        bool grouped = vm.IsViewingFavorites && vm.FavoritesGrouping == FavoritesGrouping.Provider;
+        if (grouped == _favoritesGrouped) return;
+        _favoritesGrouped = grouped;
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, UpdateResultItemWidth);
     }
 
     private void CenterCursorOnWindow()
@@ -678,6 +709,14 @@ public partial class DmdWindow : JukeboxWindow
         SetMinorButtonLocation(settings.DmdMinorButtonLocation);
         SetShowStatusText(settings.ShowStatusText);
         SetTitleText(settings.TitleText);
+
+        // Restore the saved Favorites view axes into the VM at startup so the inline dropdowns and the
+        // aggregated tile reflect the persisted choice (full ApplySettings only runs via the dialog).
+        if (DataContext is JukeboxViewModel vmFav)
+        {
+            vmFav.FavoritesGrouping = settings.FavoritesGrouping;
+            vmFav.FavoritesSort = settings.FavoritesSort;
+        }
     }
 
     /// <summary>Sets the title icon and text blocks, splitting any leading emoji and applying thin-space kerning to the remainder.</summary>
@@ -1908,7 +1947,8 @@ public partial class DmdWindow : JukeboxWindow
 
     private void UpdateResultItemWidth()
     {
-        if (_resultColumns <= 1)
+        // Grouped Favorites view is single-column so full-width provider headers stack above their items.
+        if (_favoritesGrouped || _resultColumns <= 1)
         {
             // Single column — clear width constraint
             ResultsList.ItemContainerStyle = MakeItemContainerStyle(double.NaN);
@@ -2447,6 +2487,8 @@ public partial class DmdWindow : JukeboxWindow
             vm.PreemptiveCache = _appSettings.PreemptiveCache;
             vm.GaplessPlayback = _appSettings.PlexGaplessPlayback;
             vm.AutoDjProviderId = _appSettings.AutoDjProviderId;
+            vm.FavoritesGrouping = _appSettings.FavoritesGrouping;
+            vm.FavoritesSort = _appSettings.FavoritesSort;
             LogStep("VmProperties");
         }
         LogStep("Cache/ViewModel");
