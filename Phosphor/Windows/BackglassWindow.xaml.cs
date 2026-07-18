@@ -760,6 +760,11 @@ public partial class BackglassWindow : JukeboxWindow
             {
                 var media = new Media(_libVLC, new Uri(streamUrl));
 
+                // Separate video+audio (yt-dlp SeparateVideoAudio, e.g. Vimeo/Dailymotion): attach the
+                // audio-slave URL so the video-only primary actually has sound.
+                if (vm.CurrentlyPlaying.AudioStreamUrl is { Length: > 0 } audioSlaveUrl)
+                    media.AddSlave(MediaSlaveType.Audio, 4, new Uri(audioSlaveUrl));
+
                 // HLS transcode streams need extra buffering for reliable cold-start
                 if (streamUrl.Contains("transcode", StringComparison.OrdinalIgnoreCase))
                 {

@@ -23,6 +23,13 @@ public class VideoItem : ObservableObject
     public string? StreamUrl { get; set; }
 
     /// <summary>
+    /// Optional separate audio-slave URL to attach when <see cref="StreamUrl"/> is a video-only
+    /// stream (yt-dlp <c>SeparateVideoAudio</c>, e.g. Vimeo/Dailymotion). When set, the player adds
+    /// it as an audio slave input; null for muxed/direct streams that carry their own audio.
+    /// </summary>
+    public string? AudioStreamUrl { get; set; }
+
+    /// <summary>
     /// The plug-in source instance that produced this playable item, when known. Lets the host
     /// route metadata/gapless/caching requests back to the owning source instead of guessing from
     /// the id shape (the Plex/YouTube fallback). Null for legacy items or the built-in engine path.

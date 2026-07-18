@@ -532,6 +532,8 @@ public partial class JukeboxViewModel : ObservableObject
                 if (stream != null)
                 {
                     vi.StreamUrl = stream.PrimaryUri;
+                    vi.AudioStreamUrl = stream.Layout == Phosphor.Plugin.Abstractions.StreamLayout.SeparateVideoAudio
+                        ? stream.AudioSlaveUri : null;
                     if (stream.IsLiveStream) vi.IsLiveStream = true;
                 }
             }
@@ -1567,7 +1569,12 @@ public partial class JukeboxViewModel : ObservableObject
                 {
                     var stream = await resolver.ResolveAsync(
                         item, new Phosphor.Plugin.Abstractions.PlaybackPreferences(), ct);
-                    if (stream != null) vi.StreamUrl = stream.PrimaryUri;
+                    if (stream != null)
+                    {
+                        vi.StreamUrl = stream.PrimaryUri;
+                        vi.AudioStreamUrl = stream.Layout == Phosphor.Plugin.Abstractions.StreamLayout.SeparateVideoAudio
+                            ? stream.AudioSlaveUri : null;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -3325,6 +3332,10 @@ public partial class JukeboxViewModel : ObservableObject
             if (stream?.PrimaryUri is { Length: > 0 } url)
             {
                 item.StreamUrl = url;
+                // Carry the separate audio-slave URL (yt-dlp SeparateVideoAudio) so the player can
+                // attach it — otherwise a video-only primary plays with no audio.
+                item.AudioStreamUrl = stream.Layout == Phosphor.Plugin.Abstractions.StreamLayout.SeparateVideoAudio
+                    ? stream.AudioSlaveUri : null;
                 item.IsAudioOnly = sourceItem.IsAudioOnly;
                 item.PendingResolveSourceItem = null; // resolved
                 // Guard against the user having moved on while we were resolving.
