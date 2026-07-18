@@ -42,17 +42,74 @@ public sealed class FavoritesIndex
     private static readonly string IndexPath = Path.Combine(
         AppDomain.CurrentDomain.BaseDirectory, "favorites-index.json");
 
+    private static readonly string OrderPath = Path.Combine(
+        AppDomain.CurrentDomain.BaseDirectory, "favorites-order.json");
+
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     private readonly object _gate = new();
     private readonly Dictionary<string, FavoriteEntry> _entries = new(StringComparer.Ordinal);
 
-    public FavoritesIndex() => Load();
+    // User-defined manual order (Grouping = Custom): ordered list of favorite keys. Keys that no longer
+    // resolve to an entry are ignored on read; new/unordered favorites are appended newest-first.
+    private List<string> _customOrder = new();
+
+    public FavoritesIndex()
+    {
+        Load();
+        LoadOrder();
+    }
+
+    /// <summary>Composite identity for a favorite: unique per (source instance, item id).</summary>
+    public static string MakeKey(string sourceInstanceId, string itemId) =>
+        $"{sourceInstanceId}\u0000{itemId}";
 
     /// <summary>All favorites, newest-first.</summary>
     public IReadOnlyList<FavoriteEntry> All()
     {
         lock (_gate) return _entries.Values.OrderByDescending(e => e.AddedAt).ToList();
+    }
+
+    /// <summary>
+    /// All favorites in the user's saved manual order (Grouping = Custom). Ordered keys come first (in
+    /// saved order), then any not-yet-ordered favorites newest-first. Stale keys are skipped.
+    /// </summary>
+    public IReadOnlyList<FavoriteEntry> AllCustomOrdered()
+    {
+        lock (_gate)
+        {
+            var result = new List<FavoriteEntry>(_entries.Count);
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var key in _customOrder)
+                if (seen.Add(key) && _entries.TryGetValue(key, out var e))
+                    result.Add(e);
+            foreach (var e in _entries.Values.OrderByDescending(e => e.AddedAt))
+                if (seen.Add(e.Key))
+                    result.Add(e);
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// Persists a new manual order from the given keys (write-through, a discrete user action). Keys
+    /// not matching a current favorite are dropped; favorites missing from the list are appended
+    /// newest-first so the stored order always covers every favorite.
+    /// </summary>
+    public void SetCustomOrder(IEnumerable<string> keys)
+    {
+        lock (_gate)
+        {
+            var order = new List<string>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var key in keys)
+                if (_entries.ContainsKey(key) && seen.Add(key))
+                    order.Add(key);
+            foreach (var e in _entries.Values.OrderByDescending(e => e.AddedAt))
+                if (seen.Add(e.Key))
+                    order.Add(e.Key);
+            _customOrder = order;
+            SaveOrder();
+        }
     }
 
     public int Count { get { lock (_gate) return _entries.Count; } }
@@ -119,6 +176,34 @@ public sealed class FavoritesIndex
         catch (Exception ex)
         {
             DebugLog.Log("FavoritesIndex", $"Save failed: {ex.Message}");
+        }
+    }
+
+    private void LoadOrder()
+    {
+        try
+        {
+            if (!File.Exists(OrderPath)) return;
+            var list = JsonSerializer.Deserialize<List<string>>(File.ReadAllText(OrderPath));
+            if (list is null) return;
+            lock (_gate) _customOrder = list;
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Log("FavoritesIndex", $"LoadOrder failed: {ex.Message}");
+        }
+    }
+
+    // Caller holds _gate.
+    private void SaveOrder()
+    {
+        try
+        {
+            File.WriteAllText(OrderPath, JsonSerializer.Serialize(_customOrder, JsonOptions));
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Log("FavoritesIndex", $"SaveOrder failed: {ex.Message}");
         }
     }
 }

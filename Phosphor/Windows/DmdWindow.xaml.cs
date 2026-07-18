@@ -44,6 +44,9 @@ public partial class DmdWindow : JukeboxWindow
     private WpfPoint _queueDragStart;
     private bool _queueDragInProgress;
 
+    private WpfPoint _favDragStart;
+    private bool _favDragInProgress;
+
     // Screensaver fields
     private readonly Random _ssRng = new();
     private readonly DispatcherTimer _ssColorTimer;
@@ -4436,6 +4439,50 @@ public partial class DmdWindow : JukeboxWindow
 
         // Force queue index labels to refresh after reorder
         RefreshQueueIndices();
+    }
+
+    // ── Favorites drag-reorder (only active for the aggregated Favorites view in Custom order) ──
+
+    private void ResultsList_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        _favDragStart = e.GetPosition(ResultsList);
+        _favDragInProgress = false;
+    }
+
+    private void ResultsList_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed) return;
+        if (DataContext is not JukeboxViewModel vm || !vm.IsFavoritesCustomOrder) return;
+
+        var pos = e.GetPosition(ResultsList);
+        if (Math.Abs(pos.X - _favDragStart.X) < 4 && Math.Abs(pos.Y - _favDragStart.Y) < 4)
+            return;
+
+        if (_favDragInProgress) return;
+
+        var item = GetDataContextAtPoint<VideoItem>(ResultsList, _favDragStart);
+        if (item == null || item.IsHeader) return;
+
+        _favDragInProgress = true;
+        DragDrop.DoDragDrop(ResultsList, item, System.Windows.DragDropEffects.Move);
+        _favDragInProgress = false;
+    }
+
+    private void ResultsList_Drop(object sender, System.Windows.DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(typeof(VideoItem))) return;
+        if (DataContext is not JukeboxViewModel vm || !vm.IsFavoritesCustomOrder) return;
+
+        var draggedItem = (VideoItem)e.Data.GetData(typeof(VideoItem))!;
+        var targetItem = GetDataContextAtPoint<VideoItem>(ResultsList, e.GetPosition(ResultsList));
+
+        int oldIndex = vm.SearchResults.IndexOf(draggedItem);
+        int newIndex = targetItem != null ? vm.SearchResults.IndexOf(targetItem) : vm.SearchResults.Count - 1;
+
+        if (oldIndex < 0 || newIndex < 0 || oldIndex == newIndex) return;
+
+        vm.SearchResults.Move(oldIndex, newIndex);
+        vm.PersistFavoritesCustomOrder();
     }
 
     private void RefreshQueueIndices()

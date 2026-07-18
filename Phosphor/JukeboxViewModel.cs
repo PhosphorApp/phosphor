@@ -1211,6 +1211,7 @@ public partial class JukeboxViewModel : ObservableObject
     {
         FavoritesViewChanged?.Invoke();
         OnPropertyChanged(nameof(IsFavoritesGroupedView));
+        OnPropertyChanged(nameof(IsFavoritesCustomOrder));
         if (IsViewingFavorites)
             SearchResults.ReplaceAll(BuildAggregatedFavorites());
     }
@@ -1226,6 +1227,23 @@ public partial class JukeboxViewModel : ObservableObject
     /// vertical stack (full-width headers + rows) instead of the multi-column wrap panel.
     /// </summary>
     public bool IsFavoritesGroupedView => IsViewingFavorites && FavoritesGrouping == FavoritesGrouping.Provider;
+
+    /// <summary>True when the aggregated Favorites view is in user-defined manual order (drag-to-reorder).</summary>
+    public bool IsFavoritesCustomOrder => IsViewingFavorites && FavoritesGrouping == FavoritesGrouping.Custom;
+
+    /// <summary>
+    /// Persists the current manual order of the Favorites view after a drag-reorder. Reads the visible
+    /// rows' (source, id) keys and writes them through the index (a discrete user action). Removed
+    /// favorites are pruned and new ones appended by the index itself.
+    /// </summary>
+    public void PersistFavoritesCustomOrder()
+    {
+        if (!IsFavoritesCustomOrder) return;
+        var keys = SearchResults
+            .Where(r => !r.IsHeader)
+            .Select(r => FavoritesIndex.MakeKey(r.SourceInstanceId ?? "", r.VideoId));
+        _favoritesIndex.SetCustomOrder(keys);
+    }
 
     // ── Active playlist (for "Add to Playlist" default target) ──
     private string _activePlaylistName = "Favorites";
@@ -3254,9 +3272,14 @@ public partial class JukeboxViewModel : ObservableObject
     /// </summary>
     private List<VideoItem> BuildAggregatedFavorites()
     {
-        var entries = _favoritesIndex.All(); // index default order = recently-added first
         var grouping = this.FavoritesGrouping;
         var sort = this.FavoritesSort;
+
+        // Custom = user-defined manual order (drag-to-reorder); ignores the Sort axis entirely.
+        if (grouping == FavoritesGrouping.Custom)
+            return _favoritesIndex.AllCustomOrdered().Select(ToFavoriteRow).ToList();
+
+        var entries = _favoritesIndex.All(); // index default order = recently-added first
 
         IEnumerable<FavoriteEntry> Sorted(IEnumerable<FavoriteEntry> src) => sort switch
         {
@@ -3283,7 +3306,7 @@ public partial class JukeboxViewModel : ObservableObject
             return rows;
         }
 
-        // None / Custom (custom editor deferred → behaves like the chosen sort).
+        // None — flat list ordered by the chosen sort.
         return Sorted(entries).Select(ToFavoriteRow).ToList();
     }
 
