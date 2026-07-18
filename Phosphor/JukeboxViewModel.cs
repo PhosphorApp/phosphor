@@ -16,6 +16,7 @@ public partial class JukeboxViewModel : ObservableObject
     private ISearchEngine _searchEngine = new YoutubeExplodeSearchEngine();
     private readonly PlayHistory _history;
     private readonly PlaylistManager _playlists;
+    private readonly FavoritesIndex _favoritesIndex = new();
     private readonly SearchHistory _searchHistory;
     private VideoCache? _cache;
     private PrefetchCache? _prefetch;
@@ -1558,7 +1559,17 @@ public partial class JukeboxViewModel : ObservableObject
         await foreach (var item in items.WithCancellation(ct))
         {
             var vi = ToVideoItem(item);
-            if (deferResolve)
+            if (item.IsLiveStream)
+            {
+                // Live streams (e.g. SiriusXM channels) MUST resolve lazily at play time. Resolving
+                // here would fire a round-trip per result AND mutate the source's single shared proxy,
+                // leaving it pointed at whichever result resolved last (so every channel would play the
+                // last one). Carry the SourceItem; PlayNow resolves it on demand.
+                vi.IsLiveStream = true;
+                vi.PendingLiveSourceItem = item;
+                vi.IsAudioOnly = item.IsAudioOnly;
+            }
+            else if (deferResolve)
             {
                 vi.PendingResolveSourceItem = item;
                 vi.IsAudioOnly = item.IsAudioOnly;
@@ -2214,6 +2225,21 @@ public partial class JukeboxViewModel : ObservableObject
 
         if (category.IsPlaylist)
         {
+            // The built-in "Favorites" tile is now the host-level AGGREGATED view across all sources,
+            // rendered instantly from the write-through index (not the legacy playlist videos).
+            if (category.Name == "Favorites")
+            {
+                ActivePlaylistName = category.Name;
+                IsViewingPlaylist = true;
+                IsViewingLivePlaylist = false;
+                _hasMoreResults = false;
+                CanLoadMore = false;
+                SearchResults.ReplaceAll(BuildAggregatedFavorites());
+                StatusText = $"{SearchResults.Count} favorite(s) across all sources";
+                ShowCategories = false;
+                return;
+            }
+
             var playlist = _playlists.Playlists.FirstOrDefault(p => p.Name == category.Name);
             if (playlist?.Kind == PlaylistKind.Live)
             {
@@ -3063,7 +3089,59 @@ public partial class JukeboxViewModel : ObservableObject
         var newState = !item.IsFavorite;
         fav.SetFavorite(item.VideoId, newState);
         item.IsFavorite = newState;
+
+        // Write-through to the host-level aggregated index (drives the global Favorites tile).
+        if (source is Phosphor.Plugin.Abstractions.IPhosphorSource src)
+        {
+            if (newState)
+                _favoritesIndex.Add(new FavoriteEntry
+                {
+                    SourceInstanceId = src.InstanceId,
+                    ItemId = item.VideoId,
+                    Title = item.Title,
+                    ThumbnailUrl = string.IsNullOrEmpty(item.ThumbnailUrl) ? null : item.ThumbnailUrl,
+                    DurationSeconds = item.Duration?.TotalSeconds,
+                    IsAudioOnly = item.IsAudioOnly,
+                    IsLiveStream = item.IsLiveStream,
+                    SourceLabel = src.DisplayName,
+                });
+            else
+                _favoritesIndex.Remove(src.InstanceId, item.VideoId);
+        }
+
+        // If we're viewing the aggregated Favorites tile, drop an unfavorited row so it disappears live.
+        if (!newState && item.IsAggregatedFavorite && IsViewingStaticPlaylist
+            && ActivePlaylistName == "Favorites")
+        {
+            SearchResults.Remove(item);
+            StatusText = $"Unfavorited: {item.Title} — {SearchResults.Count} favorite(s) remain";
+            return;
+        }
+
         StatusText = newState ? $"★ Favorited: {item.Title}" : $"Unfavorited: {item.Title}";
+    }
+
+    /// <summary>
+    /// Builds the aggregated Favorites view (all sources) from the write-through index — instant, no
+    /// per-source round-trips. Each row carries only display data + (source, id); playback rebuilds a
+    /// resolvable item lazily via the owning source's <c>GetFavorite</c> (see the play path).
+    /// </summary>
+    private List<VideoItem> BuildAggregatedFavorites()
+    {
+        return _favoritesIndex.All().Select(e => new VideoItem
+        {
+            Title = e.Title,
+            Author = e.SourceLabel,
+            ThumbnailUrl = e.ThumbnailUrl ?? "",
+            VideoId = e.ItemId,
+            SourceInstanceId = e.SourceInstanceId,
+            Duration = e.DurationSeconds is { } s ? TimeSpan.FromSeconds(s) : null,
+            IsAudioOnly = e.IsAudioOnly,
+            IsLiveStream = e.IsLiveStream,
+            IsAggregatedFavorite = true,
+            CanFavorite = true,
+            IsFavorite = true,
+        }).ToList();
     }
 
     [RelayCommand]
@@ -3226,6 +3304,14 @@ public partial class JukeboxViewModel : ObservableObject
             return;
         }
 
+        // Aggregated Favorites row: carries only display data. Rebuild a resolvable item via the
+        // owning source's IFavoritable.GetFavorite, then play that. Resolve is source-owned + cheap.
+        if (item.IsAggregatedFavorite)
+        {
+            _ = SafeFireAndForget(PlayAggregatedFavoriteAsync(item));
+            return;
+        }
+
         PlayTransitioning = true;
         SetStatusPrefix("Transitioning");
         CurrentlyPlaying = item;
@@ -3354,6 +3440,34 @@ public partial class JukeboxViewModel : ObservableObject
             StatusText = $"Can't play {item.Title}: {ex.Message}";
             PlayTransitioning = false;
         }
+    }
+
+    /// <summary>
+    /// Plays an aggregated-favorite row by rebuilding a resolvable item from its owning source, then
+    /// routing it through the normal play path. The index row carries only display data; the owning
+    /// source's <c>GetFavorite(id)</c> restores the opaque SourceState needed to resolve/play.
+    /// </summary>
+    private async Task PlayAggregatedFavoriteAsync(VideoItem favRow)
+    {
+        SetStatusPrefix("Resolving");
+        var source = _sourceRegistry?.ByInstance(favRow.SourceInstanceId ?? "");
+        if (source is not Phosphor.Plugin.Abstractions.IFavoritable fav)
+        {
+            StatusText = $"Can't play {favRow.Title}: source unavailable.";
+            return;
+        }
+
+        var sourceItem = fav.GetFavorite(favRow.VideoId);
+        if (sourceItem is null)
+        {
+            StatusText = $"Can't play {favRow.Title}: no longer available.";
+            return;
+        }
+
+        // Rebuild a fully-playable VideoItem (resolving / deferring exactly like browse does), then play.
+        var resolver = source as Phosphor.Plugin.Abstractions.IPlayableResolver;
+        var vi = await ResolveLeafAsync(sourceItem, resolver, _searchCts.Token);
+        PlayNow(vi);
     }
 
     /// <summary>

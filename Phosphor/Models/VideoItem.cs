@@ -98,6 +98,13 @@ public class VideoItem : ObservableObject
     public object? PendingResolveSourceItem { get; set; }
 
     /// <summary>
+    /// True when this row came from the host-level aggregated Favorites tile — it carries only display
+    /// data (<see cref="SourceInstanceId"/> + <see cref="VideoId"/>), so the play path must first call
+    /// the owning source's <c>IFavoritable.GetFavorite(VideoId)</c> to rebuild a resolvable item.
+    /// </summary>
+    public bool IsAggregatedFavorite { get; set; }
+
+    /// <summary>
     /// True when this item's owning source supports favorites (implements <c>IFavoritable</c>), so the
     /// UI shows a star toggle on its row. Set by the host when building the item.
     /// </summary>

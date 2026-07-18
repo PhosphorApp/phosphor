@@ -313,6 +313,15 @@ public interface IFavoritable
 
     /// <summary>The currently favorited item ids, for building a "Favorites" view.</summary>
     IReadOnlyCollection<string> GetFavoriteIds();
+
+    /// <summary>
+    /// Rebuilds a playable <see cref="SourceItem"/> (with its opaque <see cref="SourceItem.SourceState"/>)
+    /// for a favorited <paramref name="itemId"/>, or <c>null</c> if the source can no longer produce it.
+    /// Lets a host-level aggregated "Favorites" view — which stores only lightweight display records —
+    /// hand playback back to the owning source without re-browsing. Cheap: sources build it from data
+    /// they already hold (a cached channel, a stored favorite record, or just the id).
+    /// </summary>
+    SourceItem? GetFavorite(string itemId);
 }
 
 /// <summary>One item a source exposes for the host's hide-management UI.</summary>
