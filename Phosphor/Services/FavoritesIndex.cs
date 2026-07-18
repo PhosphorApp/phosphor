@@ -18,6 +18,8 @@ public sealed class FavoriteEntry
     public double? DurationSeconds { get; set; }
     public bool IsAudioOnly { get; set; }
     public bool IsLiveStream { get; set; }
+    /// <summary>True when this favorite is a container (artist/album) that expands to tracks on play.</summary>
+    public bool IsContainer { get; set; }
     /// <summary>Display label for the owning source (e.g. "SiriusXM", "Vimeo"), for a source tag.</summary>
     public string SourceLabel { get; set; } = "";
     /// <summary>When it was favorited (newest-first ordering in the aggregated view).</summary>

@@ -16,7 +16,7 @@ namespace Phosphor.Plugins.Plex;
 /// In-box, so it uses <see cref="PlexService"/>, <see cref="VideoItem"/>, and the Plex enums
 /// directly. Pure data producer: no UI, no thread assumptions.
 /// </remarks>
-public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IFilterableSearch, IBrowsable, IPagedBrowsable, IScopedSearchable, IPlayableResolver, IConfigurable, IGaplessCapable, IConnectionTestable
+public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IFilterableSearch, IBrowsable, IPagedBrowsable, IScopedSearchable, IPlayableResolver, IConfigurable, IGaplessCapable, IConnectionTestable, IFavoritable
 {
     private readonly PlexService _plex = new();
     private IPluginHost? _host;
@@ -453,6 +453,165 @@ public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IFilterabl
         catch
         {
             return [];
+        }
+    }
+
+    // ── IFavoritable ───────────────────────────────────────────────────────────
+    // Plex favorites persist a serializable record per rating key. LEAF favorites keep the full,
+    // token-bound StreamUrl so GetFavorite replays without a server round-trip. CONTAINER favorites
+    // (artist/album) keep the browse-node identity (kind + key + libraryType) so GetFavorite returns
+    // a container SourceItem the host expands to tracks on play. Feeds the aggregated Favorites tile.
+
+    /// <summary>A persisted Plex favorite — either a playable leaf or a container (artist/album).</summary>
+    private sealed class PlexFavorite
+    {
+        public string Id { get; set; } = "";        // rating-key based id (VideoId)
+        public string Title { get; set; } = "";
+        public string? Author { get; set; }
+        public string? ThumbnailUrl { get; set; }
+        public bool IsContainer { get; set; }
+        public VideoItem? Leaf { get; set; }         // leaf: full playable item (has StreamUrl)
+        public string? NodeKind { get; set; }        // container: PlexNodeKind name
+        public string? NodeKey { get; set; }
+        public string? NodeLibraryType { get; set; }
+    }
+
+    private readonly object _favGate = new();
+    private Dictionary<string, PlexFavorite>? _favoritesCache;
+    private Dictionary<string, PlexFavorite> Favorites => _favoritesCache ??= LoadFavorites();
+
+    private string FavoritesPath =>
+        Path.Combine(_host?.InstanceCacheDirectory ?? Path.GetTempPath(), "favorites.json");
+
+    public bool IsFavorite(string itemId)
+    {
+        lock (_favGate) return Favorites.ContainsKey(itemId);
+    }
+
+    public void SetFavorite(string itemId, bool favorite)
+    {
+        if (string.IsNullOrEmpty(itemId)) return;
+        lock (_favGate)
+        {
+            bool changed;
+            if (favorite)
+            {
+                changed = !Favorites.ContainsKey(itemId);
+                // Placeholder; the rich record is captured via RememberFavorite (host holds the item).
+                if (!Favorites.ContainsKey(itemId))
+                    Favorites[itemId] = new PlexFavorite { Id = itemId, Title = itemId };
+            }
+            else
+            {
+                changed = Favorites.Remove(itemId);
+            }
+            if (changed) SaveFavorites();
+        }
+    }
+
+    /// <summary>Captures the full favorite (leaf item or container node) so GetFavorite can rebuild it.</summary>
+    public void RememberFavorite(VideoItem item)
+    {
+        if (string.IsNullOrEmpty(item.VideoId)) return;
+        lock (_favGate)
+        {
+            if (!Favorites.ContainsKey(item.VideoId)) return; // only enrich known favorites
+
+            PlexFavorite rec;
+            if (item.IsGenericContainer)
+            {
+                var node = item.GenericSourceState as PlexNode;
+                rec = new PlexFavorite
+                {
+                    Id = item.VideoId,
+                    Title = item.Title,
+                    Author = string.IsNullOrEmpty(item.Author) ? null : item.Author,
+                    ThumbnailUrl = string.IsNullOrEmpty(item.ThumbnailUrl) ? null : item.ThumbnailUrl,
+                    IsContainer = true,
+                    NodeKind = node?.Kind.ToString(),
+                    NodeKey = node?.Key ?? item.GenericCategoryId,
+                    NodeLibraryType = node?.LibraryType,
+                };
+            }
+            else
+            {
+                rec = new PlexFavorite
+                {
+                    Id = item.VideoId,
+                    Title = item.Title,
+                    Author = string.IsNullOrEmpty(item.Author) ? null : item.Author,
+                    ThumbnailUrl = string.IsNullOrEmpty(item.ThumbnailUrl) ? null : item.ThumbnailUrl,
+                    IsContainer = false,
+                    Leaf = item,
+                };
+            }
+            Favorites[item.VideoId] = rec;
+            SaveFavorites();
+        }
+    }
+
+    public IReadOnlyCollection<string> GetFavoriteIds()
+    {
+        lock (_favGate) return Favorites.Keys.ToArray();
+    }
+
+    /// <summary>
+    /// Rebuilds a favorite: a leaf → its stored playable item; a container → a container SourceItem
+    /// (IsContainer=true, SourceState=PlexNode) the host expands to tracks on play.
+    /// </summary>
+    public SourceItem? GetFavorite(string itemId)
+    {
+        if (string.IsNullOrEmpty(itemId)) return null;
+        PlexFavorite? f;
+        lock (_favGate) f = Favorites.TryGetValue(itemId, out var stored) ? stored : null;
+        if (f is null) return null;
+
+        if (f.IsContainer)
+        {
+            var kind = Enum.TryParse<PlexNodeKind>(f.NodeKind, out var k) ? k : PlexNodeKind.Album;
+            return new SourceItem
+            {
+                SourceInstanceId = InstanceId,
+                ItemId = f.Id,
+                Title = f.Title,
+                Subtitle = f.Author,
+                ThumbnailUrl = f.ThumbnailUrl,
+                IsContainer = true,
+                SourceState = new PlexNode(kind, f.NodeKey ?? f.Id, f.NodeLibraryType ?? "artist"),
+            };
+        }
+
+        return f.Leaf is null ? null : PlexMappings.ToSourceItem(f.Leaf, InstanceId);
+    }
+
+    private Dictionary<string, PlexFavorite> LoadFavorites()
+    {
+        try
+        {
+            var path = FavoritesPath;
+            if (!File.Exists(path)) return new Dictionary<string, PlexFavorite>(StringComparer.Ordinal);
+            var list = JsonSerializer.Deserialize<List<PlexFavorite>>(File.ReadAllText(path));
+            return (list ?? []).Where(v => !string.IsNullOrEmpty(v.Id))
+                .ToDictionary(v => v.Id, v => v, StringComparer.Ordinal);
+        }
+        catch (Exception ex)
+        {
+            _host?.Log($"Plex: favorites read failed: {ex.Message}");
+            return new Dictionary<string, PlexFavorite>(StringComparer.Ordinal);
+        }
+    }
+
+    private void SaveFavorites()
+    {
+        try
+        {
+            var path = FavoritesPath;
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, JsonSerializer.Serialize(Favorites.Values.ToList()));
+        }
+        catch (Exception ex)
+        {
+            _host?.Log($"Plex: favorites write failed: {ex.Message}");
         }
     }
 }

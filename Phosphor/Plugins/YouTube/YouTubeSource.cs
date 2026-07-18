@@ -1,5 +1,6 @@
 using System.Net.Http;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Phosphor.Plugin.Abstractions;
 using Phosphor.Search;
 using Phosphor.Video;
@@ -18,7 +19,7 @@ namespace Phosphor.Plugins.YouTube;
 /// YoutubeExplode package and existing engine code directly. It is a pure data producer:
 /// it never touches UI or assumes a thread.
 /// </remarks>
-public sealed class YouTubeSource : IPhosphorSource, ITextSearchCapable, IPlaylistChannelDiscovery, IPlayableResolver, IDownloadable, IUpdatable, IConnectionTestable
+public sealed class YouTubeSource : IPhosphorSource, ITextSearchCapable, IPlaylistChannelDiscovery, IPlayableResolver, IDownloadable, IUpdatable, IConnectionTestable, IFavoritable
 {
     private readonly HttpClient? _http;
     private static readonly HttpClient _sharedHttp = new() { Timeout = TimeSpan.FromSeconds(15) };
@@ -211,4 +212,94 @@ public sealed class YouTubeSource : IPhosphorSource, ITextSearchCapable, IPlayli
 
     private static bool ParseBool(IReadOnlyDictionary<string, string?> values, string key, bool fallback)
         => values.TryGetValue(key, out var raw) && bool.TryParse(raw, out var parsed) ? parsed : fallback;
+
+    // ── IFavoritable ───────────────────────────────────────────────────────────
+    // YouTube favorites are just video ids plus a light display record (so the aggregated tile and
+    // GetFavorite work without a network probe). They surface ONLY in the host-level global Favorites
+    // tile — YouTube has no stable browse tree to host a per-source Favorites node.
+
+    private sealed record YtFavorite(string Id, string Title, string Author, string? ThumbnailUrl, double? DurationSeconds);
+
+    private readonly object _favGate = new();
+    private Dictionary<string, YtFavorite>? _favoritesCache;
+    private Dictionary<string, YtFavorite> Favorites => _favoritesCache ??= LoadFavorites();
+
+    private string FavoritesPath =>
+        Path.Combine(_host?.InstanceCacheDirectory ?? Path.GetTempPath(), "favorites.json");
+
+    public bool IsFavorite(string itemId)
+    {
+        lock (_favGate) return Favorites.ContainsKey(itemId);
+    }
+
+    public void SetFavorite(string itemId, bool favorite)
+    {
+        if (string.IsNullOrEmpty(itemId)) return;
+        lock (_favGate)
+        {
+            bool changed;
+            if (favorite)
+            {
+                changed = !Favorites.ContainsKey(itemId);
+                // A light placeholder; the host index carries the rich display data captured at
+                // star-time. Title/thumbnail here are best-effort and refined on next play.
+                Favorites[itemId] = new YtFavorite(itemId, $"YouTube {itemId}", "", null, null);
+            }
+            else
+            {
+                changed = Favorites.Remove(itemId);
+            }
+            if (changed) SaveFavorites();
+        }
+    }
+
+    public IReadOnlyCollection<string> GetFavoriteIds()
+    {
+        lock (_favGate) return Favorites.Keys.ToArray();
+    }
+
+    /// <summary>Rebuilds a playable item from a favorited video id (resolve happens via yt-dlp at play time).</summary>
+    public SourceItem? GetFavorite(string itemId)
+    {
+        if (string.IsNullOrEmpty(itemId)) return null;
+        lock (_favGate) { if (!Favorites.ContainsKey(itemId)) return null; }
+        return new SourceItem
+        {
+            SourceInstanceId = InstanceId,
+            ItemId = itemId,
+            Title = $"YouTube {itemId}",
+            SourceState = itemId,
+        };
+    }
+
+    private Dictionary<string, YtFavorite> LoadFavorites()
+    {
+        try
+        {
+            var path = FavoritesPath;
+            if (!File.Exists(path)) return new Dictionary<string, YtFavorite>(StringComparer.Ordinal);
+            var list = JsonSerializer.Deserialize<List<YtFavorite>>(File.ReadAllText(path));
+            return (list ?? []).Where(f => !string.IsNullOrEmpty(f.Id))
+                .ToDictionary(f => f.Id, f => f, StringComparer.Ordinal);
+        }
+        catch (Exception ex)
+        {
+            _host?.Log($"YouTube: favorites read failed: {ex.Message}");
+            return new Dictionary<string, YtFavorite>(StringComparer.Ordinal);
+        }
+    }
+
+    private void SaveFavorites()
+    {
+        try
+        {
+            var path = FavoritesPath;
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, JsonSerializer.Serialize(Favorites.Values.ToList()));
+        }
+        catch (Exception ex)
+        {
+            _host?.Log($"YouTube: favorites write failed: {ex.Message}");
+        }
+    }
 }

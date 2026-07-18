@@ -421,6 +421,13 @@
 
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom"
                                                     HorizontalAlignment="Right" Margin="8,8,0,0">
+                                        <!-- Play-all: explicit "play the whole container" action for artist/album rows.
+                                             The main button below drills in (Open) by default; this queues+plays everything. -->
+                                        <Button Padding="{DynamicResource TrackButtonPadding}" FontSize="{DynamicResource TrackButtonFontSize}" Margin="0,0,4,0"
+                                                Content="&#x25B6;" ToolTip="Play all"
+                                                Command="{Binding DataContext.PlayContainerNowCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                CommandParameter="{Binding}"
+                                                Visibility="{Binding IsGenericContainer, Converter={StaticResource BoolVis}}"/>
                                         <Button Padding="{DynamicResource TrackButtonPadding}" FontSize="{DynamicResource TrackButtonFontSize}"
                                                 Command="{Binding DataContext.PlayNowCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding}">

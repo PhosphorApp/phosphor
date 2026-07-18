@@ -358,6 +358,10 @@ public partial class JukeboxViewModel : ObservableObject
 
         IsSearching = true;
         IsGenericBrowsing = true;
+        // We've navigated into a generic browse tree (e.g. drilled from the Favorites tile into an
+        // artist). Leave "playlist view" so container activation drills in (default) rather than
+        // playing — the aggregated Favorites tile is a playlist view, but its drilled-in nodes are not.
+        IsViewingPlaylist = false;
         StatusText = $"Loading {node.Title}...";
         SearchResults.Clear();
 
@@ -386,7 +390,7 @@ public partial class JukeboxViewModel : ObservableObject
                 _genericPaged = null;
                 CanLoadMore = false;
                 foreach (var cat in searchResult.Categories)
-                    SearchResults.Add(ToGenericContainerItem(cat, node.Icon));
+                    SearchResults.Add(ToGenericContainerItem(cat, node.Icon, source as Phosphor.Plugin.Abstractions.IFavoritable));
                 var searchResolver = source as Phosphor.Plugin.Abstractions.IPlayableResolver;
                 foreach (var leaf in searchResult.Items)
                     await AddResolvedLeafAsync(leaf, searchResolver, ct);
@@ -404,7 +408,7 @@ public partial class JukeboxViewModel : ObservableObject
 
             // Sub-categories first (drill-in containers), then leaf items (playable).
             foreach (var cat in result.Categories)
-                SearchResults.Add(ToGenericContainerItem(cat, node.Icon));
+                SearchResults.Add(ToGenericContainerItem(cat, node.Icon, source as Phosphor.Plugin.Abstractions.IFavoritable));
 
             var resolver = source as Phosphor.Plugin.Abstractions.IPlayableResolver;
 
@@ -452,7 +456,8 @@ public partial class JukeboxViewModel : ObservableObject
     /// inherit <paramref name="parentIcon"/> so grouping tiles (e.g. Hubs/Playlists) take on the
     /// parent library's personality.</summary>
     private static VideoItem ToGenericContainerItem(
-        Phosphor.Plugin.Abstractions.SourceCategory cat, string? parentIcon = null) => new()
+        Phosphor.Plugin.Abstractions.SourceCategory cat, string? parentIcon = null,
+        Phosphor.Plugin.Abstractions.IFavoritable? fav = null) => new()
     {
         Title = cat.Title,
         ThumbnailUrl = cat.ThumbnailUrl ?? "",
@@ -462,6 +467,8 @@ public partial class JukeboxViewModel : ObservableObject
         GenericSourceInstanceId = cat.SourceInstanceId,
         GenericSourceState = cat.SourceState,
         GenericCategoryId = cat.CategoryId,
+        CanFavorite = fav != null,
+        IsFavorite = fav?.IsFavorite(cat.CategoryId) ?? false,
     };
 
     /// <summary>
@@ -470,7 +477,9 @@ public partial class JukeboxViewModel : ObservableObject
     /// playlist, or search result) into a drill-in container <see cref="VideoItem"/>. Carries the
     /// item's opaque <c>SourceState</c> so the source resolves the node on drill-in.
     /// </summary>
-    private static VideoItem ToContainerLeafItem(Phosphor.Plugin.Abstractions.SourceItem item) => new()
+    private static VideoItem ToContainerLeafItem(
+        Phosphor.Plugin.Abstractions.SourceItem item,
+        Phosphor.Plugin.Abstractions.IFavoritable? fav = null) => new()
     {
         Title = item.Title,
         Author = item.Subtitle ?? "",
@@ -480,6 +489,8 @@ public partial class JukeboxViewModel : ObservableObject
         GenericSourceInstanceId = item.SourceInstanceId,
         GenericSourceState = item.SourceState,
         GenericCategoryId = item.ItemId,
+        CanFavorite = fav != null,
+        IsFavorite = fav?.IsFavorite(item.ItemId) ?? false,
     };
 
     // ── Generic paged browse state ──
@@ -499,7 +510,7 @@ public partial class JukeboxViewModel : ObservableObject
         // inside a hub/playlist/search) — render it as a drill-in container, not a playable row.
         if (item.IsContainer)
         {
-            SearchResults.Add(ToContainerLeafItem(item));
+            SearchResults.Add(ToContainerLeafItem(item, resolver as Phosphor.Plugin.Abstractions.IFavoritable));
             return;
         }
 
@@ -1593,6 +1604,14 @@ public partial class JukeboxViewModel : ObservableObject
                 }
                 vi.IsAudioOnly = item.IsAudioOnly;
             }
+
+            // Star toggle: light it up when the owning source supports favorites (e.g. YouTube).
+            if (source is Phosphor.Plugin.Abstractions.IFavoritable fav)
+            {
+                vi.CanFavorite = true;
+                vi.IsFavorite = fav.IsFavorite(item.ItemId);
+            }
+
             yield return vi;
         }
     }
@@ -3075,6 +3094,34 @@ public partial class JukeboxViewModel : ObservableObject
     private const int MaxQueueSize = 500;
 
     /// <summary>
+    /// Plays a container (artist/album) as a unit: expands it to tracks, appends them to the queue,
+    /// and plays from the first — the explicit "Play" affordance on a container row (the row's main
+    /// button drills in by default). Works for both live browse containers and aggregated-favorite
+    /// container rows (which rehydrate their node via the owning source's GetFavorite first).
+    /// </summary>
+    [RelayCommand]
+    private async Task PlayContainerNow(VideoItem? item)
+    {
+        if (item is not { IsGenericContainer: true }) return;
+
+        // Aggregated-favorite container carries no browse node — rehydrate it from the owning source.
+        if (item.IsAggregatedFavorite)
+        {
+            var source = _sourceRegistry?.ByInstance(item.SourceInstanceId ?? "");
+            if (source is Phosphor.Plugin.Abstractions.IFavoritable fav
+                && fav.GetFavorite(item.VideoId) is { IsContainer: true } node)
+            {
+                await PlayContainerAsync(ToContainerLeafItem(node, fav));
+                return;
+            }
+            StatusText = $"Can't play {item.Title}: source unavailable.";
+            return;
+        }
+
+        await PlayContainerAsync(item);
+    }
+
+    /// <summary>
     /// Toggles the favorite state of an item whose source supports favorites (<c>IFavoritable</c>).
     /// Routes to the owning source, flips the star, and refreshes the row. No-op for items whose
     /// source doesn't support favorites (the star isn't shown for those anyway).
@@ -3083,12 +3130,23 @@ public partial class JukeboxViewModel : ObservableObject
     private void ToggleFavorite(VideoItem? item)
     {
         if (item == null || !item.CanFavorite) return;
-        var source = SourceForItem(item);
+
+        // Containers (Plex/Jellyfin artist/album) route via their generic browse identity; playable
+        // rows route via SourceForItem. The favorited id is the row's VideoId in both cases.
+        var isContainer = item.IsGenericContainer;
+        var source = isContainer
+            ? _sourceRegistry?.ByInstance(item.GenericSourceInstanceId ?? "")
+            : SourceForItem(item);
         if (source is not Phosphor.Plugin.Abstractions.IFavoritable fav) return;
 
         var newState = !item.IsFavorite;
         fav.SetFavorite(item.VideoId, newState);
         item.IsFavorite = newState;
+
+        // Plex needs the full item to replay a favorite without a server round-trip — hand it over on
+        // star (leaf carries the token-bound StreamUrl; container carries its browse node identity).
+        if (newState && source is Phosphor.Plugins.Plex.PlexSource plex)
+            plex.RememberFavorite(item);
 
         // Write-through to the host-level aggregated index (drives the global Favorites tile).
         if (source is Phosphor.Plugin.Abstractions.IPhosphorSource src)
@@ -3103,6 +3161,7 @@ public partial class JukeboxViewModel : ObservableObject
                     DurationSeconds = item.Duration?.TotalSeconds,
                     IsAudioOnly = item.IsAudioOnly,
                     IsLiveStream = item.IsLiveStream,
+                    IsContainer = isContainer,
                     SourceLabel = src.DisplayName,
                 });
             else
@@ -3139,6 +3198,12 @@ public partial class JukeboxViewModel : ObservableObject
             IsAudioOnly = e.IsAudioOnly,
             IsLiveStream = e.IsLiveStream,
             IsAggregatedFavorite = true,
+            // Containers (artist/album) show a container glyph and, on play, expand to tracks. Their
+            // node identity is rehydrated lazily via the owning source's GetFavorite at play time.
+            IsGenericContainer = e.IsContainer,
+            GenericSourceInstanceId = e.IsContainer ? e.SourceInstanceId : null,
+            GenericCategoryId = e.IsContainer ? e.ItemId : null,
+            ContainerIcon = e.IsContainer ? "📀" : null,
             CanFavorite = true,
             IsFavorite = true,
         }).ToList();
@@ -3292,6 +3357,15 @@ public partial class JukeboxViewModel : ObservableObject
     {
         if (item == null) return;
 
+        // Aggregated Favorites row (leaf OR container): carries only display data. Rebuild a resolvable
+        // item via the owning source's IFavoritable.GetFavorite, then play. Checked before the generic
+        // container branch so a favorited album plays (expand+queue) instead of drilling in.
+        if (item.IsAggregatedFavorite)
+        {
+            _ = SafeFireAndForget(PlayAggregatedFavoriteAsync(item));
+            return;
+        }
+
         // Generic browse container.
         if (item.IsGenericContainer)
         {
@@ -3301,14 +3375,6 @@ public partial class JukeboxViewModel : ObservableObject
                 _ = SafeFireAndForget(PlayContainerAsync(item));
             else
                 _ = SafeFireAndForget(DrillIntoGenericContainerAsync(item));
-            return;
-        }
-
-        // Aggregated Favorites row: carries only display data. Rebuild a resolvable item via the
-        // owning source's IFavoritable.GetFavorite, then play that. Resolve is source-owned + cheap.
-        if (item.IsAggregatedFavorite)
-        {
-            _ = SafeFireAndForget(PlayAggregatedFavoriteAsync(item));
             return;
         }
 
@@ -3464,7 +3530,19 @@ public partial class JukeboxViewModel : ObservableObject
             return;
         }
 
-        // Rebuild a fully-playable VideoItem (resolving / deferring exactly like browse does), then play.
+        // Container favorite (artist/album): DRILL IN to show its catalog (albums/tracks) rather than
+        // play everything — a favorited artist is a shortcut to the catalog, not a "play 489 tracks"
+        // action. The user then plays an album/track from there (an album's Play still queues all its
+        // tracks). The node identity is rehydrated from the source's GetFavorite.
+        if (sourceItem.IsContainer)
+        {
+            var container = ToContainerLeafItem(sourceItem, fav);
+            SetStatusPrefix("");
+            await DrillIntoGenericContainerAsync(container);
+            return;
+        }
+
+        // Leaf favorite: rebuild a fully-playable VideoItem (resolving / deferring like browse), then play.
         var resolver = source as Phosphor.Plugin.Abstractions.IPlayableResolver;
         var vi = await ResolveLeafAsync(sourceItem, resolver, _searchCts.Token);
         PlayNow(vi);
