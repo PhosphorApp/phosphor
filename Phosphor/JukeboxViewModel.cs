@@ -1355,6 +1355,11 @@ public partial class JukeboxViewModel : ObservableObject
     public PrefetchCache? Prefetch => _prefetch;
     private string? _prefetchingVideoId;
 
+    // Guards against an unbounded skip loop when many consecutive tracks fail to resolve (e.g. a run
+    // of DRM-protected SoundCloud tracks). Reset whenever a track resolves or the user picks a track.
+    private int _consecutiveResolveFailures;
+    private const int MaxConsecutiveResolveSkips = 8;
+
     // ── Video engine (YoutubeExplode / yt-dlp switch point) ──
     private IVideoEngine _videoEngine = new YoutubeExplodeVideoEngine();
 
@@ -3576,6 +3581,7 @@ public partial class JukeboxViewModel : ObservableObject
                 sourceItem, new Phosphor.Plugin.Abstractions.PlaybackPreferences(), _searchCts.Token);
             if (stream?.PrimaryUri is { Length: > 0 } url)
             {
+                _consecutiveResolveFailures = 0;
                 item.StreamUrl = url;
                 // Carry the separate audio-slave URL (yt-dlp SeparateVideoAudio) so the player can
                 // attach it — otherwise a video-only primary plays with no audio.
@@ -3589,16 +3595,51 @@ public partial class JukeboxViewModel : ObservableObject
             }
             else
             {
-                StatusText = $"Can't play {item.Title} — stream unavailable.";
-                PlayTransitioning = false;
+                SkipUnresolvableDeferred(item, $"Can't play {item.Title} — stream unavailable.");
             }
         }
         catch (Exception ex)
         {
             DebugLog.LogException($"Deferred resolve '{item.VideoId}'", ex);
-            StatusText = $"Can't play {item.Title}: {ex.Message}";
-            PlayTransitioning = false;
+            SkipUnresolvableDeferred(item, $"Can't play {item.Title}: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Handles a deferred item that couldn't be resolved (e.g. a DRM-protected or preview-only
+    /// SoundCloud track): logs the reason and, when the failing track is part of <em>queue</em>
+    /// playback, auto-advances to the next queued track instead of dead-stopping. An <em>ad-hoc</em>
+    /// play (the user clicked Play on a browse/search row without queuing it) just stops — there's no
+    /// queue flow to continue. Bounded by <see cref="MaxConsecutiveResolveSkips"/> so a long run of
+    /// unresolvable queued tracks can't spin forever.
+    /// </summary>
+    private void SkipUnresolvableDeferred(VideoItem item, string reason)
+    {
+        // Whether this play is driven by the queue: the failing item is the one at the current queue
+        // index. Ad-hoc plays (PlayNow directly, e.g. a browse/search row or an aggregated favorite)
+        // don't move QueueIndex to the item, so this is false and we stop instead of skipping.
+        bool isQueuePlayback = _queueIndex >= 0 && _queueIndex < Queue.Count
+            && ReferenceEquals(Queue[_queueIndex], item);
+
+        // Stop (don't skip) for ad-hoc plays, if the user moved on, or if there's nowhere to advance.
+        if (!isQueuePlayback || !ReferenceEquals(CurrentlyPlaying, item) || !HasNextTrack)
+        {
+            _consecutiveResolveFailures = 0;
+            StatusText = reason;
+            PlayTransitioning = false;
+            return;
+        }
+
+        if (++_consecutiveResolveFailures > MaxConsecutiveResolveSkips)
+        {
+            _consecutiveResolveFailures = 0;
+            StatusText = $"{reason} Stopped after several unplayable tracks.";
+            PlayTransitioning = false;
+            return;
+        }
+
+        StatusText = $"{reason} Skipping…";
+        PlayNext();
     }
 
     /// <summary>

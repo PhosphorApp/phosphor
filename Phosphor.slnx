@@ -7,5 +7,7 @@
   <Project Path="Phosphor.Plugins.SiriusXM/Phosphor.Plugins.SiriusXM.csproj" />
   <Project Path="Phosphor.Plugins.Vimeo/Phosphor.Plugins.Vimeo.csproj" />
   <Project Path="Phosphor.Plugins.Dailymotion/Phosphor.Plugins.Dailymotion.csproj" />
+  <Project Path="Phosphor.Plugins.SoundCloud/Phosphor.Plugins.SoundCloud.csproj" />
   <Project Path="Phosphor/Phosphor.csproj" />
 </Solution>
+
