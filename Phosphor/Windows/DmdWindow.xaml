@@ -14,6 +14,7 @@
         <local:IsCurrentQueueItemConverter x:Key="IsCurrentQueueItemConverter"/>
         <local:ThumbnailCacheConverter x:Key="ThumbnailCacheConverter"/>
         <local:FractionToCanvasLeftConverter x:Key="FractionToCanvasLeft"/>
+        <local:EnumLabelConverter x:Key="EnumLabel"/>
 
         <!-- Favorites view axes: enum value lists for the two quick dropdowns. -->
         <ObjectDataProvider x:Key="FavoritesGroupingValues" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
@@ -292,13 +293,25 @@
                         <ComboBox ItemsSource="{Binding Source={StaticResource FavoritesGroupingValues}}"
                                   SelectedItem="{Binding FavoritesGrouping, Mode=TwoWay}"
                                   Background="{StaticResource Surface2Brush}" Foreground="{StaticResource TextBrush}"
-                                  FontSize="11" MinWidth="90" BorderBrush="#333"/>
+                                  FontSize="11" MinWidth="90" BorderBrush="#333">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Converter={StaticResource EnumLabel}}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                         <TextBlock Text="  Sort:" Foreground="{StaticResource TextDimBrush}"
                                    VerticalAlignment="Center" FontSize="11" Margin="8,0,4,0"/>
                         <ComboBox ItemsSource="{Binding Source={StaticResource FavoritesSortValues}}"
                                   SelectedItem="{Binding FavoritesSort, Mode=TwoWay}"
                                   Background="{StaticResource Surface2Brush}" Foreground="{StaticResource TextBrush}"
-                                  FontSize="11" MinWidth="110" BorderBrush="#333" Margin="0,0,8,0"/>
+                                  FontSize="11" MinWidth="110" BorderBrush="#333" Margin="0,0,8,0">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Converter={StaticResource EnumLabel}}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                     </StackPanel>
                     <!-- Standard playlist actions — hidden for the reserved Favorites view (Queue All can
                          recurse through containers/live channels; Clear/Delete are destructive on a

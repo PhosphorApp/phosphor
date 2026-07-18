@@ -82,3 +82,20 @@ public class FractionToCanvasLeftConverter : IMultiValueConverter
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }
+
+/// <summary>
+/// Turns a PascalCase enum value into spaced, human-friendly text (e.g. "RecentlyAdded" -> "Recently Added").
+/// Used to display the Favorites Group/Sort enum lists.
+/// </summary>
+public class EnumLabelConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value == null) return "";
+        return System.Text.RegularExpressions.Regex.Replace(
+            value.ToString() ?? "", "(?<=[a-z0-9])(?=[A-Z])", " ");
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
