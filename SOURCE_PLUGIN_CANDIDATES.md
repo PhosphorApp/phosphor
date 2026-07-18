@@ -36,16 +36,17 @@ Every candidate is judged against what the architecture already gives a source:
 |---|---|---|---|---|---|
 | **Jellyfin** | On-demand music + video (self-hosted server) | Custom C# REST client, direct HTTP stream URLs | Low–Med | Free (self-host) | 🟢 **Shipped** — `Phosphor.Plugins.Jellyfin` (see below) |
 | **Vimeo** | On-demand video+audio | yt-dlp resolve + Vimeo API browse/search | Low–Med | Free | 🟢 **Shipped** — `Phosphor.Plugins.Vimeo` (see below) |
+| **Dailymotion** | On-demand video (+ music-video category) | yt-dlp resolve (proven extractors) + public API browse/search | Low–Med | Free | ✅ Good fit — **spiked: keyless discovery ✓**, easiest remaining candidate (see below) |
 | **SoundCloud** | On-demand audio | yt-dlp extractor (proven) | Low–Med | Free (+API gating) | ✅ Best audio candidate |
-| **Bandcamp** | On-demand audio | yt-dlp extractor (proven) | Low–Med | Free | ✅ Feasible (discovery is the work) |
+| **Bandcamp** | On-demand audio | yt-dlp resolves (proven) but **no discovery API** | Low–Med | Free | 🟠 Recommend against — playback fine, **discovery blocked** (scrape-only, see below) |
 | **iHeartRadio** | Live stations + podcasts | yt-dlp (partial) / stream URLs | Med | Free | 🟡 Partial (on-demand fits; live needs stream handling) |
 | **SiriusXM** | Live channels (auth) + some on-demand | Custom C# client (auth+lineup ✅ proven) + HLS AES proxy | Med–High | Paid sub | 🟢 **In progress** — auth+lineup validated (see below) |
 | **Spotify** | On-demand audio (huge catalog) | Discovery: SpotAPI-style C# client ⚠️ (rotating-secret TOTP) / Audio: **librespot** (Premium) ❌ | High | Paid sub (Premium) | 🟠 Hard — **spiked; recommend against** (brittle discovery + ToS rejection + unbuilt audio) |
 | **Tidal** | On-demand audio | ❌ DRM, no legal stream URL | High/blocked | Paid sub | ❌ Not viable |
 | **Pandora** | Personalized radio session | ❌ DRM + session model | High/blocked | Free/Paid | ❌ Not viable |
 
-Ranked "worth doing": **~~Vimeo (shipped)~~ → SoundCloud → Bandcamp → (iHeart / SiriusXM, if pursuing live) →
-Spotify (only if the librespot audio bridge proves out) → skip Tidal & Pandora.**
+Ranked "worth doing": **~~Vimeo (shipped)~~ → Dailymotion → SoundCloud → (iHeart / SiriusXM, if pursuing live) →
+Spotify (only if the librespot audio bridge proves out) → skip Bandcamp, Tidal & Pandora.**
 
 ---
 
@@ -95,6 +96,40 @@ Spotify (only if the librespot audio bridge proves out) → skip Tidal & Pandora
 - **Limitations:** Private/password/domain-locked videos won't resolve; a filmmaker/creator platform,
   not a music catalog (categories reflect that — Animation, Documentary, …).
 
+### Dailymotion
+- **Why:** a natural second video source after Vimeo — on-demand video with **its own categories and
+  channels (including music videos)**, so it maps directly onto the browse tree the Vimeo plug-in
+  already established (categories/channels → paged videos + search + favorites).
+- **Playback:** proven-tier yt-dlp support — **verified** dedicated extractors (`dailymotion`,
+  `dailymotion:playlist`, `dailymotion:search`, `dailymotion:user`) against the bundled yt-dlp
+  2026.07.04, same maturity tier as SoundCloud/YouTube. Our `YtDlpResolver` works verbatim (just point
+  at Dailymotion URLs) — **no new resolution code**.
+- **Discovery:** a real public **REST/Graph API** (`api.dailymotion.com`) with search, channels, and
+  categories. Crucially, much of the public read/search surface is reachable **without OAuth** (public
+  key / often unauthenticated), which could make it **lower-friction than Vimeo** (no per-user token).
+  A `DailymotionClient` mirrors `VimeoClient`'s pure-`HttpClient` shape.
+- **Reuse:** essentially a Vimeo clone — `YtDlpResolver`, `IDeferredStreamResolution`, `IFavoritable`,
+  `IPagedBrowsable`, and the browse-tree pattern all carry over. Only genuinely new work is a
+  `DailymotionClient` (different API field shapes) + confirming the auth model.
+- **Cost:** Free; API rate limits.
+- **Limitations:** Private/geo-restricted videos won't resolve; ad-supported content; quality varies.
+- **Effort:** Low–Med (comparable to Vimeo, likely *less* auth friction). **Auth model is the one
+  unknown — see the spike (`tools/DailymotionSpike/`).**
+
+#### ✅ Spike — discovery works fully unauthenticated (`tools/DailymotionSpike/`)
+A pure-C# probe of `api.dailymotion.com` with **no OAuth and no API key** passed **4/4**:
+- `GET /videos?search=music` → results.
+- `GET /channels` → **17 editorial categories** (Animals, Cars, Comedy, Gaming, Movies, **Music**,
+  News, …) — the exact category tiles a browse tree needs.
+- `GET /channel/music/videos` → videos within a category.
+- `GET /videos?search=…&page=1` → **paging fields present** (`has_more=true`, `total`) for
+  `IPagedBrowsable`.
+
+**Go decision: GO.** Discovery needs **zero credentials** — strictly lower-friction than Vimeo (no
+per-user token, no "create a Vimeo app" onboarding). A `DailymotionClient` mirrors `VimeoClient` but
+without any secret setting; playback rides the existing `YtDlpResolver`. This makes Dailymotion the
+**easiest** remaining candidate to ship.
+
 ### SoundCloud
 - **Compatibility:** Excellent. On-demand **audio-only** (`AudioOnly`, `IGaplessCapable` candidate).
 - **Playback:** Mature yt-dlp SoundCloud extractor (HLS/progressive). No new resolution code.
@@ -103,14 +138,19 @@ Spotify (only if the librespot audio bridge proves out) → skip Tidal & Pandora
 - **Cost:** Free content; API access is approval-gated, not paid.
 - **Limitations:** Some tracks preview-only or stream-disabled; API-key gating; audio-only.
 
-### Bandcamp
-- **Compatibility:** Good but **audio-only** (`AudioOnly`, `IGaplessCapable` candidate).
-- **Playback:** yt-dlp Bandcamp extractor resolves streamable tracks (≈128 kbps MP3 stream).
-- **Discovery:** The main friction — **no supported public search API**. Options: scrape
-  `bandcamp.com/search` JSON (fragile, ToS-sensitive) or accept URL/artist/label-page paste
-  (`IBrowsable` over a pasted page is a clean, low-risk MVP).
-- **Cost:** Free.
-- **Limitations:** Stream quality capped at preview bitrate; scraping fragility; audio-only.
+### Bandcamp — **recommend against (discovery-blocked)**
+- **Playback: not the problem.** yt-dlp ships **verified** Bandcamp extractors (`Bandcamp`,
+  `Bandcamp:album`, `Bandcamp:user`, `Bandcamp:weekly`, bundled 2026.07.04); resolution of streamable
+  tracks (~128 kbps MP3) works.
+- **Discovery: the blocker.** Bandcamp has **no supported public search/streaming API**. Every other
+  shipped/candidate source (Vimeo, Dailymotion, SoundCloud, Jellyfin) is built on an API client; Bandcamp
+  offers nothing to build one on. The only options are **scraping `bandcamp.com/search`** (fragile,
+  breaks silently, ToS-sensitive) or a **URL/artist-page paste** model — which we *deliberately removed*
+  from Vimeo as a poor UX. A browse experience built on a scraper contradicts the direction set by the
+  Vimeo plug-in.
+- **Plus:** stream quality capped at preview bitrate; audio-only.
+- **Verdict:** **drop / defer.** Playback would work, but there's no clean way to *find* anything — the
+  reward doesn't justify a scraper-backed browse. Revisit only if Bandcamp ships a real API.
 
 ---
 
