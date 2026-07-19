@@ -5970,6 +5970,30 @@ public partial class SettingsWindow : JukeboxWindow
         CategoryListView.ItemsSource = _categoryVisibilityItems;
     }
 
+    private void CategoryMoveTop_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button btn || btn.DataContext is not CategoryVisibilityItem item)
+            return;
+        var index = _categoryVisibilityItems.IndexOf(item);
+        if (index <= 0) return;
+        _categoryVisibilityItems.RemoveAt(index);
+        _categoryVisibilityItems.Insert(0, item);
+        CategoryListView.ItemsSource = null;
+        CategoryListView.ItemsSource = _categoryVisibilityItems;
+    }
+
+    private void CategoryMoveBottom_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button btn || btn.DataContext is not CategoryVisibilityItem item)
+            return;
+        var index = _categoryVisibilityItems.IndexOf(item);
+        if (index < 0 || index >= _categoryVisibilityItems.Count - 1) return;
+        _categoryVisibilityItems.RemoveAt(index);
+        _categoryVisibilityItems.Add(item);
+        CategoryListView.ItemsSource = null;
+        CategoryListView.ItemsSource = _categoryVisibilityItems;
+    }
+
     private void SaveDefaultSettings_Click(object sender, RoutedEventArgs e)
     {
         _settings.SaveDefaults();

@@ -1705,6 +1705,20 @@
                                                             </Style>
                                                         </CheckBox.Style>
                                                     </CheckBox>
+                                                    <Button Content="⤒" FontSize="9" Width="20" Height="20"
+                                                            Background="Transparent" Foreground="{StaticResource TextDimBrush}"
+                                                            BorderThickness="0" Cursor="Hand" ToolTip="Move to top"
+                                                            VerticalAlignment="Center" Margin="0,0,1,0"
+                                                            DockPanel.Dock="Left"
+                                                            Click="CategoryMoveTop_Click">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border Background="Transparent">
+                                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
                                                     <Button Content="▲" FontSize="9" Width="20" Height="20"
                                                             Background="Transparent" Foreground="{StaticResource TextDimBrush}"
                                                             BorderThickness="0" Cursor="Hand" ToolTip="Move up"
@@ -1725,6 +1739,20 @@
                                                             VerticalAlignment="Center" Margin="0,0,2,0"
                                                             DockPanel.Dock="Left"
                                                             Click="CategoryMoveDown_Click">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border Background="Transparent">
+                                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                    <Button Content="⤓" FontSize="9" Width="20" Height="20"
+                                                            Background="Transparent" Foreground="{StaticResource TextDimBrush}"
+                                                            BorderThickness="0" Cursor="Hand" ToolTip="Move to bottom"
+                                                            VerticalAlignment="Center" Margin="0,0,2,0"
+                                                            DockPanel.Dock="Left"
+                                                            Click="CategoryMoveBottom_Click">
                                                         <Button.Template>
                                                             <ControlTemplate TargetType="Button">
                                                                 <Border Background="Transparent">
