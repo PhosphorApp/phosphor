@@ -1668,6 +1668,10 @@
                                               BorderBrush="#333" BorderThickness="1"
                                               ScrollViewer.VerticalScrollBarVisibility="Auto"
                                               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                              AllowDrop="True"
+                                              PreviewMouseLeftButtonDown="CategoryListView_PreviewMouseLeftButtonDown"
+                                              PreviewMouseMove="CategoryListView_PreviewMouseMove"
+                                              Drop="CategoryListView_Drop"
                                               HorizontalContentAlignment="Stretch">
                                         <ListView.ItemContainerStyle>
                                             <Style TargetType="ListViewItem">
@@ -1689,6 +1693,11 @@
                                         <ListView.ItemTemplate>
                                             <DataTemplate>
                                                 <DockPanel>
+                                                    <TextBlock Text="⣿" FontSize="12" Width="16"
+                                                               Foreground="{StaticResource TextDimBrush}"
+                                                               VerticalAlignment="Center" TextAlignment="Center"
+                                                               Cursor="SizeNS" ToolTip="Drag to reorder"
+                                                               DockPanel.Dock="Left"/>
                                                     <CheckBox IsChecked="{Binding IsVisible, Mode=TwoWay}" VerticalAlignment="Center" Margin="0,0,4,0"
                                                               DockPanel.Dock="Left"
                                                               Checked="CategoryVisibility_Changed" Unchecked="CategoryVisibility_Changed">

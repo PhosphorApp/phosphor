@@ -6043,6 +6043,69 @@ public partial class SettingsWindow : JukeboxWindow
         CategoryListView.ItemsSource = _categoryVisibilityItems;
     }
 
+    // ── Category drag-reorder (only the grip handle initiates, to avoid the inline buttons/textboxes) ──
+
+    private System.Windows.Point _categoryDragStart;
+    private bool _categoryDragInProgress;
+
+    private void CategoryListView_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        _categoryDragStart = e.GetPosition(CategoryListView);
+        // Only allow a drag to start when the press lands on the grip handle.
+        _categoryDragInProgress = false;
+        _categoryDragArmed = IsDragGrip(e.OriginalSource as DependencyObject);
+    }
+
+    private bool _categoryDragArmed;
+
+    private void CategoryListView_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed) return;
+        if (!_categoryDragArmed || _categoryDragInProgress) return;
+
+        var pos = e.GetPosition(CategoryListView);
+        if (Math.Abs(pos.X - _categoryDragStart.X) < 4 && Math.Abs(pos.Y - _categoryDragStart.Y) < 4)
+            return;
+
+        var item = GetItemDataContextAtPoint<CategoryVisibilityItem>(CategoryListView, _categoryDragStart);
+        if (item == null) return;
+
+        _categoryDragInProgress = true;
+        System.Windows.DragDrop.DoDragDrop(CategoryListView, item, System.Windows.DragDropEffects.Move);
+        _categoryDragInProgress = false;
+    }
+
+    private void CategoryListView_Drop(object sender, System.Windows.DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(typeof(CategoryVisibilityItem))) return;
+
+        var dragged = (CategoryVisibilityItem)e.Data.GetData(typeof(CategoryVisibilityItem))!;
+        var target = GetItemDataContextAtPoint<CategoryVisibilityItem>(CategoryListView, e.GetPosition(CategoryListView));
+
+        int oldIndex = _categoryVisibilityItems.IndexOf(dragged);
+        int newIndex = target != null ? _categoryVisibilityItems.IndexOf(target) : _categoryVisibilityItems.Count - 1;
+        if (oldIndex < 0 || newIndex < 0 || oldIndex == newIndex) return;
+
+        _categoryVisibilityItems.RemoveAt(oldIndex);
+        _categoryVisibilityItems.Insert(newIndex, dragged);
+        CategoryListView.ItemsSource = null;
+        CategoryListView.ItemsSource = _categoryVisibilityItems;
+    }
+
+    /// <summary>True when the hit element (or an ancestor) is the drag grip handle glyph.</summary>
+    private static bool IsDragGrip(DependencyObject? element)
+    {
+        while (element != null)
+        {
+            if (element is System.Windows.Controls.TextBlock tb && tb.Text == "⣿")
+                return true;
+            if (element is System.Windows.Controls.ListViewItem)
+                return false;
+            element = System.Windows.Media.VisualTreeHelper.GetParent(element);
+        }
+        return false;
+    }
+
     // ── Favorites manual-order editor (Settings → DMD → Favorites) ──
 
     private void RefreshFavoritesOrderList()
@@ -6125,17 +6188,20 @@ public partial class SettingsWindow : JukeboxWindow
 
     private System.Windows.Point _favOrderDragStart;
     private bool _favOrderDragInProgress;
+    private bool _favOrderDragArmed;
 
     private void FavoritesOrderList_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         _favOrderDragStart = e.GetPosition(FavoritesOrderList);
         _favOrderDragInProgress = false;
+        // Only allow a drag to start when the press lands on the grip handle.
+        _favOrderDragArmed = IsDragGrip(e.OriginalSource as DependencyObject);
     }
 
     private void FavoritesOrderList_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
         if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed) return;
-        if (_favOrderDragInProgress) return;
+        if (!_favOrderDragArmed || _favOrderDragInProgress) return;
 
         var pos = e.GetPosition(FavoritesOrderList);
         if (Math.Abs(pos.X - _favOrderDragStart.X) < 4 && Math.Abs(pos.Y - _favOrderDragStart.Y) < 4)

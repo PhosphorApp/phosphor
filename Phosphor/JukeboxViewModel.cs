@@ -721,11 +721,17 @@ public partial class JukeboxViewModel : ObservableObject
     public void SetHiddenCategories(IEnumerable<string> hidden)
     {
         var hiddenSet = new HashSet<string>(hidden, StringComparer.OrdinalIgnoreCase);
+        _hiddenPlaylistNames = hiddenSet;
         foreach (var entry in _genreCategories)
             entry.IsVisible = !hiddenSet.Contains(entry.Name);
         GenreCategoryStore.Save(_genreCategories);
         RebuildCategories();
     }
+
+    // Playlist tiles (Favorites, saved playlists) hidden via the visibility checkboxes. Genre
+    // categories carry their own IsVisible flag; playlists are filtered here since they're rebuilt
+    // from the PlaylistManager each time.
+    private HashSet<string> _hiddenPlaylistNames = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Reloads genre categories from the persisted categories.json file and rebuilds the UI.
@@ -2236,6 +2242,7 @@ public partial class JukeboxViewModel : ObservableObject
 
         foreach (var pl in _playlists.Playlists)
         {
+            if (_hiddenPlaylistNames.Contains(pl.Name)) continue;
             var defaultIcon = pl.Name == "Favorites" ? "⭐" : pl.Kind == PlaylistKind.Live ? "🔎" : "📋";
             var icon = string.IsNullOrEmpty(pl.Icon) ? defaultIcon : pl.Icon;
             sortable.Add((pl.SortOrder, new List<Category>
