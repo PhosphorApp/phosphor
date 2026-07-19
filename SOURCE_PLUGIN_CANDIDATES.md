@@ -37,7 +37,7 @@ Every candidate is judged against what the architecture already gives a source:
 | **Jellyfin** | On-demand music + video (self-hosted server) | Custom C# REST client, direct HTTP stream URLs | Low–Med | Free (self-host) | 🟢 **Shipped** — `Phosphor.Plugins.Jellyfin` (see below) |
 | **Vimeo** | On-demand video+audio | yt-dlp resolve + Vimeo API browse/search | Low–Med | Free | 🟢 **Shipped** — `Phosphor.Plugins.Vimeo` (see below) |
 | **Dailymotion** | On-demand video (+ music-video category) | yt-dlp resolve (proven extractors) + public API browse/search | Low–Med | Free | ✅ Good fit — **spiked: keyless discovery ✓**, easiest remaining candidate (see below) |
-| **SoundCloud** | On-demand audio | yt-dlp extractor (proven), keyless discovery + playback | Low–Med | Free | 🟠 **Built but DISABLED** — pervasive DRM ⇒ constant skips; kept in-tree, not deployed (see below) |
+| **SoundCloud** | On-demand audio | yt-dlp extractor (proven), keyless discovery + playback | Low–Med | Free | 🟡 **Shipped (experimental)** — keyless, but pervasive DRM ⇒ lazy unplayable-discovery (see below) |
 | **Bandcamp** | On-demand audio | yt-dlp resolves (proven) but **no discovery API** | Low–Med | Free | 🟠 Recommend against — playback fine, **discovery blocked** (scrape-only, see below) |
 | **iHeartRadio** | Live stations + podcasts | yt-dlp (partial) / stream URLs | Med | Free | 🟡 Partial (on-demand fits; live needs stream handling) |
 | **SiriusXM** | Live channels (auth) + some on-demand | Custom C# client (auth+lineup ✅ proven) + HLS AES proxy | Med–High | Paid sub | 🟢 **In progress** — auth+lineup validated (see below) |
@@ -45,7 +45,7 @@ Every candidate is judged against what the architecture already gives a source:
 | **Tidal** | On-demand audio | ❌ DRM, no legal stream URL | High/blocked | Paid sub | ❌ Not viable |
 | **Pandora** | Personalized radio session | ❌ DRM + session model | High/blocked | Free/Paid | ❌ Not viable |
 
-Ranked "worth doing": **~~Vimeo (shipped)~~ → ~~Dailymotion~~ → ~~SoundCloud (built, disabled — DRM)~~ → (iHeart / SiriusXM, if pursuing live) →
+Ranked "worth doing": **~~Vimeo (shipped)~~ → ~~Dailymotion~~ → ~~SoundCloud (shipped, experimental)~~ → (iHeart / SiriusXM, if pursuing live) →
 Spotify (only if the librespot audio bridge proves out) → skip Bandcamp, Tidal & Pandora.**
 
 ---
@@ -130,30 +130,32 @@ per-user token, no "create a Vimeo app" onboarding). A `DailymotionClient` mirro
 without any secret setting; playback rides the existing `YtDlpResolver`. This makes Dailymotion the
 **easiest** remaining candidate to ship.
 
-### SoundCloud — **built, then DISABLED (pervasive DRM)**
-- **Status:** the plug-in (`Phosphor.Plugins.SoundCloud`) is fully built and kept in-tree, but
-  **intentionally not deployed** — `DisableSoundCloudPlugin=true` in the csproj skips the self-deploy
-  (and removes any prior copy), so the host never discovers it. Flip that flag to re-enable.
-- **Why disabled:** a large share of mainstream/major-label catalog is served **only** via
-  SoundCloud's `cbc-encrypted-hls` / `ctr-encrypted-hls` (Widevine) protocols. yt-dlp filters those
-  transcodings out and returns **zero formats**, so those tracks resolve to nothing and the host
-  auto-skips them. In practice enough search results are DRM-protected that the jukebox skips tracks
-  constantly — a frustrating experience, so we pulled it rather than ship it.
-- **What was built (kept for a future revisit):** on-demand **audio-only** browse + search +
-  favorites, all keyless via yt-dlp. SoundCloud has **no** keyless REST API, so discovery rode
-  yt-dlp's `scsearch` extractor (auto-derived `client_id`) for both search and curated genre feeds;
-  playback rode the same yt-dlp. Capabilities: `IBrowsable` + `ITextSearchCapable` + `IFavoritable` +
-  `IPlayableResolver` + `IDeferredStreamResolution` + `IConnectionTestable`.
-- **The clean fix (deferred):** the **official SoundCloud API's `access=playable`** search filter
-  excludes DRM/paywalled/geo-blocked tracks **server-side** so they never appear. But that API is
-  **not keyless** — it needs a **paid Artist Pro account**, a registered app (`client_id` +
-  `client_secret`), and an OAuth 2.1 (PKCE / client-credentials) token lifecycle with ~1 hr expiry and
-  single-use refresh tokens. That's a much higher onboarding bar than any other source. The natural
-  revisit is an **optional-credentials hybrid**: keyless yt-dlp by default (auto-skipping DRM), and
-  official-API discovery with `access=playable` when a user opts in with credentials.
-- **Host improvement that came out of this:** the deferred-resolve path now **auto-skips** an
-  unresolvable track (DRM/preview-only) and advances the queue (bounded against runaway loops) instead
-  of dead-stopping — benefiting all deferred sources (Vimeo, Dailymotion), not just SoundCloud.
+### SoundCloud — **shipped (experimental — lazy unplayable-discovery)**
+- **Status:** the plug-in (`Phosphor.Plugins.SoundCloud`) ships and self-deploys, marked
+  **experimental** (`IExperimental` → an "⚠ EXPERIMENTAL" badge in the Plug-ins settings tab). Keyless:
+  discovery + playback both ride yt-dlp's `scsearch` extractor (auto-derived `client_id`), no account.
+- **The DRM reality:** a large share of mainstream/major-label catalog is served **only** via
+  SoundCloud's `cbc-encrypted-hls` / `ctr-encrypted-hls` (Widevine) protocols. yt-dlp filters those out
+  and returns **zero formats**, so those tracks can't be resolved. Fast search
+  (`--flat-playlist`) can't see DRM, so pre-filtering isn't possible cheaply.
+- **Lazy discovery (the approach shipped):** rather than hide the source or skip constantly, the
+  plug-in *learns*. On a play-time failure the host reports it back via the new
+  `IPlaybackReportable.ReportPlaybackFailure(id, kind)`; a **definitive** failure (DRM/no-formats,
+  recognized from yt-dlp stderr) is persisted to an **unplayable set**, while **transient** failures
+  (network/timeout) are ignored for persistence. On future search/browse, known-unplayable results are
+  surfaced with `SourceItem.IsPlayable = false` — the host renders them as **unplayable rows** (buttons
+  removed, 🚫 indicator) instead of hiding them. A queue track that fails flips live and auto-skips.
+- **New contract (v0.14.0, all additive):** `SourceItem.IsPlayable` (surface-but-unplayable),
+  `IExperimental` (provider badge), and `IPlaybackReportable` + `PlaybackFailureKind`
+  (Unresolvable/Transient — the source, not the host, decides definitiveness). The plug-in also keeps
+  **diagnostic play/fail stats** (dev-only) in its instance cache.
+- **Future options (documented, not built):** (1) **active discovery** — a slower opt-in that does a
+  full yt-dlp extraction per search row and drops preview/DRM formats (defeats the deferred design, so
+  off by default); (2) the clean fix — the **official SoundCloud API's `access=playable`** filter
+  (excludes DRM/paywalled/geo-blocked server-side), gated behind a paid Artist Pro account +
+  `client_id`/`client_secret` + OAuth, i.e. an optional-credentials hybrid.
+- **Host improvement retained:** deferred-resolve failures auto-skip during queue playback (bounded)
+  and stop for ad-hoc plays — benefiting all deferred sources (Vimeo, Dailymotion), not just SoundCloud.
 
 ### SoundCloud — *(original assessment)*
 - **Compatibility:** Excellent. On-demand **audio-only** (`AudioOnly`, `IGaplessCapable` candidate).

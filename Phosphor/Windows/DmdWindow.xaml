@@ -491,7 +491,8 @@
                                                    Foreground="{StaticResource TextDimBrush}" FontSize="{DynamicResource ResultDetailFontSize}"/>
 
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom"
-                                                    HorizontalAlignment="Right" Margin="8,8,0,0">
+                                                    HorizontalAlignment="Right" Margin="8,8,0,0"
+                                                    Visibility="{Binding IsPlayable, Converter={StaticResource BoolVis}}">
                                         <!-- Play-all: explicit "play the whole container" action for artist/album rows.
                                              The main button below drills in (Open) by default; this queues+plays everything. -->
                                         <Button Padding="{DynamicResource TrackButtonPadding}" FontSize="{DynamicResource TrackButtonFontSize}" Margin="0,0,4,0"
@@ -561,6 +562,12 @@
                                                 CommandParameter="{Binding}"
                                                 Visibility="{Binding DataContext.ShouldHideFindSimilar, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource BoolVis}, ConverterParameter=Invert}"/>
                                         </StackPanel>
+                                        <!-- Unplayable indicator: shown in place of the action buttons when the source
+                                             has marked this item as known-unplayable (e.g. a DRM-locked SoundCloud track). -->
+                                        <TextBlock Grid.Column="1" Text="&#x1F6AB;" ToolTip="Unavailable — this track can't be played"
+                                                   VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="8,8,2,0"
+                                                   FontSize="{DynamicResource TrackButtonFontSize}" Foreground="{StaticResource TextDimBrush}"
+                                                   Visibility="{Binding IsPlayable, Converter={StaticResource BoolVis}, ConverterParameter=Invert}"/>
                                     </Grid>
                                 </Grid>
                             </Grid>

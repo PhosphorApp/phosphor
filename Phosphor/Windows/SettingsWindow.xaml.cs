@@ -4387,8 +4387,42 @@ public partial class SettingsWindow : JukeboxWindow
                 FontSize = 12,
                 VerticalAlignment = VerticalAlignment.Center,
             };
-            System.Windows.Controls.Grid.SetColumn(title, 0);
-            headerGrid.Children.Add(title);
+
+            // Experimental providers get a small warning badge next to the title.
+            if (info?.IsExperimental == true)
+            {
+                var titleRow = new System.Windows.Controls.StackPanel
+                {
+                    Orientation = System.Windows.Controls.Orientation.Horizontal,
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                titleRow.Children.Add(title);
+                titleRow.Children.Add(new System.Windows.Controls.Border
+                {
+                    Background = surface2,
+                    BorderBrush = dim,
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new System.Windows.CornerRadius(3),
+                    Padding = new Thickness(5, 1, 5, 1),
+                    Margin = new Thickness(8, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = "Experimental — this source may be incomplete or unreliable.",
+                    Child = new System.Windows.Controls.TextBlock
+                    {
+                        Text = "⚠ EXPERIMENTAL",
+                        Foreground = dim,
+                        FontWeight = FontWeights.SemiBold,
+                        FontSize = 9,
+                    },
+                });
+                System.Windows.Controls.Grid.SetColumn(titleRow, 0);
+                headerGrid.Children.Add(titleRow);
+            }
+            else
+            {
+                System.Windows.Controls.Grid.SetColumn(title, 0);
+                headerGrid.Children.Add(title);
+            }
 
             var enabledBox = new System.Windows.Controls.CheckBox
             {

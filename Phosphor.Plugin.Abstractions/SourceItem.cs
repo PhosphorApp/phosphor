@@ -23,6 +23,15 @@ public sealed class SourceItem
     public bool IsAudioOnly { get; init; }
 
     /// <summary>
+    /// Whether this item is actually playable. Defaults to <c>true</c>. A source may surface an item
+    /// it knows it cannot resolve (e.g. a SoundCloud track it has previously seen fail with DRM) so
+    /// the user still sees it in results — set this to <c>false</c> and the host renders the row as
+    /// unplayable (action buttons removed, a "no entry" indicator shown) rather than hiding it.
+    /// Containers (<see cref="IsContainer"/>) are always considered playable/openable.
+    /// </summary>
+    public bool IsPlayable { get; init; } = true;
+
+    /// <summary>
     /// True when this item is a continuous <em>live</em> stream with no fixed duration or seekable
     /// timeline (e.g. a radio channel). Lets the host render it as a "tuner"-style entry and skip
     /// duration/progress affordances. Defaults to <c>false</c>.

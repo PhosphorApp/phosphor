@@ -134,6 +134,20 @@ public class VideoItem : ObservableObject
         set => SetProperty(ref _isFavorite, value);
     }
 
+    private bool _isPlayable = true;
+    /// <summary>
+    /// Whether this item can actually be played. Defaults to <c>true</c>. A source may surface an item
+    /// it knows it cannot resolve (e.g. a SoundCloud track previously seen to fail with DRM) with this
+    /// set to <c>false</c>; the row then renders as unplayable (action buttons removed, a "no entry"
+    /// indicator shown) instead of being hidden. Observable so a row can flip live when a play attempt
+    /// fails definitively.
+    /// </summary>
+    public bool IsPlayable
+    {
+        get => _isPlayable;
+        set => SetProperty(ref _isPlayable, value);
+    }
+
     // ── Generic plug-in browse (source-agnostic drill-down) ──
     /// <summary>When true, this result is a browsable container: activating it drills in via the
     /// generic browse stack rather than playing. Carries <see cref="GenericSourceInstanceId"/> +

@@ -204,6 +204,8 @@ what you implement, and enables the matching features.
 | `IConfigurable` | interactive setup actions | Tier-2 config actions (e.g. Plex libraries) |
 | `IFavoritable` | `IsFavorite`/`SetFavorite`/`GetFavoriteIds` | Per-row **star** toggle (only shown for your source) + a "Favorites" view you surface in browse |
 | `IHideable` | `GetHideableItems`/`GetHiddenIds`/bulk `SetHidden` | "Manage hidden channels…" button → themed dual-list + group tree; you persist the hidden set and filter your own browse |
+| `IExperimental` | *(marker on the **provider**)* | "⚠ EXPERIMENTAL" badge in the Plug-ins settings tab (advisory only) |
+| `IPlaybackReportable` | `ReportPlaybackFailure(id, kind)` → `bool` | Host tells you a play attempt failed; you decide if the item is now unplayable |
 
 ### Data-flow types you'll use
 
@@ -222,6 +224,13 @@ what you implement, and enables the matching features.
   for continuous radio-style streams with no fixed duration. The host then shows elapsed time as
   `M:SS / *`, hides the scrub bar (a "● LIVE" badge instead), disables seek, and never auto-advances
   the queue. (SiriusXM channels use this.)
+- **Surface-but-unplayable items** — set **`SourceItem.IsPlayable = false`** (default `true`) to show a
+  row you know can't be played (e.g. a DRM-locked track). The host renders it with action buttons
+  removed and a 🚫 indicator instead of hiding it. Pair with **`IPlaybackReportable`**: when a play
+  attempt fails, the host calls `ReportPlaybackFailure(id, kind)` — persist only
+  `PlaybackFailureKind.Unresolvable` (definitive) failures as unplayable, ignore `Transient` ones
+  (network/timeout), and return `true` when the item is now known-unplayable so the host flips the live
+  row. (SoundCloud uses this for "lazy discovery" of DRM tracks.)
 
 ### Tiles: you decide the shape
 

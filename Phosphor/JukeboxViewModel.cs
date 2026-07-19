@@ -1702,6 +1702,7 @@ public partial class JukeboxViewModel : ObservableObject
             SourceInstanceId = item.SourceInstanceId,
             IsAudioOnly = item.IsAudioOnly,
             IsLiveStream = item.IsLiveStream,
+            IsPlayable = item.IsPlayable,
         };
     }
 
@@ -3505,6 +3506,15 @@ public partial class JukeboxViewModel : ObservableObject
         StatusText = $"Playing: {item.Title}{item.AudioTag}";
         _history.Add(item);
 
+        // Live/deferred items resolve lazily (a possibly-slow yt-dlp/proxy round-trip) BEFORE they can
+        // start. Stop any current playback now so the previous track doesn't keep playing during the
+        // resolve — and so a resolve that fails leaves silence, not the old track still audible.
+        if (item.StreamUrl == null &&
+            (item.PendingLiveSourceItem != null || item.PendingResolveSourceItem != null))
+        {
+            StopRequested?.Invoke();
+        }
+
         // Live streams (e.g. SiriusXM) resolve lazily at play time — resolve the local proxy URL
         // now, then start playback. Everything else already has its StreamUrl (or plays by id).
         if (item.IsLiveStream && item.StreamUrl == null && item.PendingLiveSourceItem != null)
@@ -3618,13 +3628,19 @@ public partial class JukeboxViewModel : ObservableObject
             }
             else
             {
-                SkipUnresolvableDeferred(item, $"Can't play {item.Title} — stream unavailable.");
+                // Definitive failure: the source produced no stream at all (e.g. DRM, removed).
+                SkipUnresolvableDeferred(item, source, sourceItem,
+                    Phosphor.Plugin.Abstractions.PlaybackFailureKind.Unresolvable,
+                    $"Can't play {item.Title} — stream unavailable.");
             }
         }
         catch (Exception ex)
         {
             DebugLog.LogException($"Deferred resolve '{item.VideoId}'", ex);
-            SkipUnresolvableDeferred(item, $"Can't play {item.Title}: {ex.Message}");
+            // An exception is treated as transient (network/timeout/outage) — do NOT mark unplayable.
+            SkipUnresolvableDeferred(item, source, sourceItem,
+                Phosphor.Plugin.Abstractions.PlaybackFailureKind.Transient,
+                $"Can't play {item.Title}: {ex.Message}");
         }
     }
 
@@ -3635,9 +3651,35 @@ public partial class JukeboxViewModel : ObservableObject
     /// play (the user clicked Play on a browse/search row without queuing it) just stops — there's no
     /// queue flow to continue. Bounded by <see cref="MaxConsecutiveResolveSkips"/> so a long run of
     /// unresolvable queued tracks can't spin forever.
+    /// <para>
+    /// Also reports the failure back to the owning source when it implements
+    /// <see cref="Phosphor.Plugin.Abstractions.IPlaybackReportable"/>: the source decides (based on
+    /// <paramref name="kind"/>) whether the item is now permanently unplayable, and if so the row is
+    /// flipped live to its unplayable state (buttons removed, indicator shown) rather than hidden.
+    /// </para>
     /// </summary>
-    private void SkipUnresolvableDeferred(VideoItem item, string reason)
+    private void SkipUnresolvableDeferred(
+        VideoItem item,
+        object? source,
+        Phosphor.Plugin.Abstractions.SourceItem sourceItem,
+        Phosphor.Plugin.Abstractions.PlaybackFailureKind kind,
+        string reason)
     {
+        // Let the owning source learn from the failure. It (not the host) knows why the resolve failed,
+        // so it returns whether the item is now known-unplayable; only then do we flip the row live.
+        if (source is Phosphor.Plugin.Abstractions.IPlaybackReportable reportable)
+        {
+            try
+            {
+                if (reportable.ReportPlaybackFailure(sourceItem.ItemId, kind))
+                    item.IsPlayable = false;
+            }
+            catch (Exception ex)
+            {
+                DebugLog.LogException($"ReportPlaybackFailure '{item.VideoId}'", ex);
+            }
+        }
+
         // Whether this play is driven by the queue: the failing item is the one at the current queue
         // index. Ad-hoc plays (PlayNow directly, e.g. a browse/search row or an aggregated favorite)
         // don't move QueueIndex to the item, so this is false and we stop instead of skipping.

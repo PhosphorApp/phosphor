@@ -385,3 +385,59 @@ public interface IHideable
     /// <summary>Hides or unhides a batch of ids at once, and persists the change.</summary>
     void SetHidden(IReadOnlyCollection<string> itemIds, bool hidden);
 }
+
+/// <summary>
+/// Marker capability: this source is <em>experimental</em> — it may be incomplete, unreliable, or
+/// have significant known limitations (e.g. SoundCloud, where much major-label content is DRM-locked
+/// and unplayable). Implemented on the <see cref="IPhosphorSourceProvider"/> (the type, not the
+/// instance). The host surfaces an "Experimental" badge/warning next to the source in the Plug-ins
+/// settings tab so users know what to expect. Purely advisory — it changes no behavior.
+/// </summary>
+public interface IExperimental
+{
+}
+
+/// <summary>
+/// Why a playback attempt failed, so a source told about the failure can decide whether to remember
+/// it. The distinction is deliberate: only a <see cref="Unresolvable"/> failure is safe to persist as
+/// "this item can't be played" — a <see cref="Transient"/> failure (network blip, timeout, temporary
+/// outage) must NOT mark an item permanently unplayable.
+/// </summary>
+public enum PlaybackFailureKind
+{
+    /// <summary>
+    /// A definitive, item-intrinsic failure: the item cannot be resolved to a playable stream no
+    /// matter how many times we retry (e.g. DRM-protected, removed, region-locked with no stream).
+    /// Safe for a source to persist as permanently unplayable.
+    /// </summary>
+    Unresolvable,
+
+    /// <summary>
+    /// A transient/environmental failure (network error, timeout, temporary server outage). The item
+    /// may well play later — a source must NOT mark it permanently unplayable on this.
+    /// </summary>
+    Transient,
+}
+
+/// <summary>
+/// Capability: the host can report back to a source that one of its items failed to play, so the
+/// source can learn from it (e.g. persist a "known unplayable" set and surface those rows as
+/// unplayable on future search/browse). Optional — implemented by sources that benefit from
+/// remembering failures (e.g. SoundCloud's lazy DRM discovery). The <see cref="PlaybackFailureKind"/>
+/// tells the source whether the failure is safe to persist (<see cref="PlaybackFailureKind.Unresolvable"/>)
+/// or transient and must be ignored for persistence. The source owns the decision and its storage;
+/// the host just informs it.
+/// </summary>
+public interface IPlaybackReportable
+{
+    /// <summary>
+    /// Informs the source that <paramref name="itemId"/> (a <see cref="SourceItem.ItemId"/>) failed to
+    /// play. The source decides what to do with it based on <paramref name="kind"/> — typically
+    /// persisting only <see cref="PlaybackFailureKind.Unresolvable"/> failures — and returns whether it
+    /// now considers the item <em>permanently unplayable</em>. The host uses the return value to flip
+    /// the live row to its unplayable state (only when <c>true</c>), so the source stays the authority
+    /// on definitiveness (it, not the host, saw why the resolve failed). Must not throw.
+    /// </summary>
+    /// <returns><c>true</c> if the item is now known-unplayable and the row should render as such.</returns>
+    bool ReportPlaybackFailure(string itemId, PlaybackFailureKind kind);
+}

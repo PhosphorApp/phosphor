@@ -10,6 +10,11 @@ public static class PluginApi
 {
     /// <summary>The contract version this build of the abstractions defines.</summary>
     /// <remarks>
+    /// 0.14.0 — added <see cref="SourceItem.IsPlayable"/> (surface-but-unplayable items),
+    ///          <see cref="IExperimental"/> (provider marker for the settings badge), and
+    ///          <see cref="IPlaybackReportable"/> + <c>PlaybackFailureKind</c> (host reports a
+    ///          definitive/transient playback failure back to a source). All additive — plug-ins
+    ///          built against 0.13 still load unchanged.
     /// 0.13.0 — added <see cref="IFavoritable"/>, <see cref="IHideable"/> (+ <c>HideableItem</c>), and
     ///          <c>ResolvedStream.IsLiveStream</c> / <c>SourceItem.IsLiveStream</c> (live/infinite streams).
     ///          All additive — plug-ins built against 0.12 still load unchanged.
@@ -19,14 +24,14 @@ public static class PluginApi
     /// 0.9.0 — added <see cref="IConnectionTestable"/> (optional "test connection" capability).
     /// 0.8.0 — nested config sub-options (<c>ConfigOption.SubOptions</c>).
     /// </remarks>
-    public static readonly Version Current = new(0, 13, 0);
+    public static readonly Version Current = new(0, 14, 0);
 
     /// <summary>
     /// The oldest contract version this host still accepts. A plug-in built against an older
     /// contract than this is rejected (a capability it relies on may have changed shape). While the
     /// contract is pre-1.0 and evolving, this tracks <see cref="Current"/>; once it stabilizes, this
-    /// can lag behind so older plug-ins keep loading. Kept at 0.12.0 because the 0.13.0 additions are
-    /// purely additive — a plug-in built against 0.12.0 doesn't use them and still works.
+    /// can lag behind so older plug-ins keep loading. Kept at 0.12.0 because the 0.13.0 and 0.14.0
+    /// additions are purely additive — a plug-in built against 0.12.0 doesn't use them and still works.
     /// </summary>
     public static readonly Version MinimumSupported = new(0, 12, 0);
 
