@@ -388,12 +388,24 @@
                             <TextBlock Text="{Binding HeaderText}" Foreground="{StaticResource AccentBrush}"
                                        FontWeight="Bold" FontSize="13" Margin="2,8,0,3"
                                        Visibility="{Binding IsHeader, Converter={StaticResource BoolVis}}"/>
+                            <!-- Custom-order Favorites separator: a thin vertical divider tile. -->
+                            <Border Width="2" Margin="6,4" Background="{StaticResource TextDimBrush}"
+                                    Opacity="0.4" VerticalAlignment="Stretch" HorizontalAlignment="Center"
+                                    Visibility="{Binding IsSeparator, Converter={StaticResource BoolVis}}"/>
+                            <!-- Custom-order Favorites line break: full-width zero-height row (forces a wrap). -->
+                            <Border Height="0" Visibility="{Binding IsLineBreak, Converter={StaticResource BoolVis}}"/>
                             <!-- Normal result/favorite row. -->
                             <ContentControl Content="{Binding}">
                                 <ContentControl.Style>
                                     <Style TargetType="ContentControl">
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsHeader}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsSeparator}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsLineBreak}" Value="True">
                                                 <Setter Property="Visibility" Value="Collapsed"/>
                                             </DataTrigger>
                                         </Style.Triggers>

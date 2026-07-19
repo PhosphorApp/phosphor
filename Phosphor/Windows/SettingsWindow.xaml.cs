@@ -23,8 +23,7 @@ public class CategoryVisibilityItem
     public bool IsLineBreak { get; set; }
     public bool IsPlex { get; set; }
     public bool IsPlaylist { get; set; }
-    public string PlaylistId { get; set; } = "";
-    public int SortOrder { get; set; }
+    public string PlaylistId { get; set; } = "";    public int SortOrder { get; set; }
     public string? PlexLibraryKey { get; set; }
     public string? PlexLibraryType { get; set; }
     public string? PlexInstanceId { get; set; }
@@ -39,6 +38,23 @@ public class CategoryVisibilityItem
     /// The search term when the settings window was opened, used to detect changes.
     /// </summary>
     public string OriginalSearchTerm { get; set; } = "";
+}
+
+/// <summary>
+/// A row in the Settings → DMD → Favorites ordering editor: either a real favorite (with a display
+/// title + composite key) or a layout marker (separator / line break). Persisted to the favorites
+/// custom order on apply.
+/// </summary>
+public class FavoriteOrderItem
+{
+    /// <summary>The composite favorite key (source instance + item id); empty for markers.</summary>
+    public string Key { get; set; } = "";
+    public string Title { get; set; } = "";
+    public string SourceLabel { get; set; } = "";
+    public bool IsSeparator { get; set; }
+    public bool IsLineBreak { get; set; }
+    public bool IsMarker => IsSeparator || IsLineBreak;
+    public string DisplayText => IsSeparator ? "── Separator ──" : IsLineBreak ? "── Line Break ──" : Title;
 }
 
 public partial class SettingsWindow : JukeboxWindow
@@ -169,6 +185,8 @@ public partial class SettingsWindow : JukeboxWindow
     private List<string> _originalProjectMEnabledFolders;
     private bool _originalProjectMSoftwareRender;
     private readonly List<CategoryVisibilityItem> _categoryVisibilityItems = new();
+    private readonly List<FavoriteOrderItem> _favoriteOrderItems = new();
+    private FavoritesIndex? _favoritesIndex;
     private readonly ObservableCollection<PinupPlaylist> _pinupPlaylists = new();
     private readonly ObservableCollection<PinupPlaylist> _pinupActive = new();
     private readonly ObservableCollection<PinupPlaylist> _pinupInactive = new();
@@ -1408,6 +1426,35 @@ public partial class SettingsWindow : JukeboxWindow
         UpdateCategoryVisibilityText();
     }
 
+    /// <summary>
+    /// Supplies the shared favorites index so the Favorites ordering editor can enumerate favorites in
+    /// their saved custom order (with any layout markers) and persist a new order on apply.
+    /// </summary>
+    public void SetFavoritesIndex(FavoritesIndex? index)
+    {
+        _favoritesIndex = index;
+        _favoriteOrderItems.Clear();
+        if (index != null)
+        {
+            foreach (var row in index.AllCustomOrderedWithMarkers())
+            {
+                if (row.IsSeparator)
+                    _favoriteOrderItems.Add(new FavoriteOrderItem { IsSeparator = true });
+                else if (row.IsLineBreak)
+                    _favoriteOrderItems.Add(new FavoriteOrderItem { IsLineBreak = true });
+                else if (row.Entry is { } e)
+                    _favoriteOrderItems.Add(new FavoriteOrderItem
+                    {
+                        Key = e.Key,
+                        Title = e.Title,
+                        SourceLabel = e.SourceLabel,
+                    });
+            }
+        }
+        FavoritesOrderList.ItemsSource = null;
+        FavoritesOrderList.ItemsSource = _favoriteOrderItems;
+        UpdateFavoritesOrderSummary();
+    }
     private void BrowseStaticImage_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new Microsoft.Win32.OpenFileDialog
@@ -3824,6 +3871,8 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.DmdMinorButtonLocation = (MinorButtonLocation)Math.Clamp(CbMinorButtonLocation.SelectedIndex, 0, 1);
         _settings.FavoritesGrouping = (FavoritesGrouping)Math.Clamp(CbFavoritesGrouping.SelectedIndex, 0, 2);
         _settings.FavoritesSort = (FavoritesSort)Math.Clamp(CbFavoritesSort.SelectedIndex, 0, 2);
+        ApplyFavoritesOrder();
+        _LogStep("FavoritesOrder");
         _settings.HiddenCategories = _categoryVisibilityItems
             .Where(i => !i.IsVisible)
             .Select(i => i.Name)
@@ -5992,6 +6041,95 @@ public partial class SettingsWindow : JukeboxWindow
         _categoryVisibilityItems.Add(item);
         CategoryListView.ItemsSource = null;
         CategoryListView.ItemsSource = _categoryVisibilityItems;
+    }
+
+    // ── Favorites manual-order editor (Settings → DMD → Favorites) ──
+
+    private void RefreshFavoritesOrderList()
+    {
+        FavoritesOrderList.ItemsSource = null;
+        FavoritesOrderList.ItemsSource = _favoriteOrderItems;
+        UpdateFavoritesOrderSummary();
+    }
+
+    private void UpdateFavoritesOrderSummary()
+    {
+        if (FavoritesOrderSummary == null) return;
+        int favs = _favoriteOrderItems.Count(i => !i.IsMarker);
+        FavoritesOrderSummary.Text = favs == 0
+            ? "No favorites yet. Star items to add them here. Insert separators / line breaks (applies to the Favorites view in Custom order)."
+            : $"{favs} favorite(s). Arrange them and insert separators / line breaks (applies to the Favorites view in Custom order).";
+    }
+
+    private void FavoriteMoveUp_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.DataContext is not FavoriteOrderItem item) return;
+        var index = _favoriteOrderItems.IndexOf(item);
+        if (index <= 0) return;
+        _favoriteOrderItems.RemoveAt(index);
+        _favoriteOrderItems.Insert(index - 1, item);
+        RefreshFavoritesOrderList();
+    }
+
+    private void FavoriteMoveDown_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.DataContext is not FavoriteOrderItem item) return;
+        var index = _favoriteOrderItems.IndexOf(item);
+        if (index < 0 || index >= _favoriteOrderItems.Count - 1) return;
+        _favoriteOrderItems.RemoveAt(index);
+        _favoriteOrderItems.Insert(index + 1, item);
+        RefreshFavoritesOrderList();
+    }
+
+    private void FavoriteMoveTop_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.DataContext is not FavoriteOrderItem item) return;
+        var index = _favoriteOrderItems.IndexOf(item);
+        if (index <= 0) return;
+        _favoriteOrderItems.RemoveAt(index);
+        _favoriteOrderItems.Insert(0, item);
+        RefreshFavoritesOrderList();
+    }
+
+    private void FavoriteMoveBottom_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.DataContext is not FavoriteOrderItem item) return;
+        var index = _favoriteOrderItems.IndexOf(item);
+        if (index < 0 || index >= _favoriteOrderItems.Count - 1) return;
+        _favoriteOrderItems.RemoveAt(index);
+        _favoriteOrderItems.Add(item);
+        RefreshFavoritesOrderList();
+    }
+
+    private void FavoriteRemoveMarker_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.DataContext is not FavoriteOrderItem item) return;
+        if (!item.IsMarker) return;
+        _favoriteOrderItems.Remove(item);
+        RefreshFavoritesOrderList();
+    }
+
+    private void FavoriteAddSeparator_Click(object sender, RoutedEventArgs e)
+    {
+        _favoriteOrderItems.Add(new FavoriteOrderItem { IsSeparator = true });
+        RefreshFavoritesOrderList();
+    }
+
+    private void FavoriteAddLineBreak_Click(object sender, RoutedEventArgs e)
+    {
+        _favoriteOrderItems.Add(new FavoriteOrderItem { IsLineBreak = true });
+        RefreshFavoritesOrderList();
+    }
+
+    /// <summary>Persists the Favorites manual order (favorites + markers) to the shared index on apply.</summary>
+    private void ApplyFavoritesOrder()
+    {
+        if (_favoritesIndex == null) return;
+        var keys = _favoriteOrderItems.Select(i =>
+            i.IsSeparator ? FavoritesIndex.SeparatorMarker
+            : i.IsLineBreak ? FavoritesIndex.LineBreakMarker
+            : i.Key);
+        _favoritesIndex.SetCustomOrder(keys);
     }
 
     private void SaveDefaultSettings_Click(object sender, RoutedEventArgs e)

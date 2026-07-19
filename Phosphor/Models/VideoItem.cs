@@ -114,6 +114,18 @@ public class VideoItem : ObservableObject
     public string? HeaderText { get; set; }
 
     /// <summary>
+    /// True when this row is a layout separator marker in the Custom-order Favorites view — a thin
+    /// vertical divider tile. Non-interactive; ignored by play/queue/favorite commands.
+    /// </summary>
+    public bool IsSeparator { get; set; }
+
+    /// <summary>
+    /// True when this row is a layout line-break marker in the Custom-order Favorites view — a
+    /// full-width zero-height row that forces subsequent tiles onto a new line. Non-interactive.
+    /// </summary>
+    public bool IsLineBreak { get; set; }
+
+    /// <summary>
     /// Grouping key for the aggregated Favorites view (the provider label) when "Group by provider" is
     /// active — used by the ListBox's CollectionView grouping to render full-width provider headers.
     /// Null when ungrouped.

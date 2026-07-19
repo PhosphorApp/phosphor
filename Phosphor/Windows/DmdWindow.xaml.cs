@@ -222,6 +222,12 @@ public partial class DmdWindow : JukeboxWindow
     private bool _favoritesGrouped;
 
     /// <summary>
+    /// True while the Favorites view is in Custom (manual) order. In this mode line-break marker rows
+    /// span the full panel width so the tiles after them wrap onto a fresh line.
+    /// </summary>
+    private bool _favoritesCustomOrder;
+
+    /// <summary>
     /// Tracks whether the results list is the grouped Favorites view, and re-applies the item width so
     /// grouped mode collapses to one column (full-width headers/rows) while other views stay
     /// multi-column. No CollectionView grouping (incompatible with VirtualizingWrapPanel).
@@ -229,8 +235,10 @@ public partial class DmdWindow : JukeboxWindow
     private void UpdateFavoritesGrouping(JukeboxViewModel vm)
     {
         bool grouped = vm.IsViewingFavorites && vm.FavoritesGrouping == FavoritesGrouping.Provider;
-        if (grouped == _favoritesGrouped) return;
+        bool customOrder = vm.IsFavoritesCustomOrder;
+        if (grouped == _favoritesGrouped && customOrder == _favoritesCustomOrder) return;
         _favoritesGrouped = grouped;
+        _favoritesCustomOrder = customOrder;
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, UpdateResultItemWidth);
     }
 
@@ -1955,7 +1963,7 @@ public partial class DmdWindow : JukeboxWindow
         // their computed column width and wrap underneath each header.
         var wrapPanel = FindVisualChildren<WpfToolkit.Controls.VirtualizingWrapPanel>(ResultsList).FirstOrDefault();
         if (wrapPanel != null)
-            wrapPanel.AllowDifferentSizedItems = _favoritesGrouped;
+            wrapPanel.AllowDifferentSizedItems = _favoritesGrouped || _favoritesCustomOrder;
 
         if (!_favoritesGrouped && _resultColumns <= 1)
         {
@@ -1969,7 +1977,8 @@ public partial class DmdWindow : JukeboxWindow
         if (availableWidth <= 0) return;
 
         double itemWidth = Math.Floor(availableWidth / _resultColumns);
-        ResultsList.ItemContainerStyle = MakeItemContainerStyle(itemWidth, _favoritesGrouped ? availableWidth : (double?)null);
+        double? fullWidth = (_favoritesGrouped || _favoritesCustomOrder) ? availableWidth : (double?)null;
+        ResultsList.ItemContainerStyle = MakeItemContainerStyle(itemWidth, fullWidth);
     }
 
     private Style MakeItemContainerStyle(double width, double? headerWidth = null)
@@ -1981,7 +1990,8 @@ public partial class DmdWindow : JukeboxWindow
             style.Setters.Add(new Setter(WidthProperty, width));
 
         // In grouped Favorites view, provider header rows span the full panel width so each
-        // provider's tiles wrap onto a fresh line beneath the header.
+        // provider's tiles wrap onto a fresh line beneath the header. In custom-order Favorites,
+        // line-break marker rows do the same so tiles after a break start a new line.
         if (headerWidth is double hw)
         {
             var headerTrigger = new DataTrigger
@@ -1991,6 +2001,14 @@ public partial class DmdWindow : JukeboxWindow
             };
             headerTrigger.Setters.Add(new Setter(WidthProperty, hw));
             style.Triggers.Add(headerTrigger);
+
+            var lineBreakTrigger = new DataTrigger
+            {
+                Binding = new System.Windows.Data.Binding(nameof(VideoItem.IsLineBreak)),
+                Value = true
+            };
+            lineBreakTrigger.Setters.Add(new Setter(WidthProperty, hw));
+            style.Triggers.Add(lineBreakTrigger);
         }
         return style;
     }
@@ -2052,6 +2070,7 @@ public partial class DmdWindow : JukeboxWindow
         if (DataContext is JukeboxViewModel vm2)
         {
             settingsWindow.SetPlaylistManager(vm2.PlaylistManager);
+            settingsWindow.SetFavoritesIndex(vm2.FavoritesIndex);
             settingsWindow.SetHistoryCount(vm2.HistoryCount);
             settingsWindow.SetCacheSize(vm2.Cache?.GetTotalSizeBytes() ?? 0);
             settingsWindow.SetThumbnailCacheSize(vm2.ThumbnailCache?.GetTotalSizeBytes() ?? 0);
@@ -2511,6 +2530,9 @@ public partial class DmdWindow : JukeboxWindow
             vm.AutoDjProviderId = _appSettings.AutoDjProviderId;
             vm.FavoritesGrouping = _appSettings.FavoritesGrouping;
             vm.FavoritesSort = _appSettings.FavoritesSort;
+            // Rebuild the Favorites tile if it's the active view so any custom-order / marker edits
+            // made in Settings appear immediately.
+            vm.RefreshFavoritesViewIfActive();
             LogStep("VmProperties");
         }
         LogStep("Cache/ViewModel");

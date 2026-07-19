@@ -1241,8 +1241,21 @@ public partial class JukeboxViewModel : ObservableObject
         if (!IsFavoritesCustomOrder) return;
         var keys = SearchResults
             .Where(r => !r.IsHeader)
-            .Select(r => FavoritesIndex.MakeKey(r.SourceInstanceId ?? "", r.VideoId));
+            .Select(r =>
+                r.IsSeparator ? FavoritesIndex.SeparatorMarker
+                : r.IsLineBreak ? FavoritesIndex.LineBreakMarker
+                : FavoritesIndex.MakeKey(r.SourceInstanceId ?? "", r.VideoId));
         _favoritesIndex.SetCustomOrder(keys);
+    }
+
+    /// <summary>The shared host-level favorites index (exposed so Settings can edit the manual order).</summary>
+    public FavoritesIndex FavoritesIndex => _favoritesIndex;
+
+    /// <summary>Rebuilds the Favorites tile now if it is the active view (e.g. after Settings edits the order).</summary>
+    public void RefreshFavoritesViewIfActive()
+    {
+        if (IsViewingFavorites)
+            SearchResults.ReplaceAll(BuildAggregatedFavorites());
     }
 
     // ── Active playlist (for "Add to Playlist" default target) ──
@@ -3277,8 +3290,9 @@ public partial class JukeboxViewModel : ObservableObject
         var sort = this.FavoritesSort;
 
         // Custom = user-defined manual order (drag-to-reorder); ignores the Sort axis entirely.
+        // Markers (separators / line breaks) are only meaningful in this mode.
         if (grouping == FavoritesGrouping.Custom)
-            return _favoritesIndex.AllCustomOrdered().Select(ToFavoriteRow).ToList();
+            return _favoritesIndex.AllCustomOrderedWithMarkers().Select(ToFavoriteRowOrMarker).ToList();
 
         var entries = _favoritesIndex.All(); // index default order = recently-added first
 
@@ -3330,6 +3344,14 @@ public partial class JukeboxViewModel : ObservableObject
         CanFavorite = true,
         IsFavorite = true,
     };
+
+    /// <summary>Maps a custom-order row (favorite or layout marker) to a display row.</summary>
+    private VideoItem ToFavoriteRowOrMarker(FavoriteOrderRow row)
+    {
+        if (row.IsSeparator) return new VideoItem { IsSeparator = true };
+        if (row.IsLineBreak) return new VideoItem { IsLineBreak = true };
+        return ToFavoriteRow(row.Entry!);
+    }
 
     [RelayCommand]
     private async Task AddToQueueAsync(VideoItem? item)

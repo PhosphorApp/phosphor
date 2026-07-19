@@ -2112,6 +2112,157 @@
                                           Foreground="{StaticResource TextBrush}"
                                           FontSize="12" BorderBrush="#333"/>
                             </DockPanel>
+
+                            <!-- Favorites manual order editor (applies to Custom order mode) -->
+                            <DockPanel Margin="0,0,0,4">
+                                <TextBlock Text="Order:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Top" Width="110" Margin="0,4,0,0"/>
+                                <StackPanel>
+                                    <TextBlock x:Name="FavoritesOrderSummary" Foreground="{StaticResource TextDimBrush}"
+                                               FontSize="11" Margin="0,0,0,4" TextWrapping="Wrap"
+                                               Text="Arrange favorites and insert separators / line breaks. Applies to the Favorites view when grouping is set to Custom."/>
+                                    <ListView x:Name="FavoritesOrderList" MaxHeight="300"
+                                              Background="{StaticResource Surface2Brush}"
+                                              BorderBrush="#333" BorderThickness="1"
+                                              ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                              HorizontalContentAlignment="Stretch">
+                                        <ListView.ItemContainerStyle>
+                                            <Style TargetType="ListViewItem">
+                                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                                <Setter Property="Padding" Value="2"/>
+                                                <Setter Property="Margin" Value="0"/>
+                                                <Setter Property="Background" Value="Transparent"/>
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="ListViewItem">
+                                                            <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter/>
+                                                            </Border>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </ListView.ItemContainerStyle>
+                                        <ListView.ItemTemplate>
+                                            <DataTemplate>
+                                                <DockPanel>
+                                                    <Button Content="⤒" FontSize="9" Width="20" Height="20"
+                                                            Background="Transparent" Foreground="{StaticResource TextDimBrush}"
+                                                            BorderThickness="0" Cursor="Hand" ToolTip="Move to top"
+                                                            VerticalAlignment="Center" Margin="0,0,1,0"
+                                                            DockPanel.Dock="Left"
+                                                            Click="FavoriteMoveTop_Click">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border Background="Transparent">
+                                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                    <Button Content="▲" FontSize="9" Width="20" Height="20"
+                                                            Background="Transparent" Foreground="{StaticResource TextDimBrush}"
+                                                            BorderThickness="0" Cursor="Hand" ToolTip="Move up"
+                                                            VerticalAlignment="Center" Margin="0,0,1,0"
+                                                            DockPanel.Dock="Left"
+                                                            Click="FavoriteMoveUp_Click">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border Background="Transparent">
+                                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                    <Button Content="▼" FontSize="9" Width="20" Height="20"
+                                                            Background="Transparent" Foreground="{StaticResource TextDimBrush}"
+                                                            BorderThickness="0" Cursor="Hand" ToolTip="Move down"
+                                                            VerticalAlignment="Center" Margin="0,0,1,0"
+                                                            DockPanel.Dock="Left"
+                                                            Click="FavoriteMoveDown_Click">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border Background="Transparent">
+                                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                    <Button Content="⤓" FontSize="9" Width="20" Height="20"
+                                                            Background="Transparent" Foreground="{StaticResource TextDimBrush}"
+                                                            BorderThickness="0" Cursor="Hand" ToolTip="Move to bottom"
+                                                            VerticalAlignment="Center" Margin="0,0,2,0"
+                                                            DockPanel.Dock="Left"
+                                                            Click="FavoriteMoveBottom_Click">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border Background="Transparent">
+                                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                    <Button Content="✕" FontSize="10" Width="20" Height="20"
+                                                            Background="Transparent" Foreground="{StaticResource TextDimBrush}"
+                                                            BorderThickness="0" Cursor="Hand" ToolTip="Remove marker"
+                                                            VerticalAlignment="Center" Margin="4,0,0,0"
+                                                            DockPanel.Dock="Right"
+                                                            Click="FavoriteRemoveMarker_Click">
+                                                        <Button.Style>
+                                                            <Style TargetType="Button">
+                                                                <Setter Property="Template">
+                                                                    <Setter.Value>
+                                                                        <ControlTemplate TargetType="Button">
+                                                                            <Border Background="Transparent">
+                                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                            </Border>
+                                                                        </ControlTemplate>
+                                                                    </Setter.Value>
+                                                                </Setter>
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsMarker}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Button.Style>
+                                                    </Button>
+                                                    <TextBlock Text="{Binding DisplayText}" VerticalAlignment="Center"
+                                                               Margin="4,0,0,0" TextTrimming="CharacterEllipsis">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                                                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsMarker}" Value="True">
+                                                                        <Setter Property="Foreground" Value="{StaticResource TextDimBrush}"/>
+                                                                        <Setter Property="FontStyle" Value="Italic"/>
+                                                                        <Setter Property="FontWeight" Value="Normal"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </DockPanel>
+                                            </DataTemplate>
+                                        </ListView.ItemTemplate>
+                                    </ListView>
+                                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                        <Button Content="＋ Separator" FontSize="11" Padding="8,4"
+                                                HorizontalAlignment="Left" Cursor="Hand"
+                                                Background="{StaticResource SurfaceBrush}" Foreground="{StaticResource TextDimBrush}"
+                                                BorderBrush="#444" BorderThickness="1"
+                                                Click="FavoriteAddSeparator_Click"/>
+                                        <Button Content="＋ Line Break" FontSize="11" Padding="8,4" Margin="4,0,0,0"
+                                                HorizontalAlignment="Left" Cursor="Hand"
+                                                Background="{StaticResource SurfaceBrush}" Foreground="{StaticResource TextDimBrush}"
+                                                BorderBrush="#444" BorderThickness="1"
+                                                Click="FavoriteAddLineBreak_Click"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </DockPanel>
                         </StackPanel>
                     </Border>
                 </ScrollViewer>
