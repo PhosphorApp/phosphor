@@ -1658,11 +1658,14 @@
                                Foreground="{StaticResource TextDimBrush}" Margin="20,8,0,0" TextWrapping="Wrap" FontSize="11"/>
                             <TextBlock Text="APPEARANCE &amp; LAYOUT" FontSize="12" FontWeight="Bold"
                                  Foreground="{StaticResource AccentBrush}" Margin="0,12,0,12"/>
-                            <DockPanel Margin="0,0,0,4">
-                                <TextBlock Text="Categories:" Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Top" Width="110" Margin="0,4,0,0"/>
+                            <StackPanel Margin="0,0,0,10">
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                    <TextBlock Text="Categories" Foreground="{StaticResource TextBrush}"
+                                               FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="CategoryVisibilitySummary" Foreground="{StaticResource TextDimBrush}"
+                                               FontSize="11" VerticalAlignment="Center" Margin="8,1,0,0"/>
+                                </StackPanel>
                                 <StackPanel>
-                                    <TextBlock x:Name="CategoryVisibilitySummary" Foreground="{StaticResource TextDimBrush}" FontSize="11" Margin="0,0,0,4"/>
                                     <ListView x:Name="CategoryListView" MaxHeight="300"
                                               Background="{StaticResource Surface2Brush}"
                                               BorderBrush="#333" BorderThickness="1"
@@ -1949,7 +1952,7 @@
                                                 Click="CategoryAddLineBreak_Click"/>
                                     </StackPanel>
                                 </StackPanel>
-                            </DockPanel>
+                            </StackPanel>
                             <DockPanel Margin="0,0,0,8">
                                 <TextBlock Text="Icon Style:" Foreground="{StaticResource TextBrush}"
                                            VerticalAlignment="Center" Width="110"/>

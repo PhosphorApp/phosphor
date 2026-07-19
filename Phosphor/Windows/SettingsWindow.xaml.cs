@@ -1409,7 +1409,7 @@ public partial class SettingsWindow : JukeboxWindow
                 Icon = icon,
                 SearchTerm = "",
                 OriginalSearchTerm = "",
-                IsVisible = true,
+                IsVisible = !_settings.HiddenCategories.Contains(pl.Name),
                 IsPlaylist = true,
                 PlaylistId = pl.Id,
                 SortOrder = pl.SortOrder,
@@ -6268,7 +6268,7 @@ public partial class SettingsWindow : JukeboxWindow
     {
         int visible = _categoryVisibilityItems.Count(i => i.IsVisible && !i.IsSeparator && !i.IsLineBreak);
         int total = _categoryVisibilityItems.Count(i => !i.IsSeparator && !i.IsLineBreak);
-        CategoryVisibilitySummary.Text = $"{visible}/{total} categories visible. Icon, name, and search term can be modified.";
+        CategoryVisibilitySummary.Text = $"({visible}/{total} categories visible. Icon, name, and search term can be modified.)";
     }
 
     private async void DofTestSend_Click(object sender, RoutedEventArgs e)
