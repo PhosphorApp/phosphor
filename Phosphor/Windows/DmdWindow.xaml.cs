@@ -2499,6 +2499,10 @@ public partial class DmdWindow : JukeboxWindow
             // sync preserves user order/customizations), instead of clobbering it with a stale copy.
             vm.ReloadGenreCategories();
             LogStep("ReloadGenreCategories");
+            // Re-apply the hidden set so playlist tiles (Favorites, saved playlists) honor the
+            // visibility checkboxes immediately, not just after a restart.
+            vm.SetHiddenCategories(_appSettings.HiddenCategories);
+            LogStep("SetHiddenCategories");
             // Configure Plex tiles/services from the enabled plug-in instances (skips rebuild; the
             // registry build below rebuilds once after source tiles are synced).
             vm.ConfigurePlexFromSettings(_appSettings, skipRebuild: true);
