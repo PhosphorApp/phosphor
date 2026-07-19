@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+	<OutputType>Exe</OutputType>
+	<TargetFramework>net8.0</TargetFramework>
+	<ImplicitUsings>enable</ImplicitUsings>
+	<Nullable>enable</Nullable>
+	<RootNamespace>IHeartPodcastSpike</RootNamespace>
+	<AssemblyName>IHeartPodcastSpike</AssemblyName>
+	<!-- Experimental throwaway harness. The shipped Phosphor.Plugins.IHeartRadio only does LIVE radio
+		 (continuous, ad-supported streams). This probes the ON-DEMAND / PODCAST side of the same
+		 key-less api.iheart.com to confirm it's the finite/seekable, ad-light counterpart worth
+		 building next:
+		   (1) discovery — /api/v3/podcast/categories + /categories/{id} (podcasts) + /api/v3/search/all
+		   (2) episodes  — /api/v3/podcast/podcasts/{id}/episodes  (list, with duration)
+		   (3) playback  — /api/v3/podcast/episodes/{id}  ->  a direct 'mediaUrl' MP3 (finite/seekable)
+		 Not part of the app; run standalone with `dotnet run`. Optional search term as an argument. -->
+  </PropertyGroup>
+
+</Project>

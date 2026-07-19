@@ -39,7 +39,7 @@ Every candidate is judged against what the architecture already gives a source:
 | **Dailymotion** | On-demand video (+ music-video category) | yt-dlp resolve (proven extractors) + public API browse/search | Low–Med | Free | 🟢 **Shipped** — `Phosphor.Plugins.Dailymotion`, keyless discovery (see below) |
 | **SoundCloud** | On-demand audio | yt-dlp extractor (proven), keyless discovery + playback | Low–Med | Free | 🟡 **Shipped (experimental)** — keyless, but pervasive DRM ⇒ lazy unplayable-discovery (see below) |
 | **Bandcamp** | On-demand audio | yt-dlp resolves (proven) but **no discovery API** | Low–Med | Free | 🟠 Recommend against — playback fine, **discovery blocked** (scrape-only, see below) |
-| **iHeartRadio** | Live stations + podcasts | yt-dlp (partial) / stream URLs | Med | Free | 🟡 Partial (on-demand fits; live needs stream handling) |
+| **iHeartRadio** | Live stations **+ on-demand podcasts** | **Key-less REST API — raw non-DRM stream URLs + podcast MP3s (no yt-dlp, no proxy)** | Low | Free | 🟢 **Shipped** — `Phosphor.Plugins.IHeartRadio`, key-less, no proxy; live radio + podcasts (see below) |
 | **SiriusXM** | Live channels (auth) + some on-demand | Custom C# client (auth+lineup ✅ proven) + HLS AES proxy | Med–High | Paid sub | 🟢 **Shipped** — `Phosphor.Plugins.SiriusXM` (see below) |
 | **Spotify** | On-demand audio (huge catalog) | Discovery: SpotAPI-style C# client ⚠️ (rotating-secret TOTP) / Audio: **librespot** (Premium) ❌ | High | Paid sub (Premium) | 🟠 Hard — **spiked; recommend against** (brittle discovery + ToS rejection + unbuilt audio) |
 | **Tidal** | On-demand audio | ❌ DRM, no legal stream URL | High/blocked | Paid sub | ❌ Not viable |
@@ -261,6 +261,78 @@ Marks a source item/stream as a continuous live stream so the host:
 - **Limitations:** Live-radio UX mismatch, ad-supported streams, unofficial API fragility.
 - **Verdict:** On-demand/podcasts are a clean fit; live stations need the same `IsLiveStream` handling
   as SiriusXM. Scope to on-demand first if pursued.
+
+#### ✅ Spike — discovery + non-DRM live HLS both work key-less (`tools/IHeartRadioSpike/`)
+A pure-C# probe of `api.iheart.com` with **no OAuth, no API key, and no yt-dlp** (endpoints from
+[`api-evangelist/iheart-radio`](https://github.com/api-evangelist/iheart-radio)) passed both unknowns:
+- `GET /api/v1/catalog/searchAll?keywords=…` → real **stations** (`Q104.3`, `100.7 WZLX`, …),
+  **tracks**, and **artists**. Results are grouped at the **top level** (`stations[]`, `tracks[]`,
+  `artists[]`, `talkShows[]`), not under a `results` node.
+- `GET /api/v2/content/liveStations/{id}` → a `streams` object with **raw URLs**
+  (`hls_stream`, `shoutcast_stream`, `secure_hls_stream`, `secure_shoutcast_stream`), e.g.
+  `https://stream.revma.ihrhls.com/zc4443/hls.m3u8`.
+- The HLS master is **plain `#EXTM3U` with `CODECS="mp4a.40.2"` (AAC) and no `#EXT-X-KEY`** — **no
+  DRM**. Unlike SiriusXM (AES-128 segments needing a decrypt/rewrite proxy), iHeart's live HLS can go
+  **straight to LibVLC** — no proxy.
+
+**Go decision: GO (with the live-radio caveat).** An `IHeartClient` (pure `HttpClient`, mirroring
+`SxmClient`/`DailymotionClient`) is viable with **zero credentials and no proxy**: discovery →
+`IBrowsable` + `ITextSearchCapable`; live playback → the **existing `IsLiveStream` host path** (built
+for SiriusXM) with `IPlayableResolver` just returning `secure_hls_stream`. The only real friction is
+the live-radio UX mismatch, already solved. Podcasts/on-demand are the cleaner finite/seekable fit and
+can be layered later. **Materially easier than SiriusXM** (no auth, no AES proxy).
+
+#### ✅ Shipped (v1) — `Phosphor.Plugins.IHeartRadio`
+The lean cousin of SiriusXM: **no login, no proxy, no yt-dlp**. Self-deploys to `plugins/IHeartRadio/`.
+- **Discovery:** `IHeartClient` (pure `HttpClient`, key-less) — `liveStationGenres` drives a
+  root → genre → stations browse tree, plus **Popular Stations** and key-less `searchAll` station search.
+- **Playback:** stations embed a `streams` object; `IPlayableResolver` returns the best playable URL
+  directly with `IsLiveStream = true` — preferring HLS but **falling back to Shoutcast/PLS** (many
+  smaller stations are Shoutcast-only), all plain non-DRM that LibVLC plays without a decrypt proxy
+  (the SiriusXM AES step isn't needed here).
+- **Capabilities:** `IBrowsable` + `ITextSearchCapable` + `IPlayableResolver` + `IConnectionTestable` +
+  `IFavoritable` (star to pin). Single-instance; empty settings schema (nothing to configure).
+- **Live-stream ads are inherent:** iHeart uses server-side ad insertion on the live simulcast (ads
+  stitched into the same audio timeline, no discrete markers) — unavoidable client-side. The clean
+  ad-light path is on-demand podcasts (below), not the live streams.
+- **Deferred:** on-disk genre/category cache.
+
+#### ✅ Shipped (v2) — on-demand podcasts added
+The `IHeartPodcastSpike` GO (below) is now **built into the plug-in** as a second capability (not a new
+plug-in): a **Podcasts** branch (category → podcast → episodes), podcast shows folded into text search
+as drill-in containers, and episode resolve → the direct `mediaUrl` MP3 as an ordinary
+**non-`IsLiveStream`** `ResolvedStream` (real `Duration`, normal seek/progress + auto-advance). Reuses
+`IHeartClient` (added `GetPodcastCategoriesAsync` / `GetPodcastsInCategoryAsync` / `SearchPodcastsAsync`
+/ `GetEpisodePageAsync` / `GetEpisodeMediaUrlAsync`).
+
+#### ✅ Shipped (v3) — typed favorites (all kinds) + paged episodes
+- **Favorites across all three shapes.** Favorites are now typed (`IHeartFavorite` with a Station /
+  Episode / Podcast kind) via `IFavoriteCapture.RememberFavorite`, so a favorited **episode** replays
+  from its `mediaUrl` and a favorited **podcast show** appears in the Favorites view as a drill-in
+  container. Fixes the earlier bug where every favorite was stored as a live station (non-station
+  favorites showed up but wouldn't play).
+- **Paged episodes (`IPagedBrowsable`).** iHeart pages episodes with an opaque **cursor**
+  (`links.next`), not an offset; the plug-in bridges that onto the host's offset-based paging by
+  caching the next-cursor per podcast keyed by offset, so sequential "load more" works as the user
+  scrolls.
+
+
+
+#### ✅ Spike — podcasts are the finite/seekable, ad-light follow-up (`tools/IHeartPodcastSpike/`)
+The original **live**-only plug-in prompted a second pure-C# probe of iHeart's **on-demand podcast**
+surface — also key-less, no yt-dlp — which passed **5/5**:
+- `GET /api/v3/podcast/categories` → **190 categories** (Comedy, Crime, Business, …).
+- `GET /api/v3/podcast/categories/{id}` → podcasts listed **inline**.
+- `GET /api/v3/search/all?keywords=…&podcast=true` → podcasts under `results.podcasts` (**the
+  `&podcast=true` flag is required** — the array is empty without it).
+- `GET /api/v3/podcast/podcasts/{id}/episodes` → episodes with **real `duration`s** (finite/seekable).
+- `GET /api/v3/podcast/episodes/{id}` → a direct **`mediaUrl`** MP3; a HEAD confirmed **HTTP 200,
+  `audio/mpeg`, ~36 MB** — a real seekable file, **no DRM/proxy/yt-dlp**.
+
+**Go decision: GO.** Podcasts are the clean jukebox fit the live streams aren't: finite, seekable,
+`Duration`-bearing, far less ad-laden. Best delivered as a **second capability on the existing iHeart
+plug-in** (add a "Podcasts" branch: category → podcast → episodes; resolve → `mediaUrl` as an ordinary
+**non-`IsLiveStream`** `ResolvedStream`), reusing `IHeartClient` — not a new plug-in.
 
 ---
 
