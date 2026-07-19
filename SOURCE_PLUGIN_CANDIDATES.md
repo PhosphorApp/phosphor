@@ -36,16 +36,16 @@ Every candidate is judged against what the architecture already gives a source:
 |---|---|---|---|---|---|
 | **Jellyfin** | On-demand music + video (self-hosted server) | Custom C# REST client, direct HTTP stream URLs | Low–Med | Free (self-host) | 🟢 **Shipped** — `Phosphor.Plugins.Jellyfin` (see below) |
 | **Vimeo** | On-demand video+audio | yt-dlp resolve + Vimeo API browse/search | Low–Med | Free | 🟢 **Shipped** — `Phosphor.Plugins.Vimeo` (see below) |
-| **Dailymotion** | On-demand video (+ music-video category) | yt-dlp resolve (proven extractors) + public API browse/search | Low–Med | Free | ✅ Good fit — **spiked: keyless discovery ✓**, easiest remaining candidate (see below) |
+| **Dailymotion** | On-demand video (+ music-video category) | yt-dlp resolve (proven extractors) + public API browse/search | Low–Med | Free | 🟢 **Shipped** — `Phosphor.Plugins.Dailymotion`, keyless discovery (see below) |
 | **SoundCloud** | On-demand audio | yt-dlp extractor (proven), keyless discovery + playback | Low–Med | Free | 🟡 **Shipped (experimental)** — keyless, but pervasive DRM ⇒ lazy unplayable-discovery (see below) |
 | **Bandcamp** | On-demand audio | yt-dlp resolves (proven) but **no discovery API** | Low–Med | Free | 🟠 Recommend against — playback fine, **discovery blocked** (scrape-only, see below) |
 | **iHeartRadio** | Live stations + podcasts | yt-dlp (partial) / stream URLs | Med | Free | 🟡 Partial (on-demand fits; live needs stream handling) |
-| **SiriusXM** | Live channels (auth) + some on-demand | Custom C# client (auth+lineup ✅ proven) + HLS AES proxy | Med–High | Paid sub | 🟢 **In progress** — auth+lineup validated (see below) |
+| **SiriusXM** | Live channels (auth) + some on-demand | Custom C# client (auth+lineup ✅ proven) + HLS AES proxy | Med–High | Paid sub | 🟢 **Shipped** — `Phosphor.Plugins.SiriusXM` (see below) |
 | **Spotify** | On-demand audio (huge catalog) | Discovery: SpotAPI-style C# client ⚠️ (rotating-secret TOTP) / Audio: **librespot** (Premium) ❌ | High | Paid sub (Premium) | 🟠 Hard — **spiked; recommend against** (brittle discovery + ToS rejection + unbuilt audio) |
 | **Tidal** | On-demand audio | ❌ DRM, no legal stream URL | High/blocked | Paid sub | ❌ Not viable |
 | **Pandora** | Personalized radio session | ❌ DRM + session model | High/blocked | Free/Paid | ❌ Not viable |
 
-Ranked "worth doing": **~~Vimeo (shipped)~~ → ~~Dailymotion~~ → ~~SoundCloud (shipped, experimental)~~ → (iHeart / SiriusXM, if pursuing live) →
+Ranked "worth doing": **~~Vimeo (shipped)~~ → ~~Dailymotion (shipped)~~ → ~~SoundCloud (shipped, experimental)~~ → (~~SiriusXM (shipped)~~ / iHeart, if pursuing live) →
 Spotify (only if the librespot audio bridge proves out) → skip Bandcamp, Tidal & Pandora.**
 
 ---
@@ -96,7 +96,7 @@ Spotify (only if the librespot audio bridge proves out) → skip Bandcamp, Tidal
 - **Limitations:** Private/password/domain-locked videos won't resolve; a filmmaker/creator platform,
   not a music catalog (categories reflect that — Animation, Documentary, …).
 
-### Dailymotion
+### Dailymotion — **shipped (v1)**
 - **Why:** a natural second video source after Vimeo — on-demand video with **its own categories and
   channels (including music videos)**, so it maps directly onto the browse tree the Vimeo plug-in
   already established (categories/channels → paged videos + search + favorites).
@@ -183,7 +183,7 @@ without any secret setting; playback rides the existing `YtDlpResolver`. This ma
 
 ## 🟡 Partial fits (live-radio UX mismatch)
 
-### SiriusXM — **in progress (Phase 0 proven)**
+### SiriusXM — **shipped (v1)**
 - **Why:** (a) already a subscriber, (b) an interesting challenge to see how **infinite streams** fit
   into the jukebox model.
 - **Compatibility:** Almost entirely **live channels**, plus some on-demand shows.
