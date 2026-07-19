@@ -6121,6 +6121,63 @@ public partial class SettingsWindow : JukeboxWindow
         RefreshFavoritesOrderList();
     }
 
+    // ── Favorites drag-reorder (grip handle initiates; whole row is a valid drop target) ──
+
+    private System.Windows.Point _favOrderDragStart;
+    private bool _favOrderDragInProgress;
+
+    private void FavoritesOrderList_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        _favOrderDragStart = e.GetPosition(FavoritesOrderList);
+        _favOrderDragInProgress = false;
+    }
+
+    private void FavoritesOrderList_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed) return;
+        if (_favOrderDragInProgress) return;
+
+        var pos = e.GetPosition(FavoritesOrderList);
+        if (Math.Abs(pos.X - _favOrderDragStart.X) < 4 && Math.Abs(pos.Y - _favOrderDragStart.Y) < 4)
+            return;
+
+        var item = GetItemDataContextAtPoint<FavoriteOrderItem>(FavoritesOrderList, _favOrderDragStart);
+        if (item == null) return;
+
+        _favOrderDragInProgress = true;
+        System.Windows.DragDrop.DoDragDrop(FavoritesOrderList, item, System.Windows.DragDropEffects.Move);
+        _favOrderDragInProgress = false;
+    }
+
+    private void FavoritesOrderList_Drop(object sender, System.Windows.DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(typeof(FavoriteOrderItem))) return;
+
+        var dragged = (FavoriteOrderItem)e.Data.GetData(typeof(FavoriteOrderItem))!;
+        var target = GetItemDataContextAtPoint<FavoriteOrderItem>(FavoritesOrderList, e.GetPosition(FavoritesOrderList));
+
+        int oldIndex = _favoriteOrderItems.IndexOf(dragged);
+        int newIndex = target != null ? _favoriteOrderItems.IndexOf(target) : _favoriteOrderItems.Count - 1;
+        if (oldIndex < 0 || newIndex < 0 || oldIndex == newIndex) return;
+
+        _favoriteOrderItems.RemoveAt(oldIndex);
+        _favoriteOrderItems.Insert(newIndex, dragged);
+        RefreshFavoritesOrderList();
+    }
+
+    /// <summary>Walks up from the hit element at <paramref name="point"/> to the owning item's DataContext.</summary>
+    private static T? GetItemDataContextAtPoint<T>(System.Windows.Controls.ItemsControl list, System.Windows.Point point) where T : class
+    {
+        var element = list.InputHitTest(point) as DependencyObject;
+        while (element != null)
+        {
+            if (element is System.Windows.Controls.ListViewItem lvi)
+                return lvi.DataContext as T;
+            element = System.Windows.Media.VisualTreeHelper.GetParent(element);
+        }
+        return null;
+    }
+
     /// <summary>Persists the Favorites manual order (favorites + markers) to the shared index on apply.</summary>
     private void ApplyFavoritesOrder()
     {

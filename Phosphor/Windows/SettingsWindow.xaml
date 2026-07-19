@@ -2126,6 +2126,10 @@
                                               BorderBrush="#333" BorderThickness="1"
                                               ScrollViewer.VerticalScrollBarVisibility="Auto"
                                               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                              AllowDrop="True"
+                                              PreviewMouseLeftButtonDown="FavoritesOrderList_PreviewMouseLeftButtonDown"
+                                              PreviewMouseMove="FavoritesOrderList_PreviewMouseMove"
+                                              Drop="FavoritesOrderList_Drop"
                                               HorizontalContentAlignment="Stretch">
                                         <ListView.ItemContainerStyle>
                                             <Style TargetType="ListViewItem">
@@ -2147,6 +2151,11 @@
                                         <ListView.ItemTemplate>
                                             <DataTemplate>
                                                 <DockPanel>
+                                                    <TextBlock Text="⣿" FontSize="12" Width="16"
+                                                               Foreground="{StaticResource TextDimBrush}"
+                                                               VerticalAlignment="Center" TextAlignment="Center"
+                                                               Cursor="SizeNS" ToolTip="Drag to reorder"
+                                                               DockPanel.Dock="Left"/>
                                                     <Button Content="⤒" FontSize="9" Width="20" Height="20"
                                                             Background="Transparent" Foreground="{StaticResource TextDimBrush}"
                                                             BorderThickness="0" Cursor="Hand" ToolTip="Move to top"
