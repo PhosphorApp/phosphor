@@ -83,9 +83,8 @@ public partial class App : Application
         // Configure Plex + its category tiles from the plug-in instance configs.
         viewModel.ConfigurePlexFromSettings(_settings);
 
-        // Build the experimental plug-in source registry (runs alongside the legacy engines;
-        // only consulted on paths guarded by UsePluginSources). Fire-and-forget: failure is
-        // logged and simply leaves the registry unused.
+        // Build the plug-in source registry — the source path for all discovery/playback.
+        // Fire-and-forget: failure is logged and simply leaves the registry empty.
         _ = viewModel.BuildSourceRegistryAsync(_settings);
 
         MaybeAutoUpdateYtDlp(viewModel);

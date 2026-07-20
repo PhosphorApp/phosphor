@@ -6,9 +6,9 @@ using Phosphor.Plugin.Abstractions;
 namespace Phosphor.Plugins.Loader;
 
 /// <summary>
-/// Discovers third-party source plug-ins by scanning a <c>plugins/</c> folder for assemblies that
-/// export <see cref="IPhosphorSourceProvider"/> implementations. Built-in sources (YouTube, Plex)
-/// are statically referenced and are NOT loaded here — this only adds external providers.
+/// Discovers source plug-ins by scanning a <c>plugins/</c> folder for assemblies that export
+/// <see cref="IPhosphorSourceProvider"/> implementations. Every source ships as a plug-in here
+/// (YouTube, Plex, and third-party sources alike) — there are no statically-referenced built-ins.
 /// </summary>
 /// <remarks>
 /// Each plug-in assembly is loaded into its own <see cref="AssemblyLoadContext"/> so a bad or

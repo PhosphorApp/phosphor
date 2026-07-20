@@ -5,13 +5,14 @@ using Phosphor.Plugins.Host;
 namespace Phosphor.Plugins;
 
 /// <summary>
-/// Runtime registry of configured plug-in source instances. Builds the in-box YouTube and
-/// Plex sources from the app's current settings, initializes each with a per-instance
-/// <see cref="PluginHost"/>, and exposes lookups by instance id and by capability.
+/// Runtime registry of configured plug-in source instances. Builds every configured source
+/// (YouTube, Plex, and any discovered third-party source) from the app's current settings,
+/// initializes each with a per-instance <see cref="PluginHost"/>, and exposes lookups by instance
+/// id and by capability.
 /// </summary>
 /// <remarks>
-/// The registry is the source path for the app: the VM dispatches YouTube and Plex
-/// discovery/playback through the configured instances and their capabilities.
+/// The registry is the source path for the app: the VM dispatches all source discovery/playback
+/// through the configured plug-in instances and their capabilities.
 /// </remarks>
 public sealed class SourceRegistry : IAsyncDisposable
 {

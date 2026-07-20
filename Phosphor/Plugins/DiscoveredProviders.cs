@@ -4,11 +4,10 @@ using Phosphor.Plugins.Loader;
 namespace Phosphor.Plugins;
 
 /// <summary>
-/// Process-wide registry of third-party providers discovered by <see cref="PluginLoader"/> from the
+/// Process-wide registry of source providers discovered by <see cref="PluginLoader"/> from the
 /// <c>plugins/</c> folder. Populated once at startup (<see cref="Initialize"/>) and then consulted
-/// by <see cref="SourceRegistry"/> and <see cref="PluginSettingsFactory"/> alongside the built-in
-/// YouTube/Plex providers. Built-ins take precedence: a discovered provider that reuses a built-in
-/// type id is ignored.
+/// by <see cref="SourceRegistry"/> and <see cref="PluginSettingsFactory"/>. Every source — YouTube
+/// and Plex included — is a discovered plug-in now; there are no statically-referenced built-ins.
 /// </summary>
 public static class DiscoveredProviders
 {
@@ -18,8 +17,8 @@ public static class DiscoveredProviders
 
     /// <summary>
     /// Runs discovery once and caches the compatible providers. <paramref name="reservedTypeIds"/>
-    /// are the built-in type ids that a plug-in may not shadow. Idempotent-safe to call again (it
-    /// re-scans and replaces the cache).
+    /// are type ids a plug-in may not shadow (normally empty now that all sources are discovered).
+    /// Idempotent-safe to call again (it re-scans and replaces the cache).
     /// </summary>
     public static void Initialize(IEnumerable<string> reservedTypeIds, string? baseDirectory = null)
     {
@@ -34,7 +33,7 @@ public static class DiscoveredProviders
             var typeId = plugin.Provider.TypeId;
             if (reserved.Contains(typeId))
             {
-                DebugLog.Log("PluginLoader", $"Ignoring plug-in '{typeId}' — shadows a built-in type id.");
+                DebugLog.Log("PluginLoader", $"Ignoring plug-in '{typeId}' — shadows a reserved type id.");
                 continue;
             }
             if (!_providers.TryAdd(typeId, plugin.Provider))

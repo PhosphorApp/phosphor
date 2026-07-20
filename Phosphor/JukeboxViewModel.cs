@@ -1531,7 +1531,7 @@ public partial class JukeboxViewModel : ObservableObject
     /// <summary>
     /// Runs a free-text search against a specific plug-in source. <paramref name="sourceInstanceId"/>
     /// selects the <c>ITextSearchCapable</c> source: <c>null</c> means YouTube (the default and the
-    /// source-bound path for tiles/AutoDJ). Falls back to YouTube, then the legacy engine, when the
+    /// source-bound path for tiles/AutoDJ). Falls back to YouTube, then an empty result, when the
     /// requested source is unavailable or not searchable.
     /// </summary>
     private IAsyncEnumerable<VideoItem> SearchVideosViaPluginOrLegacy(string query, string? sourceInstanceId)
@@ -1544,7 +1544,7 @@ public partial class JukeboxViewModel : ObservableObject
             return MapPluginSearch(capable, query);
         }
 
-        // Requested source gone/not searchable — fall back to YouTube, then the legacy engine.
+        // Requested source gone/not searchable — fall back to YouTube, else an empty result.
         if (_sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.ITextSearchCapable yt)
         {
             DebugLog.Log("SourceRegistry", "Search fell back to plug-in YouTube source");
@@ -4438,10 +4438,10 @@ public partial class JukeboxViewModel : ObservableObject
     /// <summary>
     /// Fetch metadata (duration, upload date, chapters) for a playing item from <em>its own source</em>
     /// via <c>IPlayableResolver.GetMetadataAsync</c>, and apply it to the item on the UI thread.
-    /// Source-agnostic: Plex returns chapters from its rating key, YouTube returns native yt-dlp
-    /// chapters (or, when it has none, we fall back to parsing the description). Any future source that
-    /// implements the capability participates for free. Falls back to the legacy engine when no source
-    /// resolver is available. Safe to fire-and-forget after playback starts.
+    /// Source-agnostic: Plex returns chapters from its rating key, YouTube returns native chapters
+    /// (or ones parsed from the description inside the plug-in). Any future source that implements the
+    /// capability participates for free. No-ops when the item has no source resolver. Safe to
+    /// fire-and-forget after playback starts.
     /// </summary>
     private async Task FetchChaptersViaSourceAsync(VideoItem item)
     {

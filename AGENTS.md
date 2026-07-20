@@ -8,21 +8,42 @@ This file is authoritative context for AI agents working on this codebase. Read 
 
 ```
 phosphor/
-├── Phosphor/          # Main WPF app (.NET 8)
+├── Phosphor/          # Main WPF app (.NET 8) — the plug-in HOST
 │   ├── App.xaml.cs       # Startup, shared LibVLC init, window orchestration
-│   ├── JukeboxViewModel.cs  # Central ViewModel (~3000 lines); owns all app state
+│   ├── JukeboxViewModel.cs  # Central ViewModel; owns all app state, dispatches to plug-in sources
 │   ├── Models/           # AppSettings, VideoItem, Category, KeyBindings, enums
-│   ├── Caching/          # VideoCache, PrefetchCache, ThumbnailCache, PlaylistCache
+│   ├── Caching/          # VideoCache, PrefetchCache, ThumbnailCache, PlaylistCache (engine-agnostic)
 │   ├── Input/            # DofClient (named-pipe DOF bridge), DirectInputPoller
-│   ├── Plex/             # PlexService (REST client, no SDK)
-│   ├── Services/         # PlayHistory, PlaylistManager, SearchHistory, StreamSelector, DebugLog
+│   ├── Plugins/          # Plug-in host: SourceRegistry, DiscoveredProviders, PluginLoader,
+│   │                     #   PluginHost, KnownSourceTypeIds, PluginSettingsFactory
+│   ├── Video/            # Host-side playback vocabulary (VideoVocabulary.cs) — NOT the engines
+│   ├── Services/         # PlayHistory, PlaylistManager, SearchHistory, DebugLog
 │   ├── Visuals/          # AudioReactiveService, blob patterns, Mandelbrot, projectM interop
 │   └── Windows/          # JukeboxWindow base, PlayfieldWindow, BackglassWindow, DmdWindow,
 │                         #   TopperWindow, SettingsWindow, PresetBrowserWindow
+├── Phosphor.Plugin.Abstractions/   # The plug-in CONTRACT (IPhosphorSource, capabilities,
+│                         #   SourceItem/SourceCategory/ResolvedStream, IPluginHost)
+├── Phosphor.Plugins.YouTube/       # YouTube source plug-in (YoutubeExplode + yt-dlp engines)
+├── Phosphor.Plugins.Plex/          # Plex source plug-in (REST client, no SDK)
+├── Phosphor.Plugins.Jellyfin/ .Emby/ .Vimeo/ .Dailymotion/ .SoundCloud/
+│   .SiriusXM/ .IHeartRadio/ .LocalFolder/   # Additional source plug-ins
 ├── DofBridge/            # .NET Framework 4.8 console app; hosts DirectOutput, receives
 │                         #   commands via named pipe "PhosphorDof"
 └── DofBridge.x86/        # Identical to DofBridge, compiled x86 for 32-bit DOF drivers
 ```
+
+### Plug-in architecture (important)
+Every media source — YouTube and Plex included — is an **external plug-in** discovered at startup
+from the host's `plugins/` folder (see `Phosphor/Plugins/Loader/PluginLoader.cs`). There are no
+statically-referenced "built-in" sources. A plug-in references ONLY
+`Phosphor.Plugin.Abstractions` (compile-only; the host owns the single runtime copy), implements
+capability interfaces (`ITextSearchCapable`, `IBrowsable`, `IPagedBrowsable`, `IPlayableResolver`,
+`IScopedSearchable`, `IGaplessCapable`, `IDownloadable`, `IFavoritable`, …), and self-deploys into
+`Phosphor/bin/.../plugins/<Name>/`. Each plug-in loads in its own `AssemblyLoadContext` (isolated
+private deps). The host reaches shared native tools (`yt-dlp.exe`, `ffmpeg.exe`) via
+`IPluginHost.GetToolPath`; a provider declares `RequiredTools` for load-time validation.
+```
+
 
 ---
 
@@ -40,12 +61,16 @@ phosphor/
 - **Do not split into multiple files** without good reason — the entire file is intentionally cohesive.
 - Genre categories come from `categories.json` via `GenreCategoryStore` (see below).
 
-**Section Map** (~2900 lines — use these landmarks to jump to the right area):
+**Section Map** (landmarks are approximate — line numbers drift; search by symbol/comment):
+
+> Source browse/search/playback are now **source-agnostic**: the VM dispatches through the plug-in
+> `SourceRegistry` and capability interfaces (there are no YouTube- or Plex-specific browse methods
+> in the VM anymore). Look for `EnterBrowseNodeAsync`, `ExpandContainerToLeavesAsync`, `DoSearch`,
+> and the `...ViaPluginOrLegacy` helpers.
 
 | Line | Section |
 |------|---------|
 | ~23 | Genre categories (loaded from `categories.json`) |
-| ~60 | Plex state & service |
 | ~77 | Categories (playlists + genres, rebuilt dynamically) |
 | ~80 | Observable state properties |
 | ~311 | Search history |
@@ -53,10 +78,6 @@ phosphor/
 | ~429 | Quality, audio channel, network buffering settings |
 | ~490 | Duration filter & pagination |
 | ~532 | Category management (add / remove / reorder) |
-| ~616 | Category browsing (YouTube) |
-| ~795 | Search (YouTube) |
-| ~1148 | Plex browsing & hub/playlist navigation |
-| ~1208 | Plex music drill-down (artist → album → track) |
 | ~2005 | "Find More Like This" |
 | ~2020 | Queue persistence (saved to disk) |
 | ~2049 | Queue & Playback (play, stop, skip, previous) |
@@ -85,8 +106,8 @@ phosphor/
 ### Caching
 - `VideoCache` — downloads and stores video files locally; respects size cap (`CacheMaxSizeGb`) and clip length cap.
 - `PrefetchCache` — background pre-fetch of upcoming tracks.
-- `ThumbnailCache` — stores YouTube thumbnails as PNG files.
-- `PlaylistCache` / `ResultCache` — in-memory + disk caches for YouTube playlist and search results with configurable TTL.
+- `ThumbnailCache` — stores item thumbnails as PNG files.
+- `PlaylistCache` / `ResultCache` — in-memory + disk caches for playlist and search results with configurable TTL.
 
 ### Input
 - `DofClient` — manages `DofBridge.exe` as a child process, connects via named pipe `"PhosphorDof"`, sends binary commands `[char type][int32 number][int32 value]`. Uses an unbounded `Channel` for FIFO ordering.
@@ -108,10 +129,12 @@ Each command is written as: `BinaryWriter.Write(char type)` + `Write(int number)
 
 `DofClient.Trigger(type, number, value)` enqueues a command; `TriggerPulse(type, number)` sends value=1 then auto-sends value=0 after a brief delay. All active triggers are auto-cleared on shutdown.
 
-### PlexService
-- Vanilla `HttpClient` REST client against the Plex Media Server API — no Plex SDK.
-- Requires `serverUrl` + `token` (Plex auth token).
-- Supports: library browsing, hub categories, artist/album drill-down, playlist enumeration, stream URL construction.
+### Plex source (`Phosphor.Plugins.Plex`)
+- Vanilla `HttpClient` REST client (`PlexService.cs`) against the Plex Media Server API — no Plex SDK.
+- Requires `serverUrl` + `token` (Plex auth token); multi-instance (two servers) supported via the provider.
+- Supports: library browsing, hub categories, artist/album drill-down, playlist enumeration, stream URL
+  construction, in-library scoped search, and gapless (stable pre-built audio URL). Stereo/2-channel
+  downmix is enforced for pinball cabs (surround channels drive exciters, not music).
 
 ---
 
@@ -137,7 +160,11 @@ Each command is written as: `BinaryWriter.Write(char type)` + `Write(int number)
 - **Video**: LibVLCSharp
 - **Audio capture**: NAudio (WASAPI loopback)
 - **Visuals**: Custom WPF `DrawingContext`, SharpDX/Direct2D (Mandelbrot GPU), projectM 4 (P/Invoke)
-- **YouTube**: pluggable engines behind seams — **YoutubeExplode** (in-process, default) and **yt-dlp** (bundled `dependencies/yt-dlp.exe`, self-updating). Separate video (`IVideoEngine`, `Phosphor/Video/`) and search (`ISearchEngine`, `Phosphor/Search/`) engines, each independently selectable in Settings. Factories fall back to YoutubeExplode when a selected engine's `IsAvailable` is false (e.g. yt-dlp exe missing).
+- **Sources**: each media source is an external plug-in (see Plug-in architecture above). **YouTube**
+  (`Phosphor.Plugins.YouTube`) has pluggable engines — **YoutubeExplode** (in-process, default) and
+  **yt-dlp** (bundled `dependencies/yt-dlp.exe`, self-updating), selectable in the plug-in's settings;
+  it ships YoutubeExplode as a private dependency and reaches yt-dlp/ffmpeg via `IPluginHost.GetToolPath`.
+  **Plex** (`Phosphor.Plugins.Plex`) is a REST client (no SDK).
 - **DOF**: DirectOutput Framework (via DofBridge process)
 - **Input**: DirectInput (via SharpDX or interop)
 - **Serialization**: System.Text.Json
@@ -166,14 +193,14 @@ Each command is written as: `BinaryWriter.Write(char type)` + `Write(int number)
 | Video windows | `Windows/PlayfieldWindow.xaml.cs`, `Windows/BackglassWindow.xaml.cs` |
 | Screensaver visuals | `Visuals/Patterns/*.cs`, `Visuals/AudioReactiveService.cs` |
 | DOF integration | `Input/DofClient.cs`, `DofBridge/Program.cs` |
-| Plex | `Plex/PlexService.cs` |
-| Caching | `Caching/*.cs` |
+| Plug-in host (loader/registry/discovery) | `Plugins/Loader/PluginLoader.cs`, `Plugins/SourceRegistry.cs`, `Plugins/DiscoveredProviders.cs`, `Plugins/Host/PluginHost.cs` |
+| Plug-in contract | `Phosphor.Plugin.Abstractions/*` |
+| YouTube source (engines + YoutubeExplode/yt-dlp) | `Phosphor.Plugins.YouTube/*` |
+| Plex source (REST client) | `Phosphor.Plugins.Plex/*` |
+| Caching (engine-agnostic; driven via `IDownloadable`) | `Caching/*.cs` |
+| Host playback vocabulary | `Video/VideoVocabulary.cs` |
 | Data models | `Models/VideoItem.cs`, `Models/Category.cs`, `Models/KeyBindings.cs` |
 | Genre categories | `Models/GenreCategoryStore.cs`, `categories.json` |
-| Video engines (resolve/download/metadata) | `Video/IVideoEngine.cs`, `Video/YoutubeExplodeVideoEngine.cs`, `Video/YtDlpVideoEngine.cs`, `Video/VideoEngineFactory.cs` |
-| Search engines (discovery/metadata) | `Search/ISearchEngine.cs`, `Search/YoutubeExplodeSearchEngine.cs`, `Search/YtDlpSearchEngine.cs`, `Search/SearchEngineFactory.cs` |
-| yt-dlp self-update | `Video/YtDlpUpdater.cs` |
-| Stream selection (YoutubeExplode video engine internal) | `Services/StreamSelector.cs` |
 
 ---
 
@@ -184,7 +211,8 @@ Each command is written as: `BinaryWriter.Write(char type)` + `Write(int number)
 - **Load**: reads `categories.json` from the app directory into memory (cached after first read).
 - **Save / SaveInBackground**: writes the in-memory list back to `categories.json`.
 - On first run, the app ships a default `categories.json`; there is no separate seed file.
-- `SyncPlexLibraries()` reconciles the category list with currently configured Plex libraries (adds new, removes stale).
+- Plug-in browse tiles (Plex libraries, etc.) are reconciled into the category list via
+  `GenreCategoryStore.SyncSourceTiles` (adds new, prunes stale, preserves user customization).
 - Unlike `AppSettings`, categories **are saved immediately** when the user edits them (not deferred to exit).
 
 ---
@@ -196,4 +224,9 @@ Each command is written as: `BinaryWriter.Write(char type)` + `Write(int number)
 - **Add a blob pattern**: Implement `IBlobPattern`, add a value to the `BlobPattern` enum, register in the pattern factory. Decide whether to exclude from random rotation.
 - **Add a new window**: Inherit `JukeboxWindow`, create a proxy class if cross-thread access is needed, register and create the window in `App.xaml.cs`.
 - **Add a DOF trigger**: Call `DofClient.Trigger('E', number, value)` or `TriggerPulse('E', number)`. Pick an unused element number.
-- **Add a Plex feature**: Work in `Plex/PlexService.cs` for the REST call, wire UI state in `JukeboxViewModel.cs` (Plex section ~L1148).
+- **Add a source**: Create a `Phosphor.Plugins.<Name>` project referencing only
+  `Phosphor.Plugin.Abstractions` (compile-only), implement `IPhosphorSourceProvider` (parameterless
+  ctor!) + the capability interfaces the source supports, and add a self-deploy target (clone an
+  existing plug-in's csproj, e.g. `Phosphor.Plugins.Plex`). No host changes needed — it's discovered.
+- **Add a Plex feature**: Work in `Phosphor.Plugins.Plex/PlexService.cs` (REST call) and map it to the
+  contract in `PlexSource.cs`/`PlexMappings.cs`. The host stays source-agnostic.
