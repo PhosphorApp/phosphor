@@ -883,9 +883,11 @@ public enum FavoritesSort
 }
 
 /// <summary>
-/// Maps a Plex library to a category tile.
+/// Maps a media-server library (Plex, Jellyfin, Emby, …) to a category tile. Source-agnostic:
+/// used by the shared inline library-selection editor for any <c>IConfigurable</c> source that
+/// exposes a "browse libraries" action.
 /// </summary>
-public class PlexLibraryMapping
+public class SourceLibraryMapping
 {
     public string Key { get; set; } = "";
     public string Title { get; set; } = "";
