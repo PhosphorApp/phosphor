@@ -292,6 +292,9 @@ public interface IScopedSearchable
     /// <paramref name="query"/>. The source owns how it interprets the scope + query (e.g. a Plex
     /// music library fans out across artist/album/track and merges the matches). Must not throw for
     /// expected failures — return an empty <see cref="BrowseResult"/> instead.
+    /// The scope MUST be resolvable from <see cref="SourceCategory.CategoryId"/> alone (durable),
+    /// since the host may replay a persisted scope (e.g. a saved live playlist) whose
+    /// <see cref="SourceCategory.SourceState"/> is <c>null</c>.
     /// </summary>
     Task<BrowseResult> SearchInCategoryAsync(SourceCategory node, string query, CancellationToken ct = default);
 }

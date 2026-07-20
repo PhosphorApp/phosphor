@@ -1,6 +1,4 @@
 using Phosphor.Plugin.Abstractions;
-using Phosphor.Plugins.Plex;
-using Phosphor.Plugins.YouTube;
 
 namespace Phosphor.Plugins;
 
@@ -26,16 +24,16 @@ public static class PluginSettingsFactory
             // ── YouTube (single instance, schema defaults) ──
             new()
             {
-                TypeId = YouTubeSourceProvider.YouTubeTypeId,
+                TypeId = KnownSourceTypeIds.YouTube,
                 InstanceId = "youtube",
                 DisplayName = "YouTube",
                 Enabled = true,
                 Settings = new Dictionary<string, string?>
                 {
-                    [YouTubeSourceProvider.KeySearchEngine] = SearchEngineKind.YoutubeExplode.ToString(),
-                    [YouTubeSourceProvider.KeyVideoEngine] = VideoEngineKind.YoutubeExplode.ToString(),
-                    [YouTubeSourceProvider.KeyVideoQuality] = VideoQualityPreference.High.ToString(),
-                    [YouTubeSourceProvider.KeyPreferStereo] = bool.TrueString,
+                    [YouTubeSettingKeys.SearchEngine] = SearchEngineKind.YoutubeExplode.ToString(),
+                    [YouTubeSettingKeys.VideoEngine] = VideoEngineKind.YoutubeExplode.ToString(),
+                    [YouTubeSettingKeys.VideoQuality] = VideoQualityPreference.High.ToString(),
+                    [YouTubeSettingKeys.PreferStereo] = bool.TrueString,
                 },
             },
         };
@@ -49,18 +47,18 @@ public static class PluginSettingsFactory
     public static (SearchEngineKind Search, VideoEngineKind Video, VideoQualityPreference Quality, bool PreferStereo)
         ReadYouTubePlayback(IEnumerable<PluginInstanceConfig> instances)
     {
-        var yt = instances.FirstOrDefault(c => c.TypeId == YouTubeSourceProvider.YouTubeTypeId);
+        var yt = instances.FirstOrDefault(c => c.TypeId == KnownSourceTypeIds.YouTube);
         var s = yt?.Settings;
 
         string? Get(string key) => s != null && s.TryGetValue(key, out var v) ? v : null;
 
-        var search = Enum.TryParse<SearchEngineKind>(Get(YouTubeSourceProvider.KeySearchEngine), out var se)
+        var search = Enum.TryParse<SearchEngineKind>(Get(YouTubeSettingKeys.SearchEngine), out var se)
             ? se : SearchEngineKind.YoutubeExplode;
-        var video = Enum.TryParse<VideoEngineKind>(Get(YouTubeSourceProvider.KeyVideoEngine), out var ve)
+        var video = Enum.TryParse<VideoEngineKind>(Get(YouTubeSettingKeys.VideoEngine), out var ve)
             ? ve : VideoEngineKind.YoutubeExplode;
-        var quality = Enum.TryParse<VideoQualityPreference>(Get(YouTubeSourceProvider.KeyVideoQuality), out var vq)
+        var quality = Enum.TryParse<VideoQualityPreference>(Get(YouTubeSettingKeys.VideoQuality), out var vq)
             ? vq : VideoQualityPreference.High;
-        var stereo = !bool.TryParse(Get(YouTubeSourceProvider.KeyPreferStereo), out var st) || st;
+        var stereo = !bool.TryParse(Get(YouTubeSettingKeys.PreferStereo), out var st) || st;
 
         return (search, video, quality, stereo);
     }
@@ -99,22 +97,14 @@ public static class PluginSettingsFactory
     /// <summary>Provider type ids that can be added by the user (i.e. support multiple instances).</summary>
     public static IReadOnlyList<(string TypeId, string DisplayName)> AddableProviders()
     {
-        var list = new List<(string TypeId, string DisplayName)>
-        {
-            (PlexSourceProvider.PlexTypeId, CreateProvider(PlexSourceProvider.PlexTypeId)!.DisplayName),
-        };
-        // Any discovered third-party provider can be added by the user (single- or multi-instance).
+        var list = new List<(string TypeId, string DisplayName)>();
+        // Every source (Plex and third parties) is discovered from the plugins/ folder.
         foreach (var p in DiscoveredProviders.All)
             list.Add((p.TypeId, p.DisplayName));
         return list;
     }
 
-    private static IPhosphorSourceProvider? CreateProvider(string typeId) => typeId switch
-    {
-        YouTubeSourceProvider.YouTubeTypeId => new YouTubeSourceProvider(),
-        PlexSourceProvider.PlexTypeId => new PlexSourceProvider(),
-        _ => DiscoveredProviders.Get(typeId),
-    };
+    private static IPhosphorSourceProvider? CreateProvider(string typeId) => DiscoveredProviders.Get(typeId);
 
     /// <summary>
     /// Builds a transient (non-registered) source instance from a config, for the settings UI to
@@ -123,12 +113,7 @@ public static class PluginSettingsFactory
     /// </summary>
     public static IPhosphorSource? BuildTransientSource(PluginInstanceConfig cfg, System.Net.Http.HttpClient http)
     {
-        var provider = cfg.TypeId switch
-        {
-            YouTubeSourceProvider.YouTubeTypeId => (IPhosphorSourceProvider)new YouTubeSourceProvider(http),
-            PlexSourceProvider.PlexTypeId => new PlexSourceProvider(),
-            _ => DiscoveredProviders.Get(cfg.TypeId),
-        };
+        var provider = DiscoveredProviders.Get(cfg.TypeId);
         return provider?.CreateInstance(cfg.InstanceId, cfg.Settings);
     }
 

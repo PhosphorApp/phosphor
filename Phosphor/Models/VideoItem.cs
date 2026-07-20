@@ -46,32 +46,7 @@ public class VideoItem : ObservableObject
     public bool IsYouTube => !string.IsNullOrEmpty(VideoId) && !VideoId.Contains(':');
 
     /// <summary>
-    /// True for Plex video items (non-music) which typically have portrait/poster thumbnails.
-    /// </summary>
-    public bool IsPlexVideo => IsPlex && PlexItemType == PlexItemType.None && !IsAudioOnly;
-
-    /// <summary>
-    /// For Plex music drill-down: indicates whether this item is an artist, album, or track.
-    /// </summary>
-    public PlexItemType PlexItemType { get; set; }
-
-    /// <summary>
-    /// Plex rating key used for drill-down navigation (e.g. artist → albums, album → tracks).
-    /// </summary>
-    public string? PlexRatingKey { get; set; }
-
-    /// <summary>
-    /// For Plex hub items: the hub key used to fetch hub contents.
-    /// </summary>
-    public string? PlexHubKey { get; set; }
-
-    /// <summary>
-    /// For Plex hub items: the hub type (artist, album, etc.).
-    /// </summary>
-    public string? PlexHubType { get; set; }
-
-    /// <summary>
-    /// When true, this item contains only audio (e.g. Plex music track) and should not attempt video rendering.
+    /// When true, this item contains only audio (e.g. a music track) and should not attempt video rendering.
     /// </summary>
     public bool IsAudioOnly { get; set; }
 
@@ -176,26 +151,14 @@ public class VideoItem : ObservableObject
     public string? ContainerIcon { get; set; }
 
     /// <summary>
-    /// For Plex items, indicates what audio stream selection was made (native stereo, transcode, or other).
-    /// </summary>
-    public PlexAudioStream PlexAudioStream { get; set; }
-
-    /// <summary>
     /// A short, human-readable audio-stream tag for the status bar (e.g. " (Stereo)", " (Surround)"),
-    /// or "" when there's nothing noteworthy. Derived from the item's own data so the ViewModel's
-    /// play path stays source-agnostic — a source populates <see cref="PlexAudioStream"/> (or, in
-    /// future, another audio descriptor) and the tag follows.
+    /// or "" when there's nothing noteworthy. Source-populated so the play path stays source-agnostic:
+    /// a source (e.g. Plex) sets it to reflect the audio selection it made.
     /// </summary>
-    public string AudioTag => PlexAudioStream switch
-    {
-        PlexAudioStream.Stereo => " (Stereo)",
-        PlexAudioStream.StereoTranscode => " (Stereo Transcode)",
-        PlexAudioStream.Surround => " (Surround)",
-        _ => ""
-    };
+    public string AudioTag { get; set; } = "";
 
     /// <summary>
-    /// Chapter markers for Plex video items, if available.
+    /// Chapter markers for video items, if available.
     /// </summary>
     public List<ChapterMarker>? Chapters { get; set; }
 

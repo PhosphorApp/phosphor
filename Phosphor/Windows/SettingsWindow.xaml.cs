@@ -4312,8 +4312,8 @@ public partial class SettingsWindow : JukeboxWindow
     // Inline Plex-library editor state, keyed by instance id: the added libraries (rendered as a
     // list with per-library Hubs/Playlists) and a lazily-fetched cache of all server libraries
     // (for the "add" dropdown). Serialized back into the instance's "libraries" setting on change.
-    private readonly Dictionary<string, List<PlexLibraryMapping>> _pluginLibraryState = new();
-    private readonly Dictionary<string, List<PlexLibraryMapping>> _pluginLibraryAvailable = new();
+    private readonly Dictionary<string, List<SourceLibraryMapping>> _pluginLibraryState = new();
+    private readonly Dictionary<string, List<SourceLibraryMapping>> _pluginLibraryAvailable = new();
 
     // Standardized editor sizing so text/combo/password fields line up.
     private const double EditorHeight = 28;
@@ -4787,9 +4787,9 @@ public partial class SettingsWindow : JukeboxWindow
                 {
                     // These "browse libraries" actions are surfaced by the inline library editor
                     // (BuildInlineLibraryEditor on the "libraries" field), so skip them here to avoid
-                    // a duplicate popup button. Jellyfin and Emby are out-of-tree plug-ins (no type
+                    // a duplicate popup button. Plex/Jellyfin/Emby are out-of-tree plug-ins (no type
                     // ref), so match their action ids by string.
-                    if (action.Id == Phosphor.Plugins.Plex.PlexSourceProvider.ActionBrowseLibraries ||
+                    if (action.Id == "browseLibraries" ||
                         action.Id == "jellyfinBrowseLibraries" ||
                         action.Id == "embyBrowseLibraries")
                         continue;
@@ -4897,17 +4897,17 @@ public partial class SettingsWindow : JukeboxWindow
     /// Parses the added libraries for an instance from its "libraries" setting into the in-memory
     /// editor state (once per instance per tab session).
     /// </summary>
-    private List<PlexLibraryMapping> GetInstanceLibraries(Phosphor.Plugins.PluginInstanceConfig cfg)
+    private List<SourceLibraryMapping> GetInstanceLibraries(Phosphor.Plugins.PluginInstanceConfig cfg)
     {
         if (_pluginLibraryState.TryGetValue(cfg.InstanceId, out var libs))
             return libs;
 
-        libs = new List<PlexLibraryMapping>();
+        libs = new List<SourceLibraryMapping>();
         if (cfg.Settings.TryGetValue("libraries", out var json) && !string.IsNullOrWhiteSpace(json))
         {
             try
             {
-                var parsed = System.Text.Json.JsonSerializer.Deserialize<List<PlexLibraryMapping>>(json);
+                var parsed = System.Text.Json.JsonSerializer.Deserialize<List<SourceLibraryMapping>>(json);
                 if (parsed != null) libs = parsed;
             }
             catch { /* ignore malformed */ }
@@ -5135,12 +5135,12 @@ public partial class SettingsWindow : JukeboxWindow
 
         addBtn.Click += (_, _) =>
         {
-            if (combo.SelectedItem is System.Windows.Controls.ComboBoxItem item && item.Tag is PlexLibraryMapping lib
+            if (combo.SelectedItem is System.Windows.Controls.ComboBoxItem item && item.Tag is SourceLibraryMapping lib
                 && !added.Any(l => l.Key == lib.Key))
             {
                 // Mutate + save the library list first, THEN harvest, so the addition reaches
                 // _settings.PluginInstances (Populate rebuilds the working configs from there).
-                added.Add(new PlexLibraryMapping { Key = lib.Key, Title = lib.Title, Type = lib.Type });
+                added.Add(new SourceLibraryMapping { Key = lib.Key, Title = lib.Title, Type = lib.Type });
                 SaveInstanceLibraries(instId);
                 HarvestPluginSourcesTab();
                 PopulatePluginSourcesTab();
@@ -5181,7 +5181,7 @@ public partial class SettingsWindow : JukeboxWindow
 
             // Hubs/Playlists are Plex-only concepts; other IConfigurable sources (e.g. Jellyfin) just
             // pick libraries, so only render the extra flags for Plex instances.
-            if (cfg.TypeId == Phosphor.Plugins.Plex.PlexSourceProvider.PlexTypeId)
+            if (cfg.TypeId == Phosphor.Plugins.KnownSourceTypeIds.Plex)
             {
                 var playlistsCb = new System.Windows.Controls.CheckBox
                 {
@@ -5228,14 +5228,14 @@ public partial class SettingsWindow : JukeboxWindow
     /// Lazily fetches the full library list from the server for the "add" dropdown, using the
     /// instance's current (harvested) URL/token. Cached per instance for the tab session.
     /// </summary>
-    private async Task<List<PlexLibraryMapping>> FetchAvailableLibrariesAsync(string instanceId)
+    private async Task<List<SourceLibraryMapping>> FetchAvailableLibrariesAsync(string instanceId)
     {
         if (_pluginLibraryAvailable.TryGetValue(instanceId, out var cached))
             return cached;
 
         HarvestPluginSourcesTab();
         var cfg = _settings.PluginInstances.FirstOrDefault(c => c.InstanceId == instanceId);
-        var libs = new List<PlexLibraryMapping>();
+        var libs = new List<SourceLibraryMapping>();
         var fetchFailed = false;
         if (cfg != null)
         {
@@ -5264,7 +5264,7 @@ public partial class SettingsWindow : JukeboxWindow
                             title = label[..lp];
                             type = label[(lp + 2)..^1];
                         }
-                        libs.Add(new PlexLibraryMapping { Key = o.Id, Title = title, Type = type });
+                        libs.Add(new SourceLibraryMapping { Key = o.Id, Title = title, Type = type });
                     }
                 }
                 catch { fetchFailed = true; /* don't cache a failed fetch — allow retry */ }
@@ -5533,7 +5533,7 @@ public partial class SettingsWindow : JukeboxWindow
             var vm = Owner?.DataContext as JukeboxViewModel;
             var status = vm != null
                 ? await vm.UpdatePluginEngineOrLegacyAsync()
-                : (await new YtDlpUpdater().UpdateAsync()).ToDisplayString();
+                : "Update not supported by the active engine";
             result.Text = status;
             result.Foreground = System.Windows.Media.Brushes.Gray;
             _settings.YtDlpLastUpdateCheck = DateTime.UtcNow;

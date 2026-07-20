@@ -40,6 +40,16 @@ public interface IPhosphorSourceProvider
     bool SupportsMultipleInstances { get; }
 
     /// <summary>
+    /// Logical names of host-bundled native tools this source needs at runtime (e.g.
+    /// <c>"yt-dlp"</c>, <c>"ffmpeg"</c>), resolved by the host via
+    /// <see cref="IPluginHost.GetToolPath"/>. Declaration is for load-time validation and
+    /// visibility only: the host warns when a declared tool is missing (a clear startup
+    /// diagnostic instead of a play-time failure) and can see which sources share a tool.
+    /// The host does NOT acquire or provision tools from this list. Defaults to none.
+    /// </summary>
+    IReadOnlyList<string> RequiredTools => [];
+
+    /// <summary>
     /// Declarative settings schema the host renders as a standard form (Tier 1 config).
     /// Interactive config (Tier 2, e.g. "browse libraries") is exposed per-instance via
     /// <see cref="IConfigurable"/>.

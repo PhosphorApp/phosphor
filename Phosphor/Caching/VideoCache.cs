@@ -23,15 +23,10 @@ public class VideoCache
     private int _maxClipLengthMinutes;
 
     /// <summary>
-    /// The video engine used to download streams. Assigned by the ViewModel; defaults
-    /// to YoutubeExplode so the cache is usable even if wiring is skipped.
-    /// </summary>
-    public IVideoEngine VideoEngine { get; set; } = new YoutubeExplodeVideoEngine();
-
-    /// <summary>
-    /// Optional download override. When set (by the ViewModel when the plug-in source path is
-    /// enabled), it is used instead of <see cref="VideoEngine"/> to fetch raw streams. Null
-    /// means use the engine directly — the default, byte-identical legacy behavior.
+    /// Download provider for raw streams, supplied by the ViewModel from the active plug-in
+    /// source (YouTube's <c>IDownloadable</c>). The cache owns mux/index/eviction; the plug-in
+    /// owns the raw fetch. When null (no downloadable source configured), the cache cannot
+    /// populate and download requests no-op.
     /// </summary>
     public Func<string, VideoQualityPreference, bool, string, CancellationToken, Task<VideoDownload?>>? DownloadOverride { get; set; }
 
@@ -126,9 +121,9 @@ public class VideoCache
 
         try
         {
-            var download = DownloadOverride != null
-                ? await DownloadOverride(videoId, quality, preferStereo, CacheDir, ct)
-                : await VideoEngine.DownloadStreamsAsync(videoId, quality, preferStereo, CacheDir, ct);
+            // No downloadable source configured — the cache cannot populate.
+            if (DownloadOverride == null) return;
+            var download = await DownloadOverride(videoId, quality, preferStereo, CacheDir, ct);
             if (download == null) return;
 
             var videoPath = download.VideoFilePath;
