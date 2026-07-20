@@ -263,6 +263,35 @@ Reference counts to moving symbols outside `Search/`, `Video/`, `Plugins/YouTube
 - [ ] Build + manual smoke test: multi-server browse, search, playback, chapters, gapless,
 	  connection test.
 
+### Phase 6 cutover notes (DONE — code complete, pending owner runtime smoke)
+- Reused the **Jellyfin/Emby pattern**: the artist→album→track hierarchy flows through `IBrowsable`
+  + opaque `SourceState`, and the host's generic `ExpandNodeAsync`/`ExpandContainerToLeavesAsync`
+  handles "queue all tracks of a container" — Plex's old `PlexItemType` branching + `GetAllTracks`
+  were removed (they were superseded/dead once browse items arrive as `IsGenericContainer`).
+- **Stereo/surround (cab-safe)**: audited all three servers — Plex/Emby/Jellyfin all force
+  2-channel (`maxAudioChannels=2` / stereo stream select). Flipped Plex's `stereoAudio` default to
+  `true` (was `false`) with a safe unset fallback, matching Emby/Jellyfin. Stereo negotiation is
+  self-contained in `PlexService` and survives the move. Added optional `ResolvedStream.AudioTag`
+  so the "(Stereo)/(Surround)" status tag is surfaced generically (replaced host `PlexAudioStream`).
+- **Gapless (vetted)**: already contract-clean via `IGaplessCapable`; the cross-boundary fix passes
+  the pre-built audio URL as a `string` through `SourceState` (the host no longer round-trips a
+  plug-in type). `PrimeNext` on the idle WASAPI decoder is untouched.
+- **Favorites**: converted Plex's direct `RememberFavorite(VideoItem)` cast to the generic
+  `IFavoriteCapture` (host passes `ContainerState` = `GenericSourceState` for leaves+containers).
+- **Host VideoItem purge**: removed `PlexItemType`/`PlexRatingKey`/`PlexHubKey`/`PlexHubType`/
+  `PlexAudioStream`/`IsPlexVideo`; `AudioTag` is now a generic settable string. Kept `IsPlex`
+  (cheap `plex:` string heuristic, no type coupling). `ResultCache` persists `AudioTag` instead of
+  the Plex fields.
+- **New project** `Phosphor.Plugins.Plex` (Vimeo/Jellyfin shape, parameterless provider, no NuGet
+  deps, self-deploys to `plugins\Plex`) with plug-in-internal `VideoItem`/`ChapterMarker`/
+  `PlexLibraryMapping`/`DebugLog` support types.
+- Host re-wired: `SourceRegistry`/`PluginSettingsFactory` route ALL providers via
+  `DiscoveredProviders`; no reserved type ids remain (YouTube + Plex are discovered like the rest).
+- Commits: `575c73e` (stereo default), `ac0170e` (Plex extraction). Full solution builds clean.
+- **Owner runtime smoke (pending)**: multi-server browse, search, artist/album drill+queue-all,
+  playback, chapters, **gapless transition between two Plex audio tracks**, **stereo enforcement on
+  a surround source**, connection test, favorites (leaf + album).
+
 ## Phase 7 — Cleanup
 
 - [ ] Remove now-dead host files/usings; update `AGENTS.md` / architecture docs to note
