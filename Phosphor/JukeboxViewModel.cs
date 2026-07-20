@@ -4607,12 +4607,9 @@ public partial class JukeboxViewModel : ObservableObject
             }
             if (meta == null) return;
 
-            // Native chapters take precedence; when the source reported none, fall back to parsing a
-            // description (YouTube-style). Non-YouTube sources simply have no description → no-op.
-            var chapters = meta.Chapters.Count > 0
-                ? meta.Chapters
-                : ParseYouTubeChapters(meta.Description ?? "", meta.Duration);
-            var chapterSource = meta.Chapters.Count > 0 ? "native" : "description";
+            // The source supplies ready-to-use chapters (native, or parsed from its own metadata).
+            var chapters = meta.Chapters;
+            var chapterSource = meta.Chapters.Count > 0 ? "source" : "none";
 
             // Apply item/UI mutations on the UI thread — GetMetadataAsync may resume on a thread-pool
             // thread (yt-dlp external process), and raising PropertyChanged for bound VideoItem
@@ -4651,48 +4648,6 @@ public partial class JukeboxViewModel : ObservableObject
         {
             DebugLog.LogException($"Fetch chapters ({item.VideoId})", ex);
         }
-    }
-
-    /// <summary>
-    /// Parses chapter markers from a YouTube video description.
-    /// Looks for lines starting with timestamps like "0:00", "1:23:45", etc.
-    /// </summary>
-    private static List<ChapterMarker> ParseYouTubeChapters(string description, TimeSpan? totalDuration)
-    {
-        var chapters = new List<ChapterMarker>();
-        if (string.IsNullOrWhiteSpace(description)) return chapters;
-
-        // Match lines like "0:00 Intro" or "1:23:45 - Song Name" or "(0:00) Title"
-        var regex = new System.Text.RegularExpressions.Regex(
-            @"(?:^|\()\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*(?:\)?\s*[-–—]?\s*)(.+)",
-            System.Text.RegularExpressions.RegexOptions.Multiline);
-
-        foreach (System.Text.RegularExpressions.Match match in regex.Matches(description))
-        {
-            var timeParts = match.Groups[1].Value.Split(':');
-            TimeSpan ts;
-            if (timeParts.Length == 3)
-                ts = new TimeSpan(int.Parse(timeParts[0]), int.Parse(timeParts[1]), int.Parse(timeParts[2]));
-            else
-                ts = new TimeSpan(0, int.Parse(timeParts[0]), int.Parse(timeParts[1]));
-
-            var title = match.Groups[2].Value.Trim();
-
-            chapters.Add(new ChapterMarker
-            {
-                Title = title,
-                StartTime = ts,
-                EndTime = TimeSpan.Zero // filled below
-            });
-        }
-
-        // Fill EndTime from next chapter's StartTime
-        for (int i = 0; i < chapters.Count - 1; i++)
-            chapters[i].EndTime = chapters[i + 1].StartTime;
-        if (chapters.Count > 0 && totalDuration.HasValue)
-            chapters[^1].EndTime = totalDuration.Value;
-
-        return chapters;
     }
 
     /// <summary>
