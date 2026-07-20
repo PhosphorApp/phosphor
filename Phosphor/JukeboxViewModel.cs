@@ -2356,34 +2356,19 @@ public partial class JukeboxViewModel : ObservableObject
         StatusText = "Searching...";
         SearchResults.Clear();
 
-        // If currently browsing a generic plug-in node whose source supports in-view search,
-        // push a scoped-search frame onto the browse stack (so drilling into a result and pressing
-        // Back returns to the results). EnterBrowseNodeAsync runs the search for a frame that carries
-        // a SearchQuery. The frame keeps the current node's identity but overrides its title/query.
-        if (IsGenericBrowsing && _browseStack.Count > 0
-            && _sourceRegistry?.ByInstance(_browseStack[^1].SourceInstanceId)
-               is Phosphor.Plugin.Abstractions.IScopedSearchable)
+        // A search from the box is ALWAYS a fresh, source-wide root search — never scoped to the
+        // node you happen to be viewing (which was confusing: e.g. searching "pink floyd" while
+        // drilled into the "Rush" artist found nothing). Reset any in-progress generic browse so the
+        // breadcrumb collapses to just the search and results come from the whole source.
+        if (IsGenericBrowsing)
         {
-            var current = _browseStack[^1];
-            var searchFrame = new BrowseNode(
-                $"Search: {query}",
-                current.SourceInstanceId,
-                current.CategoryId,
-                current.SourceState,
-                current.Icon,
-                query);
-            await EnterBrowseNodeAsync(searchFrame, pushOntoStack: true);
-            return;
-        }
-
-        // Browsing a generic node whose source is searchable source-wide (ITextSearchCapable but not
-        // IScopedSearchable, e.g. local folders): route the search to THAT source, not YouTube, and
-        // keep results in the flat list. The source resolves its own StreamUrl (MapPluginSearch).
-        if (IsGenericBrowsing && _browseStack.Count > 0
-            && _sourceRegistry?.ByInstance(_browseStack[^1].SourceInstanceId)
-               is Phosphor.Plugin.Abstractions.ITextSearchCapable)
-        {
-            sourceInstanceId = _browseStack[^1].SourceInstanceId;
+            IsGenericBrowsing = false;
+            _browseStack.Clear();
+            _genericPaged = null;
+            _genericPagedCategory = null;
+            _genericPagedResolver = null;
+            _genericPagedOffset = 0;
+            UpdateBrowseBreadcrumb();
         }
 
         if (_searchEnumerator != null)
