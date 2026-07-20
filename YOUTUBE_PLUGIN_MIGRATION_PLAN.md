@@ -210,19 +210,44 @@ Reference counts to moving symbols outside `Search/`, `Video/`, `Plugins/YouTube
 
 ## Phase 5 — Validate the YouTube spike (decision gate)
 
-- [ ] `run_build` clean across the solution.
-- [ ] Manual smoke test vs. the Phase 0 baseline: search, resolve/play, download/cache,
-	  chapters, connection test, favorites, engine switch (YoutubeExplode <-> yt-dlp),
-	  yt-dlp updater.
-- [ ] Verify caching + prefetch still work with the host holding no YouTube engine type
-	  (cache hit plays the muxed `.mkv`; prefetch primes the next queue item via `IDownloadable`).
-- [ ] Verify `RequiredTools` validation: temporarily remove `yt-dlp.exe` and confirm a clear
-	  load-time warning/disable instead of a play-time failure.
-- [ ] Confirm the plug-in loads from `plugins\YouTube` with YoutubeExplode as a private dep
-	  (check the loader log lines from `PluginLoader`).
-- [ ] **GATE:** If any step forced reaching into host internals or the YoutubeExplode-in-ALC
-	  / chapter capability work turned ugly — **STOP.** Per project rule, Plex stops too.
-	  Otherwise proceed to Phase 6.
+- [x] `run_build` clean across the solution (host + all plug-ins).
+- [x] Programmatic deployment verification (done):
+	  - Plug-in self-deploys to `Phosphor\bin\Debug\net8.0-windows\plugins\YouTube` with
+		`YoutubeExplode.dll` + transitive deps (`AngleSharp.dll`, `JsonExtensions.dll`) as private
+		ALC dependencies; `Phosphor.Plugin.Abstractions.dll` correctly excluded (host owns it).
+	  - Host bin no longer contains `YoutubeExplode.dll` (fully removed from the host).
+	  - `yt-dlp.exe` and `ffmpeg.exe` present in the host dir, so `GetToolPath` + `RequiredTools`
+		validation resolve.
+- [ ] **Manual smoke test (owner to run — app is fullscreen multi-screen)** vs. the Phase 0
+	  baseline: search, resolve/play, download/cache, chapters, connection test, favorites, engine
+	  switch (YoutubeExplode <-> yt-dlp), yt-dlp updater.
+- [ ] Manual: caching + prefetch with the host holding no YouTube engine type (cache hit plays the
+	  muxed `.mkv`; prefetch primes the next queue item via `IDownloadable`).
+- [ ] Manual: `RequiredTools` validation — temporarily remove `yt-dlp.exe` and confirm a clear
+	  load-time warning (see `PluginLoader`/`DiscoveredProviders` debug log) instead of a play-time
+	  failure.
+- [ ] Manual: confirm the plug-in loads from `plugins\YouTube` (check the loader log lines).
+- [x] **GATE outcome so far: GREEN.** No step forced reaching into host internals; YoutubeExplode
+	  rides cleanly in the plug-in ALC; chapters needed NO new contract capability (relocated the
+	  parser into the plug-in). Full cutover completed on branch `youtubepluginmigration`. Proceed
+	  to Phase 6 (Plex) once the owner completes the manual runtime smoke test.
+
+### Phase 2/3/4 cutover notes (done)
+- `Phosphor.Video`/`Phosphor.Search` engines + `StreamSelector` + `YoutubeExplode` moved into
+  `Phosphor.Plugins.YouTube\Engines\`; plug-in-internal support types added (`VideoItem`,
+  `ChapterMarker`, engine enums, a `DebugLog` trace shim) since the plug-in can't see the host.
+- Host retained playback vocabulary in new `Phosphor\Video\VideoVocabulary.cs`
+  (`VideoStreams`/`VideoStreamKind`/`VideoDownload`/`VideoMetadata`).
+- Host decoupled from the plug-in via `Phosphor\Plugins\KnownSourceTypeIds.cs`
+  (`KnownSourceTypeIds.YouTube` + `YouTubeSettingKeys`); `SourceRegistry`/`PluginSettingsFactory`
+  route YouTube through `DiscoveredProviders`; `youtube` type id no longer reserved.
+- Caches made engine-agnostic (drive solely via `DownloadOverride`/`IDownloadable`).
+- VM legacy fallbacks deleted; `SetVideoEngine`/`SetSearchEngine`/`RebuildSearchEngine` are no-ops
+  (engine choice is now a plug-in setting). `BackglassWindow` engine fallback removed; yt-dlp
+  updater routes through `IUpdatable` in VM/App/SettingsWindow; `YoutubeExplode.PlaylistId.Parse`
+  replaced with a host-side regex heuristic.
+- Commits: `59a0993` (scaffold), `124aed6` (engine extraction + host agnostic), `f2cd3a0`
+  (chapter parsing relocation).
 
 ## Phase 6 — Plex extraction (only if Phase 5 passes)
 
