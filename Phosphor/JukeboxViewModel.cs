@@ -2061,6 +2061,11 @@ public partial class JukeboxViewModel : ObservableObject
     // The source id the current search ran against (null = YouTube); captured so "save as live
     // playlist" binds the playlist to the source actually searched, not the current dropdown value.
     private string? _currentSearchSourceId;
+    // When the current search is an in-library (scoped) search, the durable CategoryId + display
+    // title of the scope, so "save as live playlist" can persist and later replay the scope.
+    // Null when the search is source-wide (or YouTube/legacy).
+    private string? _currentScopeCategoryId;
+    private string? _currentScopeTitle;
     private bool _hasMoreResults;
     private bool _isLoadingMore;
 
@@ -2240,6 +2245,17 @@ public partial class JukeboxViewModel : ObservableObject
                 SearchQuery = playlist.SearchTerm;
                 if (playlist.SourceInstanceId != null && SearchSources.Any(s => s.InstanceId == playlist.SourceInstanceId))
                     ActiveSearchSourceId = playlist.SourceInstanceId;
+
+                // Scoped live playlist (saved from an in-library search): replay the scoped search by
+                // rehydrating the browse scope from its durable ids and running the in-library search.
+                if (playlist.ScopeCategoryId is { Length: > 0 } scopeId
+                    && playlist.SourceInstanceId is { Length: > 0 } scopeInstance
+                    && _sourceRegistry?.ByInstance(scopeInstance) is Phosphor.Plugin.Abstractions.IScopedSearchable)
+                {
+                    await LoadScopedLivePlaylistAsync(playlist, scopeInstance, scopeId);
+                    return;
+                }
+
                 await DoSearch(playlist.SearchTerm, playlist.SourceInstanceId);
                 return;
             }
@@ -2281,6 +2297,26 @@ public partial class JukeboxViewModel : ObservableObject
         SearchQuery = category.SearchTerm;
         ShowCategories = false;
         await DoSearch(category.SearchTerm);
+    }
+
+    /// <summary>
+    /// Replays a scoped (in-library) live playlist: rebuilds the browse scope from the persisted
+    /// <see cref="Playlist.SourceInstanceId"/> + <see cref="Playlist.ScopeCategoryId"/> (durable id;
+    /// no in-memory <c>SourceState</c> needed — the source reconstructs the scope), then runs the
+    /// stored search inside it. Falls back to a source-wide search if the scope can't be resolved.
+    /// </summary>
+    private async Task LoadScopedLivePlaylistAsync(Playlist playlist, string scopeInstance, string scopeId)
+    {
+        // Seed the browse stack with the rehydrated library-root node (SourceState = null; the source
+        // rebuilds the scope from CategoryId), then run the scoped-search branch of DoSearch.
+        IsGenericBrowsing = true;
+        _browseStack.Clear();
+        _browseStack.Add(new BrowseNode(
+            playlist.ScopeTitle ?? playlist.Name,
+            scopeInstance,
+            scopeId,
+            SourceState: null));
+        await DoSearch(playlist.SearchTerm, scopeInstance);
     }
 
     [RelayCommand]
@@ -2376,6 +2412,11 @@ public partial class JukeboxViewModel : ObservableObject
                 _browseStack.Clear();
                 _browseStack.Add(libraryRoot);
 
+                // Record the scope so "save as live playlist" can persist + replay it.
+                _currentSearchSourceId = libraryRoot.SourceInstanceId;
+                _currentScopeCategoryId = libraryRoot.CategoryId;
+                _currentScopeTitle = libraryRoot.Title;
+
                 var searchFrame = new BrowseNode(
                     $"Search: {query}",
                     libraryRoot.SourceInstanceId,
@@ -2411,6 +2452,9 @@ public partial class JukeboxViewModel : ObservableObject
 
         _currentSearchQuery = query;
         _currentSearchSourceId = sourceInstanceId;
+        // This is a source-wide (non-scoped) search — clear any scope from a prior scoped search.
+        _currentScopeCategoryId = null;
+        _currentScopeTitle = null;
 
         // Parse and strip duration filters (min:/max:) from the query
         query = ParseDurationFilters(query);
@@ -4043,8 +4087,10 @@ public partial class JukeboxViewModel : ObservableObject
             return;
 
         // Bind the playlist to the source the current search actually ran against (null = YouTube),
-        // so re-opening it queries that source rather than the default.
-        _playlists.CreateLivePlaylist(name, SearchQuery, icon, _currentSearchSourceId);
+        // and — for an in-library (scoped) search — the durable scope, so re-opening it replays the
+        // same scoped search rather than a source-wide or default query.
+        _playlists.CreateLivePlaylist(name, SearchQuery, icon, _currentSearchSourceId,
+            _currentScopeCategoryId, _currentScopeTitle);
         RebuildCategories();
         StatusText = $"Created live playlist: {name}";
     }

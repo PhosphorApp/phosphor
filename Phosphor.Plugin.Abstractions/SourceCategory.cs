@@ -10,7 +10,14 @@ public sealed class SourceCategory
     /// <summary>The <see cref="IPhosphorSource.InstanceId"/> that produced this node.</summary>
     public required string SourceInstanceId { get; init; }
 
-    /// <summary>Stable id within the source. Opaque to the host.</summary>
+    /// <summary>
+    /// Stable, DURABLE id within the source — opaque to the host but persistable. The host may store
+    /// this id (e.g. a saved live playlist bound to a browse scope) and hand it back later in a
+    /// reconstructed <see cref="SourceCategory"/> whose <see cref="SourceState"/> is <c>null</c>.
+    /// A source MUST be able to act on a node from its <see cref="CategoryId"/> alone (browse it, or
+    /// scope-search within it); <see cref="SourceState"/> is only an in-memory optimization, never
+    /// the sole source of truth. Encode into the id whatever is needed to reconstruct the node.
+    /// </summary>
     public required string CategoryId { get; init; }
 
     public string Title { get; init; } = "";
@@ -29,7 +36,12 @@ public sealed class SourceCategory
     /// </summary>
     public bool HasSubCategories { get; init; }
 
-    /// <summary>Plug-in-private payload handed back on browse. Opaque to the host.</summary>
+    /// <summary>
+    /// Plug-in-private payload handed back on browse, opaque to the host. An in-memory OPTIMIZATION
+    /// only: it is not persisted and may be <c>null</c> when the host reconstructs a node from a
+    /// stored <see cref="CategoryId"/>. A source must not depend on it being present — see
+    /// <see cref="CategoryId"/>.
+    /// </summary>
     public object? SourceState { get; init; }
 }
 

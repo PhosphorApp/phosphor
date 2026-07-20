@@ -21,6 +21,17 @@ public class Playlist
     /// means YouTube (the default / legacy playlists created before source binding existed).
     /// </summary>
     public string? SourceInstanceId { get; set; }
+
+    /// <summary>
+    /// For a live playlist saved from an in-library (scoped) search: the durable
+    /// <c>SourceCategory.CategoryId</c> of the browse scope it ran against (e.g. a Plex library).
+    /// <c>null</c> means the saved search is source-wide (or YouTube/legacy) rather than scoped.
+    /// </summary>
+    public string? ScopeCategoryId { get; set; }
+
+    /// <summary>Display title of the scope (e.g. "Plex Concerts"), for the breadcrumb on reload.</summary>
+    public string? ScopeTitle { get; set; }
+
     public List<VideoItem> Videos { get; set; } = new();
     public int SortOrder { get; set; }
     public override string ToString() => Name;
@@ -54,12 +65,22 @@ public class PlaylistManager
         return playlist;
     }
 
-    public Playlist CreateLivePlaylist(string name, string searchTerm, string icon = "", string? sourceInstanceId = null)
+    public Playlist CreateLivePlaylist(string name, string searchTerm, string icon = "",
+        string? sourceInstanceId = null, string? scopeCategoryId = null, string? scopeTitle = null)
     {
         var existing = _playlists.FirstOrDefault(p => p.Name == name);
         if (existing != null) return existing;
 
-        var playlist = new Playlist { Name = name, Kind = PlaylistKind.Live, SearchTerm = searchTerm, Icon = icon, SourceInstanceId = sourceInstanceId };
+        var playlist = new Playlist
+        {
+            Name = name,
+            Kind = PlaylistKind.Live,
+            SearchTerm = searchTerm,
+            Icon = icon,
+            SourceInstanceId = sourceInstanceId,
+            ScopeCategoryId = scopeCategoryId,
+            ScopeTitle = scopeTitle,
+        };
         _playlists.Add(playlist);
         Save();
         return playlist;
