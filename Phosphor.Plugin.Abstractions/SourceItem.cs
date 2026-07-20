@@ -55,6 +55,16 @@ public sealed class SourceItem
     public bool IsLiveStream { get; init; }
 
     /// <summary>
+    /// True when the host should decorate this item's thumbnail with a small "live" indicator (a red
+    /// corner dot) to call out that it is a <em>currently-broadcasting</em> stream among finite items
+    /// (e.g. a Twitch channel's live feed shown atop its VODs). Purely a display hint and deliberately
+    /// distinct from <see cref="IsLiveStream"/>: a source whose items are <em>all</em> live (e.g. a
+    /// radio service) should leave this <c>false</c> so it doesn't badge everything. Defaults to
+    /// <c>false</c>. The source decides when to set it (and may gate it behind its own setting).
+    /// </summary>
+    public bool ShowLiveBadge { get; init; }
+
+    /// <summary>
     /// When true, this item is a container the user drills into rather than plays
     /// (e.g. a Plex artist/album). The host calls <see cref="IBrowsable"/> to expand it.
     /// </summary>

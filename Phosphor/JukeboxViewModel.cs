@@ -1684,6 +1684,7 @@ public partial class JukeboxViewModel : ObservableObject
             SourceInstanceId = item.SourceInstanceId,
             IsAudioOnly = item.IsAudioOnly,
             IsLiveStream = item.IsLiveStream,
+            ShowLiveBadge = item.ShowLiveBadge,
             IsPlayable = item.IsPlayable,
             HasVideoAlternative = item.HasVideoAlternative,
             VideoSearchQuery = item.VideoSearchQuery,

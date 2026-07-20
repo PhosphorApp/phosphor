@@ -224,6 +224,12 @@ what you implement, and enables the matching features.
   for continuous radio-style streams with no fixed duration. The host then shows elapsed time as
   `M:SS / *`, hides the scrub bar (a "● LIVE" badge instead), disables seek, and never auto-advances
   the queue. (SiriusXM channels use this.)
+- **Live thumbnail badge** — set **`SourceItem.ShowLiveBadge = true`** to have the host draw a small red
+  "live now" dot on the item's thumbnail. This is a *display hint only* and deliberately separate from
+  `IsLiveStream`: use it to call out a single currently-broadcasting feed shown among finite items
+  (e.g. a Twitch channel's live stream sitting atop its VODs). Sources whose items are **all** live
+  (e.g. SiriusXM) should leave it `false` so they don't badge every row. A source may gate it behind
+  its own setting.
 - **Surface-but-unplayable items** — set **`SourceItem.IsPlayable = false`** (default `true`) to show a
   row you know can't be played (e.g. a DRM-locked track). The host renders it with action buttons
   removed and a 🚫 indicator instead of hiding it. Pair with **`IPlaybackReportable`**: when a play

@@ -73,6 +73,14 @@ public class VideoItem : ObservableObject
     public bool IsLiveStream { get; set; }
 
     /// <summary>
+    /// True when the host should decorate this item's thumbnail with a small red "live" corner dot to
+    /// highlight a <em>currently-broadcasting</em> feed among finite items (e.g. a Twitch channel's
+    /// live stream shown atop its VODs). A pure display hint, distinct from <see cref="IsLiveStream"/>:
+    /// sources whose items are all live (e.g. SiriusXM) leave this false so they don't badge every row.
+    /// </summary>
+    public bool ShowLiveBadge { get; set; }
+
+    /// <summary>
     /// For live-stream leaves, the originating plug-in <c>SourceItem</c> (opaque to the host) kept so
     /// the stream can be resolved <em>lazily at play time</em> rather than eagerly during browse
     /// (which would fire one authenticated request per channel). Null for non-live items.
