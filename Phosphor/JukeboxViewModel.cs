@@ -2356,27 +2356,50 @@ public partial class JukeboxViewModel : ObservableObject
         StatusText = "Searching...";
         SearchResults.Clear();
 
-        // A search from the box is ALWAYS a fresh, source-wide search — never scoped to the specific
-        // node you happen to be viewing (which was confusing: e.g. searching "pink floyd" while
-        // drilled into the "Rush" artist found nothing). BUT it stays targeted at the source you're
-        // browsing: searching "Rush" inside a Plex library searches all of Plex, not YouTube. Capture
-        // the browsed source before resetting the browse stack, then reset so the breadcrumb collapses.
-        if (IsGenericBrowsing)
+        // A search from the box while browsing a source is scoped to the LIBRARY you entered
+        // (the browse-stack root), not the specific node you've drilled into. Scoping to the deepest
+        // node was the bug (searching "pink floyd" while inside the "Rush" artist found nothing);
+        // scoping to the library root means searching "pink floyd" inside the Music library finds it,
+        // and searching inside "Plex Concerts" stays within Concerts. Sources that expose in-view
+        // search (IScopedSearchable, e.g. a Plex library) run the search inside that library node via
+        // a scoped-search frame; sources that only search source-wide (ITextSearchCapable) route the
+        // search to that source.
+        if (IsGenericBrowsing && _browseStack.Count > 0)
         {
-            if (_browseStack.Count > 0
-                && _sourceRegistry?.ByInstance(_browseStack[^1].SourceInstanceId)
-                   is Phosphor.Plugin.Abstractions.ITextSearchCapable)
+            var libraryRoot = _browseStack[0];
+            var rootSource = _sourceRegistry?.ByInstance(libraryRoot.SourceInstanceId);
+
+            if (rootSource is Phosphor.Plugin.Abstractions.IScopedSearchable)
             {
-                sourceInstanceId = _browseStack[^1].SourceInstanceId;
+                // Reset the browse stack to the library root, then push a scoped-search frame so the
+                // results are the in-library matches and Back returns to the library.
+                _browseStack.Clear();
+                _browseStack.Add(libraryRoot);
+
+                var searchFrame = new BrowseNode(
+                    $"Search: {query}",
+                    libraryRoot.SourceInstanceId,
+                    libraryRoot.CategoryId,
+                    libraryRoot.SourceState,
+                    libraryRoot.Icon,
+                    query);
+                await EnterBrowseNodeAsync(searchFrame, pushOntoStack: true);
+                return;
             }
 
-            IsGenericBrowsing = false;
-            _browseStack.Clear();
-            _genericPaged = null;
-            _genericPagedCategory = null;
-            _genericPagedResolver = null;
-            _genericPagedOffset = 0;
-            UpdateBrowseBreadcrumb();
+            if (rootSource is Phosphor.Plugin.Abstractions.ITextSearchCapable)
+            {
+                // Source-wide search targeted at the browsed source (e.g. a local folder). Collapse
+                // the browse view to a flat search result set.
+                sourceInstanceId = libraryRoot.SourceInstanceId;
+                IsGenericBrowsing = false;
+                _browseStack.Clear();
+                _genericPaged = null;
+                _genericPagedCategory = null;
+                _genericPagedResolver = null;
+                _genericPagedOffset = 0;
+                UpdateBrowseBreadcrumb();
+            }
         }
 
         if (_searchEnumerator != null)
