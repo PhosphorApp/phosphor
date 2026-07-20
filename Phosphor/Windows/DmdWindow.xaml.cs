@@ -1179,7 +1179,7 @@ public partial class DmdWindow : JukeboxWindow
         {
             SearchHintRun.Text = v.ActiveSearchSourceTypeId switch
             {
-                Phosphor.Plugins.YouTube.YouTubeSourceProvider.YouTubeTypeId
+                Phosphor.Plugins.KnownSourceTypeIds.YouTube
                     => "  ...try channel:<name>, playlist:<name>, min:5m, max:30m",
                 Phosphor.Plugins.Plex.PlexSourceProvider.PlexTypeId
                     => "  ...try min:5m, max:30m, library:<name>",
@@ -4563,3 +4563,4 @@ public partial class DmdWindow : JukeboxWindow
         return Math.Max(1, (int)Math.Round(1000.0 / maxHz));
     }
 }
+

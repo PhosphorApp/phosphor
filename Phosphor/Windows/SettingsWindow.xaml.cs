@@ -5533,7 +5533,7 @@ public partial class SettingsWindow : JukeboxWindow
             var vm = Owner?.DataContext as JukeboxViewModel;
             var status = vm != null
                 ? await vm.UpdatePluginEngineOrLegacyAsync()
-                : (await new YtDlpUpdater().UpdateAsync()).ToDisplayString();
+                : "Update not supported by the active engine";
             result.Text = status;
             result.Foreground = System.Windows.Media.Brushes.Gray;
             _settings.YtDlpLastUpdateCheck = DateTime.UtcNow;

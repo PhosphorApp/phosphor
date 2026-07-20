@@ -2,7 +2,6 @@ using System.Net.Http;
 using Phosphor.Plugin.Abstractions;
 using Phosphor.Plugins.Host;
 using Phosphor.Plugins.Plex;
-using Phosphor.Plugins.YouTube;
 
 namespace Phosphor.Plugins;
 
@@ -33,7 +32,7 @@ public sealed class SourceRegistry : IAsyncDisposable
 
     /// <summary>The single YouTube instance, if configured.</summary>
     public IPhosphorSource? YouTube =>
-        _sources.FirstOrDefault(s => s.TypeId == YouTubeSourceProvider.YouTubeTypeId);
+        _sources.FirstOrDefault(s => s.TypeId == KnownSourceTypeIds.YouTube);
 
     /// <summary>All configured Plex instances (may be more than one).</summary>
     public IEnumerable<IPhosphorSource> PlexInstances =>
@@ -127,7 +126,6 @@ public sealed class SourceRegistry : IAsyncDisposable
     /// </summary>
     private IPhosphorSourceProvider? CreateProvider(string typeId) => typeId switch
     {
-        YouTubeSourceProvider.YouTubeTypeId => new YouTubeSourceProvider(_http),
         PlexSourceProvider.PlexTypeId => new PlexSourceProvider(),
         _ => DiscoveredProviders.Get(typeId),
     };

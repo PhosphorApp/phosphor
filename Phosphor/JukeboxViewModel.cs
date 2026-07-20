@@ -6,14 +6,12 @@ using CommunityToolkit.Mvvm.Input;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using Phosphor.Video;
-using Phosphor.Search;
 
 namespace Phosphor;
 
 public partial class JukeboxViewModel : ObservableObject
 {
     private SearchEngineKind _searchEngineKind = SearchEngineKind.YoutubeExplode;
-    private ISearchEngine _searchEngine = new YoutubeExplodeSearchEngine();
     private readonly PlayHistory _history;
     private readonly PlaylistManager _playlists;
     private readonly FavoritesIndex _favoritesIndex = new();
@@ -58,7 +56,7 @@ public partial class JukeboxViewModel : ObservableObject
     public string? ActiveSearchSourceTypeId =>
         (_activeSearchSourceId != null ? _sourceRegistry?.ByInstance(_activeSearchSourceId) : _sourceRegistry?.YouTube)
             ?.TypeId
-        ?? (_activeSearchSourceId == null ? Phosphor.Plugins.YouTube.YouTubeSourceProvider.YouTubeTypeId : null);
+        ?? (_activeSearchSourceId == null ? Phosphor.Plugins.KnownSourceTypeIds.YouTube : null);
 
     /// <summary>
     /// The source AutoDJ uses to find/queue similar tracks (from settings). <c>null</c>/empty =
@@ -75,8 +73,8 @@ public partial class JukeboxViewModel : ObservableObject
 
     /// <summary>
     /// Updates the active YouTube engine tool (yt-dlp) and returns a user-facing status line.
-    /// Routes through the plug-in source's <c>IUpdatable</c> when the source supports updating;
-    /// otherwise falls back to the legacy <see cref="Video.YtDlpUpdater"/>.
+    /// Routes through the plug-in source's <c>IUpdatable</c> capability. Returns a not-supported
+    /// message when no updatable YouTube source is configured.
     /// </summary>
     public async Task<string> UpdatePluginEngineOrLegacyAsync(CancellationToken ct = default)
     {
@@ -86,8 +84,7 @@ public partial class JukeboxViewModel : ObservableObject
             return result.DisplayString;
         }
 
-        var legacy = await new Video.YtDlpUpdater().UpdateAsync(ct);
-        return legacy.ToDisplayString();
+        return "Update not supported by the active engine";
     }
 
     /// <summary>
@@ -102,7 +99,6 @@ public partial class JukeboxViewModel : ObservableObject
         {
             Phosphor.Plugins.DiscoveredProviders.Initialize(new[]
             {
-                Phosphor.Plugins.YouTube.YouTubeSourceProvider.YouTubeTypeId,
                 Phosphor.Plugins.Plex.PlexSourceProvider.PlexTypeId,
             });
             _pluginsDiscovered = true;
@@ -176,7 +172,7 @@ public partial class JukeboxViewModel : ObservableObject
         // so total time ≈ the slowest single source. Results are reassembled in registry order below
         // so tile ordering stays deterministic regardless of which server responds first.
         var browsableSources = registry.Sources
-            .Where(s => s.TypeId != Phosphor.Plugins.YouTube.YouTubeSourceProvider.YouTubeTypeId
+            .Where(s => s.TypeId != Phosphor.Plugins.KnownSourceTypeIds.YouTube
                         && s is Phosphor.Plugin.Abstractions.IBrowsable)
             .ToList();
 
@@ -242,7 +238,7 @@ public partial class JukeboxViewModel : ObservableObject
             .Where(s => s is Phosphor.Plugin.Abstractions.ITextSearchCapable)
             .Select(s => new SearchSourceOption(s.InstanceId, s.DisplayName))
             // YouTube first (the default), then the rest by display name.
-            .OrderByDescending(o => o.InstanceId == Phosphor.Plugins.YouTube.YouTubeSourceProvider.YouTubeTypeId)
+            .OrderByDescending(o => o.InstanceId == Phosphor.Plugins.KnownSourceTypeIds.YouTube)
             .ThenBy(o => o.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -1398,13 +1394,10 @@ public partial class JukeboxViewModel : ObservableObject
     private const int MaxConsecutiveResolveSkips = 8;
 
     // ── Video engine (YoutubeExplode / yt-dlp switch point) ──
-    private IVideoEngine _videoEngine = new YoutubeExplodeVideoEngine();
-
-    /// <summary>
-    /// The active video engine used to resolve/download YouTube streams. Defaults to
-    /// YoutubeExplode; swapped via <see cref="SetVideoEngine"/> from settings.
-    /// </summary>
-    public IVideoEngine VideoEngine => _videoEngine;
+    // ── Video engine ──
+    // The YouTube engine (YoutubeExplode / yt-dlp) now lives entirely in the YouTube plug-in.
+    // The host no longer holds an in-process engine; all resolve/download/metadata flows route
+    // through the plug-in source's capabilities. The engine choice is a plug-in setting.
 
     /// <summary>
     /// Rebuilds the video engine from the given kind and propagates it to the caches.
@@ -1412,9 +1405,8 @@ public partial class JukeboxViewModel : ObservableObject
     /// </summary>
     public void SetVideoEngine(VideoEngineKind kind)
     {
-        _videoEngine = VideoEngineFactory.Create(kind);
-        if (_cache != null) _cache.VideoEngine = _videoEngine;
-        if (_prefetch != null) _prefetch.VideoEngine = _videoEngine;
+        // Engine selection is now owned by the YouTube plug-in via its settings; nothing to do
+        // host-side. Retained as a no-op so existing settings call sites keep compiling.
     }
 
     // ── Thumbnail cache ──
@@ -1488,13 +1480,14 @@ public partial class JukeboxViewModel : ObservableObject
     public void SetSearchEngine(SearchEngineKind kind)
     {
         _searchEngineKind = kind;
-        RebuildSearchEngine();
+        // Search backend selection is owned by the YouTube plug-in; the host only records the
+        // kind to tune paging (see SearchPageSize).
     }
 
     private void RebuildSearchEngine()
     {
-        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(NetworkTimeoutSeconds) };
-        _searchEngine = SearchEngineFactory.Create(_searchEngineKind, http);
+        // No host-side search engine anymore — kept as a no-op for existing call sites
+        // (e.g. network-timeout changes) that used to force a rebuild.
     }
 
     /// <summary>
@@ -1604,7 +1597,14 @@ public partial class JukeboxViewModel : ObservableObject
             return MapPluginSearch(yt, query);
         }
 
-        return _searchEngine.SearchVideosAsync(query);
+        return EmptyVideoItems();
+    }
+
+    /// <summary>An empty result stream, used when no searchable source is configured.</summary>
+    private static async IAsyncEnumerable<VideoItem> EmptyVideoItems()
+    {
+        await Task.CompletedTask;
+        yield break;
     }
 
     private static async IAsyncEnumerable<VideoItem> MapPluginSearch(
@@ -1644,7 +1644,7 @@ public partial class JukeboxViewModel : ObservableObject
     {
         var resolver = source is Phosphor.Plugin.Abstractions.IPlayableResolver r
             && source is Phosphor.Plugin.Abstractions.IPhosphorSource s
-            && s.TypeId != Phosphor.Plugins.YouTube.YouTubeSourceProvider.YouTubeTypeId
+            && s.TypeId != Phosphor.Plugins.KnownSourceTypeIds.YouTube
             ? r : null;
 
         // Sources whose resolve is expensive (yt-dlp per item, e.g. Vimeo) opt out of eager
@@ -1738,23 +1738,38 @@ public partial class JukeboxViewModel : ObservableObject
         _sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IPlaylistChannelDiscovery d
             ? d : null;
 
-    /// <summary>Resolves a playlist id via the plug-in discovery capability, else the legacy engine.</summary>
+    /// <summary>Resolves a playlist id via the plug-in discovery capability, else null.</summary>
     private Task<string?> ResolvePlaylistIdViaPluginOrLegacy(string nameIdOrUrl, Action<string>? onFoundByName)
         => PluginDiscovery is { } d
             ? d.ResolvePlaylistIdAsync(nameIdOrUrl, onFoundByName)
-            : _searchEngine.ResolvePlaylistIdAsync(nameIdOrUrl, onFoundByName);
+            : Task.FromResult<string?>(null);
 
-    /// <summary>Yields a playlist's videos via the plug-in discovery capability, else the legacy engine.</summary>
+    /// <summary>Yields a playlist's videos via the plug-in discovery capability, else empty.</summary>
     private IAsyncEnumerable<VideoItem> GetPlaylistVideosViaPluginOrLegacy(string playlistId)
         => PluginDiscovery is { } d
             ? MapPluginItems(d.GetPlaylistItemsAsync(playlistId))
-            : _searchEngine.GetPlaylistVideosAsync(playlistId);
+            : EmptyVideoItems();
 
-    /// <summary>Yields a channel's uploads via the plug-in discovery capability, else the legacy engine.</summary>
+    /// <summary>Yields a channel's uploads via the plug-in discovery capability, else empty.</summary>
     private IAsyncEnumerable<VideoItem> GetChannelUploadsViaPluginOrLegacy(string handleOrUser)
         => PluginDiscovery is { } d
             ? MapPluginItems(d.GetChannelUploadsAsync(handleOrUser))
-            : _searchEngine.GetChannelUploadsAsync(handleOrUser);
+            : EmptyVideoItems();
+
+    /// <summary>
+    /// Lightweight heuristic: does the token look like a YouTube playlist id (or a URL carrying a
+    /// <c>list=</c> parameter)? Used only to decide filter-term parsing; the YouTube plug-in does
+    /// the authoritative resolution. Keeps the host free of a YouTube-specific library.
+    /// </summary>
+    private static bool LooksLikeYouTubePlaylistId(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token)) return false;
+        var m = Regex.Match(token, @"[?&]list=([\w-]+)");
+        var candidate = m.Success ? m.Groups[1].Value : token;
+        // Playlist ids are prefixed (PL, UU, FL, OL, RD, LL, …) and reasonably long.
+        return Regex.IsMatch(candidate, @"^(PL|UU|FL|OL|RD|LL|WL|EL)[\w-]{10,}$")
+            || Regex.IsMatch(candidate, @"^[\w-]{18,}$");
+    }
 
     /// <summary>
     /// Fetches YouTube video metadata. Routes through the YouTube source's
@@ -1776,7 +1791,7 @@ public partial class JukeboxViewModel : ObservableObject
             return meta == null ? null : MapPluginMetadata(meta);
         }
 
-        return await _videoEngine.GetMetadataAsync(videoId);
+        return null;
     }
 
     private static Video.VideoMetadata MapPluginMetadata(Phosphor.Plugin.Abstractions.SourceMetadata m) =>
@@ -1823,7 +1838,7 @@ public partial class JukeboxViewModel : ObservableObject
             return resolved == null ? null : MapResolvedStream(resolved);
         }
 
-        return await _videoEngine.ResolveStreamsAsync(videoId, quality, preferStereo, audioOnly, ct);
+        return null;
     }
 
     private static Phosphor.Plugin.Abstractions.VideoQuality MapQualityToPlugin(VideoQualityPreference q) => q switch
@@ -1870,8 +1885,7 @@ public partial class JukeboxViewModel : ObservableObject
             };
             var result = await dl.DownloadAsync(probe, prefs, destinationDir, null, ct);
 
-            // The caches mux separate video+audio; use the plug-in result only when fully
-            // populated, otherwise fall through to the legacy engine so caching never breaks.
+            // The caches mux separate video+audio; use the plug-in result only when fully populated.
             if (result?.VideoFilePath is { } vp && result.AudioFilePath is { } ap)
             {
                 DebugLog.Log("SourceRegistry", "Stream download routed through plug-in YouTube source");
@@ -1880,7 +1894,7 @@ public partial class JukeboxViewModel : ObservableObject
             }
         }
 
-        return await _videoEngine.DownloadStreamsAsync(videoId, quality, preferStereo, destinationDir, ct);
+        return null;
     }
 
     /// <summary>
@@ -2058,7 +2072,7 @@ public partial class JukeboxViewModel : ObservableObject
 
     public void SetupCache(bool enabled, double maxSizeGb, int maxClipLengthMinutes = 0)
     {
-        _cache = new VideoCache(enabled, maxSizeGb, maxClipLengthMinutes) { VideoEngine = _videoEngine };
+        _cache = new VideoCache(enabled, maxSizeGb, maxClipLengthMinutes);
         WireCacheDownloadOverride();
     }
 
@@ -2127,7 +2141,7 @@ public partial class JukeboxViewModel : ObservableObject
         if (enabled)
         {
             _prefetch ??= new PrefetchCache();
-            _prefetch.VideoEngine = _videoEngine;
+            WireCacheDownloadOverride();
         }
         else
         {
@@ -2576,10 +2590,10 @@ public partial class JukeboxViewModel : ObservableObject
 
             try
             {
-                // If the token parses as an id, text before "playlist:" is the filter.
-                bool parsedAsId = false;
-                try { YoutubeExplode.Playlists.PlaylistId.Parse(playlistIdOrName); parsedAsId = true; }
-                catch { /* treat as a name to search */ }
+                // If the token looks like a playlist id (or URL carrying one), text before
+                // "playlist:" is the filter. Uses a lightweight shape check so the host needs no
+                // YouTube library — the plug-in does the authoritative resolution below.
+                bool parsedAsId = LooksLikeYouTubePlaylistId(playlistIdOrName);
                 if (parsedAsId)
                     filterTerms = Regex.Replace(query, @"playlist:\S+", "", RegexOptions.IgnoreCase).Trim();
 
@@ -4588,8 +4602,8 @@ public partial class JukeboxViewModel : ObservableObject
             }
             else
             {
-                // Registry unavailable — legacy in-VM engine (YouTube only).
-                meta = await _videoEngine.GetMetadataAsync(item.VideoId);
+                // No source resolver available — nothing to enrich.
+                meta = null;
             }
             if (meta == null) return;
 

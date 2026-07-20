@@ -16,15 +16,9 @@ public class PrefetchCache
     private readonly object _lock = new();
 
     /// <summary>
-    /// The video engine used to download streams. Assigned by the ViewModel; defaults
-    /// to YoutubeExplode so the cache is usable even if wiring is skipped.
-    /// </summary>
-    public IVideoEngine VideoEngine { get; set; } = new YoutubeExplodeVideoEngine();
-
-    /// <summary>
-    /// Optional download override. When set (by the ViewModel when the plug-in source path is
-    /// enabled), it is used instead of <see cref="VideoEngine"/> to fetch raw streams. Null
-    /// means use the engine directly — the default, byte-identical legacy behavior.
+    /// Download provider for raw streams, supplied by the ViewModel from the active plug-in
+    /// source (YouTube's <c>IDownloadable</c>). The cache owns file management; the plug-in owns
+    /// the raw fetch. When null (no downloadable source configured), prefetch no-ops.
     /// </summary>
     public Func<string, VideoQualityPreference, bool, string, CancellationToken, Task<VideoDownload?>>? DownloadOverride { get; set; }
 
@@ -78,7 +72,7 @@ public class PrefetchCache
     /// </summary>
     public async Task PrefetchAsync(string videoId, VideoQualityPreference quality = VideoQualityPreference.High, bool preferStereo = false, CancellationToken ct = default)
     {
-        // Only YouTube-style ids are downloadable here — prefetch resolves via the YouTube engine.
+        // Only YouTube-style ids are downloadable here ï¿½ prefetch resolves via the YouTube engine.
         // A "scheme:" prefix (e.g. "plex:") is a non-YouTube source that streams directly and can
         // never be downloaded, so skip it instead of letting the engine throw "Invalid YouTube
         // video ID". Callers normally gate this via IsItemCacheable; this is a safety net.
@@ -98,9 +92,9 @@ public class PrefetchCache
 
         try
         {
-            var download = DownloadOverride != null
-                ? await DownloadOverride(videoId, quality, preferStereo, PrefetchDir, cts.Token)
-                : await VideoEngine.DownloadStreamsAsync(videoId, quality, preferStereo, PrefetchDir, cts.Token);
+            // No downloadable source configured ï¿½ nothing to prefetch.
+            if (DownloadOverride == null) return;
+            var download = await DownloadOverride(videoId, quality, preferStereo, PrefetchDir, cts.Token);
             if (download == null) return;
 
             var videoFile = download.VideoFilePath;
