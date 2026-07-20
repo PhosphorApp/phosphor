@@ -35,8 +35,9 @@ public sealed class PlexSourceProvider : IPhosphorSourceProvider
             HelpText: "e.g. http://192.168.1.10:32400"),
         new(KeyToken, "Plex token", PluginSettingType.Secret, Secret: true,
             HelpText: "X-Plex-Token for this server."),
-        new(KeyStereoAudio, "Prefer stereo audio", PluginSettingType.Bool, DefaultValue: "false",
-            HelpText: "Downmix/transcode surround tracks to stereo."),
+        new(KeyStereoAudio, "Prefer stereo audio", PluginSettingType.Bool, DefaultValue: "true",
+            HelpText: "Downmix/transcode surround tracks to stereo. Imperative on pinball cabs, " +
+                      "whose surround channels drive mechanical/ball exciters, not music."),
         // The library-tile selection is populated via the "Browse libraries" action and
         // stored as an opaque JSON blob; not directly user-editable as a text field.
         new(KeyLibraries, "Libraries", PluginSettingType.Text,

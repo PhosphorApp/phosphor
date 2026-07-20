@@ -51,7 +51,9 @@ public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IFilterabl
     {
         _serverUrl = Get(values, PlexSourceProvider.KeyServerUrl) ?? "";
         _token = Get(values, PlexSourceProvider.KeyToken) ?? "";
-        _stereoAudio = bool.TryParse(Get(values, PlexSourceProvider.KeyStereoAudio), out var s) && s;
+        // Default to stereo when unset/invalid — safest for cabs (surround channels drive
+        // mechanical/ball exciters, not music). Matches the Emby/Jellyfin sources.
+        _stereoAudio = !bool.TryParse(Get(values, PlexSourceProvider.KeyStereoAudio), out var s) || s;
         _libraries = ParseLibraries(Get(values, PlexSourceProvider.KeyLibraries));
 
         _plex.Configure(_serverUrl, _token, _stereoAudio);
