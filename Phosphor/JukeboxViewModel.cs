@@ -2317,6 +2317,19 @@ public partial class JukeboxViewModel : ObservableObject
             scopeId,
             SourceState: null));
         await DoSearch(playlist.SearchTerm, scopeInstance);
+
+        // The scoped search routed through the browse machinery (which set IsGenericBrowsing and
+        // cleared the playlist flags). Now present the populated results AS the live playlist: this
+        // restores the Queue All / Delete actions and makes Back return to the category list rather
+        // than drilling back into the library's hubs.
+        IsGenericBrowsing = false;
+        _browseStack.Clear();
+        UpdateBrowseBreadcrumb();
+        IsViewingPlaylist = true;
+        IsViewingLivePlaylist = true;
+        ActivePlaylistName = playlist.Name;
+        _activePlaylistId = playlist.Id;
+        ActiveCategory = playlist.Name;
     }
 
     [RelayCommand]
