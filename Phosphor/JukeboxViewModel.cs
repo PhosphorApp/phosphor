@@ -3319,79 +3319,6 @@ public partial class JukeboxViewModel : ObservableObject
             return;
         }
 
-        // For Plex artists/albums, fetch all tracks and queue them
-        if (item.PlexItemType is PlexItemType.Artist or PlexItemType.Album
-            && item.PlexRatingKey != null && _plex.IsConfigured)
-        {
-            StatusText = $"Loading tracks from {item.Title}...";
-            try
-            {
-                var tracks = await ActivePlex.GetAllTracksAsync(item.PlexRatingKey, item.PlexItemType);
-                int added = 0;
-                foreach (var track in tracks)
-                {
-                    if (Queue.Count >= MaxQueueSize) break;
-                    Queue.Add(track);
-                    added++;
-                }
-                StatusText = added < tracks.Count
-                    ? $"Queued {added} of {tracks.Count} tracks (queue limit {MaxQueueSize})"
-                    : $"Queued {tracks.Count} tracks from {item.Title}";
-            }
-            catch (Exception ex)
-            {
-                StatusText = $"Failed to queue: {ex.Message}";
-                DebugLog.LogException("Queue Plex tracks", ex);
-            }
-            return;
-        }
-
-        // For Plex hubs
-        if (item.PlexItemType == PlexItemType.Hub
-            && item.PlexHubKey != null && _plex.IsConfigured)
-        {
-            StatusText = $"Loading items from {item.Title}...";
-            try
-            {
-                var items = await _plex.GetHubItemsAsync(item.PlexHubKey, item.PlexHubType ?? "");
-                int added = await QueuePlayableItemsAsync(items);
-                StatusText = $"Queued {added} items from {item.Title}";
-            }
-            catch (Exception ex)
-            {
-                StatusText = $"Failed to queue: {ex.Message}";
-                DebugLog.LogException("Queue Plex hub items", ex);
-            }
-            return;
-        }
-
-        // For Plex playlists
-        if (item.PlexItemType == PlexItemType.Playlist
-            && item.PlexRatingKey != null && _plex.IsConfigured)
-        {
-            StatusText = $"Loading items from {item.Title}...";
-            try
-            {
-                var items = await _plex.GetPlaylistItemsAsync(item.PlexRatingKey);
-                int added = 0;
-                foreach (var track in items)
-                {
-                    if (Queue.Count >= MaxQueueSize) break;
-                    Queue.Add(track);
-                    added++;
-                }
-                StatusText = added < items.Count
-                    ? $"Queued {added} of {items.Count} items (queue limit {MaxQueueSize})"
-                    : $"Queued {items.Count} items from {item.Title}";
-            }
-            catch (Exception ex)
-            {
-                StatusText = $"Failed to queue: {ex.Message}";
-                DebugLog.LogException("Queue Plex playlist items", ex);
-            }
-            return;
-        }
-
         Queue.Add(item);
         StatusText = $"Queued: {item.Title}";
     }
@@ -3403,12 +3330,12 @@ public partial class JukeboxViewModel : ObservableObject
         {
             if (Queue.Count >= MaxQueueSize) break;
 
-            // For artists/albums in hub results, expand to tracks
-            if (vi.PlexItemType is PlexItemType.Artist or PlexItemType.Album
-                && vi.PlexRatingKey != null && _plex.IsConfigured)
+            // Containers (artist/album/hub/playlist) expand to their playable tracks via the generic
+            // source-agnostic path; plain leaves queue directly.
+            if (vi.IsGenericContainer)
             {
-                var tracks = await ActivePlex.GetAllTracksAsync(vi.PlexRatingKey, vi.PlexItemType);
-                foreach (var track in tracks)
+                var leaves = await ExpandContainerToLeavesAsync(vi, _searchCts.Token);
+                foreach (var track in leaves)
                 {
                     if (Queue.Count >= MaxQueueSize) break;
                     Queue.Add(track);
@@ -4062,14 +3989,14 @@ public partial class JukeboxViewModel : ObservableObject
     {
         if (item == null) return;
 
-        // For Plex artists/albums, fetch all tracks and add them to the playlist
-        if (item.PlexItemType is PlexItemType.Artist or PlexItemType.Album
-            && item.PlexRatingKey != null && _plex.IsConfigured)
+        // Containers (Plex artist/album, etc.) expand to their playable tracks via the generic
+        // source-agnostic path; each track is added to the playlist and optionally cached.
+        if (item.IsGenericContainer)
         {
             StatusText = $"Loading tracks from {item.Title}...";
             try
             {
-                var tracks = await ActivePlex.GetAllTracksAsync(item.PlexRatingKey, item.PlexItemType);
+                var tracks = await ExpandContainerToLeavesAsync(item, _searchCts.Token);
                 foreach (var track in tracks)
                 {
                     _playlists.AddToPlaylist(ActivePlaylistName, track);
