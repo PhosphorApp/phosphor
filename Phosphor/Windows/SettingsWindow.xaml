@@ -549,49 +549,57 @@
                                     <ComboBox x:Name="CbBlobPatternPlayfield" Width="180" HorizontalAlignment="Left"
                                               SelectionChanged="CbBlobPattern_SelectionChanged"/>
                                 </StackPanel>
-                                <Grid Margin="70,4,0,0">
+                                <Grid Margin="0,4,0,0" HorizontalAlignment="Center">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="117"/>
-                                        <ColumnDefinition Width="132"/>
-                                        <ColumnDefinition Width="122"/>
-                                        <ColumnDefinition Width="122"/>
+                                        <ColumnDefinition Width="133"/>
+                                        <ColumnDefinition Width="155"/>
+                                        <ColumnDefinition Width="145"/>
+                                        <ColumnDefinition Width="145"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Orientation="Horizontal" Grid.Column="0" VerticalAlignment="Center"
                                                 x:Name="PanelBlobCountPlayfield">
-                                        <TextBlock x:Name="TxtBlobCountPlayfield" Text="10" Foreground="{StaticResource TextDimBrush}"
-                                                   VerticalAlignment="Center" Width="25" TextAlignment="Right" Margin="0,0,2,0"/>
+                                        <TextBlock Text="#" FontFamily="Segoe UI Symbol" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="16" TextAlignment="Center" Margin="0,0,-3,0" ToolTip="Number of blobs"/>
                                         <Slider x:Name="SliderBlobCountPlayfield" Minimum="0" Maximum="100" Value="10"
                                                 Width="90" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
                                                 ToolTip="Number of blobs"
                                                 ValueChanged="SliderBlobCountPlayfield_ValueChanged"/>
+                                        <TextBlock x:Name="TxtBlobCountPlayfield" Text="10" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="25" TextAlignment="Left" Margin="1,0,0,0"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Grid.Column="1" VerticalAlignment="Center"
                                                 x:Name="PanelBlobSizePlayfield">
-                                        <TextBlock x:Name="TxtBlobSizePlayfield" Text="Default" Foreground="{StaticResource TextDimBrush}"
-                                                   VerticalAlignment="Center" Width="40" TextAlignment="Right" Margin="0,0,2,0"/>
+                                        <TextBlock Text="⤢" FontFamily="Segoe UI Symbol" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="16" TextAlignment="Center" Margin="7,0,-3,0" ToolTip="Size of blobs"/>
                                         <Slider x:Name="SliderBlobSizePlayfield" Minimum="1" Maximum="20" Value="10"
                                                 Width="90" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
                                                 ToolTip="Size of blobs"
                                                 ValueChanged="SliderBlobSize_ValueChanged"/>
+                                        <TextBlock x:Name="TxtBlobSizePlayfield" Text="Default" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="40" TextAlignment="Left" Margin="1,0,0,0"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Grid.Column="2" VerticalAlignment="Center">
-                                        <TextBlock x:Name="TxtIntensityPlayfield" Text="50%" Foreground="{StaticResource TextDimBrush}"
-                                                   VerticalAlignment="Center" Width="30" TextAlignment="Right" Margin="5,0,2,0"/>
+                                        <TextBlock Text="☀" FontFamily="Segoe UI Symbol" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="16" TextAlignment="Center" Margin="7,0,-3,0" ToolTip="Intensity"/>
                                         <Slider x:Name="SliderIntensityPlayfield" Minimum="5" Maximum="100"
                                                 Value="50" IsSnapToTickEnabled="True" TickFrequency="5"
                                                 Width="90" VerticalAlignment="Center"
                                                 ToolTip="Intensity"
                                                 ValueChanged="SliderPerScreenIntensity_ValueChanged"/>
+                                        <TextBlock x:Name="TxtIntensityPlayfield" Text="50%" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="30" TextAlignment="Left" Margin="1,0,0,0"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Grid.Column="3" VerticalAlignment="Center"
                                                 x:Name="PanelSpeedPlayfield">
-                                        <TextBlock x:Name="TxtSpeedPlayfield" Text="1.0×" Foreground="{StaticResource TextDimBrush}"
-                                                   VerticalAlignment="Center" Width="30" TextAlignment="Right" Margin="5,0,2,0"/>
+                                        <TextBlock Text="⚡" FontFamily="Segoe UI Symbol" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="16" TextAlignment="Center" Margin="7,0,-3,0" ToolTip="Speed"/>
                                         <Slider x:Name="SliderSpeedPlayfield" Minimum="0.2" Maximum="5.0"
                                                 Value="1.0" IsSnapToTickEnabled="True" TickFrequency="0.2"
                                                 Width="90" VerticalAlignment="Center"
                                                 ToolTip="Speed"
                                                 ValueChanged="SliderPerScreenSpeed_ValueChanged"/>
+                                        <TextBlock x:Name="TxtSpeedPlayfield" Text="1.0×" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="30" TextAlignment="Left" Margin="1,0,0,0"/>
                                     </StackPanel>
                                 </Grid>
                             </StackPanel>
@@ -602,49 +610,57 @@
                                     <ComboBox x:Name="CbBlobPatternBackglass" Width="180" HorizontalAlignment="Left"
                                               SelectionChanged="CbBlobPattern_SelectionChanged"/>
                                 </StackPanel>
-                                <Grid Margin="70,4,0,0">
+                                <Grid Margin="0,4,0,0" HorizontalAlignment="Center">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="117"/>
-                                        <ColumnDefinition Width="132"/>
-                                        <ColumnDefinition Width="122"/>
-                                        <ColumnDefinition Width="122"/>
+                                        <ColumnDefinition Width="133"/>
+                                        <ColumnDefinition Width="155"/>
+                                        <ColumnDefinition Width="145"/>
+                                        <ColumnDefinition Width="145"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Orientation="Horizontal" Grid.Column="0" VerticalAlignment="Center"
                                                 x:Name="PanelBlobCountBackglass">
-                                        <TextBlock x:Name="TxtBlobCountBackglass" Text="10" Foreground="{StaticResource TextDimBrush}"
-                                                   VerticalAlignment="Center" Width="25" TextAlignment="Right" Margin="0,0,2,0"/>
+                                        <TextBlock Text="#" FontFamily="Segoe UI Symbol" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="16" TextAlignment="Center" Margin="0,0,-3,0" ToolTip="Number of blobs"/>
                                         <Slider x:Name="SliderBlobCountBackglass" Minimum="0" Maximum="100" Value="10"
                                                 Width="90" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
                                                 ToolTip="Number of blobs"
                                                 ValueChanged="SliderBlobCountBackglass_ValueChanged"/>
+                                        <TextBlock x:Name="TxtBlobCountBackglass" Text="10" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="25" TextAlignment="Left" Margin="1,0,0,0"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Grid.Column="1" VerticalAlignment="Center"
                                                 x:Name="PanelBlobSizeBackglass">
-                                        <TextBlock x:Name="TxtBlobSizeBackglass" Text="Default" Foreground="{StaticResource TextDimBrush}"
-                                                   VerticalAlignment="Center" Width="40" TextAlignment="Right" Margin="0,0,2,0"/>
+                                        <TextBlock Text="⤢" FontFamily="Segoe UI Symbol" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="16" TextAlignment="Center" Margin="7,0,-3,0" ToolTip="Size of blobs"/>
                                         <Slider x:Name="SliderBlobSizeBackglass" Minimum="1" Maximum="20" Value="10"
                                                 Width="90" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
                                                 ToolTip="Size of blobs"
                                                 ValueChanged="SliderBlobSize_ValueChanged"/>
+                                        <TextBlock x:Name="TxtBlobSizeBackglass" Text="Default" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="40" TextAlignment="Left" Margin="1,0,0,0"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Grid.Column="2" VerticalAlignment="Center">
-                                        <TextBlock x:Name="TxtIntensityBackglass" Text="50%" Foreground="{StaticResource TextDimBrush}"
-                                                   VerticalAlignment="Center" Width="30" TextAlignment="Right" Margin="5,0,2,0"/>
+                                        <TextBlock Text="☀" FontFamily="Segoe UI Symbol" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="16" TextAlignment="Center" Margin="7,0,-3,0" ToolTip="Intensity"/>
                                         <Slider x:Name="SliderIntensityBackglass" Minimum="5" Maximum="100"
                                                 Value="50" IsSnapToTickEnabled="True" TickFrequency="5"
                                                 Width="90" VerticalAlignment="Center"
                                                 ToolTip="Intensity"
                                                 ValueChanged="SliderPerScreenIntensity_ValueChanged"/>
+                                        <TextBlock x:Name="TxtIntensityBackglass" Text="50%" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="30" TextAlignment="Left" Margin="1,0,0,0"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Grid.Column="3" VerticalAlignment="Center"
                                                 x:Name="PanelSpeedBackglass">
-                                        <TextBlock x:Name="TxtSpeedBackglass" Text="1.0×" Foreground="{StaticResource TextDimBrush}"
-                                                   VerticalAlignment="Center" Width="30" TextAlignment="Right" Margin="5,0,2,0"/>
+                                        <TextBlock Text="⚡" FontFamily="Segoe UI Symbol" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="16" TextAlignment="Center" Margin="7,0,-3,0" ToolTip="Speed"/>
                                         <Slider x:Name="SliderSpeedBackglass" Minimum="0.2" Maximum="5.0"
                                                 Value="1.0" IsSnapToTickEnabled="True" TickFrequency="0.2"
                                                 Width="90" VerticalAlignment="Center"
                                                 ToolTip="Speed"
                                                 ValueChanged="SliderPerScreenSpeed_ValueChanged"/>
+                                        <TextBlock x:Name="TxtSpeedBackglass" Text="1.0×" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="30" TextAlignment="Left" Margin="1,0,0,0"/>
                                     </StackPanel>
                                 </Grid>
                             </StackPanel>
@@ -655,49 +671,57 @@
                                     <ComboBox x:Name="CbBlobPatternTopper" Width="180" HorizontalAlignment="Left"
                                               SelectionChanged="CbBlobPattern_SelectionChanged"/>
                                 </StackPanel>
-                                <Grid Margin="70,4,0,0">
+                                <Grid Margin="0,4,0,0" HorizontalAlignment="Center">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="117"/>
-                                        <ColumnDefinition Width="132"/>
-                                        <ColumnDefinition Width="122"/>
-                                        <ColumnDefinition Width="122"/>
+                                        <ColumnDefinition Width="133"/>
+                                        <ColumnDefinition Width="155"/>
+                                        <ColumnDefinition Width="145"/>
+                                        <ColumnDefinition Width="145"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Orientation="Horizontal" Grid.Column="0" VerticalAlignment="Center"
                                                 x:Name="PanelBlobCountTopper">
-                                        <TextBlock x:Name="TxtBlobCountTopper" Text="10" Foreground="{StaticResource TextDimBrush}"
-                                                   VerticalAlignment="Center" Width="25" TextAlignment="Right" Margin="0,0,2,0"/>
+                                        <TextBlock Text="#" FontFamily="Segoe UI Symbol" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="16" TextAlignment="Center" Margin="0,0,-3,0" ToolTip="Number of blobs"/>
                                         <Slider x:Name="SliderBlobCountTopper" Minimum="0" Maximum="100" Value="10"
                                                 Width="90" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
                                                 ToolTip="Number of blobs"
                                                 ValueChanged="SliderBlobCountTopper_ValueChanged"/>
+                                        <TextBlock x:Name="TxtBlobCountTopper" Text="10" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="25" TextAlignment="Left" Margin="1,0,0,0"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Grid.Column="1" VerticalAlignment="Center"
                                                 x:Name="PanelBlobSizeTopper">
-                                        <TextBlock x:Name="TxtBlobSizeTopper" Text="Default" Foreground="{StaticResource TextDimBrush}"
-                                                   VerticalAlignment="Center" Width="40" TextAlignment="Right" Margin="0,0,2,0"/>
+                                        <TextBlock Text="⤢" FontFamily="Segoe UI Symbol" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="16" TextAlignment="Center" Margin="7,0,-3,0" ToolTip="Size of blobs"/>
                                         <Slider x:Name="SliderBlobSizeTopper" Minimum="1" Maximum="20" Value="10"
                                                 Width="90" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
                                                 ToolTip="Size of blobs"
                                                 ValueChanged="SliderBlobSize_ValueChanged"/>
+                                        <TextBlock x:Name="TxtBlobSizeTopper" Text="Default" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="40" TextAlignment="Left" Margin="1,0,0,0"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Grid.Column="2" VerticalAlignment="Center">
-                                        <TextBlock x:Name="TxtIntensityTopper" Text="50%" Foreground="{StaticResource TextDimBrush}"
-                                                   VerticalAlignment="Center" Width="30" TextAlignment="Right" Margin="5,0,2,0"/>
+                                        <TextBlock Text="☀" FontFamily="Segoe UI Symbol" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="16" TextAlignment="Center" Margin="7,0,-3,0" ToolTip="Intensity"/>
                                         <Slider x:Name="SliderIntensityTopper" Minimum="5" Maximum="100"
                                                 Value="50" IsSnapToTickEnabled="True" TickFrequency="5"
                                                 Width="90" VerticalAlignment="Center"
                                                 ToolTip="Intensity"
                                                 ValueChanged="SliderPerScreenIntensity_ValueChanged"/>
+                                        <TextBlock x:Name="TxtIntensityTopper" Text="50%" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="30" TextAlignment="Left" Margin="1,0,0,0"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Grid.Column="3" VerticalAlignment="Center"
                                                 x:Name="PanelSpeedTopper">
-                                        <TextBlock x:Name="TxtSpeedTopper" Text="1.0×" Foreground="{StaticResource TextDimBrush}"
-                                                   VerticalAlignment="Center" Width="30" TextAlignment="Right" Margin="5,0,2,0"/>
+                                        <TextBlock Text="⚡" FontFamily="Segoe UI Symbol" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="16" TextAlignment="Center" Margin="7,0,-3,0" ToolTip="Speed"/>
                                         <Slider x:Name="SliderSpeedTopper" Minimum="0.2" Maximum="5.0"
                                                 Value="1.0" IsSnapToTickEnabled="True" TickFrequency="0.2"
                                                 Width="90" VerticalAlignment="Center"
                                                 ToolTip="Speed"
                                                 ValueChanged="SliderPerScreenSpeed_ValueChanged"/>
+                                        <TextBlock x:Name="TxtSpeedTopper" Text="1.0×" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="30" TextAlignment="Left" Margin="1,0,0,0"/>
                                     </StackPanel>
                                 </Grid>
                             </StackPanel>
@@ -708,49 +732,57 @@
                                     <ComboBox x:Name="CbBlobPatternDmd" Width="180" HorizontalAlignment="Left"
                                               SelectionChanged="CbBlobPattern_SelectionChanged"/>
                                 </StackPanel>
-                                <Grid Margin="70,4,0,0">
+                                <Grid Margin="0,4,0,0" HorizontalAlignment="Center">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="117"/>
-                                        <ColumnDefinition Width="132"/>
-                                        <ColumnDefinition Width="122"/>
-                                        <ColumnDefinition Width="122"/>
+                                        <ColumnDefinition Width="133"/>
+                                        <ColumnDefinition Width="155"/>
+                                        <ColumnDefinition Width="145"/>
+                                        <ColumnDefinition Width="145"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Orientation="Horizontal" Grid.Column="0" VerticalAlignment="Center"
                                                 x:Name="PanelBlobCountDmd">
-                                        <TextBlock x:Name="TxtBlobCountDmd" Text="10" Foreground="{StaticResource TextDimBrush}"
-                                                   VerticalAlignment="Center" Width="25" TextAlignment="Right" Margin="0,0,2,0"/>
+                                        <TextBlock Text="#" FontFamily="Segoe UI Symbol" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="16" TextAlignment="Center" Margin="0,0,-3,0" ToolTip="Number of blobs"/>
                                         <Slider x:Name="SliderBlobCountDmd" Minimum="0" Maximum="100" Value="10"
                                                 Width="90" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
                                                 ToolTip="Number of blobs"
                                                 ValueChanged="SliderBlobCountDmd_ValueChanged"/>
+                                        <TextBlock x:Name="TxtBlobCountDmd" Text="10" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="25" TextAlignment="Left" Margin="1,0,0,0"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Grid.Column="1" VerticalAlignment="Center"
                                                 x:Name="PanelBlobSizeDmd">
-                                        <TextBlock x:Name="TxtBlobSizeDmd" Text="Default" Foreground="{StaticResource TextDimBrush}"
-                                                   VerticalAlignment="Center" Width="40" TextAlignment="Right" Margin="0,0,2,0"/>
+                                        <TextBlock Text="⤢" FontFamily="Segoe UI Symbol" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="16" TextAlignment="Center" Margin="7,0,-3,0" ToolTip="Size of blobs"/>
                                         <Slider x:Name="SliderBlobSizeDmd" Minimum="1" Maximum="20" Value="10"
                                                 Width="90" VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"
                                                 ToolTip="Size of blobs"
                                                 ValueChanged="SliderBlobSize_ValueChanged"/>
+                                        <TextBlock x:Name="TxtBlobSizeDmd" Text="Default" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="40" TextAlignment="Left" Margin="1,0,0,0"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Grid.Column="2" VerticalAlignment="Center">
-                                        <TextBlock x:Name="TxtIntensityDmd" Text="50%" Foreground="{StaticResource TextDimBrush}"
-                                                   VerticalAlignment="Center" Width="30" TextAlignment="Right" Margin="5,0,2,0"/>
+                                        <TextBlock Text="☀" FontFamily="Segoe UI Symbol" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="16" TextAlignment="Center" Margin="7,0,-3,0" ToolTip="Intensity"/>
                                         <Slider x:Name="SliderIntensityDmd" Minimum="5" Maximum="100"
                                                 Value="50" IsSnapToTickEnabled="True" TickFrequency="5"
                                                 Width="90" VerticalAlignment="Center"
                                                 ToolTip="Intensity"
                                                 ValueChanged="SliderPerScreenIntensity_ValueChanged"/>
+                                        <TextBlock x:Name="TxtIntensityDmd" Text="50%" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="30" TextAlignment="Left" Margin="1,0,0,0"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Grid.Column="3" VerticalAlignment="Center"
                                                 x:Name="PanelSpeedDmd">
-                                        <TextBlock x:Name="TxtSpeedDmd" Text="1.0×" Foreground="{StaticResource TextDimBrush}"
-                                                   VerticalAlignment="Center" Width="30" TextAlignment="Right" Margin="5,0,2,0"/>
+                                        <TextBlock Text="⚡" FontFamily="Segoe UI Symbol" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="16" TextAlignment="Center" Margin="7,0,-3,0" ToolTip="Speed"/>
                                         <Slider x:Name="SliderSpeedDmd" Minimum="0.2" Maximum="5.0"
                                                 Value="1.0" IsSnapToTickEnabled="True" TickFrequency="0.2"
                                                 Width="90" VerticalAlignment="Center"
                                                 ToolTip="Speed"
                                                 ValueChanged="SliderPerScreenSpeed_ValueChanged"/>
+                                        <TextBlock x:Name="TxtSpeedDmd" Text="1.0×" Foreground="{StaticResource TextDimBrush}"
+                                                   VerticalAlignment="Center" Width="30" TextAlignment="Left" Margin="1,0,0,0"/>
                                     </StackPanel>
                                 </Grid>
                             </StackPanel>
@@ -1512,7 +1544,7 @@
                                     <TextBlock Text="Zoom Rate:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Margin="0,0,8,0"/>
                                     <Slider x:Name="SliderMatrixZoomRate" Minimum="0.02" Maximum="0.12" Value="0.05"
-                                            Width="100" VerticalAlignment="Center" IsMoveToPointEnabled="True"
+                                            Width="90" VerticalAlignment="Center" IsMoveToPointEnabled="True"
                                             IsSnapToTickEnabled="True" TickFrequency="0.01"
                                             ValueChanged="SliderMatrixZoomRate_ValueChanged"
                                             ToolTip="Controls how fast the infinite zoom effect moves. Lower = subtle, Higher = aggressive."
@@ -1524,7 +1556,7 @@
                                     <TextBlock Text="Max Trails:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Margin="0,0,8,0"/>
                                     <Slider x:Name="SliderMatrixMaxTrails" Minimum="200" Maximum="3000" Value="1500"
-                                            Width="100" VerticalAlignment="Center" IsMoveToPointEnabled="True"
+                                            Width="90" VerticalAlignment="Center" IsMoveToPointEnabled="True"
                                             IsSnapToTickEnabled="True" TickFrequency="100"
                                             ValueChanged="SliderMatrixMaxTrails_ValueChanged"
                                             ToolTip="Maximum simultaneous trail characters. Higher = denser/longer trails at increased GPU/CPU cost. Tune to your hardware."
