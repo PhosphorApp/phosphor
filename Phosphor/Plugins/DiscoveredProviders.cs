@@ -39,7 +39,37 @@ public static class DiscoveredProviders
             }
             if (!_providers.TryAdd(typeId, plugin.Provider))
                 DebugLog.Log("PluginLoader", $"Ignoring duplicate plug-in type id '{typeId}'.");
+            else
+                WarnOnMissingRequiredTools(plugin.Provider, baseDirectory);
         }
+    }
+
+    /// <summary>
+    /// Logs a clear startup warning for each declared <see cref="IPhosphorSourceProvider.RequiredTools"/>
+    /// that is missing from the host's tool folder. Validation/visibility only — the plug-in still
+    /// loads (a missing tool surfaces here rather than as a confusing play-time failure).
+    /// </summary>
+    private static void WarnOnMissingRequiredTools(IPhosphorSourceProvider provider, string? baseDirectory)
+    {
+        foreach (var tool in provider.RequiredTools)
+        {
+            if (string.IsNullOrWhiteSpace(tool)) continue;
+            if (!ToolExists(tool, baseDirectory))
+                DebugLog.Log("PluginLoader",
+                    $"Plug-in '{provider.TypeId}' declares required tool '{tool}', which is missing — " +
+                    "the source may fail at runtime.");
+        }
+    }
+
+    /// <summary>
+    /// Mirrors <c>PluginHost.GetToolPath</c>'s resolution (a bundled <c>&lt;tool&gt;.exe</c> next to the
+    /// app) so validation matches what the plug-in will actually see at runtime.
+    /// </summary>
+    private static bool ToolExists(string toolName, string? baseDirectory)
+    {
+        var exe = toolName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? toolName : toolName + ".exe";
+        var path = System.IO.Path.Combine(baseDirectory ?? AppContext.BaseDirectory, exe);
+        return System.IO.File.Exists(path);
     }
 
     /// <summary>Returns the discovered provider for a type id, or <c>null</c>.</summary>

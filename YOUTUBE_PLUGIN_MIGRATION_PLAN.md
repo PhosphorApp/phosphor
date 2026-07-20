@@ -113,21 +113,53 @@ The plug-in infrastructure already exists and is proven in production:
 - [ ] Inventory every host reference to `YouTubeSource`, `YouTubeSourceProvider`,
 	  `Phosphor.Search.*`, and `Phosphor.Video.*` (Find All References) so nothing is missed.
 
+### Phase 0 inventory results (done)
+
+Reference counts to moving symbols outside `Search/`, `Video/`, `Plugins/YouTube/`:
+`JukeboxViewModel` 36, `PluginSettingsFactory` 16, `App.xaml.cs` 14, `StreamSelector` 12,
+`AppSettings` 9, `SettingsWindow` 7, `VideoCache`/`PrefetchCache` 5 each, `BackglassWindow` 4,
+`SourceRegistry` 2, `DmdWindow` 1.
+
+**Key structural finding — `Phosphor.Video` must be SPLIT, not moved wholesale:**
+- **Stays in the host** (host-facing playback vocabulary, consumed by windows/VM/caches/settings):
+  `VideoQualityPreference`, `VideoStreams`, `VideoStreamKind`, `VideoDownload`
+  (all defined in `Video/IVideoEngine.cs`).
+- **Moves to the plugin** (engine implementation): `IVideoEngine`, `VideoEngineFactory`,
+  `YoutubeExplodeVideoEngine`, `YtDlpVideoEngine`, `YtDlpUpdater`, `Services/StreamSelector.cs`,
+  and the `YoutubeExplode` package. Same split applies to `Phosphor.Search` (`ISearchEngine`,
+  factories, engines move; any host-facing result types stay).
+
+**Concrete couplings to sever:**
+- `BackglassWindow.xaml.cs` (~821) falls back to `new YoutubeExplodeVideoEngine()` — must always
+  route via `vm.ResolveStreamsViaPluginOrLegacy` (no direct engine construction in the UI layer).
+- The VM already bridges the contract to host vocab (`ResolveStreamsViaPluginOrLegacy` →
+  `MapResolvedStream` → `VideoStreams`; `DownloadStreamsViaPluginOrLegacy` → `VideoDownload`;
+  `WireCacheDownloadOverride`). This bridge is the template — legacy `_videoEngine` fallbacks in
+  these methods get removed once the engine lives only in the plugin.
+- `App.xaml.cs` `MaybeAutoUpdateYtDlp` and `SettingsWindow` yt-dlp update UI reference
+  `YtDlpUpdater`/engine kinds — must move behind the `IUpdatable` capability (host stays engine-agnostic).
+- `PluginSettingsFactory` / `SourceRegistry` construct `YouTubeSourceProvider` directly — convert
+  to discovery.
+
+
 ## Phase 1 — Fill contract gaps (unblock both sources)
 
-- [ ] Decide the home for **chapter parsing**. Preferred: add an `IChapterProvider`
-	  (or extend an existing capability) to `Phosphor.Plugin.Abstractions` so YouTube and
-	  Plex can both supply chapters through the contract instead of `ParseYouTubeChapters`
-	  living in the VM.
-- [ ] Audit whether **gapless playback** and **chapters** for Plex need new capability
-	  interfaces; stub them now so YouTube extraction proves the shape before Plex needs it.
+- [x] **Chapter parsing — NO new contract capability needed (verified in Phase 2 step).**
+	  The contract already carries everything: `SourceMetadata(Duration, Description, Chapters,
+	  PublishedAt)` is returned by `IPlayableResolver.GetMetadataAsync` and includes both native
+	  `Chapters` AND the raw `Description`; `ChapterMarker` and `SourceItem.Chapters` already exist.
+	  Resolution: move the YouTube-specific description→chapters parsing (`ParseYouTubeChapters`)
+	  INTO the YouTube plugin's `GetMetadataAsync` so it returns pre-parsed `SourceMetadata.Chapters`.
+	  The host then drops `ParseYouTubeChapters` entirely (a Phase-4 rewire, not a contract change).
+- [x] **Gapless — already covered.** `IGaplessCapable` already exists in the contract; no stub needed.
 - [ ] Verify `IPluginHost` already exposes everything YouTube needs (`GetToolPath("yt-dlp")`,
 	  `GetToolPath("ffmpeg")`, `HttpClient`, `InstanceCacheDirectory`, secrets). Add members
 	  only if a concrete gap appears — keep the door one-way.
-- [ ] Add an optional `RequiredTools` declaration to the provider contract (e.g.
-	  `IReadOnlyList<string> RequiredTools => []`) and have `PluginLoader`/`DiscoveredProviders`
-	  warn/disable a plugin when a declared tool is missing from `dependencies\`. Validation +
-	  visibility only — no acquisition/provisioning.
+- [x] Add an optional `RequiredTools` declaration to the provider contract
+	  (`IReadOnlyList<string> RequiredTools => []` on `IPhosphorSourceProvider`) and have
+	  `DiscoveredProviders.Initialize` warn when a declared tool is missing from the host tool
+	  folder (mirrors `PluginHost.GetToolPath` resolution). Validation + visibility only — no
+	  acquisition/provisioning.
 
 ## Phase 2 — Create the YouTube plug-in project
 
