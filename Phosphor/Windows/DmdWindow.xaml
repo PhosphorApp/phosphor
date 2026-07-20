@@ -544,6 +544,14 @@
                                                 </Style>
                                             </Button.Style>
                                         </Button>
+                                        <!-- Optional "watch video": audio plays by default; this tries a YouTube video
+                                             match and falls back to audio when none is found. Shown only for video-capable
+                                             items (e.g. iHeart video-podcast episodes). -->
+                                        <Button Content="&#x1F4FA;" ToolTip="Watch video (falls back to audio)"
+                                                Padding="{DynamicResource TrackButtonPadding}" FontSize="{DynamicResource TrackButtonFontSize}" Margin="4,0,0,0"
+                                                Command="{Binding DataContext.PlayVideoAlternativeCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                CommandParameter="{Binding}"
+                                                Visibility="{Binding HasVideoAlternative, Converter={StaticResource BoolVis}}"/>
                                         <Button ToolTip="Favorite" Padding="{DynamicResource TrackButtonPadding}" FontSize="{DynamicResource TrackButtonFontSize}" Margin="4,0,0,0"
                                                 Command="{Binding DataContext.ToggleFavoriteCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding}"

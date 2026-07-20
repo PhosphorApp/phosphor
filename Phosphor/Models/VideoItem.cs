@@ -51,6 +51,21 @@ public class VideoItem : ObservableObject
     public bool IsAudioOnly { get; set; }
 
     /// <summary>
+    /// True when this item plays as audio by default but a <em>video</em> version likely exists on the
+    /// host's video source (e.g. an iHeart "video podcast" episode whose video lives on YouTube). The
+    /// UI shows an optional "watch video" (TV) button that opportunistically resolves the video via
+    /// <see cref="VideoSearchQuery"/> and falls back to this item's audio when no match is found.
+    /// </summary>
+    public bool HasVideoAlternative { get; set; }
+
+    /// <summary>
+    /// Best-effort query the host runs against its video source (YouTube) to find the video version
+    /// when <see cref="HasVideoAlternative"/> is set (e.g. <c>"Show Name" Episode Title</c>). Null when
+    /// the source couldn't supply one.
+    /// </summary>
+    public string? VideoSearchQuery { get; set; }
+
+    /// <summary>
     /// When true, this item is a continuous live stream with no fixed duration or seekable timeline
     /// (e.g. a SiriusXM radio channel). The host suppresses the progress bar/seek, shows elapsed time
     /// as "M:SS / *", and does not auto-advance the playlist when it "ends".

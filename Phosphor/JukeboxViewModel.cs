@@ -1685,6 +1685,8 @@ public partial class JukeboxViewModel : ObservableObject
             IsAudioOnly = item.IsAudioOnly,
             IsLiveStream = item.IsLiveStream,
             IsPlayable = item.IsPlayable,
+            HasVideoAlternative = item.HasVideoAlternative,
+            VideoSearchQuery = item.VideoSearchQuery,
         };
     }
 
@@ -3386,6 +3388,56 @@ public partial class JukeboxViewModel : ObservableObject
             }
         }
         return added;
+    }
+
+    /// <summary>
+    /// Optional "watch video" action for items that play audio by default but likely have a video
+    /// version on YouTube (e.g. iHeart video-podcast episodes). Runs a best-effort first-match YouTube
+    /// search from <see cref="VideoItem.VideoSearchQuery"/>; on a hit it plays the video, otherwise it
+    /// silently falls back to the item's audio via <see cref="PlayNow"/>. Never guaranteed — that's why
+    /// the default Play button (audio) stays the primary action.
+    /// </summary>
+    [RelayCommand]
+    private async Task PlayVideoAlternativeAsync(VideoItem? item)
+    {
+        if (item == null || item.IsHeader) return;
+
+        var query = item.VideoSearchQuery;
+        if (string.IsNullOrWhiteSpace(query)
+            || _sourceRegistry?.YouTube is not Phosphor.Plugin.Abstractions.ITextSearchCapable youtube)
+        {
+            PlayNow(item);
+            return;
+        }
+
+        SetStatusPrefix("Finding video");
+        StatusText = $"Looking for a video version of {item.Title}…";
+
+        VideoItem? match = null;
+        try
+        {
+            // Take only the first result — approximates yt-dlp's "ytsearch1" exact top match.
+            await foreach (var found in youtube.SearchAsync(query!, _searchCts.Token))
+            {
+                match = ToVideoItem(found);
+                break;
+            }
+        }
+        catch (Exception ex)
+        {
+            DebugLog.LogException($"Video-alternative search '{query}'", ex);
+        }
+
+        if (match != null && !string.IsNullOrEmpty(match.VideoId))
+        {
+            match.Title = item.Title; // keep the podcast episode's title on screen
+            PlayNow(match);
+        }
+        else
+        {
+            StatusText = $"No video found — playing audio: {item.Title}";
+            PlayNow(item);
+        }
     }
 
     [RelayCommand]

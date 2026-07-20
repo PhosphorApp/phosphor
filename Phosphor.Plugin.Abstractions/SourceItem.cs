@@ -23,6 +23,22 @@ public sealed class SourceItem
     public bool IsAudioOnly { get; init; }
 
     /// <summary>
+    /// True when this item plays as audio by default but a <em>video</em> version likely exists
+    /// elsewhere (e.g. an iHeart "video podcast" episode whose audio the API serves directly, while
+    /// the video lives on YouTube). The host may surface an optional "watch video" affordance that
+    /// opportunistically resolves the video via <see cref="VideoSearchQuery"/>, falling back to this
+    /// item's audio when no match is found. Purely additive — default playback is unaffected.
+    /// </summary>
+    public bool HasVideoAlternative { get; init; }
+
+    /// <summary>
+    /// A best-effort search query the host can run against its video source (YouTube) to find the
+    /// video version when <see cref="HasVideoAlternative"/> is set (e.g. <c>"Show Name" Episode Title</c>).
+    /// Null when the source can't supply one.
+    /// </summary>
+    public string? VideoSearchQuery { get; init; }
+
+    /// <summary>
     /// Whether this item is actually playable. Defaults to <c>true</c>. A source may surface an item
     /// it knows it cannot resolve (e.g. a SoundCloud track it has previously seen fail with DRM) so
     /// the user still sees it in results — set this to <c>false</c> and the host renders the row as
