@@ -2405,6 +2405,7 @@ public partial class JukeboxViewModel : ObservableObject
         StatusText = "Searching...";
         SearchResults.Clear();
 
+
         // A search from the box while browsing a source is scoped to the LIBRARY you entered
         // (the browse-stack root), not the specific node you've drilled into. Scoping to the deepest
         // node was the bug (searching "pink floyd" while inside the "Rush" artist found nothing);
@@ -2443,11 +2444,19 @@ public partial class JukeboxViewModel : ObservableObject
 
             if (rootSource is Phosphor.Plugin.Abstractions.ITextSearchCapable)
             {
-                // Source-wide search targeted at the browsed source (e.g. a local folder). Collapse
-                // the browse view to a flat search result set.
+                // Source-wide search targeted at the browsed source (e.g. iHeartRadio, a local
+                // folder). Present a flat result set, but keep the source's root tile on the stack and
+                // push a display-only "Search: …" frame so the breadcrumb reads e.g.
+                // "iHeartRadio › Search: hoda" and Back pops the search to return to the tile.
                 sourceInstanceId = libraryRoot.SourceInstanceId;
-                IsGenericBrowsing = false;
                 _browseStack.Clear();
+                _browseStack.Add(libraryRoot);
+                _browseStack.Add(new BrowseNode(
+                    $"Search: {query}",
+                    libraryRoot.SourceInstanceId,
+                    libraryRoot.CategoryId,
+                    libraryRoot.SourceState,
+                    libraryRoot.Icon));
                 _genericPaged = null;
                 _genericPagedCategory = null;
                 _genericPagedResolver = null;
