@@ -1608,6 +1608,15 @@ public partial class JukeboxViewModel : ObservableObject
 
         await foreach (var item in items.WithCancellation(ct))
         {
+            // A container result (e.g. an iHeartRadio podcast show, a Plex artist/album returned by
+            // search) is a drill-in, not a playable leaf — map it so the UI shows Open and drilling
+            // in browses its children, rather than trying (and failing) to play it.
+            if (item.IsContainer)
+            {
+                yield return ToContainerLeafItem(item, source as Phosphor.Plugin.Abstractions.IFavoritable);
+                continue;
+            }
+
             var vi = ToVideoItem(item);
             if (item.IsLiveStream)
             {
