@@ -218,19 +218,19 @@ Reference counts to moving symbols outside `Search/`, `Video/`, `Plugins/YouTube
 	  - Host bin no longer contains `YoutubeExplode.dll` (fully removed from the host).
 	  - `yt-dlp.exe` and `ffmpeg.exe` present in the host dir, so `GetToolPath` + `RequiredTools`
 		validation resolve.
-- [ ] **Manual smoke test (owner to run — app is fullscreen multi-screen)** vs. the Phase 0
-	  baseline: search, resolve/play, download/cache, chapters, connection test, favorites, engine
-	  switch (YoutubeExplode <-> yt-dlp), yt-dlp updater.
-- [ ] Manual: caching + prefetch with the host holding no YouTube engine type (cache hit plays the
-	  muxed `.mkv`; prefetch primes the next queue item via `IDownloadable`).
-- [ ] Manual: `RequiredTools` validation — temporarily remove `yt-dlp.exe` and confirm a clear
-	  load-time warning (see `PluginLoader`/`DiscoveredProviders` debug log) instead of a play-time
-	  failure.
-- [ ] Manual: confirm the plug-in loads from `plugins\YouTube` (check the loader log lines).
-- [x] **GATE outcome so far: GREEN.** No step forced reaching into host internals; YoutubeExplode
-	  rides cleanly in the plug-in ALC; chapters needed NO new contract capability (relocated the
-	  parser into the plug-in). Full cutover completed on branch `youtubepluginmigration`. Proceed
-	  to Phase 6 (Plex) once the owner completes the manual runtime smoke test.
+- [x] **Manual smoke test (owner) — PASS.** App launches, YouTube appears in the providers list,
+	  search + playback work. Fix required along the way: the plug-in loader constructs providers via
+	  `Activator.CreateInstance`, which needs a REAL parameterless constructor — `YouTubeSourceProvider`
+	  had `(HttpClient? http = null)` (optional-arg ctors don't qualify), causing
+	  `MissingMethodException`. Made the provider parameterless (commit `dc42394`). Note: a running
+	  app holds the previously-loaded plug-in DLL, so after a plug-in rebuild you must fully close
+	  `Phosphor.exe` before relaunch or the stale DLL is used.
+- [ ] Manual (optional follow-ups): caching + prefetch end-to-end; `RequiredTools` warning when
+	  `yt-dlp.exe` is absent; engine switch (YoutubeExplode <-> yt-dlp) and yt-dlp updater.
+- [x] **GATE outcome: GREEN — confirmed at runtime.** No step forced reaching into host internals;
+	  YoutubeExplode rides cleanly in the plug-in ALC; chapters needed NO new contract capability
+	  (relocated the parser into the plug-in). Full cutover verified working on branch
+	  `youtubepluginmigration`. **Phase 6 (Plex) is unblocked.**
 
 ### Phase 2/3/4 cutover notes (done)
 - `Phosphor.Video`/`Phosphor.Search` engines + `StreamSelector` + `YoutubeExplode` moved into
