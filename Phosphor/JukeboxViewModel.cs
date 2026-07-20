@@ -96,10 +96,8 @@ public partial class JukeboxViewModel : ObservableObject
         // are reserved so a plug-in can't shadow YouTube/Plex). Cheap to guard; the scan touches disk.
         if (!_pluginsDiscovered)
         {
-            Phosphor.Plugins.DiscoveredProviders.Initialize(new[]
-            {
-                Phosphor.Plugins.Plex.PlexSourceProvider.PlexTypeId,
-            });
+            // No reserved type ids — YouTube and Plex are now discovered plug-ins like the rest.
+            Phosphor.Plugins.DiscoveredProviders.Initialize(System.Array.Empty<string>());
             _pluginsDiscovered = true;
         }
 
@@ -523,6 +521,10 @@ public partial class JukeboxViewModel : ObservableObject
         CancellationToken ct)
     {
         var vi = ToVideoItem(item);
+        // Carry the opaque plug-in state so generic consumers (e.g. IFavoriteCapture) can hand it
+        // back to the owning source to rebuild the item without a host-specific type.
+        vi.GenericSourceInstanceId ??= item.SourceInstanceId;
+        vi.GenericSourceState ??= item.SourceState;
         // Resolve a playable URL now (local files are a cheap path check); the player checks
         // VideoItem.StreamUrl first and plays it directly. EXCEPTIONS resolved lazily at play time:
         //  • live streams (e.g. SiriusXM radio) — eager resolve would fire one authenticated
@@ -542,6 +544,7 @@ public partial class JukeboxViewModel : ObservableObject
                     vi.AudioStreamUrl = stream.Layout == Phosphor.Plugin.Abstractions.StreamLayout.SeparateVideoAudio
                         ? stream.AudioSlaveUri : null;
                     if (stream.IsLiveStream) vi.IsLiveStream = true;
+                    if (!string.IsNullOrEmpty(stream.AudioTag)) vi.AudioTag = stream.AudioTag!;
                 }
             }
             catch (Exception ex)
@@ -1885,8 +1888,8 @@ public partial class JukeboxViewModel : ObservableObject
     {
         if (_sourceRegistry != null)
         {
-            // Route the item to its source and ask the gapless capability. Plex reads the carried
-            // VideoItem from SourceState, so wrap it accordingly.
+            // Route the item to its source and ask the gapless capability. The host passes the
+            // pre-built stream URL via SourceState (a string) so the source never needs a host type.
             var source = SourceForItem(item);
             if (source is Phosphor.Plugin.Abstractions.IGaplessCapable g)
             {
@@ -1895,7 +1898,7 @@ public partial class JukeboxViewModel : ObservableObject
                     SourceInstanceId = source.InstanceId,
                     ItemId = item.VideoId,
                     IsAudioOnly = item.IsAudioOnly,
-                    SourceState = item,
+                    SourceState = item.StreamUrl,
                 };
                 return g.GetGaplessStreamUrl(probe);
             }
@@ -3103,11 +3106,8 @@ public partial class JukeboxViewModel : ObservableObject
 
         // Plex needs the full item to replay a favorite without a server round-trip — hand it over on
         // star (leaf carries the token-bound StreamUrl; container carries its browse node identity).
-        if (newState && source is Phosphor.Plugins.Plex.PlexSource plex)
-            plex.RememberFavorite(item);
-
-        // Generic capture for out-of-tree sources (Jellyfin/Emby): hand them a source-agnostic
-        // snapshot (incl. the opaque container node) so they can rebuild the favorite on play.
+        // Source-agnostic favorite capture (Plex/Jellyfin/Emby): hand the source a snapshot plus the
+        // opaque browse state (container node OR leaf state) so it can rebuild the favorite on play.
         if (newState && source is Phosphor.Plugin.Abstractions.IFavoriteCapture capture)
             capture.RememberFavorite(new Phosphor.Plugin.Abstractions.FavoriteCapture(
                 ItemId: item.VideoId,
@@ -3117,7 +3117,7 @@ public partial class JukeboxViewModel : ObservableObject
                 Duration: item.Duration,
                 IsAudioOnly: item.IsAudioOnly,
                 IsContainer: isContainer,
-                ContainerState: isContainer ? item.GenericSourceState : null));
+                ContainerState: item.GenericSourceState));
 
         // Write-through to the host-level aggregated index (drives the global Favorites tile).
         if (source is Phosphor.Plugin.Abstractions.IPhosphorSource src)

@@ -117,7 +117,11 @@ internal static class PlexMappings
     {
         if (string.IsNullOrEmpty(v.StreamUrl)) return null;
         var layout = v.IsAudioOnly ? StreamLayout.AudioOnly : StreamLayout.Muxed;
-        return new ResolvedStream(StreamTransport.Http, layout, v.StreamUrl, null, null);
+        return new ResolvedStream(StreamTransport.Http, layout, v.StreamUrl, null, null)
+        {
+            // Surface the stereo/surround selection so the host status bar can show it.
+            AudioTag = string.IsNullOrEmpty(v.AudioTag) ? null : v.AudioTag,
+        };
     }
 
     /// <summary>Builds <see cref="SourceMetadata"/> from a Plex item's known duration + chapters.</summary>
@@ -129,47 +133,4 @@ internal static class PlexMappings
 
     private static PluginChapterMarker ToPluginChapter(Phosphor.ChapterMarker c) =>
         new(c.Title, c.StartTime, c.EndTime);
-
-    // ── Reverse mapping (plug-in → host VideoItem) ─────────────────────────────
-
-    /// <summary>
-    /// Recovers a host <see cref="VideoItem"/> from a browse <see cref="SourceItem"/>. Plex
-    /// items carry their original <see cref="VideoItem"/> in <see cref="SourceItem.SourceState"/>
-    /// (set by <see cref="ToSourceItem"/>), so this is a direct unwrap with a defensive fallback.
-    /// </summary>
-    public static VideoItem ToVideoItem(SourceItem item) =>
-        item.SourceState as VideoItem ?? new VideoItem
-        {
-            Title = item.Title,
-            Author = item.Subtitle ?? "",
-            ThumbnailUrl = item.ThumbnailUrl ?? "",
-            VideoId = item.ItemId,
-            Duration = item.Duration,
-            IsAudioOnly = item.IsAudioOnly,
-        };
-
-    /// <summary>
-    /// Rebuilds a container <see cref="VideoItem"/> (artist/album) from a browse
-    /// <see cref="SourceCategory"/> whose <see cref="SourceCategory.SourceState"/> is a
-    /// <see cref="PlexNode"/>. Used when a drill-down yields sub-categories (e.g. an artist's
-    /// albums) that the UI still represents as <see cref="VideoItem"/>s.
-    /// </summary>
-    public static VideoItem ToContainerVideoItem(SourceCategory category)
-    {
-        var node = category.SourceState as PlexNode;
-        var itemType = node?.Kind switch
-        {
-            PlexNodeKind.Artist => PlexItemType.Artist,
-            PlexNodeKind.Album => PlexItemType.Album,
-            _ => PlexItemType.None,
-        };
-        return new VideoItem
-        {
-            Title = category.Title,
-            ThumbnailUrl = category.ThumbnailUrl ?? "",
-            VideoId = category.CategoryId,
-            PlexItemType = itemType,
-            PlexRatingKey = node?.Key,
-        };
-    }
 }

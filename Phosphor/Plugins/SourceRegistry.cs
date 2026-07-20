@@ -1,7 +1,6 @@
 using System.Net.Http;
 using Phosphor.Plugin.Abstractions;
 using Phosphor.Plugins.Host;
-using Phosphor.Plugins.Plex;
 
 namespace Phosphor.Plugins;
 
@@ -36,7 +35,7 @@ public sealed class SourceRegistry : IAsyncDisposable
 
     /// <summary>All configured Plex instances (may be more than one).</summary>
     public IEnumerable<IPhosphorSource> PlexInstances =>
-        _sources.Where(s => s.TypeId == PlexSourceProvider.PlexTypeId);
+        _sources.Where(s => s.TypeId == KnownSourceTypeIds.Plex);
 
     /// <summary>Finds a source by instance id.</summary>
     public IPhosphorSource? ByInstance(string instanceId) =>
@@ -120,15 +119,11 @@ public sealed class SourceRegistry : IAsyncDisposable
     }
 
     /// <summary>
-    /// Creates the provider for a type id: built-in YouTube/Plex first, then any third-party
-    /// provider discovered from the <c>plugins/</c> folder (<see cref="DiscoveredProviders"/>).
+    /// Creates the provider for a type id: all sources (YouTube, Plex, and third parties) are
+    /// discovered from the <c>plugins/</c> folder (<see cref="DiscoveredProviders"/>).
     /// Returns <c>null</c> for an unknown type id.
     /// </summary>
-    private IPhosphorSourceProvider? CreateProvider(string typeId) => typeId switch
-    {
-        PlexSourceProvider.PlexTypeId => new PlexSourceProvider(),
-        _ => DiscoveredProviders.Get(typeId),
-    };
+    private IPhosphorSourceProvider? CreateProvider(string typeId) => DiscoveredProviders.Get(typeId);
 
     private async Task AddAsync(IPhosphorSource source, CancellationToken ct)
     {

@@ -9,6 +9,9 @@ public static class KnownSourceTypeIds
 {
     /// <summary>The YouTube source type id (must match the YouTube plug-in's provider).</summary>
     public const string YouTube = "youtube";
+
+    /// <summary>The Plex source type id (must match the Plex plug-in's provider).</summary>
+    public const string Plex = "plex";
 }
 
 /// <summary>

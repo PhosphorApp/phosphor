@@ -1,5 +1,4 @@
 using Phosphor.Plugin.Abstractions;
-using Phosphor.Plugins.Plex;
 
 namespace Phosphor.Plugins;
 
@@ -98,21 +97,14 @@ public static class PluginSettingsFactory
     /// <summary>Provider type ids that can be added by the user (i.e. support multiple instances).</summary>
     public static IReadOnlyList<(string TypeId, string DisplayName)> AddableProviders()
     {
-        var list = new List<(string TypeId, string DisplayName)>
-        {
-            (PlexSourceProvider.PlexTypeId, CreateProvider(PlexSourceProvider.PlexTypeId)!.DisplayName),
-        };
-        // Any discovered third-party provider can be added by the user (single- or multi-instance).
+        var list = new List<(string TypeId, string DisplayName)>();
+        // Every source (Plex and third parties) is discovered from the plugins/ folder.
         foreach (var p in DiscoveredProviders.All)
             list.Add((p.TypeId, p.DisplayName));
         return list;
     }
 
-    private static IPhosphorSourceProvider? CreateProvider(string typeId) => typeId switch
-    {
-        PlexSourceProvider.PlexTypeId => new PlexSourceProvider(),
-        _ => DiscoveredProviders.Get(typeId),
-    };
+    private static IPhosphorSourceProvider? CreateProvider(string typeId) => DiscoveredProviders.Get(typeId);
 
     /// <summary>
     /// Builds a transient (non-registered) source instance from a config, for the settings UI to
@@ -121,11 +113,7 @@ public static class PluginSettingsFactory
     /// </summary>
     public static IPhosphorSource? BuildTransientSource(PluginInstanceConfig cfg, System.Net.Http.HttpClient http)
     {
-        var provider = cfg.TypeId switch
-        {
-            PlexSourceProvider.PlexTypeId => (IPhosphorSourceProvider)new PlexSourceProvider(),
-            _ => DiscoveredProviders.Get(cfg.TypeId),
-        };
+        var provider = DiscoveredProviders.Get(cfg.TypeId);
         return provider?.CreateInstance(cfg.InstanceId, cfg.Settings);
     }
 

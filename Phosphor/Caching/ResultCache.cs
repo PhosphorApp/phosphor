@@ -25,9 +25,7 @@ public class CachedVideoItem
     public double? DurationSeconds { get; set; }
     public string? StreamUrl { get; set; }
     public bool IsAudioOnly { get; set; }
-    public string? PlexRatingKey { get; set; }
-    public PlexAudioStream PlexAudioStream { get; set; }
-    public PlexItemType PlexItemType { get; set; }
+    public string AudioTag { get; set; } = "";
 }
 
 /// <summary>
@@ -242,9 +240,7 @@ public sealed class ResultCache
         DurationSeconds = v.Duration?.TotalSeconds,
         StreamUrl = v.StreamUrl,
         IsAudioOnly = v.IsAudioOnly,
-        PlexRatingKey = v.PlexRatingKey,
-        PlexAudioStream = v.PlexAudioStream,
-        PlexItemType = v.PlexItemType
+        AudioTag = v.AudioTag,
     };
 
     private static VideoItem ToVideoItem(CachedVideoItem c) => new()
@@ -256,9 +252,7 @@ public sealed class ResultCache
         Duration = c.DurationSeconds.HasValue ? TimeSpan.FromSeconds(c.DurationSeconds.Value) : null,
         StreamUrl = c.StreamUrl,
         IsAudioOnly = c.IsAudioOnly,
-        PlexRatingKey = c.PlexRatingKey,
-        PlexAudioStream = c.PlexAudioStream,
-        PlexItemType = c.PlexItemType
+        AudioTag = c.AudioTag,
     };
 }
 

@@ -4787,9 +4787,9 @@ public partial class SettingsWindow : JukeboxWindow
                 {
                     // These "browse libraries" actions are surfaced by the inline library editor
                     // (BuildInlineLibraryEditor on the "libraries" field), so skip them here to avoid
-                    // a duplicate popup button. Jellyfin and Emby are out-of-tree plug-ins (no type
+                    // a duplicate popup button. Plex/Jellyfin/Emby are out-of-tree plug-ins (no type
                     // ref), so match their action ids by string.
-                    if (action.Id == Phosphor.Plugins.Plex.PlexSourceProvider.ActionBrowseLibraries ||
+                    if (action.Id == "browseLibraries" ||
                         action.Id == "jellyfinBrowseLibraries" ||
                         action.Id == "embyBrowseLibraries")
                         continue;
@@ -5181,7 +5181,7 @@ public partial class SettingsWindow : JukeboxWindow
 
             // Hubs/Playlists are Plex-only concepts; other IConfigurable sources (e.g. Jellyfin) just
             // pick libraries, so only render the extra flags for Plex instances.
-            if (cfg.TypeId == Phosphor.Plugins.Plex.PlexSourceProvider.PlexTypeId)
+            if (cfg.TypeId == Phosphor.Plugins.KnownSourceTypeIds.Plex)
             {
                 var playlistsCb = new System.Windows.Controls.CheckBox
                 {

@@ -63,4 +63,12 @@ public sealed record ResolvedStream(
     /// for ordinary finite media.
     /// </summary>
     public bool IsLiveStream { get; init; }
+
+    /// <summary>
+    /// Optional short, human-readable audio-selection tag for the status bar (e.g. " (Stereo)",
+    /// " (Surround)"), reflecting the audio stream the source chose while resolving. <c>null</c>/empty
+    /// when there is nothing noteworthy to show. Lets a source surface its stereo/surround decision
+    /// without the host knowing source specifics.
+    /// </summary>
+    public string? AudioTag { get; init; }
 }

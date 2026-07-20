@@ -16,7 +16,7 @@ namespace Phosphor.Plugins.Plex;
 /// In-box, so it uses <see cref="PlexService"/>, <see cref="VideoItem"/>, and the Plex enums
 /// directly. Pure data producer: no UI, no thread assumptions.
 /// </remarks>
-public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IFilterableSearch, IBrowsable, IPagedBrowsable, IScopedSearchable, IPlayableResolver, IConfigurable, IGaplessCapable, IConnectionTestable, IFavoritable
+public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IFilterableSearch, IBrowsable, IPagedBrowsable, IScopedSearchable, IPlayableResolver, IConfigurable, IGaplessCapable, IConnectionTestable, IFavoritable, IFavoriteCapture
 {
     private readonly PlexService _plex = new();
     private IPluginHost? _host;
@@ -367,15 +367,16 @@ public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IFilterabl
     // ── IGaplessCapable ────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Plex audio tracks carry a stable, direct audio <c>StreamUrl</c> built at browse time, which
-    /// can be pre-loaded on the idle decoder for gapless transitions. Returns it for audio-only
-    /// items; null otherwise.
+    /// Plex audio tracks carry a stable, direct audio stream URL built at browse time, which can be
+    /// pre-loaded on the idle decoder for gapless transitions. The host passes the pre-built URL via
+    /// <see cref="SourceItem.SourceState"/> (a string) plus the audio-only flag; returns it for
+    /// audio-only items, null otherwise. Kept source-agnostic across the plug-in boundary — the host
+    /// never hands back a plug-in type.
     /// </summary>
     public string? GetGaplessStreamUrl(SourceItem item)
     {
-        var v = PlexMappings.VideoItemOf(item);
-        if (v == null || !v.IsAudioOnly || string.IsNullOrEmpty(v.StreamUrl)) return null;
-        return v.StreamUrl;
+        if (!item.IsAudioOnly) return null;
+        return item.SourceState as string is { Length: > 0 } url ? url : null;
     }
 
     // ── IConfigurable ──────────────────────────────────────────────────────────
@@ -511,43 +512,49 @@ public sealed class PlexSource : IPhosphorSource, ITextSearchCapable, IFilterabl
         }
     }
 
-    /// <summary>Captures the full favorite (leaf item or container node) so GetFavorite can rebuild it.</summary>
-    public void RememberFavorite(VideoItem item)
+    /// <summary>
+    /// Captures the full favorite (leaf item or container node) so <see cref="GetFavorite"/> can
+    /// rebuild it. <see cref="FavoriteCapture.ContainerState"/> carries the opaque browse state:
+    /// a <see cref="PlexNode"/> for containers, or the leaf's <see cref="VideoItem"/> for leaves.
+    /// </summary>
+    public void RememberFavorite(FavoriteCapture item)
     {
-        if (string.IsNullOrEmpty(item.VideoId)) return;
+        if (string.IsNullOrEmpty(item.ItemId)) return;
         lock (_favGate)
         {
-            if (!Favorites.ContainsKey(item.VideoId)) return; // only enrich known favorites
+            if (!Favorites.ContainsKey(item.ItemId)) return; // only enrich known favorites
 
             PlexFavorite rec;
-            if (item.IsGenericContainer)
+            if (item.IsContainer)
             {
-                var node = item.GenericSourceState as PlexNode;
+                var node = item.ContainerState as PlexNode;
                 rec = new PlexFavorite
                 {
-                    Id = item.VideoId,
+                    Id = item.ItemId,
                     Title = item.Title,
-                    Author = string.IsNullOrEmpty(item.Author) ? null : item.Author,
-                    ThumbnailUrl = string.IsNullOrEmpty(item.ThumbnailUrl) ? null : item.ThumbnailUrl,
+                    Author = item.Subtitle,
+                    ThumbnailUrl = item.ThumbnailUrl,
                     IsContainer = true,
                     NodeKind = node?.Kind.ToString(),
-                    NodeKey = node?.Key ?? item.GenericCategoryId,
+                    NodeKey = node?.Key ?? item.ItemId,
                     NodeLibraryType = node?.LibraryType,
                 };
             }
             else
             {
+                // Leaves carry their playable VideoItem (token-bound StreamUrl) via ContainerState,
+                // so a favorited track replays without a server round-trip.
                 rec = new PlexFavorite
                 {
-                    Id = item.VideoId,
+                    Id = item.ItemId,
                     Title = item.Title,
-                    Author = string.IsNullOrEmpty(item.Author) ? null : item.Author,
-                    ThumbnailUrl = string.IsNullOrEmpty(item.ThumbnailUrl) ? null : item.ThumbnailUrl,
+                    Author = item.Subtitle,
+                    ThumbnailUrl = item.ThumbnailUrl,
                     IsContainer = false,
-                    Leaf = item,
+                    Leaf = item.ContainerState as VideoItem,
                 };
             }
-            Favorites[item.VideoId] = rec;
+            Favorites[item.ItemId] = rec;
             SaveFavorites();
         }
     }

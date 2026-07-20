@@ -1181,7 +1181,7 @@ public partial class DmdWindow : JukeboxWindow
             {
                 Phosphor.Plugins.KnownSourceTypeIds.YouTube
                     => "  ...try channel:<name>, playlist:<name>, min:5m, max:30m",
-                Phosphor.Plugins.Plex.PlexSourceProvider.PlexTypeId
+                Phosphor.Plugins.KnownSourceTypeIds.Plex
                     => "  ...try min:5m, max:30m, library:<name>",
                 _ => "",
             };
@@ -1619,11 +1619,6 @@ public partial class DmdWindow : JukeboxWindow
                 var item = vm.SearchResults[_resultsIndex];
                 // Generic plug-in browse container → drill in (PlayNow routes it to the nav stack).
                 if (item.IsGenericContainer)
-                {
-                    vm.PlayNowCommand.Execute(item);
-                    return;
-                }
-                if (item.PlexItemType is PlexItemType.Artist or PlexItemType.Album or PlexItemType.Hub or PlexItemType.Playlist)
                 {
                     vm.PlayNowCommand.Execute(item);
                     return;
