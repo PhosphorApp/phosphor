@@ -2356,12 +2356,20 @@ public partial class JukeboxViewModel : ObservableObject
         StatusText = "Searching...";
         SearchResults.Clear();
 
-        // A search from the box is ALWAYS a fresh, source-wide root search — never scoped to the
+        // A search from the box is ALWAYS a fresh, source-wide search — never scoped to the specific
         // node you happen to be viewing (which was confusing: e.g. searching "pink floyd" while
-        // drilled into the "Rush" artist found nothing). Reset any in-progress generic browse so the
-        // breadcrumb collapses to just the search and results come from the whole source.
+        // drilled into the "Rush" artist found nothing). BUT it stays targeted at the source you're
+        // browsing: searching "Rush" inside a Plex library searches all of Plex, not YouTube. Capture
+        // the browsed source before resetting the browse stack, then reset so the breadcrumb collapses.
         if (IsGenericBrowsing)
         {
+            if (_browseStack.Count > 0
+                && _sourceRegistry?.ByInstance(_browseStack[^1].SourceInstanceId)
+                   is Phosphor.Plugin.Abstractions.ITextSearchCapable)
+            {
+                sourceInstanceId = _browseStack[^1].SourceInstanceId;
+            }
+
             IsGenericBrowsing = false;
             _browseStack.Clear();
             _genericPaged = null;
