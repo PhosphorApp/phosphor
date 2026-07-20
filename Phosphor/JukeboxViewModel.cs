@@ -18,7 +18,6 @@ public partial class JukeboxViewModel : ObservableObject
     private readonly SearchHistory _searchHistory;
     private VideoCache? _cache;
     private PrefetchCache? _prefetch;
-    private readonly PlexService _plex = new();
 
     // ── Plug-in sources (the source path — YouTube and Plex run through the registry) ──
     private Phosphor.Plugins.SourceRegistry? _sourceRegistry;
@@ -740,14 +739,11 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     // ── Plex ──
-    private bool _plexStereoAudio;
 
     /// <summary>
-    /// Configures Plex (and its category tiles) from settings. Tiles are built from <em>all</em>
-    /// enabled Plex instances in <see cref="AppSettings.PluginInstances"/> (each tile tagged with its
-    /// instance id); a per-instance <see cref="PlexService"/> cache is built so browse operations
-    /// target the right server, and the single <c>_plex</c> service is configured from the first
-    /// enabled instance as a default fallback.
+    /// Ensures the plug-in instance list is seeded (fresh installs) and refreshes the category
+    /// tiles. Plex itself flows entirely through the plug-in source registry now — this no longer
+    /// wires up any Plex service directly.
     /// </summary>
     public void ConfigurePlexFromSettings(AppSettings settings, bool skipRebuild = false)
     {
@@ -756,58 +752,13 @@ public partial class JukeboxViewModel : ObservableObject
         if (settings.PluginInstances.Count == 0)
             settings.PluginInstances = Phosphor.Plugins.PluginSettingsFactory.FromAppSettings(settings);
 
-        var plexInstances = settings.PluginInstances
-            .Where(c => c.Enabled && c.TypeId == Phosphor.Plugins.Plex.PlexSourceProvider.PlexTypeId)
-            .Where(c => !string.IsNullOrWhiteSpace(GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyServerUrl))
-                     && !string.IsNullOrWhiteSpace(GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyToken)))
-            .ToList();
-
-        // Configure the single legacy _plex service from the first enabled instance (used as a
-        // default fallback; per-instance browse uses _plexServiceByInstance below).
-        var first = plexInstances.FirstOrDefault();
-        if (first != null)
-        {
-            _plex.Configure(
-                GetSetting(first, Phosphor.Plugins.Plex.PlexSourceProvider.KeyServerUrl) ?? "",
-                GetSetting(first, Phosphor.Plugins.Plex.PlexSourceProvider.KeyToken) ?? "",
-                bool.TryParse(GetSetting(first, Phosphor.Plugins.Plex.PlexSourceProvider.KeyStereoAudio), out var s) && s);
-            _plexStereoAudio = bool.TryParse(GetSetting(first, Phosphor.Plugins.Plex.PlexSourceProvider.KeyStereoAudio), out var s2) && s2;
-        }
-
-        // Build a per-instance PlexService for each enabled instance so multi-server browse
-        // (hub/playlist lists, in-library search, GetAllTracks, chapters) targets the right server.
-        _plexServiceByInstance.Clear();
-        foreach (var c in plexInstances)
-        {
-            var svc = new PlexService();
-            svc.Configure(
-                GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyServerUrl) ?? "",
-                GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyToken) ?? "",
-                bool.TryParse(GetSetting(c, Phosphor.Plugins.Plex.PlexSourceProvider.KeyStereoAudio), out var cs) && cs);
-            _plexServiceByInstance[c.InstanceId] = svc;
-        }
-
-        // Plex home tiles are no longer synced here — Plex flows through the generic browse path
-        // (BuildPluginBrowseTilesAsync → SyncSourceTiles), one tile per library like any other
-        // IBrowsable source. This method only wires up the PlexService instances used for
-        // playback/chapters/gapless.
+        // Plex now flows entirely through the plug-in source registry: browse tiles come from the
+        // generic browse path (BuildPluginBrowseTilesAsync → SyncSourceTiles), and
+        // playback/expansion/chapters/gapless route through the Plex source's capabilities. This
+        // method only ensures instances are seeded and refreshes the category tiles.
         if (!skipRebuild)
             RebuildCategories();
     }
-
-    private static string? GetSetting(Phosphor.Plugins.PluginInstanceConfig cfg, string key)
-        => cfg.Settings.TryGetValue(key, out var v) ? v : null;
-
-    /// <summary>
-    /// Returns the <see cref="PlexService"/> for the currently-active browse instance (multi-server).
-    /// On the plug-in path this is the per-instance service configured in
-    /// <see cref="ConfigurePlexFromSettings"/>; falls back to the single legacy <c>_plex</c> when
-    /// there is no active/keyed instance (single-server or flag-off).
-    /// </summary>
-    private PlexService ActivePlex =>
-        _activePlexInstanceId != null && _plexServiceByInstance.TryGetValue(_activePlexInstanceId, out var svc)
-            ? svc
-            : _plex;
 
     /// <summary>
     /// Resolves the plug-in Plex source for the current browse session (multi-server). Prefers the
@@ -2821,11 +2772,6 @@ public partial class JukeboxViewModel : ObservableObject
 
     // The Plex instance id the current browse session targets (multi-server). Null = first/legacy.
     private string? _activePlexInstanceId;
-
-    // Per-instance PlexService cache for legacy-style calls (GetAllTracks, chapters, gapless) that
-    // the plug-in path still routes through a PlexService. Configured from each instance's settings
-    // so multi-server calls hit the right server.
-    private readonly Dictionary<string, PlexService> _plexServiceByInstance = new(StringComparer.Ordinal);
 
     /// <summary>
     /// True when "Find Similar" should be hidden — for generic plug-in browse views (Plex libraries,
