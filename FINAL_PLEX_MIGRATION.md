@@ -84,16 +84,29 @@ four commits:
 type-id constant. One host-side `== KnownSourceTypeIds.Plex` branch remains — see
 Remaining work below.
 
-## 🪜 Remaining work (Option B)
+## ✅ Done (cont.) — Hubs/Playlists per-library flags now source-agnostic
 
-1. **Hubs/Playlists per-library flags** (`SettingsWindow.xaml.cs`, the sole
-   remaining host-side `== KnownSourceTypeIds.Plex` branch). These render the
-   Plex-only "Hubs" and "Playlists" per-library checkboxes. To make this
-   source-agnostic, have the plug-in advertise which per-library sub-toggles it
-   supports (e.g. a capability returning `{Key, Label, Tooltip}` descriptors) so
-   the settings UI renders whatever the plug-in declares. This is the last
-   genuinely architectural item for the *Plex* naming cleanup and warrants its own
-   scoped design effort.
+The inline library editor's hard-coded Plex "Hubs"/"Playlists" checkboxes (gated
+on `cfg.TypeId == KnownSourceTypeIds.Plex` — the **last** host-side Plex type-id
+branch) are now generic. The plug-in contract already exposed per-library
+sub-options (`ConfigOption.SubOptions` / `ConfigSubOption`), and Plex already
+declared `hubs`/`playlists` there; the host was simply discarding them. Changes:
+
+- **Contract**: added optional `Description` (tooltip) to `ConfigSubOption`.
+- **Host model**: `SourceLibraryMapping` replaced its `HubsEnabled`/
+  `PlaylistsEnabled` bools with a source-agnostic `Dictionary<string,bool> SubFlags`.
+- **Host UI** (`SettingsWindow.xaml.cs`): `FetchAvailableLibrariesAsync` captures
+  the plug-in's declared sub-options; `BuildInlineLibraryEditor` renders one
+  checkbox per declared sub-option (bound to `SubFlags`) instead of the hard-coded
+  Plex block; a one-shot background prefetch surfaces the checkboxes for
+  already-added libraries; adds seed `SubFlags` from the declared defaults.
+- **Plex plug-in**: `PlexLibraryMapping` persists `SubFlags` (matching the host
+  JSON shape) with `HubsEnabled`/`PlaylistsEnabled` as `[JsonIgnore]` computed
+  accessors, so its internal tile logic is unchanged; the declared sub-options
+  carry tooltips.
+
+The host is now **fully free of hard-coded Plex type-id branches** — all
+Plex-specific sub-toggle knowledge lives in the Plex plug-in.
 
 ## 🧭 Broader follow-up — YouTube-coupled result caches (separate effort)
 

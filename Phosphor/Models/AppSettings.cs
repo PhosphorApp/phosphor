@@ -898,6 +898,11 @@ public class SourceLibraryMapping
     public string Key { get; set; } = "";
     public string Title { get; set; } = "";
     public string Type { get; set; } = "";
-    public bool HubsEnabled { get; set; }
-    public bool PlaylistsEnabled { get; set; }
+
+    /// <summary>
+    /// Per-library sub-toggles keyed by the plug-in's sub-option id (e.g. Plex's "hubs"/"playlists").
+    /// Source-agnostic: the host renders one checkbox per sub-option the plug-in advertises and never
+    /// interprets the keys — the owning source declares and consumes them.
+    /// </summary>
+    public Dictionary<string, bool> SubFlags { get; set; } = new();
 }

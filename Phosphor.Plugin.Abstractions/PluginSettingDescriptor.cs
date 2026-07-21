@@ -55,7 +55,11 @@ public sealed record ConfigOption(
     IReadOnlyList<ConfigSubOption>? SubOptions = null);
 
 /// <summary>A sub-flag under a <see cref="ConfigOption"/> (e.g. "Hubs", "Playlists").</summary>
-public sealed record ConfigSubOption(string Id, string Label, bool IsSelected = false);
+/// <param name="Id">Stable sub-option id.</param>
+/// <param name="Label">Display label (checkbox text).</param>
+/// <param name="IsSelected">Whether the sub-flag is initially selected.</param>
+/// <param name="Description">Optional tooltip describing the sub-flag.</param>
+public sealed record ConfigSubOption(string Id, string Label, bool IsSelected = false, string? Description = null);
 
 /// <summary>
 /// The user's decision for one <see cref="ConfigOption"/> after a config action: whether the option

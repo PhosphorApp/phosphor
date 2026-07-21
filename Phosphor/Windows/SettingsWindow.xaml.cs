@@ -4300,6 +4300,15 @@ public partial class SettingsWindow : JukeboxWindow
     private readonly Dictionary<string, List<SourceLibraryMapping>> _pluginLibraryState = new();
     private readonly Dictionary<string, List<SourceLibraryMapping>> _pluginLibraryAvailable = new();
 
+    // Per-instance sub-option descriptors the plug-in declares for its libraries (e.g. Plex's
+    // "hubs"/"playlists"), captured from the library config action. Drives the generic per-library
+    // sub-toggle checkboxes in the inline editor so the host renders whatever the source advertises.
+    private readonly Dictionary<string, IReadOnlyList<Phosphor.Plugin.Abstractions.ConfigSubOption>> _pluginLibrarySubOptions = new();
+
+    // Instances whose library sub-options we've already tried to fetch for the inline editor's
+    // background prefetch, so a failed/empty fetch doesn't retry on every tab re-render.
+    private readonly HashSet<string> _pluginLibrarySubOptionsTried = new();
+
     // Standardized editor sizing so text/combo/password fields line up.
     private const double EditorHeight = 28;
     private const double EditorMinWidth = 320;
@@ -5052,6 +5061,21 @@ public partial class SettingsWindow : JukeboxWindow
         var added = GetInstanceLibraries(cfg);
         var instId = cfg.InstanceId;
 
+        // If libraries are already added but we don't yet know the plug-in's per-library sub-options
+        // (they come from the networked config action), kick off a one-shot background fetch and
+        // re-render so the sub-toggle checkboxes appear without the user opening the "add" dropdown.
+        if (added.Count > 0
+            && !_pluginLibrarySubOptions.ContainsKey(instId)
+            && _pluginLibrarySubOptionsTried.Add(instId))
+        {
+            _ = Dispatcher.InvokeAsync(async () =>
+            {
+                await FetchAvailableLibrariesAsync(instId);
+                if (_pluginLibrarySubOptions.ContainsKey(instId))
+                    PopulatePluginSourcesTab();
+            });
+        }
+
         // Container for the added-libraries list (spans both columns, below the add row).
         var container = new System.Windows.Controls.StackPanel { Margin = new Thickness(0, 4, 0, 0) };
 
@@ -5125,7 +5149,12 @@ public partial class SettingsWindow : JukeboxWindow
             {
                 // Mutate + save the library list first, THEN harvest, so the addition reaches
                 // _settings.PluginInstances (Populate rebuilds the working configs from there).
-                added.Add(new SourceLibraryMapping { Key = lib.Key, Title = lib.Title, Type = lib.Type });
+                var mapping = new SourceLibraryMapping { Key = lib.Key, Title = lib.Title, Type = lib.Type };
+                // Seed sub-toggle defaults from the plug-in's declared sub-options (e.g. off by default).
+                if (_pluginLibrarySubOptions.TryGetValue(instId, out var subs))
+                    foreach (var sub in subs)
+                        mapping.SubFlags[sub.Id] = sub.IsSelected;
+                added.Add(mapping);
                 SaveInstanceLibraries(instId);
                 HarvestPluginSourcesTab();
                 PopulatePluginSourcesTab();
@@ -5135,7 +5164,7 @@ public partial class SettingsWindow : JukeboxWindow
         addRow.Children.Add(combo);
         AddSettingRow(grid, "Libraries", "Add a library to show as a browsable tile.", addRow, text, dim);
 
-        // ── Added libraries list: Title + Hubs + Playlists + Remove ──
+        // ── Added libraries list: Title + declared sub-toggles + Remove ──
         if (added.Count == 0)
         {
             container.Children.Add(new System.Windows.Controls.TextBlock
@@ -5164,31 +5193,29 @@ public partial class SettingsWindow : JukeboxWindow
             };
             row.Children.Add(removeBtn);
 
-            // Hubs/Playlists are Plex-only concepts; other IConfigurable sources (e.g. Jellyfin) just
-            // pick libraries, so only render the extra flags for Plex instances.
-            if (cfg.TypeId == Phosphor.Plugins.KnownSourceTypeIds.Plex)
+            // Render one checkbox per per-library sub-toggle the plug-in declares (e.g. Plex's
+            // "Hubs"/"Playlists"); sources that declare none (Jellyfin/Emby) get just the library row.
+            // Docked right, so iterate reversed to keep the declared order left-to-right.
+            if (_pluginLibrarySubOptions.TryGetValue(instId, out var subOptions))
             {
-                var playlistsCb = new System.Windows.Controls.CheckBox
+                var libRef = lib;
+                for (int si = subOptions.Count - 1; si >= 0; si--)
                 {
-                    Content = "Playlists", IsChecked = lib.PlaylistsEnabled, Foreground = dim,
-                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
-                    ToolTip = "Show a Playlists tile",
-                };
-                playlistsCb.Checked += (_, _) => { lib.PlaylistsEnabled = true; SaveInstanceLibraries(instId); };
-                playlistsCb.Unchecked += (_, _) => { lib.PlaylistsEnabled = false; SaveInstanceLibraries(instId); };
-                System.Windows.Controls.DockPanel.SetDock(playlistsCb, System.Windows.Controls.Dock.Right);
-                row.Children.Add(playlistsCb);
-
-                var hubsCb = new System.Windows.Controls.CheckBox
-                {
-                    Content = "Hubs", IsChecked = lib.HubsEnabled, Foreground = dim,
-                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
-                    ToolTip = "Show a Hubs tile (Recently Added, etc.)",
-                };
-                hubsCb.Checked += (_, _) => { lib.HubsEnabled = true; SaveInstanceLibraries(instId); };
-                hubsCb.Unchecked += (_, _) => { lib.HubsEnabled = false; SaveInstanceLibraries(instId); };
-                System.Windows.Controls.DockPanel.SetDock(hubsCb, System.Windows.Controls.Dock.Right);
-                row.Children.Add(hubsCb);
+                    var sub = subOptions[si];
+                    var subCb = new System.Windows.Controls.CheckBox
+                    {
+                        Content = sub.Label,
+                        IsChecked = libRef.SubFlags.TryGetValue(sub.Id, out var on) && on,
+                        Foreground = dim,
+                        VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
+                        ToolTip = sub.Description,
+                    };
+                    var subId = sub.Id;
+                    subCb.Checked += (_, _) => { libRef.SubFlags[subId] = true; SaveInstanceLibraries(instId); };
+                    subCb.Unchecked += (_, _) => { libRef.SubFlags[subId] = false; SaveInstanceLibraries(instId); };
+                    System.Windows.Controls.DockPanel.SetDock(subCb, System.Windows.Controls.Dock.Right);
+                    row.Children.Add(subCb);
+                }
             }
 
             row.Children.Add(new System.Windows.Controls.TextBlock
@@ -5250,6 +5277,10 @@ public partial class SettingsWindow : JukeboxWindow
                             type = label[(lp + 2)..^1];
                         }
                         libs.Add(new SourceLibraryMapping { Key = o.Id, Title = title, Type = type });
+                        // Capture the plug-in's declared per-library sub-options (same set for every
+                        // library) so the inline editor renders one checkbox per sub-option generically.
+                        if (o.SubOptions is { Count: > 0 } subs && !_pluginLibrarySubOptions.ContainsKey(instanceId))
+                            _pluginLibrarySubOptions[instanceId] = subs;
                     }
                 }
                 catch { fetchFailed = true; /* don't cache a failed fetch — allow retry */ }
