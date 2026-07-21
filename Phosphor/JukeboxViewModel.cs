@@ -765,15 +765,6 @@ public partial class JukeboxViewModel : ObservableObject
             RebuildCategories();
     }
 
-    /// <summary>
-    /// Resolves the plug-in Plex source for the current browse session (multi-server). Prefers the
-    /// instance keyed by <see cref="_activePlexInstanceId"/>; falls back to the first Plex instance
-    /// so single-server / not-yet-scoped browses behave exactly as before.
-    /// </summary>
-    private Phosphor.Plugin.Abstractions.IPhosphorSource? ActivePlexSource =>
-        (_activePlexInstanceId != null ? _sourceRegistry?.ByInstance(_activePlexInstanceId) : null)
-            ?? _sourceRegistry?.PlexInstances.FirstOrDefault();
-
     // ── Categories (playlists + genres, rebuilt dynamically) ──
     public BulkObservableCollection<Category> Categories { get; } = new();
 
@@ -941,13 +932,12 @@ public partial class JukeboxViewModel : ObservableObject
             if (_currentlyPlaying == null) return "";
 
             // Prefer the owning plug-in source's display name (source-agnostic), falling back to the
-            // legacy Plex/YouTube id-shape heuristic for items without a source link.
+            // legacy YouTube id-shape heuristic for items without a source link.
             string? source = null;
             if (_currentlyPlaying.SourceInstanceId is { Length: > 0 } id)
                 source = _sourceRegistry?.ByInstance(id)?.DisplayName;
             source ??= _currentlyPlaying switch
             {
-                { IsPlex: true } => "Plex",
                 { IsYouTube: true } => "YouTube",
                 _ => null
             };
@@ -1449,9 +1439,9 @@ public partial class JukeboxViewModel : ObservableObject
     /// <summary>
     /// Whether an item's source can produce downloadable raw streams for the disk caches. Driven by
     /// capability (the owning source implements <c>IDownloadable</c> — YouTube does, Plex does not),
-    /// falling back to the legacy rule (<c>!IsPlex</c>) when the registry is unavailable. The
-    /// per-instance <c>AllowCaching</c> policy overrides the capability default when set
-    /// (<c>true</c> forces on, <c>false</c> forces off).
+    /// defaulting to cacheable only when the registry is unavailable. The per-instance
+    /// <c>AllowCaching</c> policy overrides the capability default when set (<c>true</c> forces on,
+    /// <c>false</c> forces off).
     /// </summary>
     private bool IsItemCacheable(VideoItem item)
     {
@@ -1469,24 +1459,24 @@ public partial class JukeboxViewModel : ObservableObject
             return source is Phosphor.Plugin.Abstractions.IDownloadable;
         }
 
-        return !item.IsPlex;
+        // No registry (edge): default to cacheable; the capability path above governs normally.
+        return true;
     }
 
     /// <summary>
-    /// Resolves the plug-in source a playing <see cref="VideoItem"/> belongs to. Plex items
-    /// (<c>plex:</c> ids) route to the active Plex instance; everything else routes to YouTube.
-    /// Mirrors the source lookup used by <see cref="IsItemCacheable"/>. Returns null if the
-    /// registry is unavailable.
+    /// Resolves the plug-in source a playing <see cref="VideoItem"/> belongs to via its recorded
+    /// <see cref="VideoItem.SourceInstanceId"/>; falls back to YouTube for legacy items or the
+    /// built-in engine path. Returns null if the registry is unavailable.
     /// </summary>
     private Phosphor.Plugin.Abstractions.IPhosphorSource? SourceForItem(VideoItem item)
     {
         if (_sourceRegistry == null) return null;
-        // Prefer the explicit source link when the producing source recorded it; fall back to the
-        // id-shape heuristic (plex: → Plex, else YouTube) for legacy items and the built-in engine.
+        // Prefer the explicit source link the producing source recorded; fall back to YouTube for
+        // legacy items and the built-in engine.
         if (item.SourceInstanceId is { Length: > 0 } id
             && _sourceRegistry.ByInstance(id) is { } owner)
             return owner;
-        return item.IsPlex ? ActivePlexSource : _sourceRegistry.YouTube;
+        return _sourceRegistry.YouTube;
     }
 
     /// <summary>
@@ -1919,8 +1909,8 @@ public partial class JukeboxViewModel : ObservableObject
             return null;
         }
 
-        // Legacy rule.
-        return item.IsPlex && item.IsAudioOnly && !string.IsNullOrEmpty(item.StreamUrl)
+        // Legacy rule (registry unavailable): any audio-only item with a pre-built stream.
+        return item.IsAudioOnly && !string.IsNullOrEmpty(item.StreamUrl)
             ? item.StreamUrl
             : null;
     }
@@ -2349,7 +2339,6 @@ public partial class JukeboxViewModel : ObservableObject
         IsViewingPlaylist = false;
         IsViewingLivePlaylist = false;
         _isHistoryBrowsing = false;
-        _activePlexInstanceId = null;
         // Reset generic plug-in browse navigation.
         IsGenericBrowsing = false;
         _browseStack.Clear();
@@ -2849,9 +2838,6 @@ public partial class JukeboxViewModel : ObservableObject
             ? $"Showing {SearchResults.Count} of {total} history items — scroll for more"
             : $"{total} items in history";
     }
-
-    // The Plex instance id the current browse session targets (multi-server). Null = first/legacy.
-    private string? _activePlexInstanceId;
 
     /// <summary>
     /// True when "Find Similar" should be hidden — for generic plug-in browse views (Plex libraries,

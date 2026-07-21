@@ -34,10 +34,6 @@ public sealed class SourceRegistry : IAsyncDisposable
     public IPhosphorSource? YouTube =>
         _sources.FirstOrDefault(s => s.TypeId == KnownSourceTypeIds.YouTube);
 
-    /// <summary>All configured Plex instances (may be more than one).</summary>
-    public IEnumerable<IPhosphorSource> PlexInstances =>
-        _sources.Where(s => s.TypeId == KnownSourceTypeIds.Plex);
-
     /// <summary>Finds a source by instance id.</summary>
     public IPhosphorSource? ByInstance(string instanceId) =>
         _sources.FirstOrDefault(s => s.InstanceId == instanceId);

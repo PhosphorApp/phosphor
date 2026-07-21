@@ -36,8 +36,6 @@ public class VideoItem : ObservableObject
     /// </summary>
     public string? SourceInstanceId { get; set; }
 
-    public bool IsPlex => VideoId.StartsWith("plex:");
-
     /// <summary>
     /// True for real YouTube items. YouTube video IDs are plain identifiers with no
     /// "scheme:" prefix, so anything containing a colon (e.g. "plex:", "ditti:startup")
