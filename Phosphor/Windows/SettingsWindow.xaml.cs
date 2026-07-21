@@ -182,6 +182,11 @@ public partial class SettingsWindow : JukeboxWindow
     private List<string> _originalProjectMEnabledFolders;
     private bool _originalProjectMSoftwareRender;
     private readonly List<CategoryVisibilityItem> _categoryVisibilityItems = new();
+    // Per-plug-in-instance category editor rows (YouTube saved-search categories), keyed by instance
+    // id. Each list backs an inline ListView built in the Plug-ins tab that reuses the DMD category
+    // grid's template. Harvested back into the instance settings on Apply.
+    private readonly Dictionary<string, List<CategoryVisibilityItem>> _pluginCategoryItems = new();
+    private readonly Dictionary<string, System.Windows.Controls.ListView> _pluginCategoryListViews = new();
     private readonly List<FavoriteOrderItem> _favoriteOrderItems = new();
     private FavoritesIndex? _favoritesIndex;
     private readonly ObservableCollection<PinupPlaylist> _pinupPlaylists = new();
@@ -4346,6 +4351,8 @@ public partial class SettingsWindow : JukeboxWindow
         _pluginEnabledBoxes.Clear();
         _pluginCachingBoxes.Clear();
         _pluginCustomFieldGetters.Clear();
+        _pluginCategoryItems.Clear();
+        _pluginCategoryListViews.Clear();
         // Re-parse the inline Plex-library editor state from the (rebuilt) working configs so an
         // add/remove is reflected instead of a stale cached list.
         _pluginLibraryState.Clear();
@@ -4776,26 +4783,11 @@ public partial class SettingsWindow : JukeboxWindow
 
             panel.Children.Add(grid);
 
-            // ── Editable saved-search categories (YouTube genre tiles) — a row editor button. ──
+            // ── Editable saved-search categories (YouTube genre tiles) — inline editor reusing the
+            // DMD/Appearance category grid, so there's no separate popup and the UI stays in line. ──
             var catTransient = Phosphor.Plugins.PluginSettingsFactory.BuildTransientSource(cfg, _pluginHttp);
-            if (catTransient is Phosphor.Plugin.Abstractions.IEditableSavedSearchCategories)
-            {
-                var catRow = new System.Windows.Controls.StackPanel
-                {
-                    Orientation = System.Windows.Controls.Orientation.Horizontal,
-                    Margin = new Thickness(0, 6, 0, 0),
-                };
-                var catBtn = new System.Windows.Controls.Button
-                {
-                    Content = "Edit categories…",
-                    Padding = new Thickness(8, 3, 8, 3),
-                    ToolTip = "Add, edit, reorder or remove this source's category tiles.",
-                };
-                var catInstId = cfg.InstanceId;
-                catBtn.Click += async (_, _) => await EditPluginCategoriesAsync(catInstId);
-                catRow.Children.Add(catBtn);
-                panel.Children.Add(catRow);
-            }
+            if (catTransient is Phosphor.Plugin.Abstractions.IEditableSavedSearchCategories catEditable)
+                BuildInlineCategoryEditor(panel, cfg, catEditable, text, dim);
             DisposeTransientSource(catTransient);
 
             // ── Interactive config actions (generic) — the Plex "browse libraries" action is
@@ -4975,6 +4967,104 @@ public partial class SettingsWindow : JukeboxWindow
         if (!string.IsNullOrWhiteSpace(d.HelpText)) box.ToolTip = d.HelpText;
         _pluginCustomFieldGetters.Add((cfg.InstanceId, d.Key, () => box.Text));
         AddSettingRow(grid, d.Label, d.HelpText, row, text, dim);
+    }
+
+    /// <summary>
+    /// Renders an inline category editor for a plug-in that supports editable saved-search categories
+    /// (e.g. YouTube genre tiles), reusing the DMD/Appearance category grid's row template + handlers
+    /// so the two editors look and behave identically. Backed by a per-instance
+    /// <see cref="_pluginCategoryItems"/> list harvested on Apply; adds "Add" and "Revert to defaults".
+    /// </summary>
+    private void BuildInlineCategoryEditor(
+        System.Windows.Controls.Panel panel, Phosphor.Plugins.PluginInstanceConfig cfg,
+        Phosphor.Plugin.Abstractions.IEditableSavedSearchCategories editable,
+        System.Windows.Media.Brush text, System.Windows.Media.Brush dim)
+    {
+        static CategoryVisibilityItem ToRow(Phosphor.Plugin.Abstractions.SavedSearchCategory c) => new()
+        {
+            Id = c.Id,
+            Name = c.Name,
+            Icon = c.Icon,
+            SearchTerm = c.SearchTerm,
+            IsVisible = true,
+        };
+
+        var items = editable.GetSavedSearchCategories().Select(ToRow).ToList();
+        _pluginCategoryItems[cfg.InstanceId] = items;
+
+        var header = new System.Windows.Controls.TextBlock
+        {
+            Text = "Categories",
+            Foreground = text,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 10, 0, 4),
+        };
+        panel.Children.Add(header);
+
+        var hint = new System.Windows.Controls.TextBlock
+        {
+            Text = "Glyph, name and search term for each tile. Search terms use the search-box grammar " +
+                   "(playlist:, channel:, min:, max:).",
+            Foreground = dim, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4),
+        };
+        panel.Children.Add(hint);
+
+        var listView = new System.Windows.Controls.ListView
+        {
+            MaxHeight = 300,
+            Background = (System.Windows.Media.Brush)FindResource("Surface2Brush"),
+            BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x33, 0x33, 0x33)),
+            BorderThickness = new Thickness(1),
+            AllowDrop = true,
+            HorizontalContentAlignment = System.Windows.HorizontalAlignment.Stretch,
+            // Reuse the DMD category grid's row template + container style instances (same window),
+            // so the inline editor matches it exactly with no duplicated XAML.
+            ItemContainerStyle = CategoryListView.ItemContainerStyle,
+            ItemTemplate = CategoryListView.ItemTemplate,
+        };
+        System.Windows.Controls.ScrollViewer.SetVerticalScrollBarVisibility(listView, System.Windows.Controls.ScrollBarVisibility.Auto);
+        System.Windows.Controls.ScrollViewer.SetHorizontalScrollBarVisibility(listView, System.Windows.Controls.ScrollBarVisibility.Disabled);
+        listView.PreviewMouseLeftButtonDown += CategoryListView_PreviewMouseLeftButtonDown;
+        listView.PreviewMouseMove += CategoryListView_PreviewMouseMove;
+        listView.Drop += CategoryListView_Drop;
+        listView.ItemsSource = items;
+
+        _pluginCategoryListViews[cfg.InstanceId] = listView;
+        panel.Children.Add(listView);
+
+        var buttons = new System.Windows.Controls.StackPanel
+        {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            Margin = new Thickness(0, 4, 0, 0),
+        };
+        var addBtn = new System.Windows.Controls.Button
+        {
+            Content = "＋ Add Category", FontSize = 11, Padding = new Thickness(8, 4, 8, 4),
+            Cursor = System.Windows.Input.Cursors.Hand,
+        };
+        addBtn.Click += (_, _) =>
+        {
+            items.Add(new CategoryVisibilityItem { Name = "New Category", Icon = "📋", SearchTerm = "", IsVisible = true });
+            RefreshCategoryList(listView, items);
+            listView.ScrollIntoView(items[^1]);
+        };
+        var revertBtn = new System.Windows.Controls.Button
+        {
+            Content = "↺ Revert to defaults", FontSize = 11, Padding = new Thickness(8, 4, 8, 4),
+            Margin = new Thickness(4, 0, 0, 0), Cursor = System.Windows.Input.Cursors.Hand,
+        };
+        revertBtn.Click += (_, _) =>
+        {
+            if (!DarkConfirmDialog.Confirm("Revert Categories",
+                "Replace the current categories with the plug-in defaults?", this))
+                return;
+            items.Clear();
+            items.AddRange(editable.GetDefaultSavedSearchCategories().Select(ToRow));
+            RefreshCategoryList(listView, items);
+        };
+        buttons.Children.Add(addBtn);
+        buttons.Children.Add(revertBtn);
+        panel.Children.Add(buttons);
     }
 
     /// <summary>
@@ -5592,42 +5682,6 @@ public partial class SettingsWindow : JukeboxWindow
     }
 
     /// <summary>
-    /// Lets the user edit a source's saved-search category tiles (YouTube genre tiles): builds a
-    /// transient source, reads its current categories, shows a row editor (glyph / name / search
-    /// term), and merges the edited list back into the instance settings via the plug-in.
-    /// </summary>
-    private async Task EditPluginCategoriesAsync(string instanceId)
-    {
-        HarvestPluginSourcesTab();
-        var cfg = _settings.PluginInstances.FirstOrDefault(c => c.InstanceId == instanceId);
-        if (cfg == null) return;
-
-        var source = Phosphor.Plugins.PluginSettingsFactory.BuildTransientSource(cfg, _pluginHttp);
-        try
-        {
-            if (source is not Phosphor.Plugin.Abstractions.IEditableSavedSearchCategories editable) return;
-
-            var current = editable.GetSavedSearchCategories();
-            var edited = ShowCategoryEditorDialog(current, editable.GetDefaultSavedSearchCategories());
-            if (edited == null) return; // cancelled
-
-            var updated = editable.ApplySavedSearchCategories(edited, cfg.Settings);
-            cfg.Settings = new Dictionary<string, string?>(updated);
-            await Task.CompletedTask;
-            PopulatePluginSourcesTab();
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, $"Could not edit categories: {ex.Message}", "Phosphor",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
-        finally
-        {
-            DisposeTransientSource(source);
-        }
-    }
-
-    /// <summary>
     /// Invokes an <see cref="Phosphor.Plugin.Abstractions.IConfigurable"/> action for an instance
     /// (e.g. Plex "browse libraries"): harvests current edits, builds a transient source from the
     /// instance config, runs the action, shows a checkbox selection dialog, applies the result via
@@ -5751,179 +5805,6 @@ public partial class SettingsWindow : JukeboxWindow
             .ToList();
     }
 
-    /// <summary>
-    /// Shows a row editor for a source's saved-search categories: one row per category with a glyph
-    /// field, a name field, and a search-term field, plus add/remove/reorder and "Restore defaults".
-    /// Returns the edited list (in display order) or null if cancelled.
-    /// </summary>
-    private List<Phosphor.Plugin.Abstractions.SavedSearchCategory>? ShowCategoryEditorDialog(
-        IReadOnlyList<Phosphor.Plugin.Abstractions.SavedSearchCategory> current,
-        IReadOnlyList<Phosphor.Plugin.Abstractions.SavedSearchCategory> defaults)
-    {
-        var text = (System.Windows.Media.Brush)FindResource("TextBrush");
-        var dim = (System.Windows.Media.Brush)FindResource("TextDimBrush");
-        var surface2 = (System.Windows.Media.Brush)FindResource("Surface2Brush");
-
-        var dlg = new Window
-        {
-            Title = "Edit categories",
-            Owner = this,
-            Width = 560,
-            Height = 520,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Background = (System.Windows.Media.Brush)FindResource("SurfaceBrush"),
-        };
-
-        var root = new System.Windows.Controls.DockPanel { Margin = new Thickness(12) };
-
-        var header = new System.Windows.Controls.TextBlock
-        {
-            Text = "Glyph, name and search term for each tile. Search terms use the same grammar as " +
-                   "the search box (playlist:, channel:, min:, max:).",
-            Foreground = dim, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8),
-        };
-        System.Windows.Controls.DockPanel.SetDock(header, System.Windows.Controls.Dock.Top);
-        root.Children.Add(header);
-
-        var rowsPanel = new System.Windows.Controls.StackPanel();
-        var rows = new List<(System.Windows.Controls.TextBox Glyph,
-            System.Windows.Controls.TextBox Name,
-            System.Windows.Controls.TextBox Term, string Id,
-            System.Windows.Controls.StackPanel Container)>();
-
-        void AddRow(Phosphor.Plugin.Abstractions.SavedSearchCategory? c)
-        {
-            var container = new System.Windows.Controls.StackPanel
-            {
-                Orientation = System.Windows.Controls.Orientation.Horizontal,
-                Margin = new Thickness(0, 2, 0, 2),
-            };
-            var glyph = new System.Windows.Controls.TextBox
-            {
-                Text = c?.Icon ?? "", Width = 42, Foreground = text, Background = surface2,
-                Margin = new Thickness(0, 0, 6, 0), VerticalContentAlignment = VerticalAlignment.Center,
-                ToolTip = "Glyph/emoji",
-            };
-            var name = new System.Windows.Controls.TextBox
-            {
-                Text = c?.Name ?? "", Width = 150, Foreground = text, Background = surface2,
-                Margin = new Thickness(0, 0, 6, 0), VerticalContentAlignment = VerticalAlignment.Center,
-                ToolTip = "Tile name",
-            };
-            var term = new System.Windows.Controls.TextBox
-            {
-                Text = c?.SearchTerm ?? "", Width = 230, Foreground = text, Background = surface2,
-                Margin = new Thickness(0, 0, 6, 0), VerticalContentAlignment = VerticalAlignment.Center,
-                ToolTip = "Search term",
-            };
-            var upBtn = new System.Windows.Controls.Button { Content = "▲", Width = 24, Margin = new Thickness(0, 0, 2, 0), ToolTip = "Move up" };
-            var downBtn = new System.Windows.Controls.Button { Content = "▼", Width = 24, Margin = new Thickness(0, 0, 2, 0), ToolTip = "Move down" };
-            var delBtn = new System.Windows.Controls.Button { Content = "✕", Width = 24, ToolTip = "Remove" };
-
-            var id = c?.Id ?? "";
-            var entry = (glyph, name, term, id, container);
-
-            upBtn.Click += (_, _) =>
-            {
-                int i = rows.FindIndex(r => r.Container == container);
-                if (i > 0) { MoveRow(i, i - 1); }
-            };
-            downBtn.Click += (_, _) =>
-            {
-                int i = rows.FindIndex(r => r.Container == container);
-                if (i >= 0 && i < rows.Count - 1) { MoveRow(i, i + 1); }
-            };
-            delBtn.Click += (_, _) =>
-            {
-                int i = rows.FindIndex(r => r.Container == container);
-                if (i >= 0) { rows.RemoveAt(i); rowsPanel.Children.Remove(container); }
-            };
-
-            container.Children.Add(glyph);
-            container.Children.Add(name);
-            container.Children.Add(term);
-            container.Children.Add(upBtn);
-            container.Children.Add(downBtn);
-            container.Children.Add(delBtn);
-            rows.Add(entry);
-            rowsPanel.Children.Add(container);
-        }
-
-        void MoveRow(int from, int to)
-        {
-            var r = rows[from];
-            rows.RemoveAt(from);
-            rows.Insert(to, r);
-            rowsPanel.Children.Remove(r.Container);
-            rowsPanel.Children.Insert(to, r.Container);
-        }
-
-        void Reload(IReadOnlyList<Phosphor.Plugin.Abstractions.SavedSearchCategory> list)
-        {
-            rows.Clear();
-            rowsPanel.Children.Clear();
-            foreach (var c in list) AddRow(c);
-        }
-
-        Reload(current);
-
-        // Bottom button bar.
-        var buttons = new System.Windows.Controls.StackPanel
-        {
-            Orientation = System.Windows.Controls.Orientation.Horizontal,
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
-            Margin = new Thickness(0, 10, 0, 0),
-        };
-        System.Windows.Controls.DockPanel.SetDock(buttons, System.Windows.Controls.Dock.Bottom);
-
-        var addBtn = new System.Windows.Controls.Button { Content = "Add", Padding = new Thickness(10, 3, 10, 3), Margin = new Thickness(0, 0, 8, 0) };
-        addBtn.Click += (_, _) => AddRow(null);
-        var restoreBtn = new System.Windows.Controls.Button { Content = "Restore defaults", Padding = new Thickness(10, 3, 10, 3), Margin = new Thickness(0, 0, 8, 0) };
-        restoreBtn.Click += (_, _) =>
-        {
-            if (DarkConfirmDialog.Confirm("Restore Defaults",
-                "Replace the current categories with the plug-in defaults?", dlg))
-                Reload(defaults);
-        };
-        bool ok = false;
-        var okBtn = new System.Windows.Controls.Button { Content = "OK", Padding = new Thickness(12, 3, 12, 3), Margin = new Thickness(0, 0, 8, 0), IsDefault = true };
-        okBtn.Click += (_, _) => { ok = true; dlg.Close(); };
-        var cancelBtn = new System.Windows.Controls.Button { Content = "Cancel", Padding = new Thickness(12, 3, 12, 3), IsCancel = true };
-        cancelBtn.Click += (_, _) => dlg.Close();
-
-        var leftButtons = new System.Windows.Controls.StackPanel
-        {
-            Orientation = System.Windows.Controls.Orientation.Horizontal,
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
-        };
-        leftButtons.Children.Add(addBtn);
-        leftButtons.Children.Add(restoreBtn);
-
-        buttons.Children.Add(okBtn);
-        buttons.Children.Add(cancelBtn);
-
-        var bottomBar = new System.Windows.Controls.DockPanel { Margin = new Thickness(0, 10, 0, 0) };
-        System.Windows.Controls.DockPanel.SetDock(bottomBar, System.Windows.Controls.Dock.Bottom);
-        System.Windows.Controls.DockPanel.SetDock(leftButtons, System.Windows.Controls.Dock.Left);
-        bottomBar.Children.Add(leftButtons);
-        bottomBar.Children.Add(buttons);
-        root.Children.Add(bottomBar);
-
-        root.Children.Add(new System.Windows.Controls.ScrollViewer
-        {
-            VerticalScrollBarVisibility = System.Windows.Controls.ScrollBarVisibility.Auto,
-            Content = rowsPanel,
-        });
-
-        dlg.Content = root;
-        dlg.ShowDialog();
-
-        if (!ok) return null;
-        return rows.Select(r => new Phosphor.Plugin.Abstractions.SavedSearchCategory(
-            r.Id, r.Name.Text.Trim(), r.Glyph.Text.Trim(), r.Term.Text.Trim()))
-            .ToList();
-    }
-
     /// <summary>Adds a two-column row (label | editor) to a settings grid.</summary>
     private static void AddSettingRow(
         System.Windows.Controls.Grid grid, string label, string? helpText,
@@ -5998,6 +5879,29 @@ public partial class SettingsWindow : JukeboxWindow
                     "false" => false,
                     _ => null,
                 };
+
+            // Inline category editor rows → back into the instance settings blob via the plug-in
+            // (it owns the blob shape). Empty rows (no name AND no search term) are dropped there.
+            if (_pluginCategoryItems.TryGetValue(cfg.InstanceId, out var catRows))
+            {
+                var transient = Phosphor.Plugins.PluginSettingsFactory.BuildTransientSource(cfg, _pluginHttp);
+                try
+                {
+                    if (transient is Phosphor.Plugin.Abstractions.IEditableSavedSearchCategories editable)
+                    {
+                        var categories = catRows
+                            .Select(r => new Phosphor.Plugin.Abstractions.SavedSearchCategory(
+                                r.Id, r.Name?.Trim() ?? "", r.Icon?.Trim() ?? "", r.SearchTerm?.Trim() ?? ""))
+                            .ToList();
+                        var updated = editable.ApplySavedSearchCategories(categories, cfg.Settings);
+                        cfg.Settings = new Dictionary<string, string?>(updated);
+                    }
+                }
+                finally
+                {
+                    DisposeTransientSource(transient);
+                }
+            }
         }
 
         foreach (var (control, instanceId, key) in _pluginFieldControls)
@@ -6064,9 +5968,46 @@ public partial class SettingsWindow : JukeboxWindow
 
     private void CategoryVisibility_Changed(object sender, RoutedEventArgs e)
     {
-        UpdateCategoryVisibilityText();
+        var (view, _) = ResolveCategoryList(sender);
+        if (view == null || view == CategoryListView)
+            UpdateCategoryVisibilityText();
     }
 
+    /// <summary>
+    /// Resolves the category ListView and its backing row list that owns the given event source. The
+    /// DMD/Appearance grid (<see cref="CategoryListView"/> / <see cref="_categoryVisibilityItems"/>)
+    /// and each inline plug-in category editor share the same row template + handlers; this maps a
+    /// button/checkbox/ListView back to the correct pair. Returns (null, null) if unresolved.
+    /// </summary>
+    private (System.Windows.Controls.ListView? View, List<CategoryVisibilityItem>? Items) ResolveCategoryList(object? sender)
+    {
+        var lv = sender as System.Windows.Controls.ListView
+                 ?? (sender is DependencyObject d ? FindAncestor<System.Windows.Controls.ListView>(d) : null);
+        if (lv == null) return (null, null);
+        if (lv == CategoryListView) return (lv, _categoryVisibilityItems);
+        foreach (var kv in _pluginCategoryListViews)
+            if (kv.Value == lv) return (lv, _pluginCategoryItems.TryGetValue(kv.Key, out var list) ? list : null);
+        return (lv, lv.ItemsSource as List<CategoryVisibilityItem>);
+    }
+
+    /// <summary>Walks up the visual tree to the first ancestor of type T (inclusive of the start).</summary>
+    private static T? FindAncestor<T>(DependencyObject start) where T : DependencyObject
+    {
+        var cur = start;
+        while (cur != null)
+        {
+            if (cur is T match) return match;
+            cur = System.Windows.Media.VisualTreeHelper.GetParent(cur);
+        }
+        return null;
+    }
+
+    /// <summary>Rebinds a category ListView to its backing list (the list-reset refresh idiom).</summary>
+    private static void RefreshCategoryList(System.Windows.Controls.ListView view, List<CategoryVisibilityItem> items)
+    {
+        view.ItemsSource = null;
+        view.ItemsSource = items;
+    }
     private void CategoryIcon_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not System.Windows.Controls.Button btn || btn.DataContext is not CategoryVisibilityItem item)
@@ -6240,58 +6181,63 @@ public partial class SettingsWindow : JukeboxWindow
             return;
         if (item.IsSpecial || item.IsPlaylist) return;
 
-        _categoryVisibilityItems.Remove(item);
-        CategoryListView.ItemsSource = null;
-        CategoryListView.ItemsSource = _categoryVisibilityItems;
-        UpdateCategoryVisibilityText();
+        var (view, items) = ResolveCategoryList(sender);
+        if (view == null || items == null) return;
+        items.Remove(item);
+        RefreshCategoryList(view, items);
+        if (view == CategoryListView) UpdateCategoryVisibilityText();
     }
 
     private void CategoryMoveUp_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not System.Windows.Controls.Button btn || btn.DataContext is not CategoryVisibilityItem item)
             return;
-        var index = _categoryVisibilityItems.IndexOf(item);
+        var (view, items) = ResolveCategoryList(sender);
+        if (view == null || items == null) return;
+        var index = items.IndexOf(item);
         if (index <= 0) return;
-        _categoryVisibilityItems.RemoveAt(index);
-        _categoryVisibilityItems.Insert(index - 1, item);
-        CategoryListView.ItemsSource = null;
-        CategoryListView.ItemsSource = _categoryVisibilityItems;
+        items.RemoveAt(index);
+        items.Insert(index - 1, item);
+        RefreshCategoryList(view, items);
     }
 
     private void CategoryMoveDown_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not System.Windows.Controls.Button btn || btn.DataContext is not CategoryVisibilityItem item)
             return;
-        var index = _categoryVisibilityItems.IndexOf(item);
-        if (index < 0 || index >= _categoryVisibilityItems.Count - 1) return;
-        _categoryVisibilityItems.RemoveAt(index);
-        _categoryVisibilityItems.Insert(index + 1, item);
-        CategoryListView.ItemsSource = null;
-        CategoryListView.ItemsSource = _categoryVisibilityItems;
+        var (view, items) = ResolveCategoryList(sender);
+        if (view == null || items == null) return;
+        var index = items.IndexOf(item);
+        if (index < 0 || index >= items.Count - 1) return;
+        items.RemoveAt(index);
+        items.Insert(index + 1, item);
+        RefreshCategoryList(view, items);
     }
 
     private void CategoryMoveTop_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not System.Windows.Controls.Button btn || btn.DataContext is not CategoryVisibilityItem item)
             return;
-        var index = _categoryVisibilityItems.IndexOf(item);
+        var (view, items) = ResolveCategoryList(sender);
+        if (view == null || items == null) return;
+        var index = items.IndexOf(item);
         if (index <= 0) return;
-        _categoryVisibilityItems.RemoveAt(index);
-        _categoryVisibilityItems.Insert(0, item);
-        CategoryListView.ItemsSource = null;
-        CategoryListView.ItemsSource = _categoryVisibilityItems;
+        items.RemoveAt(index);
+        items.Insert(0, item);
+        RefreshCategoryList(view, items);
     }
 
     private void CategoryMoveBottom_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not System.Windows.Controls.Button btn || btn.DataContext is not CategoryVisibilityItem item)
             return;
-        var index = _categoryVisibilityItems.IndexOf(item);
-        if (index < 0 || index >= _categoryVisibilityItems.Count - 1) return;
-        _categoryVisibilityItems.RemoveAt(index);
-        _categoryVisibilityItems.Add(item);
-        CategoryListView.ItemsSource = null;
-        CategoryListView.ItemsSource = _categoryVisibilityItems;
+        var (view, items) = ResolveCategoryList(sender);
+        if (view == null || items == null) return;
+        var index = items.IndexOf(item);
+        if (index < 0 || index >= items.Count - 1) return;
+        items.RemoveAt(index);
+        items.Add(item);
+        RefreshCategoryList(view, items);
     }
 
     // ── Category drag-reorder (only the grip handle initiates, to avoid the inline buttons/textboxes) ──
@@ -6301,7 +6247,8 @@ public partial class SettingsWindow : JukeboxWindow
 
     private void CategoryListView_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        _categoryDragStart = e.GetPosition(CategoryListView);
+        var lv = sender as System.Windows.Controls.ListView ?? CategoryListView;
+        _categoryDragStart = e.GetPosition(lv);
         // Only allow a drag to start when the press lands on the grip handle.
         _categoryDragInProgress = false;
         _categoryDragArmed = IsDragGrip(e.OriginalSource as DependencyObject);
@@ -6314,15 +6261,16 @@ public partial class SettingsWindow : JukeboxWindow
         if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed) return;
         if (!_categoryDragArmed || _categoryDragInProgress) return;
 
-        var pos = e.GetPosition(CategoryListView);
+        var lv = sender as System.Windows.Controls.ListView ?? CategoryListView;
+        var pos = e.GetPosition(lv);
         if (Math.Abs(pos.X - _categoryDragStart.X) < 4 && Math.Abs(pos.Y - _categoryDragStart.Y) < 4)
             return;
 
-        var item = GetItemDataContextAtPoint<CategoryVisibilityItem>(CategoryListView, _categoryDragStart);
+        var item = GetItemDataContextAtPoint<CategoryVisibilityItem>(lv, _categoryDragStart);
         if (item == null) return;
 
         _categoryDragInProgress = true;
-        System.Windows.DragDrop.DoDragDrop(CategoryListView, item, System.Windows.DragDropEffects.Move);
+        System.Windows.DragDrop.DoDragDrop(lv, item, System.Windows.DragDropEffects.Move);
         _categoryDragInProgress = false;
     }
 
@@ -6330,17 +6278,19 @@ public partial class SettingsWindow : JukeboxWindow
     {
         if (!e.Data.GetDataPresent(typeof(CategoryVisibilityItem))) return;
 
-        var dragged = (CategoryVisibilityItem)e.Data.GetData(typeof(CategoryVisibilityItem))!;
-        var target = GetItemDataContextAtPoint<CategoryVisibilityItem>(CategoryListView, e.GetPosition(CategoryListView));
+        var (view, items) = ResolveCategoryList(sender);
+        if (view == null || items == null) return;
 
-        int oldIndex = _categoryVisibilityItems.IndexOf(dragged);
-        int newIndex = target != null ? _categoryVisibilityItems.IndexOf(target) : _categoryVisibilityItems.Count - 1;
+        var dragged = (CategoryVisibilityItem)e.Data.GetData(typeof(CategoryVisibilityItem))!;
+        var target = GetItemDataContextAtPoint<CategoryVisibilityItem>(view, e.GetPosition(view));
+
+        int oldIndex = items.IndexOf(dragged);
+        int newIndex = target != null ? items.IndexOf(target) : items.Count - 1;
         if (oldIndex < 0 || newIndex < 0 || oldIndex == newIndex) return;
 
-        _categoryVisibilityItems.RemoveAt(oldIndex);
-        _categoryVisibilityItems.Insert(newIndex, dragged);
-        CategoryListView.ItemsSource = null;
-        CategoryListView.ItemsSource = _categoryVisibilityItems;
+        items.RemoveAt(oldIndex);
+        items.Insert(newIndex, dragged);
+        RefreshCategoryList(view, items);
     }
 
     /// <summary>True when the hit element (or an ancestor) is the drag grip handle glyph.</summary>
