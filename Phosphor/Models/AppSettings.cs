@@ -456,6 +456,12 @@ public class AppSettings
     public IconStyle DmdIconStyle { get; set; } = IconStyle.Default;
     public int DmdRotation { get; set; }
     public QueuePosition DmdQueuePosition { get; set; } = QueuePosition.Right;
+    /// <summary>
+    /// When true, the DMD queue panel auto-collapses to a narrow strip when the queue becomes empty
+    /// and auto-expands when items are added. Manual collapse/expand via the QUEUE label still works;
+    /// this only reacts to empty↔non-empty transitions so it doesn't fight the user's manual toggles.
+    /// </summary>
+    public bool DmdAutoHideQueueWhenEmpty { get; set; }
     public int DmdNowPlayingAreaSizeModifier { get; set; }
     public int DmdPlayButtonSizeModifier { get; set; }
     public int DmdGenreIconSizeModifier { get; set; }

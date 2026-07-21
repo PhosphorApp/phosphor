@@ -40,9 +40,12 @@ public partial class DmdWindow : JukeboxWindow
     private bool _showVideoInfo;
     private QueuePosition _queuePosition = QueuePosition.Right;
 
-    // Queue collapse (Phase 1: manual click-to-collapse toggle). In-memory only for now.
+    // Queue collapse (manual click-to-collapse toggle + optional auto-hide-when-empty).
     private bool _queueCollapsed;
     private const double QueueCollapsedStripSize = 40;
+    // Tracks the last-seen empty state so auto-hide only reacts to empty↔non-empty transitions
+    // (not every add/remove) and never fights the user's manual collapse toggles.
+    private bool _queueWasEmpty = true;
 
     // Queue drag-reorder state
     private WpfPoint _queueDragStart;
@@ -161,6 +164,8 @@ public partial class DmdWindow : JukeboxWindow
             {
                 vmLoaded.Categories.CollectionChanged += (_, _) => InvalidateNavRing();
                 vmLoaded.Queue.CollectionChanged += (_, _) => InvalidateNavRing();
+                vmLoaded.Queue.CollectionChanged += (_, _) => HandleQueueAutoHide(vmLoaded);
+                _queueWasEmpty = vmLoaded.Queue.Count == 0;
                 // Update favorites view axes in-memory when changed via the quick dropdowns; AppSettings
                 // is persisted once on exit (per project convention — no save in event handlers).
                 vmLoaded.FavoritesViewChanged += () =>
@@ -560,6 +565,53 @@ public partial class DmdWindow : JukeboxWindow
         ToggleQueueCollapsed();
     }
 
+    /// <summary>
+    /// Optional "auto-hide queue when empty": collapses the queue on empty and expands it when the
+    /// first item is added. Only reacts to empty↔non-empty transitions so it never fights the user's
+    /// manual collapse/expand toggles between those transitions.
+    /// </summary>
+    private void HandleQueueAutoHide(JukeboxViewModel vm)
+    {
+        if (_appSettings?.DmdAutoHideQueueWhenEmpty != true)
+        {
+            _queueWasEmpty = vm.Queue.Count == 0;
+            return;
+        }
+
+        bool isEmpty = vm.Queue.Count == 0;
+        if (isEmpty == _queueWasEmpty)
+            return; // No empty↔non-empty transition — leave the user's manual state alone.
+
+        _queueWasEmpty = isEmpty;
+
+        // Empty → collapse; first item added → expand.
+        if (isEmpty != _queueCollapsed)
+        {
+            _queueCollapsed = isEmpty;
+            ApplyQueueCollapsedState();
+        }
+    }
+
+    /// <summary>
+    /// Applies the auto-hide setting to the current queue state directly (not transition-based).
+    /// Used when settings are applied so toggling the option ON immediately collapses an already-empty
+    /// queue (or expands a non-empty one). Also refreshes the empty-state tracker either way.
+    /// </summary>
+    private void ReconcileQueueAutoHide(JukeboxViewModel vm)
+    {
+        bool isEmpty = vm.Queue.Count == 0;
+        _queueWasEmpty = isEmpty;
+
+        if (_appSettings?.DmdAutoHideQueueWhenEmpty != true)
+            return;
+
+        if (isEmpty != _queueCollapsed)
+        {
+            _queueCollapsed = isEmpty;
+            ApplyQueueCollapsedState();
+        }
+    }
+
     private void AddToPlaylist_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not System.Windows.Controls.Button btn) return;
@@ -737,6 +789,14 @@ public partial class DmdWindow : JukeboxWindow
         {
             vmFav.FavoritesGrouping = settings.FavoritesGrouping;
             vmFav.FavoritesSort = settings.FavoritesSort;
+
+            // Auto-hide-when-empty: start collapsed if enabled and the queue is empty at launch.
+            _queueWasEmpty = vmFav.Queue.Count == 0;
+            if (settings.DmdAutoHideQueueWhenEmpty && _queueWasEmpty && !_queueCollapsed)
+            {
+                _queueCollapsed = true;
+                ApplyQueueCollapsedState();
+            }
         }
     }
 
@@ -2467,6 +2527,8 @@ public partial class DmdWindow : JukeboxWindow
         LogStep("Blobs/Rotation");
 
         SetQueuePosition(_appSettings.DmdQueuePosition);
+        if (DataContext is JukeboxViewModel vmQueue)
+            ReconcileQueueAutoHide(vmQueue);
         if (_appSettings.DmdScreensaver != (ScreensaverCanvas.Visibility == Visibility.Visible))
             SetDmdScreensaver(_appSettings.DmdScreensaver);
         SetDmdScreensaverDim(_appSettings.DmdScreensaverDimEnabled, _appSettings.DmdScreensaverDimOpacity, _appSettings.DmdScreensaverDimTimeoutSeconds, _appSettings.DmdScreensaverDimDarkBlobs, _appSettings.DmdSwapTarget, _appSettings.ApplyDefaultDmdOnSwap);
@@ -4451,6 +4513,13 @@ public partial class DmdWindow : JukeboxWindow
 
         QueueExpandedPanel.Visibility = _queueCollapsed ? Visibility.Collapsed : Visibility.Visible;
         QueueCollapsedStrip.Visibility = _queueCollapsed ? Visibility.Visible : Visibility.Collapsed;
+
+        // When collapsed the splitter is hidden, so add a small gap between the queue strip and the
+        // content area's scrollbar (left for Right, top for Bottom). Expanded uses the splitter's gap.
+        if (_queueCollapsed)
+            QueueBorder.Margin = isRight ? new Thickness(5, 0, 0, 0) : new Thickness(0, 5, 0, 0);
+        else
+            QueueBorder.Margin = new Thickness(0);
 
         // Disable resizing while collapsed so the saved size isn't overwritten by a stray drag.
         QueueSplitter.IsEnabled = !_queueCollapsed;

@@ -945,6 +945,7 @@ public partial class SettingsWindow : JukeboxWindow
         foreach (var pos in new[] { "Right", "Bottom" })
             CbQueuePosition.Items.Add(pos);
         CbQueuePosition.SelectedIndex = (int)settings.DmdQueuePosition;
+        CbAutoHideQueueWhenEmpty.IsChecked = settings.DmdAutoHideQueueWhenEmpty;
 
         SliderHeaderSize.Value = settings.DmdHeaderSizeModifier;
         SliderSearchBarSize.Value = settings.DmdSearchBarSizeModifier;
@@ -3857,6 +3858,7 @@ public partial class SettingsWindow : JukeboxWindow
         if (newQueuePos != _settings.DmdQueuePosition)
             _settings.DmdQueueSplitterSize = -1; // Reset splitter when position changes
         _settings.DmdQueuePosition = newQueuePos;
+        _settings.DmdAutoHideQueueWhenEmpty = CbAutoHideQueueWhenEmpty.IsChecked == true;
         _settings.DmdHeaderSizeModifier = Math.Clamp((int)SliderHeaderSize.Value, -4, 10);
         _settings.DmdSearchBarSizeModifier = Math.Clamp((int)SliderSearchBarSize.Value, -4, 8);
         _settings.DmdSearchResultsNavSizeModifier = Math.Clamp((int)SliderSearchResultsNavSize.Value, -2, 8);

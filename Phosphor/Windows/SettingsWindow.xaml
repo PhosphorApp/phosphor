@@ -2010,6 +2010,12 @@
                                           FontSize="12" BorderBrush="#333"/>
                             </DockPanel>
                             <DockPanel Margin="0,0,0,8">
+                                <TextBlock Width="110"/>
+                                <CheckBox x:Name="CbAutoHideQueueWhenEmpty" Content="Auto-hide queue when empty"
+                                          Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
+                                          ToolTip="When enabled, the queue panel collapses to a narrow strip when empty and expands when items are added. You can still manually collapse/expand it by clicking the QUEUE label."/>
+                            </DockPanel>
+                            <DockPanel Margin="0,0,0,8">
                                 <TextBlock Text="Track Columns:" Foreground="{StaticResource TextBrush}"
                                            VerticalAlignment="Center" Width="110"/>
                                 <ComboBox x:Name="CbResultColumns" IsEditable="False" Width="140" HorizontalAlignment="Left"
