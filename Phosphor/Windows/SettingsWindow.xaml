@@ -1960,12 +1960,7 @@
                                         </ListView.ItemTemplate>
                                     </ListView>
                                     <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                        <Button Content="＋ Add Category" FontSize="11" Padding="8,4"
-                                                HorizontalAlignment="Left" Cursor="Hand"
-                                                Background="{StaticResource SurfaceBrush}" Foreground="{StaticResource TextBrush}"
-                                                BorderBrush="#444" BorderThickness="1"
-                                                Click="CategoryAdd_Click"/>
-                                        <Button Content="＋ Separator" FontSize="11" Padding="8,4" Margin="4,0,0,0"
+                                        <Button Content="＋ Separator" FontSize="11" Padding="8,4"
                                                 HorizontalAlignment="Left" Cursor="Hand"
                                                 Background="{StaticResource SurfaceBrush}" Foreground="{StaticResource TextDimBrush}"
                                                 BorderBrush="#444" BorderThickness="1"

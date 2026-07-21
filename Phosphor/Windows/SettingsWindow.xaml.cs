@@ -6217,23 +6217,6 @@ public partial class SettingsWindow : JukeboxWindow
         searchBox.Focus();
     }
 
-    private void CategoryAdd_Click(object sender, RoutedEventArgs e)
-    {
-        var newItem = new CategoryVisibilityItem
-        {
-            Name = "New Category",
-            Icon = "📋",
-            SearchTerm = "",
-            IsVisible = true,
-            IsSpecial = false,
-        };
-        _categoryVisibilityItems.Add(newItem);
-        CategoryListView.ItemsSource = null;
-        CategoryListView.ItemsSource = _categoryVisibilityItems;
-        CategoryListView.ScrollIntoView(newItem);
-        UpdateCategoryVisibilityText();
-    }
-
     private void CategoryAddSeparator_Click(object sender, RoutedEventArgs e)
     {
         var newItem = new CategoryVisibilityItem
