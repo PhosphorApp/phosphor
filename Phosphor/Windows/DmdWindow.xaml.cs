@@ -40,6 +40,10 @@ public partial class DmdWindow : JukeboxWindow
     private bool _showVideoInfo;
     private QueuePosition _queuePosition = QueuePosition.Right;
 
+    // Queue collapse (Phase 1: manual click-to-collapse toggle). In-memory only for now.
+    private bool _queueCollapsed;
+    private const double QueueCollapsedStripSize = 40;
+
     // Queue drag-reorder state
     private WpfPoint _queueDragStart;
     private bool _queueDragInProgress;
@@ -548,6 +552,12 @@ public partial class DmdWindow : JukeboxWindow
                     _appSettings.DmdQueueSplitterSize = QueueBorder.ActualHeight;
                 _ = _appSettings.SaveAsync();
             }));
+    }
+
+    private void QueueLabel_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        ToggleQueueCollapsed();
     }
 
     private void AddToPlaylist_Click(object sender, RoutedEventArgs e)
@@ -4358,6 +4368,93 @@ public partial class DmdWindow : JukeboxWindow
         trigger.Setters.Add(new Setter(System.Windows.Controls.Control.BackgroundProperty, new SolidColorBrush(WpfColor.FromRgb(0x2A, 0x2A, 0x2A))));
         itemStyle.Triggers.Add(trigger);
         QueueList.ItemContainerStyle = itemStyle;
+
+        // Re-apply the collapsed state — SetQueuePosition rebuilds the row/column definitions,
+        // so a position swap would otherwise lose the collapsed sizing/orientation.
+        ApplyQueueCollapsedState();
+    }
+
+    /// <summary>
+    /// Toggles the queue panel between collapsed (narrow strip) and expanded. Phase 1: manual only,
+    /// driven by clicking the QUEUE label. Works regardless of whether the queue has items.
+    /// </summary>
+    private void ToggleQueueCollapsed()
+    {
+        _queueCollapsed = !_queueCollapsed;
+        ApplyQueueCollapsedState();
+    }
+
+    /// <summary>
+    /// Applies the current _queueCollapsed state to the active queue column (Right) or row (Bottom):
+    /// resizes to the collapsed strip size or restores the saved size, swaps the expanded panel for
+    /// the collapsed strip, orients the strip label, and disables the splitter while collapsed.
+    /// </summary>
+    private void ApplyQueueCollapsedState()
+    {
+        bool isRight = _queuePosition == QueuePosition.Right;
+
+        if (isRight)
+        {
+            var col = ContentQueueGrid.ColumnDefinitions.Count > 2 ? ContentQueueGrid.ColumnDefinitions[2] : null;
+            if (col != null)
+            {
+                if (_queueCollapsed)
+                {
+                    col.MinWidth = QueueCollapsedStripSize;
+                    col.Width = new GridLength(QueueCollapsedStripSize, GridUnitType.Pixel);
+                }
+                else
+                {
+                    col.MinWidth = 60;
+                    var savedSize = _appSettings?.DmdQueueSplitterSize ?? -1;
+                    col.Width = savedSize > 0
+                        ? new GridLength(savedSize, GridUnitType.Pixel)
+                        : new GridLength(1, GridUnitType.Star);
+                }
+            }
+            // Vertical label for the Right layout. Padding is asymmetric to optically center the
+            // all-caps text (font ascent/descent) once rotated 90°.
+            // Vertical label for the Right layout. Rotated 90° via LayoutTransform. Position with
+            // Margin (parent/screen space, not affected by the rotation): Top nudges the label down,
+            // Left/Right nudge it horizontally within the strip. Padding stays minimal.
+            QueueCollapsedStripRotation.Angle = 90;
+            QueueCollapsedStrip.Padding = new Thickness(0);
+            QueueCollapsedStrip.Margin = new Thickness(0, 8, 0, 0);
+            QueueCollapsedStrip.VerticalAlignment = VerticalAlignment.Top;
+            QueueCollapsedStrip.HorizontalAlignment = System.Windows.HorizontalAlignment.Center;
+        }
+        else
+        {
+            var row = ContentQueueGrid.RowDefinitions.Count > 2 ? ContentQueueGrid.RowDefinitions[2] : null;
+            if (row != null)
+            {
+                if (_queueCollapsed)
+                {
+                    row.MinHeight = QueueCollapsedStripSize;
+                    row.Height = new GridLength(QueueCollapsedStripSize, GridUnitType.Pixel);
+                }
+                else
+                {
+                    row.MinHeight = 60;
+                    var savedSize = _appSettings?.DmdQueueSplitterSize ?? -1;
+                    row.Height = savedSize > 0
+                        ? new GridLength(savedSize, GridUnitType.Pixel)
+                        : new GridLength(1, GridUnitType.Star);
+                }
+            }
+            // Horizontal label for the Bottom layout. Centered with symmetric padding.
+            QueueCollapsedStripRotation.Angle = 0;
+            QueueCollapsedStrip.Padding = new Thickness(4, 2, 4, 2);
+            QueueCollapsedStrip.VerticalAlignment = VerticalAlignment.Center;
+            QueueCollapsedStrip.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
+        }
+
+        QueueExpandedPanel.Visibility = _queueCollapsed ? Visibility.Collapsed : Visibility.Visible;
+        QueueCollapsedStrip.Visibility = _queueCollapsed ? Visibility.Visible : Visibility.Collapsed;
+
+        // Disable resizing while collapsed so the saved size isn't overwritten by a stray drag.
+        QueueSplitter.IsEnabled = !_queueCollapsed;
+        QueueSplitter.Visibility = _queueCollapsed ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void UpdateQueueDeleteButtonPosition()

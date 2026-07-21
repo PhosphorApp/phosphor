@@ -663,7 +663,30 @@
 
         <!-- Queue -->
         <Border x:Name="QueueBorder" Grid.Column="2" Background="{StaticResource SurfaceBrush}" CornerRadius="6" Padding="8">
-            <DockPanel>
+            <Grid>
+            <!-- Collapsed strip: shown only when the queue is collapsed. Clicking it restores the panel.
+                 For the Right layout the label is rotated vertical; for Bottom it stays horizontal
+                 (orientation is applied in code-behind via SetQueueCollapsed/SetQueuePosition).
+                 Uses a minimal template so it renders as a plain label (no button chrome). -->
+            <Button x:Name="QueueCollapsedStrip" Visibility="Collapsed"
+                    Foreground="{StaticResource TextDimBrush}" FontWeight="Bold"
+                    FontSize="{DynamicResource QueueHeaderFontSize}"
+                    HorizontalAlignment="Center" VerticalAlignment="Top"
+                    Cursor="Hand" Content="QUEUE"
+                    ToolTip="Show queue"
+                    Click="QueueLabel_Click">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Button.Template>
+                <Button.LayoutTransform>
+                    <RotateTransform x:Name="QueueCollapsedStripRotation" Angle="90"/>
+                </Button.LayoutTransform>
+            </Button>
+            <DockPanel x:Name="QueueExpandedPanel">
                 <DockPanel x:Name="QueueHeaderPanel" DockPanel.Dock="Top" Margin="0,0,0,4">
                     <Button x:Name="QueueClearButton" Content="✕ Clear" DockPanel.Dock="Right" Padding="4,1" FontSize="11"
                             Background="Transparent" Foreground="{StaticResource TextDimBrush}"
@@ -676,10 +699,22 @@
                             Click="MakePlaylistFromQueue_Click"
                             IsEnabled="{Binding HasQueueItems}"
                             Visibility="{Binding HasQueueItems, Converter={StaticResource BoolVis}}"/>
-                    <TextBlock Foreground="{StaticResource TextDimBrush}"
-                               FontSize="{DynamicResource QueueHeaderFontSize}" FontWeight="Bold" VerticalAlignment="Center">
-                        <Run Text="QUEUE"/><Run Text=" "/><Run Text="{Binding QueueCountText, Mode=OneWay}"/>
-                    </TextBlock>
+                    <Button x:Name="QueueHeaderLabel" DockPanel.Dock="Left"
+                            Foreground="{StaticResource TextDimBrush}" Cursor="Hand"
+                            FontSize="{DynamicResource QueueHeaderFontSize}" FontWeight="Bold"
+                            VerticalAlignment="Center" HorizontalContentAlignment="Left"
+                            ToolTip="Hide queue" Click="QueueLabel_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="Transparent">
+                                    <ContentPresenter VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                        <TextBlock>
+                            <Run Text="QUEUE"/><Run Text=" "/><Run Text="{Binding QueueCountText, Mode=OneWay}"/>
+                        </TextBlock>
+                    </Button>
                 </DockPanel>
                 <ListBox x:Name="QueueList" ItemsSource="{Binding Queue}" Background="Transparent"
                          AllowDrop="True"
@@ -765,6 +800,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
             </DockPanel>
+            </Grid>
         </Border>
         </Grid>
 
