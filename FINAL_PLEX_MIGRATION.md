@@ -51,42 +51,48 @@ Removed the write-only, round-tripped-only Plex fields from the category layer:
 
 Build verified clean after each change.
 
+### Option B — source-agnostic renames & de-coupling (steps 1–4)
+The "live features carrying Plex in the name" were made source-agnostic across
+four commits:
+
+- **Playlist cache** → `SourcePlaylistCache*`. Renamed `AppSettings`
+  (`SourcePlaylistCacheEnabled`/`SourcePlaylistCacheMaxAgeHours`), the VM
+  (`SourcePlaylistCache` / `SetupSourcePlaylistCache`, cache prefix `plex_` →
+  `source_`), the settings UI (`CbSourcePlaylistCache*`, `SourcePlaylistCacheSizeText`,
+  `PurgeSourcePlaylistCache_Click`, `SetSourcePlaylistCacheSize`), `default_settings.json`,
+  and all call sites. Pure rename; local cache-folder rename is acceptable on a clean slate.
+- **Gapless playback** → dropped the `Plex` prefix: `AppSettings.GaplessPlayback`,
+  `CbGapless`. The VM already exposed `GaplessPlayback`.
+- **`IsPlexBrowsing`** → **removed** (dead code — only ever assigned `false`).
+  `IsSearchScoped` reduces to `IsGenericScopedSearchAvailable`; `DmdWindow` browse
+  checks reduce to `IsGenericBrowsing`.
+- **Search hint** → new `ISearchHintProvider` capability. Sources author their own
+  query-syntax hint (Plex/YouTube implement it); the host reads
+  `ActiveSearchSourceHint` instead of a hard-coded type-id `switch`. Removed the
+  now-dead `ActiveSearchSourceTypeId`.
+- **Plex id-shape routing** → **removed**. Plex leaves already carry
+  `SourceInstanceId` (set in `PlexMappings.ToSourceItem`; the host's carried-VideoItem
+  branch never applies to the plug-in's separate `VideoItem` type), so the
+  `plex:`-prefix fallbacks were unneeded. Removed `VideoItem.IsPlex`,
+  `SourceRegistry.PlexInstances`, `ActivePlexSource`, and the never-set
+  `_activePlexInstanceId`. `SourceForItem` / `IsItemCacheable` / gapless /
+  `NowPlayingSourceText` now route purely by `SourceInstanceId`.
+
 ## ⛔ Deliberately NOT removed — LIVE features that merely carry "Plex" in the name
 
-These are working features, not dead code. Renaming them to source-agnostic
-names is a **larger, behavior-touching refactor** (Option B) and should be its
-own scoped effort. Listed here so we don't mistake them for dead code later.
+`KnownSourceTypeIds.Plex` legitimately identifies the Plex plug-in and stays as a
+type-id constant. One host-side `== KnownSourceTypeIds.Plex` branch remains — see
+Remaining work below.
 
-| Member | Where | Why it's live |
-| --- | --- | --- |
-| `KnownSourceTypeIds.Plex` | `Phosphor.Plugins`, `SourceRegistry`, `SettingsWindow` config renderer | Used to detect Plex instances and render the Hubs/Playlists flags (Plex-only concept). Real plug-in infra. |
-| `PlexPlaylistCacheEnabled` / `PlexPlaylistCacheMaxAgeHours` | `AppSettings`, `SettingsWindow` (`CbPlexPlaylistCacheEnabled`, `CbPlexPlaylistCacheMaxAge`, `PlexPlaylistCacheSizeText`, `PurgePlexPlaylistCache_Click`, `SetPlexPlaylistCacheSize`) | Wired to `vm.SetupPlexPlaylistCache(...)` + live purge/size readout. Working cache feature. |
-| `PlexGaplessPlayback` / `CbPlexGapless` | `AppSettings`, `SettingsWindow`, `DmdWindow` | Maps to `vm.GaplessPlayback`. Working playback feature. |
-| `VideoItem.IsPlex` (`VideoId.StartsWith("plex:")`) | `VideoItem` | Source discriminator still used by the host. |
-| `IsPlexBrowsing` | `JukeboxViewModel`, `DmdWindow` | Live browse-state flag. |
+## 🪜 Remaining work (Option B)
 
-## 🪜 Remaining work (Option B — future)
-
-Goal: make the host fully Plex-name-free by renaming the live features above to
-source-agnostic concepts. Sketch:
-
-1. **Playlist cache** → generic per-source playlist cache naming
-   (e.g. `SourcePlaylistCache*`), migrating `AppSettings` fields + the settings
-   UI (`Cb*`, purge handler, size readout) + `JukeboxViewModel.SetupPlexPlaylistCache`.
-2. **Gapless playback** → `GaplessPlayback` end-to-end (drop the `Plex` prefix on
-   the `AppSettings` field + `CbPlexGapless`); the VM already exposes
-   `GaplessPlayback`.
-3. **`KnownSourceTypeIds.Plex`** → keep as a type-id constant (it legitimately
-   identifies the Plex plug-in), but audit host-side `== KnownSourceTypeIds.Plex`
-   branches (e.g. the Hubs/Playlists flag renderer) to see whether they can be
-   driven by a **capability** the plug-in advertises rather than a hard-coded
-   type-id comparison. This is the only genuinely architectural item.
-4. **`VideoItem.IsPlex` / `IsPlexBrowsing`** → evaluate whether the host still
-   needs a Plex-specific discriminator or whether a generic source/browse flag
-   suffices.
-
-Each of the above is independent and can land as its own commit. Items 1–2 are
-mechanical renames (low risk); item 3 is the real design decision.
+1. **Hubs/Playlists per-library flags** (`SettingsWindow.xaml.cs`, the sole
+   remaining host-side `== KnownSourceTypeIds.Plex` branch). These render the
+   Plex-only "Hubs" and "Playlists" per-library checkboxes. To make this
+   source-agnostic, have the plug-in advertise which per-library sub-toggles it
+   supports (e.g. a capability returning `{Key, Label, Tooltip}` descriptors) so
+   the settings UI renders whatever the plug-in declares. This is the last
+   genuinely architectural item and warrants its own scoped design effort.
 
 ## Notes
 
