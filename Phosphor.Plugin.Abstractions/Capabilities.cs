@@ -240,6 +240,33 @@ public interface IDownloadable
 }
 
 /// <summary>
+/// One user-defined saved-search category ("tile"): a display <see cref="Name"/>, a recommended
+/// <see cref="Icon"/> glyph, and the <see cref="SearchTerm"/> the host runs (through its normal
+/// query grammar) when the tile is opened. <see cref="Id"/> is stable so the host can key a
+/// persisted per-source tile to it.
+/// </summary>
+/// <param name="Id">Stable id within the source (used to key the host tile).</param>
+/// <param name="Name">Display name of the tile (e.g. "Rock").</param>
+/// <param name="Icon">Recommended glyph; the host persists it and lets the user override it.</param>
+/// <param name="SearchTerm">The search term run when the tile is opened (host query grammar).</param>
+public sealed record SavedSearchCategory(string Id, string Name, string Icon, string SearchTerm);
+
+/// <summary>
+/// Capability: the source contributes user-defined <em>saved-search category tiles</em> to the home
+/// screen. Unlike <see cref="IBrowsable"/> (a navigable tree), each category is just a stored search
+/// term the host runs through its own query grammar (playlist:/channel:/min:/max:) bound to this
+/// source. YouTube — the original baked-in provider whose genre tiles (Rock/Pop/…) were historically
+/// host-owned — implements this so those tiles live with the plug-in. The host syncs them as
+/// source-bound tiles (preserving user ordering/glyph/visibility) and opens one by running its
+/// <see cref="SavedSearchCategory.SearchTerm"/> against this source.
+/// </summary>
+public interface ISavedSearchCategories
+{
+    /// <summary>The source's current saved-search categories, in the source's preferred order.</summary>
+    IReadOnlyList<SavedSearchCategory> GetSavedSearchCategories();
+}
+
+/// <summary>
 /// Capability: verify the source's configuration actually works (reachability + auth), beyond the
 /// static <see cref="IPhosphorSource.IsConfigured"/> "fields are filled in" check. Implemented by
 /// sources that talk to a server (e.g. Plex verifies the URL/token and counts libraries). Lets the
