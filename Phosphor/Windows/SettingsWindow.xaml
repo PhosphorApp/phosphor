@@ -2252,29 +2252,17 @@
                                                     </Button>
                                                     <Button Content="✕" FontSize="10" Width="20" Height="20"
                                                             Background="Transparent" Foreground="{StaticResource TextDimBrush}"
-                                                            BorderThickness="0" Cursor="Hand" ToolTip="Remove marker"
+                                                            BorderThickness="0" Cursor="Hand" ToolTip="Remove"
                                                             VerticalAlignment="Center" Margin="4,0,0,0"
                                                             DockPanel.Dock="Right"
-                                                            Click="FavoriteRemoveMarker_Click">
-                                                        <Button.Style>
-                                                            <Style TargetType="Button">
-                                                                <Setter Property="Template">
-                                                                    <Setter.Value>
-                                                                        <ControlTemplate TargetType="Button">
-                                                                            <Border Background="Transparent">
-                                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                                            </Border>
-                                                                        </ControlTemplate>
-                                                                    </Setter.Value>
-                                                                </Setter>
-                                                                <Setter Property="Visibility" Value="Collapsed"/>
-                                                                <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsMarker}" Value="True">
-                                                                        <Setter Property="Visibility" Value="Visible"/>
-                                                                    </DataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </Button.Style>
+                                                            Click="FavoriteRemove_Click">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border Background="Transparent">
+                                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
                                                     </Button>
                                                     <TextBlock Text="{Binding DisplayText}" VerticalAlignment="Center"
                                                                Margin="4,0,0,0" TextTrimming="CharacterEllipsis">

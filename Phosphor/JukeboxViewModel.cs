@@ -3241,6 +3241,26 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Removes a favorite identified by its composite index key (<c>sourceInstanceId\0itemId</c>) —
+    /// used by the Settings ▸ DMD ▸ Favorites editor's delete button. Mirrors an un-star: unstars at
+    /// the owning source (<see cref="Phosphor.Plugin.Abstractions.IFavoritable"/>) when available and
+    /// removes the write-through index entry. Safe if the source is gone (index entry still removed).
+    /// </summary>
+    public void RemoveFavoriteByKey(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return;
+        var sep = key.IndexOf('\u0000');
+        if (sep <= 0) return;
+        var sourceInstanceId = key[..sep];
+        var itemId = key[(sep + 1)..];
+
+        if (_sourceRegistry?.ByInstance(sourceInstanceId) is Phosphor.Plugin.Abstractions.IFavoritable fav)
+            fav.SetFavorite(itemId, false);
+
+        _favoritesIndex.Remove(sourceInstanceId, itemId);
+    }
+
+    /// <summary>
     /// Builds the aggregated Favorites view (all sources) from the write-through index — instant, no
     /// per-source round-trips. Applies the user's Sort + Grouping (Settings → DMD → Favorites); a
     /// grouped view interleaves non-interactive provider header rows. Each row carries only display

@@ -6382,10 +6382,21 @@ public partial class SettingsWindow : JukeboxWindow
         RefreshFavoritesOrderList();
     }
 
-    private void FavoriteRemoveMarker_Click(object sender, RoutedEventArgs e)
+    private void FavoriteRemove_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button btn || btn.DataContext is not FavoriteOrderItem item) return;
-        if (!item.IsMarker) return;
+
+        // A real favorite (not a layout marker): confirm, then unstar at the owning source + drop it
+        // from the index. Markers are removed silently (they're pure layout).
+        if (!item.IsMarker)
+        {
+            if (!DarkConfirmDialog.Confirm("Remove Favorite",
+                $"Remove \"{item.Title}\" from favorites?", this))
+                return;
+            if (Owner?.DataContext is JukeboxViewModel vm)
+                vm.RemoveFavoriteByKey(item.Key);
+        }
+
         _favoriteOrderItems.Remove(item);
         RefreshFavoritesOrderList();
     }
