@@ -142,10 +142,12 @@ public static class GenreCategoryStore
 
     /// <summary>
     /// Syncs saved-search plug-in source tiles (e.g. YouTube genre tiles) into the entry list. The
-    /// plug-in is authoritative for Name/Icon/SearchTerm (they are refreshed on every sync so edits
-    /// in the plug-in's category editor propagate); the host owns only SortOrder and IsVisible, which
-    /// are preserved for survivors. Keyed by (SourceInstanceId, SourceCategoryId). Prunes entries no
-    /// longer backed by a live tile; appends new tiles at the end (after existing sort orders).
+    /// plug-in owns each tile's <em>existence</em> and its <see cref="GenreCategoryEntry.SearchTerm"/>
+    /// (the search criteria are edited in the plug-in's category editor, not the DMD/Appearance tab);
+    /// the host owns the display glyph (<see cref="GenreCategoryEntry.Icon"/>), <c>Name</c>,
+    /// <c>SortOrder</c> and <c>IsVisible</c>, which are preserved for survivors (DMD/Appearance is the
+    /// override authority). New tiles seed Name/Icon from the plug-in default. Keyed by
+    /// (SourceInstanceId, SourceCategoryId); prunes tiles no longer present; appends new ones.
     /// </summary>
     public static void SyncSavedSearchTiles(List<GenreCategoryEntry> entries, IReadOnlyList<SavedSearchTile> tiles)
     {
@@ -164,9 +166,7 @@ public static class GenreCategoryStore
                 e.SourceInstanceId == t.InstanceId && (e.SourceCategoryId ?? "") == t.CategoryId);
             if (existing != null)
             {
-                // Plug-in-authoritative fields refreshed; host-owned SortOrder/IsVisible preserved.
-                existing.Name = t.DisplayName;
-                existing.Icon = t.Icon;
+                // Plug-in owns SearchTerm; host-owned Name/Icon/SortOrder/IsVisible are preserved.
                 existing.SearchTerm = t.SearchTerm;
                 existing.SourceTypeId = t.TypeId;
             }

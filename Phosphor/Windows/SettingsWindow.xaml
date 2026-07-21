@@ -1937,6 +1937,11 @@
                                                                         <Setter Property="Opacity" Value="0.4"/>
                                                                         <Setter Property="ToolTip" Value="Plug-in source"/>
                                                                     </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsSavedSearchSource}" Value="True">
+                                                                        <Setter Property="IsEnabled" Value="False"/>
+                                                                        <Setter Property="Opacity" Value="0.4"/>
+                                                                        <Setter Property="ToolTip" Value="Edit this tile's search term in the source's plug-in settings (Edit categories…)"/>
+                                                                    </DataTrigger>
                                                                     <DataTrigger Binding="{Binding IsPlaylist}" Value="True">
                                                                         <Setter Property="Visibility" Value="Collapsed"/>
                                                                     </DataTrigger>
@@ -3072,8 +3077,9 @@
                                         Click="PurgeThumbnailCache_Click" Padding="8,4"
                                         VerticalAlignment="Center"/>
 
-                                <!-- Row 2: YouTube Categories -->
-                                <CheckBox x:Name="CbCategoryCacheEnabled" Content="YouTube Categories"
+                                <!-- Row 2: Category tiles (any opt-in source) -->
+                                <CheckBox x:Name="CbCategoryCacheEnabled" Content="Category tiles"
+                                          ToolTip="Cache the result pages behind category tiles (for sources that allow it)."
                                           Grid.Row="2" Grid.Column="0"
                                           Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 <TextBlock Text="Max age:" Grid.Row="2" Grid.Column="1"
@@ -3091,8 +3097,9 @@
                                         Click="PurgeCategoryCache_Click" Padding="8,4"
                                         VerticalAlignment="Center"/>
 
-                                <!-- Row 4: YouTube Playlists -->
-                                <CheckBox x:Name="CbYtPlaylistCacheEnabled" Content="YouTube Playlists"
+                                <!-- Row 4: Live playlists (YouTube-bound path) -->
+                                <CheckBox x:Name="CbYtPlaylistCacheEnabled" Content="Live playlists"
+                                          ToolTip="Cache the result pages behind live playlists (for sources that allow it)."
                                           Grid.Row="4" Grid.Column="0"
                                           Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 <TextBlock Text="Max age:" Grid.Row="4" Grid.Column="1"

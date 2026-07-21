@@ -28,6 +28,9 @@ public class CategoryVisibilityItem
     public string? SourceCategoryId { get; set; }
     public string? SourceTypeId { get; set; }
     public bool IsGenericSource { get; set; }
+    /// <summary>True for a plug-in saved-search tile (e.g. a YouTube genre tile): its search term is
+    /// owned by the plug-in and edited in the plug-in's category editor, not here.</summary>
+    public bool IsSavedSearchSource { get; set; }
     /// <summary>
     /// The search term when the settings window was opened, used to detect changes.
     /// </summary>
@@ -986,6 +989,7 @@ public partial class SettingsWindow : JukeboxWindow
                 SourceCategoryId = entry.SourceCategoryId,
                 SourceTypeId = entry.SourceTypeId,
                 IsGenericSource = entry.IsGenericSource,
+                IsSavedSearchSource = entry.IsSavedSearchSource,
                 SortOrder = entry.SortOrder
             });
         }
@@ -2178,7 +2182,7 @@ public partial class SettingsWindow : JukeboxWindow
 
     private void PurgeYtPlaylistCache_Click(object sender, RoutedEventArgs e)
     {
-        if (DarkConfirmDialog.Confirm("Purge YouTube Playlist Cache", "Are you sure you want to purge the YouTube playlist cache?", this)
+        if (DarkConfirmDialog.Confirm("Purge Live Playlist Cache", "Are you sure you want to purge the live playlist cache?", this)
             && Owner?.DataContext is JukeboxViewModel vm)
         {
             vm.YtPlaylistCache?.Purge();

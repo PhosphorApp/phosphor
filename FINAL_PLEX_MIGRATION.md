@@ -108,7 +108,63 @@ declared `hubs`/`playlists` there; the host was simply discarding them. Changes:
 The host is now **fully free of hard-coded Plex type-id branches** — all
 Plex-specific sub-toggle knowledge lives in the Plex plug-in.
 
-## 🧭 Broader follow-up — YouTube-coupled result caches (separate effort)
+## ✅ Done — YouTube-coupled categories & result caches decoupled
+
+> This was the "broader follow-up" logged below. It is a genuine *behavioral*
+> decoupling (not a naming cleanup) and shipped across several phases. Summary of
+> the design and the ownership boundary it establishes.
+
+### The problem
+YouTube was the original baked-in provider, so its genre tiles (Rock/Pop/Metal…)
+and their two result-page caches lived in the **host**:
+- Genre categories were host-owned entries in `categories.json`, editable (name +
+  search term) on the DMD/Appearance tab.
+- `CategoryCache` ("YouTube Categories") and `YtPlaylistCache` ("YouTube
+  Playlists") only attached on the YouTube-bound path (`sourceInstanceId == null`).
+
+### The boundary now
+- **Plug-in owns**: the *existence* of its categories and each tile's *search
+  term*. YouTube ships a `default-categories.json` **template** (the authoritative
+  initial state) next to its DLL; the live/edited list is persisted in the
+  instance's settings blob. Editing happens in the plug-in's **"Edit categories…"**
+  row editor (glyph / name / search term, add/remove/reorder, restore defaults).
+- **Host owns**: ordering, visibility, and the display **glyph + name** overrides
+  (DMD/Appearance remains the override authority). The DMD/Appearance search-term
+  field is now **read-only** for plug-in tiles — search criteria are edited in the
+  plug-in.
+
+### Contract additions (`Phosphor.Plugin.Abstractions`)
+- `ISavedSearchCategories` + `SavedSearchCategory(Id, Name, Icon, SearchTerm)` —
+  a source contributes user-defined saved-search category *tiles*. Unlike
+  `IBrowsable` (a tree), each is a stored search term the host runs through its own
+  query grammar (`playlist:`/`channel:`/`min:`/`max:`) bound to that source. This
+  deliberately avoids duplicating the host's query parser in the plug-in.
+- `IEditableSavedSearchCategories : ISavedSearchCategories` — add/edit/delete +
+  restore-defaults; the source translates the edited list into its settings blob.
+- `IResultCachePolicy` + `ResultCachePolicy(Cache, MaxAgeHours?)` — a source
+  advises the host whether to cache its **result pages**. YouTube opts in; Twitch
+  opts out (ephemeral live feeds); a source may also micro-manage its own cache
+  invisibly and simply not implement this.
+
+### Host changes
+- `GenreCategoryEntry` distinguishes `IsGenericSource` (browse tile, `IBrowsable`,
+  no search term) from `IsSavedSearchSource` (saved-search tile, carries a search
+  term). `GenreCategoryStore.SyncSavedSearchTiles` syncs plug-in tiles preserving
+  host-owned name/glyph/order/visibility and refreshing only the search term.
+- `FetchAndReconcilePluginTilesAsync` enumerates `ISavedSearchCategories` sources
+  and syncs their tiles alongside the `IBrowsable` browse tiles.
+- `RebuildCategories` renders saved-search tiles carrying `SourceInstanceId`;
+  `SelectCategoryAsync` opens them via `DoSearch(SearchTerm, SourceInstanceId)`.
+- `DoSearch`'s cache-attach is now source-aware and policy-gated
+  (`ShouldCacheResults` → `IResultCachePolicy`): opt-out sources attach no cache;
+  saved-search tiles match by search term **and** owning source; live playlists
+  route to `YtPlaylistCache` (YouTube path) or `SourcePlaylistCache` (others).
+- Cache-tab toggles relabeled source-neutral: "Category tiles" / "Live playlists".
+- Host `categories.json` ships only the host-owned **History** tile; YouTube genre
+  tiles are seeded from the plug-in on first run (clean slate, no migration).
+
+## 🧭 Original follow-up note (superseded by the section above)
+
 
 > **Not part of the Plex naming cleanup.** Logged here so it isn't lost. This is a
 > genuine *behavioral* coupling, not a naming issue, and is larger than the items
