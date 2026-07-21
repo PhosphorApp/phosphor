@@ -2156,9 +2156,6 @@ public partial class JukeboxViewModel : ObservableObject
                 continue;
             }
             if (!entry.IsVisible) continue;
-            // Legacy Plex tile entries (pre-generic-path) are ignored — Plex now renders through the
-            // generic source path (IsGenericSource). They're pruned from disk on next source build.
-            if (entry.IsPlex && !entry.IsGenericSource) continue;
 
             if (entry.IsGenericSource)
             {

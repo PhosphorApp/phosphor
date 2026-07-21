@@ -21,14 +21,8 @@ public class CategoryVisibilityItem
     public bool IsSpecial { get; set; }
     public bool IsSeparator { get; set; }
     public bool IsLineBreak { get; set; }
-    public bool IsPlex { get; set; }
     public bool IsPlaylist { get; set; }
     public string PlaylistId { get; set; } = "";    public int SortOrder { get; set; }
-    public string? PlexLibraryKey { get; set; }
-    public string? PlexLibraryType { get; set; }
-    public string? PlexInstanceId { get; set; }
-    public bool PlexHubsEnabled { get; set; }
-    public bool PlexPlaylistsEnabled { get; set; }
     // Generic plug-in source tile identity (round-tripped so sort/visibility persist for these too).
     public string? SourceInstanceId { get; set; }
     public string? SourceCategoryId { get; set; }
@@ -988,12 +982,6 @@ public partial class SettingsWindow : JukeboxWindow
                 IsSpecial = entry.Name == "History",
                 IsSeparator = entry.IsSeparator,
                 IsLineBreak = entry.IsLineBreak,
-                IsPlex = entry.IsPlex,
-                PlexLibraryKey = entry.PlexLibraryKey,
-                PlexLibraryType = entry.PlexLibraryType,
-                PlexInstanceId = entry.PlexInstanceId,
-                PlexHubsEnabled = entry.PlexHubsEnabled,
-                PlexPlaylistsEnabled = entry.PlexPlaylistsEnabled,
                 SourceInstanceId = entry.SourceInstanceId,
                 SourceCategoryId = entry.SourceCategoryId,
                 SourceTypeId = entry.SourceTypeId,
@@ -3907,11 +3895,6 @@ public partial class SettingsWindow : JukeboxWindow
             IsVisible = i.IsVisible,
             IsSeparator = i.IsSeparator,
             IsLineBreak = i.IsLineBreak,
-            PlexLibraryKey = i.PlexLibraryKey,
-            PlexLibraryType = i.PlexLibraryType,
-            PlexInstanceId = i.PlexInstanceId,
-            PlexHubsEnabled = i.PlexHubsEnabled,
-            PlexPlaylistsEnabled = i.PlexPlaylistsEnabled,
             SourceInstanceId = i.SourceInstanceId,
             SourceCategoryId = i.SourceCategoryId,
             SourceTypeId = i.SourceTypeId,
@@ -5989,7 +5972,7 @@ public partial class SettingsWindow : JukeboxWindow
     {
         if (sender is not System.Windows.Controls.Button btn || btn.DataContext is not CategoryVisibilityItem item)
             return;
-        if (item.IsSpecial || item.IsPlex || item.IsPlaylist) return;
+        if (item.IsSpecial || item.IsPlaylist) return;
 
         _categoryVisibilityItems.Remove(item);
         CategoryListView.ItemsSource = null;

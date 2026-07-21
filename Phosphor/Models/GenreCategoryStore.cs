@@ -15,15 +15,6 @@ public class GenreCategoryEntry
     public bool IsSeparator { get; set; }
     public bool IsLineBreak { get; set; }
 
-    // Plex fields (when set, this entry represents a Plex library tile)
-    public string? PlexLibraryKey { get; set; }
-    public string? PlexLibraryType { get; set; }
-    /// <summary>The Plex source instance this entry belongs to (multi-server). Null = legacy/first server.</summary>
-    public string? PlexInstanceId { get; set; }
-    public bool PlexHubsEnabled { get; set; }
-    public bool PlexPlaylistsEnabled { get; set; }
-    public bool IsPlex => PlexLibraryKey != null;
-
     // Generic plug-in source tile fields (when set, this entry is a root tile for an IBrowsable
     // plug-in source — local-folder, future Jellyfin, …). Only serializable identity is persisted;
     // the opaque browse SourceState is recovered at runtime from the live registry by matching
@@ -102,14 +93,10 @@ public static class GenreCategoryStore
     /// Syncs generic plug-in source root tiles (Plex, local-folder, future Jellyfin, …) into the
     /// entry list: prune entries whose (instance, category) is no longer present, preserve user
     /// customizations (icon/name/position/visibility) for survivors, and add new tiles. Keyed by
-    /// (SourceInstanceId, SourceCategoryId). Also one-time-prunes legacy bespoke Plex tile entries.
+    /// (SourceInstanceId, SourceCategoryId).
     /// </summary>
     public static void SyncSourceTiles(List<GenreCategoryEntry> entries, IReadOnlyList<SourceTile> tiles)
     {
-        // One-time cleanup: legacy bespoke Plex tile entries (IsPlex, no SourceInstanceId) are
-        // superseded by generic source tiles. Prune them so they don't linger as dead entries.
-        entries.RemoveAll(e => e.IsPlex && !e.IsGenericSource);
-
         var validPairs = new HashSet<(string, string)>(
             tiles.Select(t => (t.InstanceId, t.CategoryId)));
 
