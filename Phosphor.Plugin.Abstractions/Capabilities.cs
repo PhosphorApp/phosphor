@@ -63,6 +63,21 @@ public sealed record FilteredSearchResult(
     SearchFilters Applied);
 
 /// <summary>
+/// Capability: a source-authored search-box hint. Implemented by sources that want to advertise
+/// their query grammar (e.g. YouTube's <c>channel:</c>/<c>playlist:</c>, Plex's
+/// <c>library:</c>/<c>min:</c>/<c>max:</c>) so the host can surface it beneath the search box
+/// without hard-coding per-source strings. Sources that don't implement this simply show no hint.
+/// </summary>
+public interface ISearchHintProvider
+{
+    /// <summary>
+    /// A short hint describing this source's query syntax, shown next to the search box. May be
+    /// <c>null</c>/empty to show nothing.
+    /// </summary>
+    string? SearchHint { get; }
+}
+
+/// <summary>
 /// Capability: hierarchical browsing. Implemented by sources with a navigable tree
 /// (Plex libraries → artists → albums → tracks; a local-folder source; …). The host asks
 /// for root categories, then expands one node at a time.

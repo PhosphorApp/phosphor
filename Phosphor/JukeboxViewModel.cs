@@ -48,14 +48,16 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The <c>TypeId</c> of the currently-selected search source (e.g. "youtube", "plex"), or
-    /// <c>null</c> if unresolved. Lets the UI tailor hints per source type without knowing instance
-    /// ids (Plex is multi-instance). YouTube is the implicit default when nothing is selected.
+    /// The active search source's self-authored query-syntax hint (see
+    /// <see cref="Phosphor.Plugin.Abstractions.ISearchHintProvider"/>), or <c>null</c> if the source
+    /// advertises none. Lets the UI surface source-specific hints without hard-coding per-source
+    /// strings or type-id comparisons.
     /// </summary>
-    public string? ActiveSearchSourceTypeId =>
+    public string? ActiveSearchSourceHint =>
         (_activeSearchSourceId != null ? _sourceRegistry?.ByInstance(_activeSearchSourceId) : _sourceRegistry?.YouTube)
-            ?.TypeId
-        ?? (_activeSearchSourceId == null ? Phosphor.Plugins.KnownSourceTypeIds.YouTube : null);
+            is Phosphor.Plugin.Abstractions.ISearchHintProvider hinter
+            ? hinter.SearchHint
+            : null;
 
     /// <summary>
     /// The source AutoDJ uses to find/queue similar tracks (from settings). <c>null</c>/empty =

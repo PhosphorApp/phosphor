@@ -1245,16 +1245,7 @@ public partial class DmdWindow : JukeboxWindow
         if (DataContext is JukeboxViewModel vm && vm.IsGenericBrowsing)
             SearchHintRun.Text = $"  items in {vm.ActiveCategory}";
         else if (DataContext is JukeboxViewModel v)
-        {
-            SearchHintRun.Text = v.ActiveSearchSourceTypeId switch
-            {
-                Phosphor.Plugins.KnownSourceTypeIds.YouTube
-                    => "  ...try channel:<name>, playlist:<name>, min:5m, max:30m",
-                Phosphor.Plugins.KnownSourceTypeIds.Plex
-                    => "  ...try min:5m, max:30m, library:<name>",
-                _ => "",
-            };
-        }
+            SearchHintRun.Text = string.IsNullOrEmpty(v.ActiveSearchSourceHint) ? "" : $"  {v.ActiveSearchSourceHint}";
         else
             SearchHintRun.Text = "";
     }
