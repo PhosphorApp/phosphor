@@ -50,12 +50,8 @@
   "CacheMaxClipLengthMinutes": 0,
   "ThumbnailCacheEnabled": true,
   "ThumbnailCacheMaxSizeMb": 500,
-  "CategoryCacheEnabled": true,
-  "CategoryCacheMaxAgeHours": 168,
-  "YtPlaylistCacheEnabled": true,
-  "YtPlaylistCacheMaxAgeHours": 168,
-  "SourcePlaylistCacheEnabled": true,
-  "SourcePlaylistCacheMaxAgeHours": 168,
+  "ResultCacheEnabled": true,
+  "ResultCacheMaxAgeHours": 168,
   "KeyBindings": {
     "NavLeft": {
       "PrimaryKey": 116,

@@ -1372,33 +1372,18 @@ public partial class JukeboxViewModel : ObservableObject
     // ── Thumbnail cache ──
     public ThumbnailCache? ThumbnailCache { get; private set; }
 
-    // ── Category cache ──
-    public ResultCache? CategoryCache { get; private set; }
-    public ResultCache? YtPlaylistCache { get; private set; }
-    public ResultCache? SourcePlaylistCache { get; private set; }
+    // ── Result-page cache ──
+    // A single source-agnostic cache for the paginated result pages behind category tiles and live
+    // playlists (keyed by the globally-unique tile/playlist id). Attaching is policy-gated per source
+    // (see ShouldCacheResults) so ephemeral sources opt out.
+    public ResultCache? ResultPageCache { get; private set; }
 
-    public void SetupCategoryCache(bool enabled, int maxAgeHours)
+    public void SetupResultCache(bool enabled, int maxAgeHours)
     {
-        if (CategoryCache == null)
-            CategoryCache = new ResultCache(enabled, maxAgeHours, "c_");
+        if (ResultPageCache == null)
+            ResultPageCache = new ResultCache(enabled, maxAgeHours, "r_", "result_cache");
         else
-            CategoryCache.UpdateSettings(enabled, maxAgeHours);
-    }
-
-    public void SetupYtPlaylistCache(bool enabled, int maxAgeHours)
-    {
-        if (YtPlaylistCache == null)
-            YtPlaylistCache = new ResultCache(enabled, maxAgeHours, "pl_");
-        else
-            YtPlaylistCache.UpdateSettings(enabled, maxAgeHours);
-    }
-
-    public void SetupSourcePlaylistCache(bool enabled, int maxAgeHours)
-    {
-        if (SourcePlaylistCache == null)
-            SourcePlaylistCache = new ResultCache(enabled, maxAgeHours, "source_", "source_cache");
-        else
-            SourcePlaylistCache.UpdateSettings(enabled, maxAgeHours);
+            ResultPageCache.UpdateSettings(enabled, maxAgeHours);
     }
 
     /// <summary>
@@ -2662,14 +2647,12 @@ public partial class JukeboxViewModel : ObservableObject
             if (genreEntry != null)
             {
                 _categoryCacheName = genreEntry.Id;
-                _activeResultCache = CategoryCache;
+                _activeResultCache = ResultPageCache;
             }
             else if (IsViewingLivePlaylist && !string.IsNullOrEmpty(_activePlaylistId))
             {
                 _categoryCacheName = _activePlaylistId;
-                // A live playlist bound to a non-YouTube source uses the generic per-source cache;
-                // the YouTube-bound path keeps its own playlist cache.
-                _activeResultCache = sourceInstanceId == null ? YtPlaylistCache : SourcePlaylistCache;
+                _activeResultCache = ResultPageCache;
             }
         }
 

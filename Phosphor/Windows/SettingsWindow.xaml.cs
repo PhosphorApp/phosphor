@@ -1054,8 +1054,8 @@ public partial class SettingsWindow : JukeboxWindow
         }
         CbThumbnailCacheMaxSize.SelectedIndex = selectedThumbIndex;
 
-        // Category cache
-        CbCategoryCacheEnabled.IsChecked = settings.CategoryCacheEnabled;
+        // Result-page cache (category tiles + live playlists)
+        CbResultCacheEnabled.IsChecked = settings.ResultCacheEnabled;
         var ageOptions = new (string label, int hours)[]
         {
             ("1 hour", 1), ("2 hours", 2), ("4 hours", 4), ("6 hours", 6), ("12 hours", 12),
@@ -1067,33 +1067,11 @@ public partial class SettingsWindow : JukeboxWindow
         int selectedAgeIndex = 9; // default 7 days
         for (int ai = 0; ai < ageOptions.Length; ai++)
         {
-            CbCategoryCacheMaxAge.Items.Add(ageOptions[ai].label);
-            if (ageOptions[ai].hours == settings.CategoryCacheMaxAgeHours)
+            CbResultCacheMaxAge.Items.Add(ageOptions[ai].label);
+            if (ageOptions[ai].hours == settings.ResultCacheMaxAgeHours)
                 selectedAgeIndex = ai;
         }
-        CbCategoryCacheMaxAge.SelectedIndex = selectedAgeIndex;
-
-        // YouTube playlist cache
-        CbYtPlaylistCacheEnabled.IsChecked = settings.YtPlaylistCacheEnabled;
-        int selectedYtPlAgeIndex = 9;
-        for (int ai = 0; ai < ageOptions.Length; ai++)
-        {
-            CbYtPlaylistCacheMaxAge.Items.Add(ageOptions[ai].label);
-            if (ageOptions[ai].hours == settings.YtPlaylistCacheMaxAgeHours)
-                selectedYtPlAgeIndex = ai;
-        }
-        CbYtPlaylistCacheMaxAge.SelectedIndex = selectedYtPlAgeIndex;
-
-        // Source playlist cache
-        CbSourcePlaylistCacheEnabled.IsChecked = settings.SourcePlaylistCacheEnabled;
-        int selectedPlexAgeIndex = 9;
-        for (int ai = 0; ai < ageOptions.Length; ai++)
-        {
-            CbSourcePlaylistCacheMaxAge.Items.Add(ageOptions[ai].label);
-            if (ageOptions[ai].hours == settings.SourcePlaylistCacheMaxAgeHours)
-                selectedPlexAgeIndex = ai;
-        }
-        CbSourcePlaylistCacheMaxAge.SelectedIndex = selectedPlexAgeIndex;
+        CbResultCacheMaxAge.SelectedIndex = selectedAgeIndex;
 
         // Debug
         CbDebugLogging.IsChecked = settings.DebugLogging;
@@ -2126,26 +2104,10 @@ public partial class SettingsWindow : JukeboxWindow
             : $"({mb:F0} MB used)";
     }
 
-    public void SetCategoryCacheSize(long bytes)
+    public void SetResultCacheSize(long bytes)
     {
         double kb = bytes / 1024.0;
-        CategoryCacheSizeText.Text = kb >= 1024
-            ? $"({kb / 1024:F1} MB used)"
-            : $"({kb:F0} KB used)";
-    }
-
-    public void SetYtPlaylistCacheSize(long bytes)
-    {
-        double kb = bytes / 1024.0;
-        YtPlaylistCacheSizeText.Text = kb >= 1024
-            ? $"({kb / 1024:F1} MB used)"
-            : $"({kb:F0} KB used)";
-    }
-
-    public void SetSourcePlaylistCacheSize(long bytes)
-    {
-        double kb = bytes / 1024.0;
-        SourcePlaylistCacheSizeText.Text = kb >= 1024
+        ResultCacheSizeText.Text = kb >= 1024
             ? $"({kb / 1024:F1} MB used)"
             : $"({kb:F0} KB used)";
     }
@@ -2170,33 +2132,13 @@ public partial class SettingsWindow : JukeboxWindow
         }
     }
 
-    private void PurgeCategoryCache_Click(object sender, RoutedEventArgs e)
+    private void PurgeResultCache_Click(object sender, RoutedEventArgs e)
     {
-        if (DarkConfirmDialog.Confirm("Purge Category Cache", "Are you sure you want to purge the category cache?", this)
+        if (DarkConfirmDialog.Confirm("Purge Result Cache", "Are you sure you want to purge the result-page cache?", this)
             && Owner?.DataContext is JukeboxViewModel vm)
         {
-            vm.CategoryCache?.Purge();
-            SetCategoryCacheSize(0);
-        }
-    }
-
-    private void PurgeYtPlaylistCache_Click(object sender, RoutedEventArgs e)
-    {
-        if (DarkConfirmDialog.Confirm("Purge Live Playlist Cache", "Are you sure you want to purge the live playlist cache?", this)
-            && Owner?.DataContext is JukeboxViewModel vm)
-        {
-            vm.YtPlaylistCache?.Purge();
-            SetYtPlaylistCacheSize(0);
-        }
-    }
-
-    private void PurgeSourcePlaylistCache_Click(object sender, RoutedEventArgs e)
-    {
-        if (DarkConfirmDialog.Confirm("Purge Source Playlist Cache", "Are you sure you want to purge the source playlist cache?", this)
-            && Owner?.DataContext is JukeboxViewModel vm)
-        {
-            vm.SourcePlaylistCache?.Purge();
-            SetSourcePlaylistCacheSize(0);
+            vm.ResultPageCache?.Purge();
+            SetResultCacheSize(0);
         }
     }
 
@@ -3937,16 +3879,10 @@ public partial class SettingsWindow : JukeboxWindow
         var thumbSizeValues = new double[] { 250, 500, 1024, 2048, 5120 };
         _settings.ThumbnailCacheMaxSizeMb = CbThumbnailCacheMaxSize.SelectedIndex >= 0 && CbThumbnailCacheMaxSize.SelectedIndex < thumbSizeValues.Length
             ? thumbSizeValues[CbThumbnailCacheMaxSize.SelectedIndex] : 500;
-        _settings.CategoryCacheEnabled = CbCategoryCacheEnabled.IsChecked == true;
+        _settings.ResultCacheEnabled = CbResultCacheEnabled.IsChecked == true;
         var ageValues = new[] { 1, 2, 4, 6, 12, 24, 48, 72, 120, 168, 336, 504, 720, 1440, 2160, 2880, 3600, 4320 };
-        _settings.CategoryCacheMaxAgeHours = CbCategoryCacheMaxAge.SelectedIndex >= 0 && CbCategoryCacheMaxAge.SelectedIndex < ageValues.Length
-            ? ageValues[CbCategoryCacheMaxAge.SelectedIndex] : 168;
-        _settings.YtPlaylistCacheEnabled = CbYtPlaylistCacheEnabled.IsChecked == true;
-        _settings.YtPlaylistCacheMaxAgeHours = CbYtPlaylistCacheMaxAge.SelectedIndex >= 0 && CbYtPlaylistCacheMaxAge.SelectedIndex < ageValues.Length
-            ? ageValues[CbYtPlaylistCacheMaxAge.SelectedIndex] : 168;
-        _settings.SourcePlaylistCacheEnabled = CbSourcePlaylistCacheEnabled.IsChecked == true;
-        _settings.SourcePlaylistCacheMaxAgeHours = CbSourcePlaylistCacheMaxAge.SelectedIndex >= 0 && CbSourcePlaylistCacheMaxAge.SelectedIndex < ageValues.Length
-            ? ageValues[CbSourcePlaylistCacheMaxAge.SelectedIndex] : 168;
+        _settings.ResultCacheMaxAgeHours = CbResultCacheMaxAge.SelectedIndex >= 0 && CbResultCacheMaxAge.SelectedIndex < ageValues.Length
+            ? ageValues[CbResultCacheMaxAge.SelectedIndex] : 168;
         _settings.DebugLogging = CbDebugLogging.IsChecked == true;
         DebugLog.Enabled = _settings.DebugLogging;
         // Harvest the editable Plug-ins tab into settings.PluginInstances (the plug-in path's config).

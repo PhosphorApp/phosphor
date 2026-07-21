@@ -3039,10 +3039,6 @@
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="8"/>
                                     <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="8"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="8"/>
-                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
 
                                 <!-- Row 0: Thumbnails -->
@@ -3064,63 +3060,24 @@
                                         Click="PurgeThumbnailCache_Click" Padding="8,4"
                                         VerticalAlignment="Center"/>
 
-                                <!-- Row 2: Category tiles (any opt-in source) -->
-                                <CheckBox x:Name="CbCategoryCacheEnabled" Content="Category tiles"
-                                          ToolTip="Cache the result pages behind category tiles (for sources that allow it)."
+                                <!-- Row 2: Search results (category tiles + live playlists) -->
+                                <CheckBox x:Name="CbResultCacheEnabled" Content="Search results"
+                                          ToolTip="Cache the paginated result pages behind category tiles and live playlists (for sources that allow it)."
                                           Grid.Row="2" Grid.Column="0"
                                           Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 <TextBlock Text="Max age:" Grid.Row="2" Grid.Column="1"
                                            Foreground="{StaticResource TextBrush}"
                                            VerticalAlignment="Center" Margin="0,-3,4,0"/>
-                                <ComboBox x:Name="CbCategoryCacheMaxAge" Grid.Row="2" Grid.Column="2"
+                                <ComboBox x:Name="CbResultCacheMaxAge" Grid.Row="2" Grid.Column="2"
                                           IsEditable="False" VerticalAlignment="Center"
                                           Background="{StaticResource Surface2Brush}"
                                           Foreground="{StaticResource TextBrush}"
                                           FontSize="12" BorderBrush="#333"/>
-                                <TextBlock x:Name="CategoryCacheSizeText" Grid.Row="2" Grid.Column="3"
+                                <TextBlock x:Name="ResultCacheSizeText" Grid.Row="2" Grid.Column="3"
                                            Foreground="{StaticResource TextDimBrush}"
                                            VerticalAlignment="Center" Margin="8,0,8,0"/>
                                 <Button Content="🗑 Purge" Grid.Row="2" Grid.Column="4"
-                                        Click="PurgeCategoryCache_Click" Padding="8,4"
-                                        VerticalAlignment="Center"/>
-
-                                <!-- Row 4: Live playlists (YouTube-bound path) -->
-                                <CheckBox x:Name="CbYtPlaylistCacheEnabled" Content="Live playlists"
-                                          ToolTip="Cache the result pages behind live playlists (for sources that allow it)."
-                                          Grid.Row="4" Grid.Column="0"
-                                          Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
-                                <TextBlock Text="Max age:" Grid.Row="4" Grid.Column="1"
-                                           Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Margin="0,-3,4,0"/>
-                                <ComboBox x:Name="CbYtPlaylistCacheMaxAge" Grid.Row="4" Grid.Column="2"
-                                          IsEditable="False" VerticalAlignment="Center"
-                                          Background="{StaticResource Surface2Brush}"
-                                          Foreground="{StaticResource TextBrush}"
-                                          FontSize="12" BorderBrush="#333"/>
-                                <TextBlock x:Name="YtPlaylistCacheSizeText" Grid.Row="4" Grid.Column="3"
-                                           Foreground="{StaticResource TextDimBrush}"
-                                           VerticalAlignment="Center" Margin="8,0,8,0"/>
-                                <Button Content="🗑 Purge" Grid.Row="4" Grid.Column="4"
-                                        Click="PurgeYtPlaylistCache_Click" Padding="8,4"
-                                        VerticalAlignment="Center"/>
-
-                                <!-- Row 6: Source Playlists -->
-                                <CheckBox x:Name="CbSourcePlaylistCacheEnabled" Content="Source Playlists"
-                                          Grid.Row="6" Grid.Column="0"
-                                          Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
-                                <TextBlock Text="Max age:" Grid.Row="6" Grid.Column="1"
-                                           Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Margin="0,-3,4,0"/>
-                                <ComboBox x:Name="CbSourcePlaylistCacheMaxAge" Grid.Row="6" Grid.Column="2"
-                                          IsEditable="False" VerticalAlignment="Center"
-                                          Background="{StaticResource Surface2Brush}"
-                                          Foreground="{StaticResource TextBrush}"
-                                          FontSize="12" BorderBrush="#333"/>
-                                <TextBlock x:Name="SourcePlaylistCacheSizeText" Grid.Row="6" Grid.Column="3"
-                                           Foreground="{StaticResource TextDimBrush}"
-                                           VerticalAlignment="Center" Margin="8,0,8,0"/>
-                                <Button Content="🗑 Purge" Grid.Row="6" Grid.Column="4"
-                                        Click="PurgeSourcePlaylistCache_Click" Padding="8,4"
+                                        Click="PurgeResultCache_Click" Padding="8,4"
                                         VerticalAlignment="Center"/>
                             </Grid>
 

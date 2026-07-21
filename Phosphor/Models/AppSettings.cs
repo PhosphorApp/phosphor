@@ -190,12 +190,9 @@ public class AppSettings
     public bool PurgeCacheOnShutdown { get; set; }
     public bool ThumbnailCacheEnabled { get; set; } = true;
     public double ThumbnailCacheMaxSizeMb { get; set; } = 500;
-    public bool CategoryCacheEnabled { get; set; } = true;
-    public int CategoryCacheMaxAgeHours { get; set; } = 168;
-    public bool YtPlaylistCacheEnabled { get; set; } = true;
-    public int YtPlaylistCacheMaxAgeHours { get; set; } = 168;
-    public bool SourcePlaylistCacheEnabled { get; set; } = true;
-    public int SourcePlaylistCacheMaxAgeHours { get; set; } = 168;
+    // Single source-agnostic result-page cache (category tiles + live playlists).
+    public bool ResultCacheEnabled { get; set; } = true;
+    public int ResultCacheMaxAgeHours { get; set; } = 168;
     public KeyBindings KeyBindings { get; set; } = new();
     public int ResultColumns { get; set; } = 2;
     public int ResultFontSizeModifier { get; set; }

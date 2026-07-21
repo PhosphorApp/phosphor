@@ -66,9 +66,7 @@ public partial class App : Application
         viewModel.SetupCache(_settings.CacheEnabled, _settings.CacheMaxSizeGb, _settings.CacheMaxClipLengthMinutes);
         viewModel.SetupPrefetch(_settings.PrefetchEnabled);
         viewModel.SetupThumbnailCache(_settings.ThumbnailCacheEnabled, _settings.ThumbnailCacheMaxSizeMb);
-        viewModel.SetupCategoryCache(_settings.CategoryCacheEnabled, _settings.CategoryCacheMaxAgeHours);
-        viewModel.SetupYtPlaylistCache(_settings.YtPlaylistCacheEnabled, _settings.YtPlaylistCacheMaxAgeHours);
-        viewModel.SetupSourcePlaylistCache(_settings.SourcePlaylistCacheEnabled, _settings.SourcePlaylistCacheMaxAgeHours);
+        viewModel.SetupResultCache(_settings.ResultCacheEnabled, _settings.ResultCacheMaxAgeHours);
         ThumbnailCacheConverter.Cache = viewModel.ThumbnailCache;
         viewModel.VideoQuality = ytPlayback.Quality;
         viewModel.StereoAudio = ytPlayback.PreferStereo;

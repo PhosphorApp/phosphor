@@ -2129,9 +2129,7 @@ public partial class DmdWindow : JukeboxWindow
             settingsWindow.SetHistoryCount(vm2.HistoryCount);
             settingsWindow.SetCacheSize(vm2.Cache?.GetTotalSizeBytes() ?? 0);
             settingsWindow.SetThumbnailCacheSize(vm2.ThumbnailCache?.GetTotalSizeBytes() ?? 0);
-            settingsWindow.SetCategoryCacheSize(vm2.CategoryCache?.GetSizeBytes() ?? 0);
-            settingsWindow.SetYtPlaylistCacheSize(vm2.YtPlaylistCache?.GetSizeBytes() ?? 0);
-            settingsWindow.SetSourcePlaylistCacheSize(vm2.SourcePlaylistCache?.GetSizeBytes() ?? 0);
+            settingsWindow.SetResultCacheSize(vm2.ResultPageCache?.GetSizeBytes() ?? 0);
         }
         settingsWindow.SettingsApplied += async () =>
         {
@@ -2573,9 +2571,7 @@ public partial class DmdWindow : JukeboxWindow
             _ = vm.BuildSourceRegistryAsync(_appSettings);
             vm.SetupPrefetch(_appSettings.PrefetchEnabled);
             vm.SetupThumbnailCache(_appSettings.ThumbnailCacheEnabled, _appSettings.ThumbnailCacheMaxSizeMb);
-            vm.SetupCategoryCache(_appSettings.CategoryCacheEnabled, _appSettings.CategoryCacheMaxAgeHours);
-            vm.SetupYtPlaylistCache(_appSettings.YtPlaylistCacheEnabled, _appSettings.YtPlaylistCacheMaxAgeHours);
-            vm.SetupSourcePlaylistCache(_appSettings.SourcePlaylistCacheEnabled, _appSettings.SourcePlaylistCacheMaxAgeHours);
+            vm.SetupResultCache(_appSettings.ResultCacheEnabled, _appSettings.ResultCacheMaxAgeHours);
             LogStep("CacheSetup");
             ThumbnailCacheConverter.Cache = vm.ThumbnailCache;
             vm.VideoQuality = ytPlayback.Quality;
