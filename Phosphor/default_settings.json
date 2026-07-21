@@ -48,7 +48,6 @@
   "CacheEnabled": false,
   "CacheMaxSizeGb": 5,
   "CacheMaxClipLengthMinutes": 0,
-  "CacheMode": 0,
   "ThumbnailCacheEnabled": true,
   "ThumbnailCacheMaxSizeMb": 500,
   "CategoryCacheEnabled": true,

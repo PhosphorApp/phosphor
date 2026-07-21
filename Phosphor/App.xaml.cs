@@ -72,7 +72,6 @@ public partial class App : Application
         ThumbnailCacheConverter.Cache = viewModel.ThumbnailCache;
         viewModel.VideoQuality = ytPlayback.Quality;
         viewModel.StereoAudio = ytPlayback.PreferStereo;
-        viewModel.CacheMode = _settings.CacheMode;
         viewModel.PreemptiveCache = _settings.PreemptiveCache;
         viewModel.GaplessPlayback = _settings.GaplessPlayback;
         viewModel.AutoDjProviderId = _settings.AutoDjProviderId;
@@ -429,8 +428,7 @@ public partial class App : Application
             vm.ThumbnailCache?.Prune();
 
         // Purge the video cache on exit if the user has opted in. Pairs with
-        // CacheMode=Everything + PreemptiveCache for "instant scrub during the
-        // session, clean disk at exit" behavior.
+        // PreemptiveCache for "instant scrub during the session, clean disk at exit" behavior.
         if (_settings.PurgeCacheOnShutdown && _dmdWindow.DataContext is JukeboxViewModel vmCache)
             vmCache.Cache?.Purge();
 

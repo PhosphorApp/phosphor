@@ -1962,9 +1962,6 @@ public partial class JukeboxViewModel : ObservableObject
         return TryGetGaplessStreamUrl(next) != null ? next : null;
     }
 
-    // ── Cache mode ──
-    public CacheMode CacheMode { get; set; } = CacheMode.Playlists;
-
     public void SetupCache(bool enabled, double maxSizeGb, int maxClipLengthMinutes = 0)
     {
         _cache = new VideoCache(enabled, maxSizeGb, maxClipLengthMinutes);
@@ -3520,8 +3517,9 @@ public partial class JukeboxViewModel : ObservableObject
         if (item.Chapters == null)
             _ = SafeFireAndForget(FetchChaptersViaSourceAsync(item));
 
-        // Cache on playback when mode is Everything (cacheable sources only)
-        if (_cache is { Enabled: true } && CacheMode == CacheMode.Everything && IsItemCacheable(item))
+        // Cache the item on playback when caching is enabled (cacheable sources only). The
+        // max-clip-length filter inside CacheVideoAsync still applies.
+        if (_cache is { Enabled: true } && IsItemCacheable(item))
             _ = SafeFireAndForget(_cache.CacheVideoAsync(item.VideoId, VideoQuality, StereoAudio, item.Duration, item.Chapters, item.Title));
 
         // Preemptively cache the *next* queue item as soon as this one starts —

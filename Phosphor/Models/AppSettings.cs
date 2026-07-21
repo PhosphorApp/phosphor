@@ -172,7 +172,6 @@ public class AppSettings
     public bool CacheEnabled { get; set; }
     public double CacheMaxSizeGb { get; set; } = 5.0;
     public int CacheMaxClipLengthMinutes { get; set; }
-    public CacheMode CacheMode { get; set; } = CacheMode.Playlists;
     /// <summary>
     /// When true (and the persistent video cache is enabled), the next item in the
     /// queue is preemptively downloaded and remuxed as soon as the current track
@@ -185,8 +184,8 @@ public class AppSettings
 
     /// <summary>
     /// When true, all video cache files are deleted at app shutdown. Pairs well with
-    /// <see cref="CacheEnabled"/> + <see cref="CacheMode"/>=Everything + <see cref="PreemptiveCache"/>
-    /// to give reliable in-session scrubbing without long-term disk usage. Defaults to false.
+    /// <see cref="CacheEnabled"/> + <see cref="PreemptiveCache"/> to give reliable in-session
+    /// scrubbing without long-term disk usage. Defaults to false.
     /// </summary>
     public bool PurgeCacheOnShutdown { get; set; }
     public bool ThumbnailCacheEnabled { get; set; } = true;
@@ -852,12 +851,6 @@ public enum LogoColorMode
     Off,
     SlowMorph,
     Reactive
-}
-
-public enum CacheMode
-{
-    Playlists,
-    Everything
 }
 
 public enum IconStyle

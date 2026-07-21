@@ -2997,14 +2997,6 @@
                                 <Button Content="🗑 Purge" Click="PurgeVideoCache_Click" Padding="8,4"/>
                             </StackPanel>
                             <DockPanel Margin="0,0,0,8">
-                                <TextBlock Text="Cache mode:" Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Width="100"/>
-                                <ComboBox x:Name="CbCacheMode" IsEditable="False" MinWidth="140"
-                                          Background="{StaticResource Surface2Brush}"
-                                          Foreground="{StaticResource TextBrush}"
-                                          FontSize="12" BorderBrush="#333"/>
-                            </DockPanel>
-                            <DockPanel Margin="0,0,0,8">
                                 <TextBlock Text="Max clip length:" Foreground="{StaticResource TextBrush}"
                                            VerticalAlignment="Center" Width="100"/>
                                 <ComboBox x:Name="CbCacheMaxClipLength" IsEditable="False" MinWidth="120"

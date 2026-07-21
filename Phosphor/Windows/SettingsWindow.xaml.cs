@@ -1036,11 +1036,6 @@ public partial class SettingsWindow : JukeboxWindow
         }
         CbCacheMaxSize.SelectedIndex = selectedCacheSizeIndex;
 
-        // Cache mode dropdown
-        CbCacheMode.Items.Add("Cache playlists");
-        CbCacheMode.Items.Add("Cache everything");
-        CbCacheMode.SelectedIndex = (int)settings.CacheMode;
-
         // Max clip length dropdown (0 = No limit, then 1-30 minutes)
         CbCacheMaxClipLength.Items.Add("No limit");
         for (int m = 1; m <= 30; m++)
@@ -3934,7 +3929,6 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.PreemptiveCache = CbPreemptiveCache.IsChecked == true;
         _settings.PurgeCacheOnShutdown = CbPurgeCacheOnShutdown.IsChecked == true;
         _settings.PrefetchEnabled = CbPrefetchEnabled.IsChecked == true;
-        _settings.CacheMode = (CacheMode)Math.Clamp(CbCacheMode.SelectedIndex, 0, 1);
         var cacheSizeValues = new double[] { 1, 2, 5, 10, 25, 50, 100, 250, 500, 0 };
         _settings.CacheMaxSizeGb = CbCacheMaxSize.SelectedIndex >= 0 && CbCacheMaxSize.SelectedIndex < cacheSizeValues.Length
             ? cacheSizeValues[CbCacheMaxSize.SelectedIndex] : 5;
