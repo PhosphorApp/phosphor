@@ -267,6 +267,28 @@ public interface ISavedSearchCategories
 }
 
 /// <summary>
+/// Capability: the user can edit the source's saved-search categories (add/rename/retarget/delete
+/// and reorder). Extends <see cref="ISavedSearchCategories"/>: the host renders a row editor
+/// (glyph / name / search-term per row) and hands the edited list back so the source persists it.
+/// Since only the source knows its settings-blob shape, it translates the edited list into an
+/// updated settings dictionary the host merges into the instance config.
+/// </summary>
+public interface IEditableSavedSearchCategories : ISavedSearchCategories
+{
+    /// <summary>
+    /// Translates an edited category list into an updated settings blob (merged over
+    /// <paramref name="currentSettings"/>). The source assigns/preserves stable ids and ordering.
+    /// The host persists the returned dictionary as the instance's settings.
+    /// </summary>
+    IReadOnlyDictionary<string, string?> ApplySavedSearchCategories(
+        IReadOnlyList<SavedSearchCategory> categories,
+        IReadOnlyDictionary<string, string?> currentSettings);
+
+    /// <summary>The plug-in's built-in default categories, for a "restore defaults" affordance.</summary>
+    IReadOnlyList<SavedSearchCategory> GetDefaultSavedSearchCategories();
+}
+
+/// <summary>
 /// Capability: verify the source's configuration actually works (reachability + auth), beyond the
 /// static <see cref="IPhosphorSource.IsConfigured"/> "fields are filled in" check. Implemented by
 /// sources that talk to a server (e.g. Plex verifies the URL/token and counts libraries). Lets the

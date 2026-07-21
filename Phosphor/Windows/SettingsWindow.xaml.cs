@@ -4772,6 +4772,28 @@ public partial class SettingsWindow : JukeboxWindow
 
             panel.Children.Add(grid);
 
+            // ── Editable saved-search categories (YouTube genre tiles) — a row editor button. ──
+            var catTransient = Phosphor.Plugins.PluginSettingsFactory.BuildTransientSource(cfg, _pluginHttp);
+            if (catTransient is Phosphor.Plugin.Abstractions.IEditableSavedSearchCategories)
+            {
+                var catRow = new System.Windows.Controls.StackPanel
+                {
+                    Orientation = System.Windows.Controls.Orientation.Horizontal,
+                    Margin = new Thickness(0, 6, 0, 0),
+                };
+                var catBtn = new System.Windows.Controls.Button
+                {
+                    Content = "Edit categories…",
+                    Padding = new Thickness(8, 3, 8, 3),
+                    ToolTip = "Add, edit, reorder or remove this source's category tiles.",
+                };
+                var catInstId = cfg.InstanceId;
+                catBtn.Click += async (_, _) => await EditPluginCategoriesAsync(catInstId);
+                catRow.Children.Add(catBtn);
+                panel.Children.Add(catRow);
+            }
+            DisposeTransientSource(catTransient);
+
             // ── Interactive config actions (generic) — the Plex "browse libraries" action is
             // rendered inline above, so skip it here to avoid a duplicate popup button. ──
             var transient = Phosphor.Plugins.PluginSettingsFactory.BuildTransientSource(cfg, _pluginHttp);
@@ -5566,6 +5588,42 @@ public partial class SettingsWindow : JukeboxWindow
     }
 
     /// <summary>
+    /// Lets the user edit a source's saved-search category tiles (YouTube genre tiles): builds a
+    /// transient source, reads its current categories, shows a row editor (glyph / name / search
+    /// term), and merges the edited list back into the instance settings via the plug-in.
+    /// </summary>
+    private async Task EditPluginCategoriesAsync(string instanceId)
+    {
+        HarvestPluginSourcesTab();
+        var cfg = _settings.PluginInstances.FirstOrDefault(c => c.InstanceId == instanceId);
+        if (cfg == null) return;
+
+        var source = Phosphor.Plugins.PluginSettingsFactory.BuildTransientSource(cfg, _pluginHttp);
+        try
+        {
+            if (source is not Phosphor.Plugin.Abstractions.IEditableSavedSearchCategories editable) return;
+
+            var current = editable.GetSavedSearchCategories();
+            var edited = ShowCategoryEditorDialog(current, editable.GetDefaultSavedSearchCategories());
+            if (edited == null) return; // cancelled
+
+            var updated = editable.ApplySavedSearchCategories(edited, cfg.Settings);
+            cfg.Settings = new Dictionary<string, string?>(updated);
+            await Task.CompletedTask;
+            PopulatePluginSourcesTab();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Could not edit categories: {ex.Message}", "Phosphor",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            DisposeTransientSource(source);
+        }
+    }
+
+    /// <summary>
     /// Invokes an <see cref="Phosphor.Plugin.Abstractions.IConfigurable"/> action for an instance
     /// (e.g. Plex "browse libraries"): harvests current edits, builds a transient source from the
     /// instance config, runs the action, shows a checkbox selection dialog, applies the result via
@@ -5686,6 +5744,179 @@ public partial class SettingsWindow : JukeboxWindow
             r.OptId,
             r.Main.IsChecked == true,
             r.Subs.Where(s => s.Box.IsChecked == true).Select(s => s.SubId).ToList()))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Shows a row editor for a source's saved-search categories: one row per category with a glyph
+    /// field, a name field, and a search-term field, plus add/remove/reorder and "Restore defaults".
+    /// Returns the edited list (in display order) or null if cancelled.
+    /// </summary>
+    private List<Phosphor.Plugin.Abstractions.SavedSearchCategory>? ShowCategoryEditorDialog(
+        IReadOnlyList<Phosphor.Plugin.Abstractions.SavedSearchCategory> current,
+        IReadOnlyList<Phosphor.Plugin.Abstractions.SavedSearchCategory> defaults)
+    {
+        var text = (System.Windows.Media.Brush)FindResource("TextBrush");
+        var dim = (System.Windows.Media.Brush)FindResource("TextDimBrush");
+        var surface2 = (System.Windows.Media.Brush)FindResource("Surface2Brush");
+
+        var dlg = new Window
+        {
+            Title = "Edit categories",
+            Owner = this,
+            Width = 560,
+            Height = 520,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Background = (System.Windows.Media.Brush)FindResource("SurfaceBrush"),
+        };
+
+        var root = new System.Windows.Controls.DockPanel { Margin = new Thickness(12) };
+
+        var header = new System.Windows.Controls.TextBlock
+        {
+            Text = "Glyph, name and search term for each tile. Search terms use the same grammar as " +
+                   "the search box (playlist:, channel:, min:, max:).",
+            Foreground = dim, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8),
+        };
+        System.Windows.Controls.DockPanel.SetDock(header, System.Windows.Controls.Dock.Top);
+        root.Children.Add(header);
+
+        var rowsPanel = new System.Windows.Controls.StackPanel();
+        var rows = new List<(System.Windows.Controls.TextBox Glyph,
+            System.Windows.Controls.TextBox Name,
+            System.Windows.Controls.TextBox Term, string Id,
+            System.Windows.Controls.StackPanel Container)>();
+
+        void AddRow(Phosphor.Plugin.Abstractions.SavedSearchCategory? c)
+        {
+            var container = new System.Windows.Controls.StackPanel
+            {
+                Orientation = System.Windows.Controls.Orientation.Horizontal,
+                Margin = new Thickness(0, 2, 0, 2),
+            };
+            var glyph = new System.Windows.Controls.TextBox
+            {
+                Text = c?.Icon ?? "", Width = 42, Foreground = text, Background = surface2,
+                Margin = new Thickness(0, 0, 6, 0), VerticalContentAlignment = VerticalAlignment.Center,
+                ToolTip = "Glyph/emoji",
+            };
+            var name = new System.Windows.Controls.TextBox
+            {
+                Text = c?.Name ?? "", Width = 150, Foreground = text, Background = surface2,
+                Margin = new Thickness(0, 0, 6, 0), VerticalContentAlignment = VerticalAlignment.Center,
+                ToolTip = "Tile name",
+            };
+            var term = new System.Windows.Controls.TextBox
+            {
+                Text = c?.SearchTerm ?? "", Width = 230, Foreground = text, Background = surface2,
+                Margin = new Thickness(0, 0, 6, 0), VerticalContentAlignment = VerticalAlignment.Center,
+                ToolTip = "Search term",
+            };
+            var upBtn = new System.Windows.Controls.Button { Content = "▲", Width = 24, Margin = new Thickness(0, 0, 2, 0), ToolTip = "Move up" };
+            var downBtn = new System.Windows.Controls.Button { Content = "▼", Width = 24, Margin = new Thickness(0, 0, 2, 0), ToolTip = "Move down" };
+            var delBtn = new System.Windows.Controls.Button { Content = "✕", Width = 24, ToolTip = "Remove" };
+
+            var id = c?.Id ?? "";
+            var entry = (glyph, name, term, id, container);
+
+            upBtn.Click += (_, _) =>
+            {
+                int i = rows.FindIndex(r => r.Container == container);
+                if (i > 0) { MoveRow(i, i - 1); }
+            };
+            downBtn.Click += (_, _) =>
+            {
+                int i = rows.FindIndex(r => r.Container == container);
+                if (i >= 0 && i < rows.Count - 1) { MoveRow(i, i + 1); }
+            };
+            delBtn.Click += (_, _) =>
+            {
+                int i = rows.FindIndex(r => r.Container == container);
+                if (i >= 0) { rows.RemoveAt(i); rowsPanel.Children.Remove(container); }
+            };
+
+            container.Children.Add(glyph);
+            container.Children.Add(name);
+            container.Children.Add(term);
+            container.Children.Add(upBtn);
+            container.Children.Add(downBtn);
+            container.Children.Add(delBtn);
+            rows.Add(entry);
+            rowsPanel.Children.Add(container);
+        }
+
+        void MoveRow(int from, int to)
+        {
+            var r = rows[from];
+            rows.RemoveAt(from);
+            rows.Insert(to, r);
+            rowsPanel.Children.Remove(r.Container);
+            rowsPanel.Children.Insert(to, r.Container);
+        }
+
+        void Reload(IReadOnlyList<Phosphor.Plugin.Abstractions.SavedSearchCategory> list)
+        {
+            rows.Clear();
+            rowsPanel.Children.Clear();
+            foreach (var c in list) AddRow(c);
+        }
+
+        Reload(current);
+
+        // Bottom button bar.
+        var buttons = new System.Windows.Controls.StackPanel
+        {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+            Margin = new Thickness(0, 10, 0, 0),
+        };
+        System.Windows.Controls.DockPanel.SetDock(buttons, System.Windows.Controls.Dock.Bottom);
+
+        var addBtn = new System.Windows.Controls.Button { Content = "Add", Padding = new Thickness(10, 3, 10, 3), Margin = new Thickness(0, 0, 8, 0) };
+        addBtn.Click += (_, _) => AddRow(null);
+        var restoreBtn = new System.Windows.Controls.Button { Content = "Restore defaults", Padding = new Thickness(10, 3, 10, 3), Margin = new Thickness(0, 0, 8, 0) };
+        restoreBtn.Click += (_, _) =>
+        {
+            if (DarkConfirmDialog.Confirm("Restore Defaults",
+                "Replace the current categories with the plug-in defaults?", dlg))
+                Reload(defaults);
+        };
+        bool ok = false;
+        var okBtn = new System.Windows.Controls.Button { Content = "OK", Padding = new Thickness(12, 3, 12, 3), Margin = new Thickness(0, 0, 8, 0), IsDefault = true };
+        okBtn.Click += (_, _) => { ok = true; dlg.Close(); };
+        var cancelBtn = new System.Windows.Controls.Button { Content = "Cancel", Padding = new Thickness(12, 3, 12, 3), IsCancel = true };
+        cancelBtn.Click += (_, _) => dlg.Close();
+
+        var leftButtons = new System.Windows.Controls.StackPanel
+        {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+        };
+        leftButtons.Children.Add(addBtn);
+        leftButtons.Children.Add(restoreBtn);
+
+        buttons.Children.Add(okBtn);
+        buttons.Children.Add(cancelBtn);
+
+        var bottomBar = new System.Windows.Controls.DockPanel { Margin = new Thickness(0, 10, 0, 0) };
+        System.Windows.Controls.DockPanel.SetDock(bottomBar, System.Windows.Controls.Dock.Bottom);
+        System.Windows.Controls.DockPanel.SetDock(leftButtons, System.Windows.Controls.Dock.Left);
+        bottomBar.Children.Add(leftButtons);
+        bottomBar.Children.Add(buttons);
+        root.Children.Add(bottomBar);
+
+        root.Children.Add(new System.Windows.Controls.ScrollViewer
+        {
+            VerticalScrollBarVisibility = System.Windows.Controls.ScrollBarVisibility.Auto,
+            Content = rowsPanel,
+        });
+
+        dlg.Content = root;
+        dlg.ShowDialog();
+
+        if (!ok) return null;
+        return rows.Select(r => new Phosphor.Plugin.Abstractions.SavedSearchCategory(
+            r.Id, r.Name.Text.Trim(), r.Glyph.Text.Trim(), r.Term.Text.Trim()))
             .ToList();
     }
 
