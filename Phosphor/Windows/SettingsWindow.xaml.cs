@@ -6196,7 +6196,10 @@ public partial class SettingsWindow : JukeboxWindow
     {
         if (sender is not System.Windows.Controls.Button btn || btn.DataContext is not CategoryVisibilityItem item)
             return;
-        if (item.IsSpecial || item.IsPlaylist) return;
+        // Reserved (History), playlists, and plug-in source tiles (generic browse or saved-search)
+        // can't be deleted from the DMD grid — the plug-in owns them; the grid can only hide them.
+        // (Plug-in editor rows don't carry these flags, so they still delete normally.)
+        if (item.IsSpecial || item.IsPlaylist || item.IsGenericSource || item.IsSavedSearchSource) return;
 
         var (view, items) = ResolveCategoryList(sender);
         if (view == null || items == null) return;
