@@ -2296,7 +2296,6 @@ public partial class JukeboxViewModel : ObservableObject
             IsViewingPlaylist = false;
             _hasMoreResults = false;
             _isHistoryBrowsing = true;
-            IsPlexBrowsing = false;
             SearchResults.Clear();
             LoadMoreHistoryResults();
             ShowCategories = false;
@@ -2347,7 +2346,6 @@ public partial class JukeboxViewModel : ObservableObject
         ShowCategories = true;
         IsViewingPlaylist = false;
         IsViewingLivePlaylist = false;
-        IsPlexBrowsing = false;
         _isHistoryBrowsing = false;
         _activePlexInstanceId = null;
         // Reset generic plug-in browse navigation.
@@ -2775,21 +2773,7 @@ public partial class JukeboxViewModel : ObservableObject
         }
     }
 
-    // ── Plex browsing ──
-
-    private bool _isPlexBrowsing;
-    public bool IsPlexBrowsing
-    {
-        get => _isPlexBrowsing;
-        private set
-        {
-            if (SetProperty(ref _isPlexBrowsing, value))
-            {
-                OnPropertyChanged(nameof(IsSearchScoped));
-                OnPropertyChanged(nameof(IsSearchSourceSelectable));
-            }
-        }
-    }
+    // ── Scoped browsing ──
 
     /// <summary>
     /// Whether the current view <em>scopes</em> the search box to a specific browse context (a
@@ -2799,7 +2783,7 @@ public partial class JukeboxViewModel : ObservableObject
     /// per-source flag. When a generic scoped-search capability lands (see PLUGIN_ARCHITECTURE_ANALYSIS.md),
     /// this becomes its natural home.
     /// </summary>
-    public bool IsSearchScoped => IsPlexBrowsing || IsGenericScopedSearchAvailable;
+    public bool IsSearchScoped => IsGenericScopedSearchAvailable;
 
     /// <summary>
     /// True while browsing a generic plug-in node whose source can search — either in-view

@@ -179,7 +179,6 @@ public partial class DmdWindow : JukeboxWindow
                 vmLoaded.PropertyChanged += (_, args) =>
                 {
                     if (args.PropertyName is nameof(JukeboxViewModel.IsGenericBrowsing)
-                        or nameof(JukeboxViewModel.IsPlexBrowsing)
                         or nameof(JukeboxViewModel.ActiveCategory))
                         Dispatcher.BeginInvoke(UpdateSearchPlaceholder);
                 };
@@ -1243,7 +1242,7 @@ public partial class DmdWindow : JukeboxWindow
             ? Visibility.Visible
             : Visibility.Collapsed;
 
-        if (DataContext is JukeboxViewModel vm && (vm.IsGenericBrowsing || vm.IsPlexBrowsing))
+        if (DataContext is JukeboxViewModel vm && vm.IsGenericBrowsing)
             SearchHintRun.Text = $"  items in {vm.ActiveCategory}";
         else if (DataContext is JukeboxViewModel v)
         {
