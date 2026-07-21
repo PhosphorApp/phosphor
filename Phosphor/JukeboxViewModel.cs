@@ -1401,6 +1401,22 @@ public partial class JukeboxViewModel : ObservableObject
             SourcePlaylistCache.UpdateSettings(enabled, maxAgeHours);
     }
 
+    /// <summary>
+    /// Whether the host should cache result pages for the given source, honoring the source's
+    /// <see cref="Phosphor.Plugin.Abstractions.IResultCachePolicy"/> when it declares one. A source
+    /// that opts out (e.g. an ephemeral live feed) is never cached; one that declares nothing falls
+    /// back to <paramref name="defaultCache"/>. <c>null</c> instance = the YouTube-bound path.
+    /// </summary>
+    private bool ShouldCacheResults(string? sourceInstanceId, bool defaultCache = true)
+    {
+        var source = sourceInstanceId == null
+            ? _sourceRegistry?.YouTube
+            : _sourceRegistry?.ByInstance(sourceInstanceId);
+        if (source is Phosphor.Plugin.Abstractions.IResultCachePolicy p)
+            return p.GetResultCachePolicy().Cache;
+        return defaultCache;
+    }
+
     public void SetupThumbnailCache(bool enabled, double maxSizeMb)
     {
         if (ThumbnailCache == null)
@@ -2631,16 +2647,21 @@ public partial class JukeboxViewModel : ObservableObject
         }
         _hasMoreResults = true;
 
-        // Determine cache key from active category or live playlist. Only the YouTube-bound path
-        // (tiles/live playlists, sourceInstanceId == null) uses these caches — an ad-hoc search
-        // against another source must not attach a YouTube-shaped category/playlist cache.
+        // Determine the result cache to attach from the active category or live playlist. The cache
+        // is per-source and policy-driven: a source that opts out of result caching (ephemeral feeds)
+        // attaches none; the YouTube-bound path (and other opt-in sources) attach the shared result
+        // caches keyed by the globally-unique tile/playlist id.
         _activeResultCache = null;
         _categoryCacheName = null;
         _categoryCachePageIndex = 0;
-        if (sourceInstanceId == null)
+
+        if (ShouldCacheResults(sourceInstanceId))
         {
+            // A saved-search category tile: match by its stored search term, and (when the tile is
+            // source-bound) the owning source. Host-only genre entries (legacy) carry no source id.
             var genreEntry = _genreCategories.FirstOrDefault(c =>
-                !string.IsNullOrEmpty(c.SearchTerm) && c.SearchTerm == query);
+                !string.IsNullOrEmpty(c.SearchTerm) && c.SearchTerm == query
+                && (c.SourceInstanceId ?? sourceInstanceId) == sourceInstanceId);
             if (genreEntry != null)
             {
                 _categoryCacheName = genreEntry.Id;
@@ -2649,7 +2670,9 @@ public partial class JukeboxViewModel : ObservableObject
             else if (IsViewingLivePlaylist && !string.IsNullOrEmpty(_activePlaylistId))
             {
                 _categoryCacheName = _activePlaylistId;
-                _activeResultCache = YtPlaylistCache;
+                // A live playlist bound to a non-YouTube source uses the generic per-source cache;
+                // the YouTube-bound path keeps its own playlist cache.
+                _activeResultCache = sourceInstanceId == null ? YtPlaylistCache : SourcePlaylistCache;
             }
         }
 

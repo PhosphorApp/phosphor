@@ -289,6 +289,32 @@ public interface IEditableSavedSearchCategories : ISavedSearchCategories
 }
 
 /// <summary>
+/// A source's advice on how the host should cache its <em>result pages</em> (the paged
+/// search/browse results behind category tiles and live playlists), independent of the raw-stream
+/// disk cache governed by <see cref="IDownloadable"/>. Lets a source say "my results are stable,
+/// cache them" (YouTube, Plex) or "my results are ephemeral, don't" (a live/Twitch-style feed).
+/// </summary>
+/// <param name="Cache">Whether the host should cache this source's result pages.</param>
+/// <param name="MaxAgeHours">
+/// Max age of a cached page before it's considered stale, when <paramref name="Cache"/> is true.
+/// <c>null</c> means "use the host default". Ignored when <paramref name="Cache"/> is false.
+/// </param>
+public sealed record ResultCachePolicy(bool Cache, int? MaxAgeHours = null);
+
+/// <summary>
+/// Capability: the source advises the host on caching its result pages (see
+/// <see cref="ResultCachePolicy"/>). Optional — a source that doesn't implement this gets the host's
+/// default result-cache behavior. Note this governs only the host-managed result cache; a source is
+/// always free to micro-manage its own internal caching invisibly (and surface any knobs via its own
+/// settings) without implementing this.
+/// </summary>
+public interface IResultCachePolicy
+{
+    /// <summary>How the host should cache this source's result pages.</summary>
+    ResultCachePolicy GetResultCachePolicy();
+}
+
+/// <summary>
 /// Capability: verify the source's configuration actually works (reachability + auth), beyond the
 /// static <see cref="IPhosphorSource.IsConfigured"/> "fields are filled in" check. Implemented by
 /// sources that talk to a server (e.g. Plex verifies the URL/token and counts libraries). Lets the
