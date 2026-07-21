@@ -92,7 +92,48 @@ Remaining work below.
    source-agnostic, have the plug-in advertise which per-library sub-toggles it
    supports (e.g. a capability returning `{Key, Label, Tooltip}` descriptors) so
    the settings UI renders whatever the plug-in declares. This is the last
-   genuinely architectural item and warrants its own scoped design effort.
+   genuinely architectural item for the *Plex* naming cleanup and warrants its own
+   scoped design effort.
+
+## 🧭 Broader follow-up — YouTube-coupled result caches (separate effort)
+
+> **Not part of the Plex naming cleanup.** Logged here so it isn't lost. This is a
+> genuine *behavioral* coupling, not a naming issue, and is larger than the items
+> above.
+
+The Settings → Cache page has two result-page caches still labelled for YouTube:
+
+- **`CategoryCache`** ("YouTube Categories") — caches the paginated results behind
+  genre category tiles.
+- **`YtPlaylistCache`** ("YouTube Playlists") — caches the results behind live
+  playlists.
+
+Unlike the Plex features above (whose behavior was already source-agnostic and
+only the *names* lingered), these labels are currently **accurate**: genre tiles
+and live playlists run their searches against the YouTube path specifically. In
+`JukeboxViewModel.DoSearch`, `_activeResultCache` is only attached when
+`sourceInstanceId == null` (the YouTube-bound tile/playlist path); an ad-hoc
+search against any other source deliberately skips these caches:
+
+```
+// Only the YouTube-bound path (tiles/live playlists, sourceInstanceId == null) uses these
+// caches — an ad-hoc search against another source must not attach a YouTube-shaped
+// category/playlist cache.
+```
+
+So the abstraction gap is **not** the label — it's that genre tiles and live
+playlists don't yet flow through the generic per-source path the way Plex tiles
+do. Renaming the checkboxes to source-neutral text would *hide* a real coupling
+rather than fix it; the honest sequence is to de-couple the feature first, then
+the cache naming follows.
+
+**Off-the-cuff direction (to evaluate later):** rather than the host owning
+"YouTube categories," push these into the plug-in itself — i.e. a source declares
+its own browsable categories/collections much like Plex declares its libraries
+today. The host would then treat YouTube categories as just another source's
+generic tiles, routed by `SourceInstanceId`, and the result caches become
+per-source (like `SourcePlaylistCache`) instead of YouTube-shaped. Needs its own
+plan and scoping effort.
 
 ## Notes
 
