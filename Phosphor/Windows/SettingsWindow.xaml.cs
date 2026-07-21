@@ -5004,7 +5004,7 @@ public partial class SettingsWindow : JukeboxWindow
         var hint = new System.Windows.Controls.TextBlock
         {
             Text = "Glyph, name and search term for each tile. Search terms use the search-box grammar " +
-                   "(playlist:, channel:, min:, max:).",
+                   "(playlist:, channel:, min:, max:). Ordering and visibility are set on the DMD tab.",
             Foreground = dim, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4),
         };
         panel.Children.Add(hint);
@@ -5015,18 +5015,15 @@ public partial class SettingsWindow : JukeboxWindow
             Background = (System.Windows.Media.Brush)FindResource("Surface2Brush"),
             BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x33, 0x33, 0x33)),
             BorderThickness = new Thickness(1),
-            AllowDrop = true,
             HorizontalContentAlignment = System.Windows.HorizontalAlignment.Stretch,
-            // Reuse the DMD category grid's row template + container style instances (same window),
-            // so the inline editor matches it exactly with no duplicated XAML.
-            ItemContainerStyle = CategoryListView.ItemContainerStyle,
-            ItemTemplate = CategoryListView.ItemTemplate,
+            // Its own dedicated row template — no visibility checkbox, no move buttons, no drag grip:
+            // just glyph / name / search-term / remove. Ordering + visibility are host-owned (DMD tab);
+            // the plug-in only owns the SET of categories (their glyph/name/search-term).
+            ItemContainerStyle = BuildStretchItemContainerStyle(),
+            ItemTemplate = BuildPluginCategoryRowTemplate(text),
         };
         System.Windows.Controls.ScrollViewer.SetVerticalScrollBarVisibility(listView, System.Windows.Controls.ScrollBarVisibility.Auto);
         System.Windows.Controls.ScrollViewer.SetHorizontalScrollBarVisibility(listView, System.Windows.Controls.ScrollBarVisibility.Disabled);
-        listView.PreviewMouseLeftButtonDown += CategoryListView_PreviewMouseLeftButtonDown;
-        listView.PreviewMouseMove += CategoryListView_PreviewMouseMove;
-        listView.Drop += CategoryListView_Drop;
         listView.ItemsSource = items;
 
         _pluginCategoryListViews[cfg.InstanceId] = listView;
@@ -5065,6 +5062,117 @@ public partial class SettingsWindow : JukeboxWindow
         buttons.Children.Add(addBtn);
         buttons.Children.Add(revertBtn);
         panel.Children.Add(buttons);
+    }
+
+    /// <summary>A borderless ListViewItem container style (transparent, stretch) matching the DMD grid.</summary>
+    private static System.Windows.Style BuildStretchItemContainerStyle()
+    {
+        var style = new System.Windows.Style(typeof(System.Windows.Controls.ListViewItem));
+        style.Setters.Add(new System.Windows.Setter(System.Windows.Controls.Control.HorizontalContentAlignmentProperty, System.Windows.HorizontalAlignment.Stretch));
+        style.Setters.Add(new System.Windows.Setter(System.Windows.Controls.Control.PaddingProperty, new Thickness(2)));
+        style.Setters.Add(new System.Windows.Setter(FrameworkElement.MarginProperty, new Thickness(0)));
+        style.Setters.Add(new System.Windows.Setter(System.Windows.Controls.Control.BackgroundProperty, System.Windows.Media.Brushes.Transparent));
+
+        var template = new System.Windows.Controls.ControlTemplate(typeof(System.Windows.Controls.ListViewItem));
+        var border = new FrameworkElementFactory(typeof(System.Windows.Controls.Border));
+        border.SetValue(System.Windows.Controls.Border.BackgroundProperty, new System.Windows.TemplateBindingExtension(System.Windows.Controls.Control.BackgroundProperty));
+        border.SetValue(System.Windows.Controls.Border.PaddingProperty, new System.Windows.TemplateBindingExtension(System.Windows.Controls.Control.PaddingProperty));
+        var presenter = new FrameworkElementFactory(typeof(System.Windows.Controls.ContentPresenter));
+        border.AppendChild(presenter);
+        template.VisualTree = border;
+        style.Setters.Add(new System.Windows.Setter(System.Windows.Controls.Control.TemplateProperty, template));
+        return style;
+    }
+
+    /// <summary>
+    /// Builds the plug-in category editor's dedicated row template: glyph button (opens the icon
+    /// picker), name field, search-term field, and a remove button — deliberately NO visibility
+    /// checkbox, move buttons, or drag grip (ordering + visibility are host-owned, set on the DMD tab).
+    /// Reuses the existing <see cref="CategoryIcon_Click"/> and <see cref="CategoryRemove_Click"/>
+    /// handlers, which resolve their target list via <see cref="ResolveCategoryList"/>.
+    /// </summary>
+    private System.Windows.DataTemplate BuildPluginCategoryRowTemplate(System.Windows.Media.Brush text)
+    {
+        var surface = (System.Windows.Media.Brush)FindResource("SurfaceBrush");
+        var dim = (System.Windows.Media.Brush)FindResource("TextDimBrush");
+        var border444 = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x44, 0x44, 0x44));
+
+        var dock = new FrameworkElementFactory(typeof(System.Windows.Controls.DockPanel));
+
+        // Transparent-templated button used for the glyph (so it shows just the emoji).
+        var iconBtn = new FrameworkElementFactory(typeof(System.Windows.Controls.Button));
+        iconBtn.SetBinding(System.Windows.Controls.ContentControl.ContentProperty, new System.Windows.Data.Binding("Icon"));
+        iconBtn.SetValue(System.Windows.Controls.Control.FontSizeProperty, 16.0);
+        iconBtn.SetValue(FrameworkElement.WidthProperty, 30.0);
+        iconBtn.SetValue(FrameworkElement.HeightProperty, 26.0);
+        iconBtn.SetValue(System.Windows.Controls.Control.BackgroundProperty, System.Windows.Media.Brushes.Transparent);
+        iconBtn.SetValue(System.Windows.Controls.Control.ForegroundProperty, text);
+        iconBtn.SetValue(System.Windows.Controls.Control.BorderThicknessProperty, new Thickness(0));
+        iconBtn.SetValue(FrameworkElement.CursorProperty, System.Windows.Input.Cursors.Hand);
+        iconBtn.SetValue(FrameworkElement.ToolTipProperty, "Click to change icon");
+        iconBtn.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        iconBtn.SetValue(System.Windows.Controls.DockPanel.DockProperty, System.Windows.Controls.Dock.Left);
+        var iconTemplate = new System.Windows.Controls.ControlTemplate(typeof(System.Windows.Controls.Button));
+        var iconBorder = new FrameworkElementFactory(typeof(System.Windows.Controls.Border));
+        iconBorder.SetValue(System.Windows.Controls.Border.BackgroundProperty, System.Windows.Media.Brushes.Transparent);
+        var iconPresenter = new FrameworkElementFactory(typeof(System.Windows.Controls.ContentPresenter));
+        iconPresenter.SetValue(FrameworkElement.HorizontalAlignmentProperty, System.Windows.HorizontalAlignment.Center);
+        iconPresenter.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        iconBorder.AppendChild(iconPresenter);
+        iconTemplate.VisualTree = iconBorder;
+        iconBtn.SetValue(System.Windows.Controls.Control.TemplateProperty, iconTemplate);
+        iconBtn.AddHandler(System.Windows.Controls.Button.ClickEvent, new RoutedEventHandler(CategoryIcon_Click));
+        dock.AppendChild(iconBtn);
+
+        // Remove button (docked right so it sits at the end of the row).
+        var delBtn = new FrameworkElementFactory(typeof(System.Windows.Controls.Button));
+        delBtn.SetValue(System.Windows.Controls.ContentControl.ContentProperty, "✕");
+        delBtn.SetValue(System.Windows.Controls.Control.FontSizeProperty, 10.0);
+        delBtn.SetValue(FrameworkElement.WidthProperty, 20.0);
+        delBtn.SetValue(FrameworkElement.HeightProperty, 20.0);
+        delBtn.SetValue(System.Windows.Controls.Control.BackgroundProperty, System.Windows.Media.Brushes.Transparent);
+        delBtn.SetValue(System.Windows.Controls.Control.ForegroundProperty, dim);
+        delBtn.SetValue(System.Windows.Controls.Control.BorderThicknessProperty, new Thickness(0));
+        delBtn.SetValue(FrameworkElement.CursorProperty, System.Windows.Input.Cursors.Hand);
+        delBtn.SetValue(FrameworkElement.ToolTipProperty, "Remove");
+        delBtn.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        delBtn.SetValue(FrameworkElement.MarginProperty, new Thickness(4, 0, 0, 0));
+        delBtn.SetValue(System.Windows.Controls.DockPanel.DockProperty, System.Windows.Controls.Dock.Right);
+        delBtn.AddHandler(System.Windows.Controls.Button.ClickEvent, new RoutedEventHandler(CategoryRemove_Click));
+        dock.AppendChild(delBtn);
+
+        // Name field (docked left, fixed width) — matches the DMD grid's name box.
+        var nameBox = new FrameworkElementFactory(typeof(System.Windows.Controls.TextBox));
+        nameBox.SetBinding(System.Windows.Controls.TextBox.TextProperty,
+            new System.Windows.Data.Binding("Name") { Mode = System.Windows.Data.BindingMode.TwoWay, UpdateSourceTrigger = System.Windows.Data.UpdateSourceTrigger.PropertyChanged });
+        nameBox.SetValue(System.Windows.Controls.Control.BackgroundProperty, surface);
+        nameBox.SetValue(System.Windows.Controls.Control.ForegroundProperty, text);
+        nameBox.SetValue(System.Windows.Controls.Control.BorderBrushProperty, border444);
+        nameBox.SetValue(System.Windows.Controls.Control.BorderThicknessProperty, new Thickness(1));
+        nameBox.SetValue(System.Windows.Controls.Control.FontSizeProperty, 12.0);
+        nameBox.SetValue(System.Windows.Controls.Control.FontWeightProperty, FontWeights.SemiBold);
+        nameBox.SetValue(System.Windows.Controls.Control.PaddingProperty, new Thickness(4, 2, 4, 2));
+        nameBox.SetValue(FrameworkElement.WidthProperty, 110.0);
+        nameBox.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        nameBox.SetValue(FrameworkElement.MarginProperty, new Thickness(2, 0, 4, 0));
+        nameBox.SetValue(System.Windows.Controls.DockPanel.DockProperty, System.Windows.Controls.Dock.Left);
+        dock.AppendChild(nameBox);
+
+        // Search-term field (fills the remaining space) — editable here (this is the plug-in's surface).
+        var termBox = new FrameworkElementFactory(typeof(System.Windows.Controls.TextBox));
+        termBox.SetBinding(System.Windows.Controls.TextBox.TextProperty,
+            new System.Windows.Data.Binding("SearchTerm") { Mode = System.Windows.Data.BindingMode.TwoWay, UpdateSourceTrigger = System.Windows.Data.UpdateSourceTrigger.PropertyChanged });
+        termBox.SetValue(System.Windows.Controls.Control.BackgroundProperty, surface);
+        termBox.SetValue(System.Windows.Controls.Control.ForegroundProperty, text);
+        termBox.SetValue(System.Windows.Controls.Control.BorderBrushProperty, border444);
+        termBox.SetValue(System.Windows.Controls.Control.BorderThicknessProperty, new Thickness(1));
+        termBox.SetValue(System.Windows.Controls.Control.FontSizeProperty, 11.0);
+        termBox.SetValue(System.Windows.Controls.Control.PaddingProperty, new Thickness(4, 2, 4, 2));
+        termBox.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        dock.AppendChild(termBox);
+
+        var template = new System.Windows.DataTemplate(typeof(CategoryVisibilityItem)) { VisualTree = dock };
+        return template;
     }
 
     /// <summary>
