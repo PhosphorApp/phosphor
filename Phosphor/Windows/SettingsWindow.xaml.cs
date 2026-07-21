@@ -5056,6 +5056,17 @@ public partial class SettingsWindow : JukeboxWindow
         delBtn.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
         delBtn.SetValue(FrameworkElement.MarginProperty, new Thickness(4, 0, 0, 0));
         delBtn.SetValue(System.Windows.Controls.DockPanel.DockProperty, System.Windows.Controls.Dock.Right);
+        // A transparent control template so only the glyph shows (the app's default button chrome
+        // otherwise renders an empty box that hides the "✕"). Mirrors the DMD grid buttons.
+        var delTemplate = new System.Windows.Controls.ControlTemplate(typeof(System.Windows.Controls.Button));
+        var delBorder = new FrameworkElementFactory(typeof(System.Windows.Controls.Border));
+        delBorder.SetValue(System.Windows.Controls.Border.BackgroundProperty, System.Windows.Media.Brushes.Transparent);
+        var delPresenter = new FrameworkElementFactory(typeof(System.Windows.Controls.ContentPresenter));
+        delPresenter.SetValue(FrameworkElement.HorizontalAlignmentProperty, System.Windows.HorizontalAlignment.Center);
+        delPresenter.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        delBorder.AppendChild(delPresenter);
+        delTemplate.VisualTree = delBorder;
+        delBtn.SetValue(System.Windows.Controls.Control.TemplateProperty, delTemplate);
         delBtn.AddHandler(System.Windows.Controls.Button.ClickEvent, new RoutedEventHandler(CategoryRemove_Click));
         dock.AppendChild(delBtn);
 
