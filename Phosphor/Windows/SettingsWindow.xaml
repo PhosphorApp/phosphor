@@ -146,7 +146,7 @@
                                             <Button Content="+ Add…" Padding="10,4"
                                                     Click="AddStartupDitti_Click"/>
                                         </StackPanel>
-                                        <CheckBox x:Name="CbPlexGapless" Content="Gapless playback (audio tracks)"
+                                        <CheckBox x:Name="CbGapless" Content="Gapless playback (audio tracks)"
                                                   Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
                                                   Margin="0,4,0,4"
                                                   ToolTip="Eliminate silence between audio-only tracks by pre-loading the next track"/>
@@ -3110,23 +3110,23 @@
                                         Click="PurgeYtPlaylistCache_Click" Padding="8,4"
                                         VerticalAlignment="Center"/>
 
-                                <!-- Row 6: Plex Playlists -->
-                                <CheckBox x:Name="CbPlexPlaylistCacheEnabled" Content="Plex Playlists"
+                                <!-- Row 6: Source Playlists -->
+                                <CheckBox x:Name="CbSourcePlaylistCacheEnabled" Content="Source Playlists"
                                           Grid.Row="6" Grid.Column="0"
                                           Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 <TextBlock Text="Max age:" Grid.Row="6" Grid.Column="1"
                                            Foreground="{StaticResource TextBrush}"
                                            VerticalAlignment="Center" Margin="0,-3,4,0"/>
-                                <ComboBox x:Name="CbPlexPlaylistCacheMaxAge" Grid.Row="6" Grid.Column="2"
+                                <ComboBox x:Name="CbSourcePlaylistCacheMaxAge" Grid.Row="6" Grid.Column="2"
                                           IsEditable="False" VerticalAlignment="Center"
                                           Background="{StaticResource Surface2Brush}"
                                           Foreground="{StaticResource TextBrush}"
                                           FontSize="12" BorderBrush="#333"/>
-                                <TextBlock x:Name="PlexPlaylistCacheSizeText" Grid.Row="6" Grid.Column="3"
+                                <TextBlock x:Name="SourcePlaylistCacheSizeText" Grid.Row="6" Grid.Column="3"
                                            Foreground="{StaticResource TextDimBrush}"
                                            VerticalAlignment="Center" Margin="8,0,8,0"/>
                                 <Button Content="🗑 Purge" Grid.Row="6" Grid.Column="4"
-                                        Click="PurgePlexPlaylistCache_Click" Padding="8,4"
+                                        Click="PurgeSourcePlaylistCache_Click" Padding="8,4"
                                         VerticalAlignment="Center"/>
                             </Grid>
 

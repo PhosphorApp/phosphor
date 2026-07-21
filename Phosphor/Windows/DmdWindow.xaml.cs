@@ -2141,7 +2141,7 @@ public partial class DmdWindow : JukeboxWindow
             settingsWindow.SetThumbnailCacheSize(vm2.ThumbnailCache?.GetTotalSizeBytes() ?? 0);
             settingsWindow.SetCategoryCacheSize(vm2.CategoryCache?.GetSizeBytes() ?? 0);
             settingsWindow.SetYtPlaylistCacheSize(vm2.YtPlaylistCache?.GetSizeBytes() ?? 0);
-            settingsWindow.SetPlexPlaylistCacheSize(vm2.PlexPlaylistCache?.GetSizeBytes() ?? 0);
+            settingsWindow.SetSourcePlaylistCacheSize(vm2.SourcePlaylistCache?.GetSizeBytes() ?? 0);
         }
         settingsWindow.SettingsApplied += async () =>
         {
@@ -2585,7 +2585,7 @@ public partial class DmdWindow : JukeboxWindow
             vm.SetupThumbnailCache(_appSettings.ThumbnailCacheEnabled, _appSettings.ThumbnailCacheMaxSizeMb);
             vm.SetupCategoryCache(_appSettings.CategoryCacheEnabled, _appSettings.CategoryCacheMaxAgeHours);
             vm.SetupYtPlaylistCache(_appSettings.YtPlaylistCacheEnabled, _appSettings.YtPlaylistCacheMaxAgeHours);
-            vm.SetupPlexPlaylistCache(_appSettings.PlexPlaylistCacheEnabled, _appSettings.PlexPlaylistCacheMaxAgeHours);
+            vm.SetupSourcePlaylistCache(_appSettings.SourcePlaylistCacheEnabled, _appSettings.SourcePlaylistCacheMaxAgeHours);
             LogStep("CacheSetup");
             ThumbnailCacheConverter.Cache = vm.ThumbnailCache;
             vm.VideoQuality = ytPlayback.Quality;
@@ -2597,7 +2597,7 @@ public partial class DmdWindow : JukeboxWindow
             vm.SetNetworkTimeout(_appSettings.NetworkTimeoutSeconds);
             vm.CacheMode = _appSettings.CacheMode;
             vm.PreemptiveCache = _appSettings.PreemptiveCache;
-            vm.GaplessPlayback = _appSettings.PlexGaplessPlayback;
+            vm.GaplessPlayback = _appSettings.GaplessPlayback;
             vm.AutoDjProviderId = _appSettings.AutoDjProviderId;
             vm.FavoritesGrouping = _appSettings.FavoritesGrouping;
             vm.FavoritesSort = _appSettings.FavoritesSort;

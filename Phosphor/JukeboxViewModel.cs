@@ -1369,7 +1369,7 @@ public partial class JukeboxViewModel : ObservableObject
     // ── Category cache ──
     public ResultCache? CategoryCache { get; private set; }
     public ResultCache? YtPlaylistCache { get; private set; }
-    public ResultCache? PlexPlaylistCache { get; private set; }
+    public ResultCache? SourcePlaylistCache { get; private set; }
 
     public void SetupCategoryCache(bool enabled, int maxAgeHours)
     {
@@ -1387,12 +1387,12 @@ public partial class JukeboxViewModel : ObservableObject
             YtPlaylistCache.UpdateSettings(enabled, maxAgeHours);
     }
 
-    public void SetupPlexPlaylistCache(bool enabled, int maxAgeHours)
+    public void SetupSourcePlaylistCache(bool enabled, int maxAgeHours)
     {
-        if (PlexPlaylistCache == null)
-            PlexPlaylistCache = new ResultCache(enabled, maxAgeHours, "plex_", "plex_cache");
+        if (SourcePlaylistCache == null)
+            SourcePlaylistCache = new ResultCache(enabled, maxAgeHours, "source_", "source_cache");
         else
-            PlexPlaylistCache.UpdateSettings(enabled, maxAgeHours);
+            SourcePlaylistCache.UpdateSettings(enabled, maxAgeHours);
     }
 
     public void SetupThumbnailCache(bool enabled, double maxSizeMb)

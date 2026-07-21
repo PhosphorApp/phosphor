@@ -195,8 +195,8 @@ public class AppSettings
     public int CategoryCacheMaxAgeHours { get; set; } = 168;
     public bool YtPlaylistCacheEnabled { get; set; } = true;
     public int YtPlaylistCacheMaxAgeHours { get; set; } = 168;
-    public bool PlexPlaylistCacheEnabled { get; set; } = true;
-    public int PlexPlaylistCacheMaxAgeHours { get; set; } = 168;
+    public bool SourcePlaylistCacheEnabled { get; set; } = true;
+    public int SourcePlaylistCacheMaxAgeHours { get; set; } = 168;
     public KeyBindings KeyBindings { get; set; } = new();
     public int ResultColumns { get; set; } = 2;
     public int ResultFontSizeModifier { get; set; }
@@ -506,7 +506,7 @@ public class AppSettings
     /// playback-pipeline behavior — not per-source config. (YouTube/Plex/engine config now lives
     /// per-source on the Plug-ins tab.)
     /// </summary>
-    public bool PlexGaplessPlayback { get; set; }
+    public bool GaplessPlayback { get; set; }
 
     /// <summary>
     /// Host-owned persistence for plug-in source instances. In this phase the flat Plex/engine

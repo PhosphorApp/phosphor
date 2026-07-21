@@ -1080,16 +1080,16 @@ public partial class SettingsWindow : JukeboxWindow
         }
         CbYtPlaylistCacheMaxAge.SelectedIndex = selectedYtPlAgeIndex;
 
-        // Plex playlist cache
-        CbPlexPlaylistCacheEnabled.IsChecked = settings.PlexPlaylistCacheEnabled;
+        // Source playlist cache
+        CbSourcePlaylistCacheEnabled.IsChecked = settings.SourcePlaylistCacheEnabled;
         int selectedPlexAgeIndex = 9;
         for (int ai = 0; ai < ageOptions.Length; ai++)
         {
-            CbPlexPlaylistCacheMaxAge.Items.Add(ageOptions[ai].label);
-            if (ageOptions[ai].hours == settings.PlexPlaylistCacheMaxAgeHours)
+            CbSourcePlaylistCacheMaxAge.Items.Add(ageOptions[ai].label);
+            if (ageOptions[ai].hours == settings.SourcePlaylistCacheMaxAgeHours)
                 selectedPlexAgeIndex = ai;
         }
-        CbPlexPlaylistCacheMaxAge.SelectedIndex = selectedPlexAgeIndex;
+        CbSourcePlaylistCacheMaxAge.SelectedIndex = selectedPlexAgeIndex;
 
         // Debug
         CbDebugLogging.IsChecked = settings.DebugLogging;
@@ -1240,7 +1240,7 @@ public partial class SettingsWindow : JukeboxWindow
         NetworkTimeoutValueText.Text = settings.NetworkTimeoutSeconds.ToString();
 
         // Playback (gapless is app-owned; engine/quality/stereo moved to the Plug-ins tab).
-        CbPlexGapless.IsChecked = settings.PlexGaplessPlayback;
+        CbGapless.IsChecked = settings.GaplessPlayback;
 
         // Populate the Plug-ins tab from the live source registry once the window is loaded
         // (Owner/DataContext is available by then). Same timing for the AutoDJ provider list.
@@ -2138,10 +2138,10 @@ public partial class SettingsWindow : JukeboxWindow
             : $"({kb:F0} KB used)";
     }
 
-    public void SetPlexPlaylistCacheSize(long bytes)
+    public void SetSourcePlaylistCacheSize(long bytes)
     {
         double kb = bytes / 1024.0;
-        PlexPlaylistCacheSizeText.Text = kb >= 1024
+        SourcePlaylistCacheSizeText.Text = kb >= 1024
             ? $"({kb / 1024:F1} MB used)"
             : $"({kb:F0} KB used)";
     }
@@ -2186,13 +2186,13 @@ public partial class SettingsWindow : JukeboxWindow
         }
     }
 
-    private void PurgePlexPlaylistCache_Click(object sender, RoutedEventArgs e)
+    private void PurgeSourcePlaylistCache_Click(object sender, RoutedEventArgs e)
     {
-        if (DarkConfirmDialog.Confirm("Purge Plex Playlist Cache", "Are you sure you want to purge the Plex playlist cache?", this)
+        if (DarkConfirmDialog.Confirm("Purge Source Playlist Cache", "Are you sure you want to purge the source playlist cache?", this)
             && Owner?.DataContext is JukeboxViewModel vm)
         {
-            vm.PlexPlaylistCache?.Purge();
-            SetPlexPlaylistCacheSize(0);
+            vm.SourcePlaylistCache?.Purge();
+            SetSourcePlaylistCacheSize(0);
         }
     }
 
@@ -3941,9 +3941,9 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.YtPlaylistCacheEnabled = CbYtPlaylistCacheEnabled.IsChecked == true;
         _settings.YtPlaylistCacheMaxAgeHours = CbYtPlaylistCacheMaxAge.SelectedIndex >= 0 && CbYtPlaylistCacheMaxAge.SelectedIndex < ageValues.Length
             ? ageValues[CbYtPlaylistCacheMaxAge.SelectedIndex] : 168;
-        _settings.PlexPlaylistCacheEnabled = CbPlexPlaylistCacheEnabled.IsChecked == true;
-        _settings.PlexPlaylistCacheMaxAgeHours = CbPlexPlaylistCacheMaxAge.SelectedIndex >= 0 && CbPlexPlaylistCacheMaxAge.SelectedIndex < ageValues.Length
-            ? ageValues[CbPlexPlaylistCacheMaxAge.SelectedIndex] : 168;
+        _settings.SourcePlaylistCacheEnabled = CbSourcePlaylistCacheEnabled.IsChecked == true;
+        _settings.SourcePlaylistCacheMaxAgeHours = CbSourcePlaylistCacheMaxAge.SelectedIndex >= 0 && CbSourcePlaylistCacheMaxAge.SelectedIndex < ageValues.Length
+            ? ageValues[CbSourcePlaylistCacheMaxAge.SelectedIndex] : 168;
         _settings.DebugLogging = CbDebugLogging.IsChecked == true;
         DebugLog.Enabled = _settings.DebugLogging;
         // Harvest the editable Plug-ins tab into settings.PluginInstances (the plug-in path's config).
@@ -4107,7 +4107,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.FileCachingMs = (int)SliderFileCaching.Value;
         _settings.HttpReconnect = CbHttpReconnect.IsChecked == true;
         _settings.NetworkTimeoutSeconds = (int)SliderNetworkTimeout.Value;
-        _settings.PlexGaplessPlayback = CbPlexGapless.IsChecked == true;
+        _settings.GaplessPlayback = CbGapless.IsChecked == true;
         _settings.AutoDjProviderId = CbAutoDjProvider.SelectedValue as string;
         _LogStep("AllSettings");
         Saved = true;

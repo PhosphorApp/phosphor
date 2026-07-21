@@ -55,8 +55,8 @@
   "CategoryCacheMaxAgeHours": 168,
   "YtPlaylistCacheEnabled": true,
   "YtPlaylistCacheMaxAgeHours": 168,
-  "PlexPlaylistCacheEnabled": true,
-  "PlexPlaylistCacheMaxAgeHours": 168,
+  "SourcePlaylistCacheEnabled": true,
+  "SourcePlaylistCacheMaxAgeHours": 168,
   "KeyBindings": {
     "NavLeft": {
       "PrimaryKey": 116,
