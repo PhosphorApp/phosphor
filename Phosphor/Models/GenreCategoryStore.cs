@@ -15,14 +15,22 @@ public class GenreCategoryEntry
     public bool IsSeparator { get; set; }
     public bool IsLineBreak { get; set; }
 
-    // Generic plug-in source tile fields (when set, this entry is a root tile for an IBrowsable
-    // plug-in source — local-folder, future Jellyfin, …). Only serializable identity is persisted;
-    // the opaque browse SourceState is recovered at runtime from the live registry by matching
-    // (SourceInstanceId, SourceCategoryId).
+    // Generic plug-in source tile fields (when set, this entry is a root tile for a plug-in source).
+    // Two flavors share these fields, distinguished by whether a SearchTerm is present:
+    //   • Browse tile (IBrowsable — Plex, local-folder, …): no SearchTerm; drills into a tree. The
+    //     opaque browse SourceState is recovered at runtime by matching (SourceInstanceId, SourceCategoryId).
+    //   • Saved-search tile (ISavedSearchCategories — YouTube genre tiles): carries a SearchTerm the
+    //     host runs against the bound source. Name/Icon/SearchTerm are plug-in-authoritative (refreshed
+    //     on sync); the host owns only SortOrder + IsVisible.
     public string? SourceInstanceId { get; set; }
     public string? SourceCategoryId { get; set; }
     public string? SourceTypeId { get; set; }
-    public bool IsGenericSource => SourceInstanceId != null;
+
+    /// <summary>A generic browse (IBrowsable) source root tile: bound to a source, no saved search.</summary>
+    public bool IsGenericSource => SourceInstanceId != null && string.IsNullOrEmpty(SearchTerm);
+
+    /// <summary>A saved-search source tile (ISavedSearchCategories): bound to a source, runs a stored search.</summary>
+    public bool IsSavedSearchSource => SourceInstanceId != null && !string.IsNullOrEmpty(SearchTerm);
 
     public int SortOrder { get; set; }
 }
@@ -89,6 +97,9 @@ public static class GenreCategoryStore
     /// <summary>One root tile for a generic IBrowsable plug-in source.</summary>
     public sealed record SourceTile(string InstanceId, string CategoryId, string DisplayName, string Icon, string TypeId);
 
+    /// <summary>One saved-search tile for an ISavedSearchCategories plug-in source (e.g. a YouTube genre tile).</summary>
+    public sealed record SavedSearchTile(string InstanceId, string CategoryId, string DisplayName, string Icon, string SearchTerm, string TypeId);
+
     /// <summary>
     /// Syncs generic plug-in source root tiles (Plex, local-folder, future Jellyfin, …) into the
     /// entry list: prune entries whose (instance, category) is no longer present, preserve user
@@ -124,6 +135,54 @@ public static class GenreCategoryStore
                     SourceCategoryId = t.CategoryId,
                     SourceTypeId = t.TypeId,
                     IsVisible = true,
+                });
+            }
+        }
+    }
+
+    /// <summary>
+    /// Syncs saved-search plug-in source tiles (e.g. YouTube genre tiles) into the entry list. The
+    /// plug-in is authoritative for Name/Icon/SearchTerm (they are refreshed on every sync so edits
+    /// in the plug-in's category editor propagate); the host owns only SortOrder and IsVisible, which
+    /// are preserved for survivors. Keyed by (SourceInstanceId, SourceCategoryId). Prunes entries no
+    /// longer backed by a live tile; appends new tiles at the end (after existing sort orders).
+    /// </summary>
+    public static void SyncSavedSearchTiles(List<GenreCategoryEntry> entries, IReadOnlyList<SavedSearchTile> tiles)
+    {
+        var validPairs = new HashSet<(string, string)>(
+            tiles.Select(t => (t.InstanceId, t.CategoryId)));
+
+        // Prune saved-search entries no longer backed by a live tile.
+        entries.RemoveAll(e => e.IsSavedSearchSource
+            && !validPairs.Contains((e.SourceInstanceId!, e.SourceCategoryId ?? "")));
+
+        int nextSort = entries.Count == 0 ? 0 : entries.Max(e => e.SortOrder) + 1;
+
+        foreach (var t in tiles)
+        {
+            var existing = entries.FirstOrDefault(e =>
+                e.SourceInstanceId == t.InstanceId && (e.SourceCategoryId ?? "") == t.CategoryId);
+            if (existing != null)
+            {
+                // Plug-in-authoritative fields refreshed; host-owned SortOrder/IsVisible preserved.
+                existing.Name = t.DisplayName;
+                existing.Icon = t.Icon;
+                existing.SearchTerm = t.SearchTerm;
+                existing.SourceTypeId = t.TypeId;
+            }
+            else
+            {
+                entries.Add(new GenreCategoryEntry
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    Name = t.DisplayName,
+                    Icon = t.Icon,
+                    SearchTerm = t.SearchTerm,
+                    SourceInstanceId = t.InstanceId,
+                    SourceCategoryId = t.CategoryId,
+                    SourceTypeId = t.TypeId,
+                    IsVisible = true,
+                    SortOrder = nextSort++,
                 });
             }
         }

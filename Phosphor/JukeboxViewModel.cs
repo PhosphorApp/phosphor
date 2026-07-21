@@ -220,6 +220,20 @@ public partial class JukeboxViewModel : ObservableObject
                 registry.ByInstance(t.SourceInstanceId!)?.TypeId ?? ""))
             .ToList();
         GenreCategoryStore.SyncSourceTiles(_genreCategories, sourceTiles);
+
+        // Sync saved-search source tiles (YouTube genre tiles) from every ISavedSearchCategories
+        // source. Unlike browse tiles these carry a stored search term; the plug-in owns
+        // name/icon/term, the host owns order/visibility.
+        var savedSearchTiles = new List<GenreCategoryStore.SavedSearchTile>();
+        foreach (var src in registry.Sources.OfType<Phosphor.Plugin.Abstractions.ISavedSearchCategories>())
+        {
+            var owner = (Phosphor.Plugin.Abstractions.IPhosphorSource)src;
+            foreach (var c in src.GetSavedSearchCategories())
+                savedSearchTiles.Add(new GenreCategoryStore.SavedSearchTile(
+                    owner.InstanceId, c.Id, c.Name, c.Icon, c.SearchTerm, owner.TypeId));
+        }
+        GenreCategoryStore.SyncSavedSearchTiles(_genreCategories, savedSearchTiles);
+
         GenreCategoryStore.SaveInBackground(_genreCategories);
 
         // Tiles were synced into the genre entries — rebuild so they appear (sorted/hideable).
@@ -2177,7 +2191,16 @@ public partial class JukeboxViewModel : ObservableObject
             {
                 sortable.Add((entry.SortOrder, new List<Category>
                 {
-                    new() { Name = entry.Name, Icon = entry.Icon, SearchTerm = entry.SearchTerm }
+                    new()
+                    {
+                        Name = entry.Name,
+                        Icon = entry.Icon,
+                        SearchTerm = entry.SearchTerm,
+                        // Saved-search source tiles (YouTube genre tiles) carry their bound source so
+                        // opening them routes DoSearch to that source; host-only genre entries leave
+                        // this null (defaulting to the YouTube path).
+                        SourceInstanceId = entry.IsSavedSearchSource ? entry.SourceInstanceId : null,
+                    }
                 }));
             }
         }
@@ -2296,7 +2319,7 @@ public partial class JukeboxViewModel : ObservableObject
 
         SearchQuery = category.SearchTerm;
         ShowCategories = false;
-        await DoSearch(category.SearchTerm);
+        await DoSearch(category.SearchTerm, category.SourceInstanceId);
     }
 
     /// <summary>
