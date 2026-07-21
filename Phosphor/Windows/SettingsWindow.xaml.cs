@@ -5003,8 +5003,8 @@ public partial class SettingsWindow : JukeboxWindow
 
         var hint = new System.Windows.Controls.TextBlock
         {
-            Text = "Glyph, name and search term for each tile. Search terms use the search-box grammar " +
-                   "(playlist:, channel:, min:, max:). Ordering and visibility are set on the DMD tab.",
+            Text = "Edit each tile's search term (search-box grammar: playlist:, channel:, min:, max:). " +
+                   "Use DMD ▸ Appearance to customize order, icon, and text.",
             Foreground = dim, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4),
         };
         panel.Children.Add(hint);
@@ -5085,11 +5085,12 @@ public partial class SettingsWindow : JukeboxWindow
     }
 
     /// <summary>
-    /// Builds the plug-in category editor's dedicated row template: glyph button (opens the icon
-    /// picker), name field, search-term field, and a remove button — deliberately NO visibility
-    /// checkbox, move buttons, or drag grip (ordering + visibility are host-owned, set on the DMD tab).
-    /// Reuses the existing <see cref="CategoryIcon_Click"/> and <see cref="CategoryRemove_Click"/>
-    /// handlers, which resolve their target list via <see cref="ResolveCategoryList"/>.
+    /// Builds the plug-in category editor's dedicated row template: a read-only glyph and name (for
+    /// identifying the row), an editable search-term field, and a remove button. Icon, name, ordering
+    /// and visibility are host-owned (customized on the DMD ▸ Appearance tab at/after seed time), so
+    /// only the search term — the plug-in's own concern — is editable here. Reuses the existing
+    /// <see cref="CategoryRemove_Click"/> handler, which resolves its target list via
+    /// <see cref="ResolveCategoryList"/>.
     /// </summary>
     private System.Windows.DataTemplate BuildPluginCategoryRowTemplate(System.Windows.Media.Brush text)
     {
@@ -5099,30 +5100,17 @@ public partial class SettingsWindow : JukeboxWindow
 
         var dock = new FrameworkElementFactory(typeof(System.Windows.Controls.DockPanel));
 
-        // Transparent-templated button used for the glyph (so it shows just the emoji).
-        var iconBtn = new FrameworkElementFactory(typeof(System.Windows.Controls.Button));
-        iconBtn.SetBinding(System.Windows.Controls.ContentControl.ContentProperty, new System.Windows.Data.Binding("Icon"));
-        iconBtn.SetValue(System.Windows.Controls.Control.FontSizeProperty, 16.0);
-        iconBtn.SetValue(FrameworkElement.WidthProperty, 30.0);
-        iconBtn.SetValue(FrameworkElement.HeightProperty, 26.0);
-        iconBtn.SetValue(System.Windows.Controls.Control.BackgroundProperty, System.Windows.Media.Brushes.Transparent);
-        iconBtn.SetValue(System.Windows.Controls.Control.ForegroundProperty, text);
-        iconBtn.SetValue(System.Windows.Controls.Control.BorderThicknessProperty, new Thickness(0));
-        iconBtn.SetValue(FrameworkElement.CursorProperty, System.Windows.Input.Cursors.Hand);
-        iconBtn.SetValue(FrameworkElement.ToolTipProperty, "Click to change icon");
-        iconBtn.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-        iconBtn.SetValue(System.Windows.Controls.DockPanel.DockProperty, System.Windows.Controls.Dock.Left);
-        var iconTemplate = new System.Windows.Controls.ControlTemplate(typeof(System.Windows.Controls.Button));
-        var iconBorder = new FrameworkElementFactory(typeof(System.Windows.Controls.Border));
-        iconBorder.SetValue(System.Windows.Controls.Border.BackgroundProperty, System.Windows.Media.Brushes.Transparent);
-        var iconPresenter = new FrameworkElementFactory(typeof(System.Windows.Controls.ContentPresenter));
-        iconPresenter.SetValue(FrameworkElement.HorizontalAlignmentProperty, System.Windows.HorizontalAlignment.Center);
-        iconPresenter.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-        iconBorder.AppendChild(iconPresenter);
-        iconTemplate.VisualTree = iconBorder;
-        iconBtn.SetValue(System.Windows.Controls.Control.TemplateProperty, iconTemplate);
-        iconBtn.AddHandler(System.Windows.Controls.Button.ClickEvent, new RoutedEventHandler(CategoryIcon_Click));
-        dock.AppendChild(iconBtn);
+        // Read-only glyph (display only — the icon is customized on the DMD tab).
+        var glyph = new FrameworkElementFactory(typeof(System.Windows.Controls.TextBlock));
+        glyph.SetBinding(System.Windows.Controls.TextBlock.TextProperty, new System.Windows.Data.Binding("Icon"));
+        glyph.SetValue(System.Windows.Controls.TextBlock.FontSizeProperty, 16.0);
+        glyph.SetValue(FrameworkElement.WidthProperty, 26.0);
+        glyph.SetValue(System.Windows.Controls.TextBlock.ForegroundProperty, text);
+        glyph.SetValue(System.Windows.Controls.TextBlock.TextAlignmentProperty, System.Windows.TextAlignment.Center);
+        glyph.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        glyph.SetValue(FrameworkElement.MarginProperty, new Thickness(0, 0, 4, 0));
+        glyph.SetValue(System.Windows.Controls.DockPanel.DockProperty, System.Windows.Controls.Dock.Left);
+        dock.AppendChild(glyph);
 
         // Remove button (docked right so it sits at the end of the row).
         var delBtn = new FrameworkElementFactory(typeof(System.Windows.Controls.Button));
@@ -5141,24 +5129,20 @@ public partial class SettingsWindow : JukeboxWindow
         delBtn.AddHandler(System.Windows.Controls.Button.ClickEvent, new RoutedEventHandler(CategoryRemove_Click));
         dock.AppendChild(delBtn);
 
-        // Name field (docked left, fixed width) — matches the DMD grid's name box.
-        var nameBox = new FrameworkElementFactory(typeof(System.Windows.Controls.TextBox));
-        nameBox.SetBinding(System.Windows.Controls.TextBox.TextProperty,
-            new System.Windows.Data.Binding("Name") { Mode = System.Windows.Data.BindingMode.TwoWay, UpdateSourceTrigger = System.Windows.Data.UpdateSourceTrigger.PropertyChanged });
-        nameBox.SetValue(System.Windows.Controls.Control.BackgroundProperty, surface);
-        nameBox.SetValue(System.Windows.Controls.Control.ForegroundProperty, text);
-        nameBox.SetValue(System.Windows.Controls.Control.BorderBrushProperty, border444);
-        nameBox.SetValue(System.Windows.Controls.Control.BorderThicknessProperty, new Thickness(1));
-        nameBox.SetValue(System.Windows.Controls.Control.FontSizeProperty, 12.0);
-        nameBox.SetValue(System.Windows.Controls.Control.FontWeightProperty, FontWeights.SemiBold);
-        nameBox.SetValue(System.Windows.Controls.Control.PaddingProperty, new Thickness(4, 2, 4, 2));
-        nameBox.SetValue(FrameworkElement.WidthProperty, 110.0);
-        nameBox.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-        nameBox.SetValue(FrameworkElement.MarginProperty, new Thickness(2, 0, 4, 0));
-        nameBox.SetValue(System.Windows.Controls.DockPanel.DockProperty, System.Windows.Controls.Dock.Left);
-        dock.AppendChild(nameBox);
+        // Read-only name (display only — the text is customized on the DMD tab).
+        var nameBlock = new FrameworkElementFactory(typeof(System.Windows.Controls.TextBlock));
+        nameBlock.SetBinding(System.Windows.Controls.TextBlock.TextProperty, new System.Windows.Data.Binding("Name"));
+        nameBlock.SetValue(System.Windows.Controls.TextBlock.ForegroundProperty, text);
+        nameBlock.SetValue(System.Windows.Controls.TextBlock.FontSizeProperty, 12.0);
+        nameBlock.SetValue(System.Windows.Controls.TextBlock.FontWeightProperty, FontWeights.SemiBold);
+        nameBlock.SetValue(FrameworkElement.WidthProperty, 110.0);
+        nameBlock.SetValue(System.Windows.Controls.TextBlock.TextTrimmingProperty, System.Windows.TextTrimming.CharacterEllipsis);
+        nameBlock.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        nameBlock.SetValue(FrameworkElement.MarginProperty, new Thickness(2, 0, 4, 0));
+        nameBlock.SetValue(System.Windows.Controls.DockPanel.DockProperty, System.Windows.Controls.Dock.Left);
+        dock.AppendChild(nameBlock);
 
-        // Search-term field (fills the remaining space) — editable here (this is the plug-in's surface).
+        // Search-term field (fills the remaining space) — the only editable field here.
         var termBox = new FrameworkElementFactory(typeof(System.Windows.Controls.TextBox));
         termBox.SetBinding(System.Windows.Controls.TextBox.TextProperty,
             new System.Windows.Data.Binding("SearchTerm") { Mode = System.Windows.Data.BindingMode.TwoWay, UpdateSourceTrigger = System.Windows.Data.UpdateSourceTrigger.PropertyChanged });
@@ -5169,6 +5153,7 @@ public partial class SettingsWindow : JukeboxWindow
         termBox.SetValue(System.Windows.Controls.Control.FontSizeProperty, 11.0);
         termBox.SetValue(System.Windows.Controls.Control.PaddingProperty, new Thickness(4, 2, 4, 2));
         termBox.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        termBox.SetValue(FrameworkElement.ToolTipProperty, "Search term run when this tile is opened");
         dock.AppendChild(termBox);
 
         var template = new System.Windows.DataTemplate(typeof(CategoryVisibilityItem)) { VisualTree = dock };
