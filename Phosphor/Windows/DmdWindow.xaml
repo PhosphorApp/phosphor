@@ -114,6 +114,70 @@
         <DataTemplate x:Key="CategoryIconCurrent">
             <TextBlock Text="{Binding Icon}" FontSize="{DynamicResource GenreIconFontSize}" HorizontalAlignment="Center"/>
         </DataTemplate>
+
+        <!-- Fallback glyph for result rows (generic browse container with no thumbnail).
+             Two variants swapped via the ResultIconCurrent key in ApplyIconStyle so these glyphs
+             honor the Icon Style setting like the category tiles do. -->
+        <DataTemplate x:Key="ResultIconDefault">
+            <TextBlock Margin="0,0,8,0" VerticalAlignment="Center" HorizontalAlignment="Center"
+                       FontSize="32" Width="55" TextAlignment="Center">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsGenericContainer}" Value="True"/>
+                                    <Condition Binding="{Binding ThumbnailUrl}" Value=""/>
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Setter Property="Text" Value="{Binding ContainerIcon}"/>
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+        </DataTemplate>
+        <DataTemplate x:Key="ResultIconColorful">
+            <emoji:TextBlock Margin="0,0,8,0" VerticalAlignment="Center" HorizontalAlignment="Center"
+                             FontSize="32" Width="55" TextAlignment="Center">
+                <emoji:TextBlock.Style>
+                    <Style TargetType="emoji:TextBlock">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsGenericContainer}" Value="True"/>
+                                    <Condition Binding="{Binding ThumbnailUrl}" Value=""/>
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Setter Property="Text" Value="{Binding ContainerIcon}"/>
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </emoji:TextBlock.Style>
+            </emoji:TextBlock>
+        </DataTemplate>
+        <DataTemplate x:Key="ResultIconCurrent">
+            <TextBlock Margin="0,0,8,0" VerticalAlignment="Center" HorizontalAlignment="Center"
+                       FontSize="32" Width="55" TextAlignment="Center">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsGenericContainer}" Value="True"/>
+                                    <Condition Binding="{Binding ThumbnailUrl}" Value=""/>
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Setter Property="Text" Value="{Binding ContainerIcon}"/>
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+        </DataTemplate>
     </local:JukeboxWindow.Resources>
 
     <Grid>
@@ -451,38 +515,10 @@
                                         VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="0,0,12,4"
                                         Visibility="{Binding ShowLiveBadge, Converter={StaticResource BoolVis}}"
                                         ToolTip="Live now"/>
-                                <!-- Icon fallback for Hub/Playlist items (shown when no thumbnail) -->
-                                <TextBlock Grid.Column="0" Margin="0,0,8,0" VerticalAlignment="Center"
-                                           HorizontalAlignment="Center" FontSize="32"
-                                           Width="55" TextAlignment="Center">                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding PlexItemType}" Value="Hub">
-                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                    <Setter Property="Text" Value="📡"/>
-                                                </DataTrigger>
-                                                <MultiDataTrigger>
-                                                    <MultiDataTrigger.Conditions>
-                                                        <Condition Binding="{Binding PlexItemType}" Value="Playlist"/>
-                                                        <Condition Binding="{Binding ThumbnailUrl}" Value=""/>
-                                                    </MultiDataTrigger.Conditions>
-                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                    <Setter Property="Text" Value="📋"/>
-                                                </MultiDataTrigger>
-                                                <!-- Generic browse container with an inherited/own icon and no thumbnail -->
-                                                <MultiDataTrigger>
-                                                    <MultiDataTrigger.Conditions>
-                                                        <Condition Binding="{Binding IsGenericContainer}" Value="True"/>
-                                                        <Condition Binding="{Binding ThumbnailUrl}" Value=""/>
-                                                    </MultiDataTrigger.Conditions>
-                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                    <Setter Property="Text" Value="{Binding ContainerIcon}"/>
-                                                </MultiDataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
+                                <!-- Icon fallback for Hub/Playlist/container items (shown when no thumbnail).
+                                     Uses the ResultIconCurrent template so it honors the Icon Style setting. -->
+                                <ContentControl Grid.Column="0" Content="{Binding}"
+                                                ContentTemplate="{DynamicResource ResultIconCurrent}"/>
                                 <!-- Height is set deterministically from the configured title font size and
                                      track button size via UpdateResultContentHeight() in code-behind. This keeps
                                      every cell a uniform, compact height (so a portrait poster can't inflate the

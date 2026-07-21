@@ -3078,6 +3078,9 @@ public partial class DmdWindow : JukeboxWindow
     {
         var key = style == IconStyle.Colorful ? "CategoryIconColorful" : "CategoryIconDefault";
         Resources["CategoryIconCurrent"] = Resources[key];
+
+        var resultKey = style == IconStyle.Colorful ? "ResultIconColorful" : "ResultIconDefault";
+        Resources["ResultIconCurrent"] = Resources[resultKey];
     }
 
     public void SetDmdRotation(int degrees)
