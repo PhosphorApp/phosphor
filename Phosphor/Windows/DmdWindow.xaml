@@ -492,9 +492,6 @@
                                         <Style TargetType="Image">
                                             <Setter Property="Stretch" Value="Uniform"/>
                                             <Style.Triggers>
-                                                <DataTrigger Binding="{Binding PlexItemType}" Value="Hub">
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                </DataTrigger>
                                                 <MultiDataTrigger>
                                                     <MultiDataTrigger.Conditions>
                                                         <Condition Binding="{Binding IsGenericContainer}" Value="True"/>
@@ -564,22 +561,6 @@
                                                     <Setter Property="Content" Value="&#x25B6;"/>
                                                     <Setter Property="ToolTip" Value="Play Now"/>
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding PlexItemType}" Value="Artist">
-                                                            <Setter Property="Content" Value="⏎"/>
-                                                            <Setter Property="ToolTip" Value="Browse Albums"/>
-                                                        </DataTrigger>
-                                                        <DataTrigger Binding="{Binding PlexItemType}" Value="Album">
-                                                            <Setter Property="Content" Value="⏎"/>
-                                                            <Setter Property="ToolTip" Value="Browse Tracks"/>
-                                                        </DataTrigger>
-                                                        <DataTrigger Binding="{Binding PlexItemType}" Value="Hub">
-                                                            <Setter Property="Content" Value="⏎"/>
-                                                            <Setter Property="ToolTip" Value="Browse Hub"/>
-                                                        </DataTrigger>
-                                                        <DataTrigger Binding="{Binding PlexItemType}" Value="Playlist">
-                                                            <Setter Property="Content" Value="⏎"/>
-                                                            <Setter Property="ToolTip" Value="Browse Playlist"/>
-                                                        </DataTrigger>
                                                         <DataTrigger Binding="{Binding IsGenericContainer}" Value="True">
                                                             <Setter Property="Content" Value="⏎"/>
                                                             <Setter Property="ToolTip" Value="Open"/>
