@@ -4,7 +4,7 @@
         xmlns:local="clr-namespace:Phosphor"
         xmlns:sys="clr-namespace:System;assembly=System.Runtime"
         xmlns:vwp="clr-namespace:WpfToolkit.Controls;assembly=VirtualizingWrapPanel"
-        xmlns:emoji="clr-namespace:Emoji.Wpf;assembly=Emoji.Wpf"
+        xmlns:ei="clr-namespace:Phosphor.EmojiIcons"
         Title="Phosphor DMD - UI"
         Background="{StaticResource BgBrush}">
 
@@ -105,64 +105,30 @@
             </Setter>
         </Style>
 
-        <DataTemplate x:Key="CategoryIconColorful">
-            <emoji:TextBlock Text="{Binding Icon}" FontSize="{DynamicResource GenreIconFontSize}" HorizontalAlignment="Center"/>
-        </DataTemplate>
-        <DataTemplate x:Key="CategoryIconDefault">
-            <TextBlock Text="{Binding Icon}" FontSize="{DynamicResource GenreIconFontSize}" HorizontalAlignment="Center"/>
-        </DataTemplate>
+        <!-- Category tile icon: a single EmojiIcon control renders per the current style
+             (Default text / Color image / Themed tinted shape) and falls back to text when
+             the selected font lacks the glyph (e.g. the New Playlist '＋'). -->
         <DataTemplate x:Key="CategoryIconCurrent">
-            <TextBlock Text="{Binding Icon}" FontSize="{DynamicResource GenreIconFontSize}" HorizontalAlignment="Center"/>
+            <ei:EmojiIcon Emoji="{Binding Icon}"
+                          DisplaySize="{DynamicResource GenreIconFontSize}"
+                          IconStyle="{Binding CurrentIconStyle, RelativeSource={RelativeSource AncestorType=local:DmdWindow}}"
+                          FontSet="{Binding CurrentEmojiFontSet, RelativeSource={RelativeSource AncestorType=local:DmdWindow}}"
+                          TintBrush="{StaticResource AccentBrush}"
+                          HorizontalAlignment="Center"/>
         </DataTemplate>
 
         <!-- Fallback glyph for result rows (generic browse container with no thumbnail).
-             Two variants swapped via the ResultIconCurrent key in ApplyIconStyle so these glyphs
-             honor the Icon Style setting like the category tiles do. -->
-        <DataTemplate x:Key="ResultIconDefault">
-            <TextBlock Margin="0,0,8,0" VerticalAlignment="Center" HorizontalAlignment="Center"
-                       FontSize="32" Width="55" TextAlignment="Center">
-                <TextBlock.Style>
-                    <Style TargetType="TextBlock">
-                        <Setter Property="Visibility" Value="Collapsed"/>
-                        <Style.Triggers>
-                            <MultiDataTrigger>
-                                <MultiDataTrigger.Conditions>
-                                    <Condition Binding="{Binding IsGenericContainer}" Value="True"/>
-                                    <Condition Binding="{Binding ThumbnailUrl}" Value=""/>
-                                </MultiDataTrigger.Conditions>
-                                <Setter Property="Visibility" Value="Visible"/>
-                                <Setter Property="Text" Value="{Binding ContainerIcon}"/>
-                            </MultiDataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </TextBlock.Style>
-            </TextBlock>
-        </DataTemplate>
-        <DataTemplate x:Key="ResultIconColorful">
-            <emoji:TextBlock Margin="0,0,8,0" VerticalAlignment="Center" HorizontalAlignment="Center"
-                             FontSize="32" Width="55" TextAlignment="Center">
-                <emoji:TextBlock.Style>
-                    <Style TargetType="emoji:TextBlock">
-                        <Setter Property="Visibility" Value="Collapsed"/>
-                        <Style.Triggers>
-                            <MultiDataTrigger>
-                                <MultiDataTrigger.Conditions>
-                                    <Condition Binding="{Binding IsGenericContainer}" Value="True"/>
-                                    <Condition Binding="{Binding ThumbnailUrl}" Value=""/>
-                                </MultiDataTrigger.Conditions>
-                                <Setter Property="Visibility" Value="Visible"/>
-                                <Setter Property="Text" Value="{Binding ContainerIcon}"/>
-                            </MultiDataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </emoji:TextBlock.Style>
-            </emoji:TextBlock>
-        </DataTemplate>
+             Only visible for generic containers lacking a thumbnail. -->
         <DataTemplate x:Key="ResultIconCurrent">
-            <TextBlock Margin="0,0,8,0" VerticalAlignment="Center" HorizontalAlignment="Center"
-                       FontSize="32" Width="55" TextAlignment="Center">
-                <TextBlock.Style>
-                    <Style TargetType="TextBlock">
+            <ei:EmojiIcon Margin="0,0,8,0" Width="55"
+                          Emoji="{Binding ContainerIcon}"
+                          DisplaySize="32"
+                          IconStyle="{Binding CurrentIconStyle, RelativeSource={RelativeSource AncestorType=local:DmdWindow}}"
+                          FontSet="{Binding CurrentEmojiFontSet, RelativeSource={RelativeSource AncestorType=local:DmdWindow}}"
+                          TintBrush="{StaticResource AccentBrush}"
+                          HorizontalAlignment="Center" VerticalAlignment="Center">
+                <ei:EmojiIcon.Style>
+                    <Style TargetType="ei:EmojiIcon">
                         <Setter Property="Visibility" Value="Collapsed"/>
                         <Style.Triggers>
                             <MultiDataTrigger>
@@ -171,12 +137,11 @@
                                     <Condition Binding="{Binding ThumbnailUrl}" Value=""/>
                                 </MultiDataTrigger.Conditions>
                                 <Setter Property="Visibility" Value="Visible"/>
-                                <Setter Property="Text" Value="{Binding ContainerIcon}"/>
                             </MultiDataTrigger>
                         </Style.Triggers>
                     </Style>
-                </TextBlock.Style>
-            </TextBlock>
+                </ei:EmojiIcon.Style>
+            </ei:EmojiIcon>
         </DataTemplate>
     </local:JukeboxWindow.Resources>
 
@@ -704,7 +669,7 @@
                                FontSize="14" LineHeight="20">
                         Open the <Run FontWeight="SemiBold">Settings</Run> (&#x2699;) icon to configure your
                         sources on the <Run FontWeight="SemiBold">Plug-ins</Run> tab, set up your screens on the
-                        <Run FontWeight="SemiBold">General</Run> tab, and tinker with the
+                        <Run FontWeight="SemiBold">General</Run> tab, tweak the icons and layout on the <Run FontWeight="SemiBold">DMD</Run> tab, and tinker with the
                         <Run FontWeight="SemiBold">Visuals</Run> tab. There are lots of visualization options to make the experience your own. 
                         Experiment and have fun! Once closed, you can re-open this message on the <Run FontWeight="SemiBold">Settings</Run> 
                         <Run FontWeight="SemiBold">About</Run> tab.

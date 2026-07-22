@@ -1982,7 +1982,19 @@
                                 <ComboBox x:Name="CbIconStyle" IsEditable="False" Width="140" HorizontalAlignment="Left"
                                           Background="{StaticResource Surface2Brush}"
                                           Foreground="{StaticResource TextBrush}"
-                                          FontSize="12" BorderBrush="#333"/>
+                                          FontSize="12" BorderBrush="#333"
+                                          RequestBringIntoView="ComboBox_SuppressBringIntoView"
+                                          SelectionChanged="CbIconStyle_SelectionChanged"/>
+                            </DockPanel>
+                            <DockPanel x:Name="EmojiSetRow" Margin="0,0,0,8">
+                                <TextBlock Text="Emoji Set:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <ComboBox x:Name="CbEmojiFontSet" IsEditable="False" Width="140" HorizontalAlignment="Left"
+                                          Background="{StaticResource Surface2Brush}"
+                                          Foreground="{StaticResource TextBrush}"
+                                          FontSize="12" BorderBrush="#333"
+                                          RequestBringIntoView="ComboBox_SuppressBringIntoView"
+                                          ToolTip="The emoji font used for all icon styles."/>
                             </DockPanel>
                             <DockPanel Margin="0,0,0,8">
                                 <TextBlock Text="Rotation:" Foreground="{StaticResource TextBrush}"
@@ -2948,7 +2960,8 @@
                             <TextBlock Text="Music and video sources are provided by plug-ins. This tab lists the configured sources and their settings — add or remove sources, enable/disable them, and edit their configuration here."
                                        FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
                                        TextWrapping="Wrap"/>
-                            <StackPanel x:Name="PanelPluginSources"/>
+                            <StackPanel x:Name="PanelPluginSources"
+                                        RequestBringIntoView="ComboBox_SuppressBringIntoView"/>
                             <TextBlock x:Name="PluginSourcesEmptyText"
                                        Text="No plug-in sources configured yet."
                                        FontSize="11" Foreground="{StaticResource TextDimBrush}"
@@ -3161,6 +3174,9 @@
                         <TextBlock Text="Phosphor - a digital media app for virtual pinball cabinets and desktops. This application may not be distributed without permission and may not be included on any commercial drive."
                                    FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
                                    TextWrapping="Wrap"/>
+                        <TextBlock FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
+                                   TextWrapping="Wrap"
+                                   Text="Emoji artwork: this app includes emoji fonts under their respective licenses — Twemoji © Twitter, Inc. and contributors (CC-BY 4.0); OpenMoji (CC-BY-SA 4.0); Noto Color Emoji © Google (SIL Open Font License 1.1); and Fluent Emoji © Microsoft (MIT License), packaged as a webfont by Tetsunori Nakayama. Segoe UI Emoji is a Microsoft system font used as provided by Windows."/>
                         <TextBlock Text="STARTUP HINT" FontSize="12" FontWeight="Bold"
                                    Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
                         <TextBlock Text="Show the one-time setup hint card on the DMD screen at launch"

@@ -30,11 +30,11 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <PackageReference Include="Emoji.Wpf" Version="0.3.4" />
     <PackageReference Include="LibVLCSharp.WPF" Version="3.9.7.1" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
     <PackageReference Include="NAudio" Version="2.3.0" />
     <PackageReference Include="SharpDX.DirectInput" Version="4.2.0" />
+    <PackageReference Include="SkiaSharp" Version="4.150.1" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.10" />
     <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.23.1" />
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
@@ -81,6 +81,10 @@
     <Content Include="..\dependencies\projectM\textures\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>presets\textures\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </Content>
+    <Content Include="Assets\EmojiFonts\*.ttf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>EmojiFonts\%(Filename)%(Extension)</Link>
     </Content>
   </ItemGroup>
 

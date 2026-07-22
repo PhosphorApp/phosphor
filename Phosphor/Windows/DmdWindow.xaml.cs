@@ -29,6 +29,31 @@ public partial class DmdWindow : JukeboxWindow
     private TopperProxy? _topperProxy;
 
     /// <summary>
+    /// The active icon style, surfaced as a DependencyProperty so the EmojiIcon controls in
+    /// the category-tile and result-row templates react to settings changes via binding.
+    /// </summary>
+    public static readonly DependencyProperty CurrentIconStyleProperty = DependencyProperty.Register(
+        nameof(CurrentIconStyle), typeof(IconStyle), typeof(DmdWindow),
+        new FrameworkPropertyMetadata(IconStyle.Color));
+
+    /// <summary>The active bundled emoji font set (used when <see cref="CurrentIconStyle"/> is Color/Themed).</summary>
+    public static readonly DependencyProperty CurrentEmojiFontSetProperty = DependencyProperty.Register(
+        nameof(CurrentEmojiFontSet), typeof(Phosphor.EmojiIcons.EmojiFontSet), typeof(DmdWindow),
+        new FrameworkPropertyMetadata(Phosphor.EmojiIcons.EmojiFontSet.SegoeSystem));
+
+    public IconStyle CurrentIconStyle
+    {
+        get => (IconStyle)GetValue(CurrentIconStyleProperty);
+        set => SetValue(CurrentIconStyleProperty, value);
+    }
+
+    public Phosphor.EmojiIcons.EmojiFontSet CurrentEmojiFontSet
+    {
+        get => (Phosphor.EmojiIcons.EmojiFontSet)GetValue(CurrentEmojiFontSetProperty);
+        set => SetValue(CurrentEmojiFontSetProperty, value);
+    }
+
+    /// <summary>
     /// Drives synchronized Pinup Popper playback across every screen currently in Pinup mode.
     /// Owned here (DMD thread) so it can outlive/coordinate the individual windows. Created
     /// lazily by <see cref="RefreshPinupSync"/>.
@@ -3073,11 +3098,11 @@ public partial class DmdWindow : JukeboxWindow
 
     private void ApplyIconStyle(IconStyle style)
     {
-        var key = style == IconStyle.Colorful ? "CategoryIconColorful" : "CategoryIconDefault";
-        Resources["CategoryIconCurrent"] = Resources[key];
-
-        var resultKey = style == IconStyle.Colorful ? "ResultIconColorful" : "ResultIconDefault";
-        Resources["ResultIconCurrent"] = Resources[resultKey];
+        // Surface the current style + font set as DependencyProperties; the EmojiIcon
+        // controls in the category-tile and result-row templates bind to these and
+        // rebuild automatically (including text fallback for non-emoji glyphs).
+        CurrentIconStyle = style;
+        CurrentEmojiFontSet = _appSettings?.DmdEmojiFontSet ?? Phosphor.EmojiIcons.EmojiFontSet.SegoeSystem;
     }
 
     public void SetDmdRotation(int degrees)
@@ -4006,14 +4031,25 @@ public partial class DmdWindow : JukeboxWindow
     ];
 
     /// <summary>
-    /// Returns either a plain string or an Emoji.Wpf.TextBlock for use as button content,
-    /// depending on the current icon style setting.
+    /// Returns an <see cref="Phosphor.EmojiIcons.EmojiIcon"/> for use as button/tile content.
+    /// The control renders per <paramref name="style"/> (Default text / Color image / Themed
+    /// tinted shape) and automatically falls back to text when the selected font lacks the glyph.
     /// </summary>
-    internal static object MakeIconContent(string emoji, double fontSize, IconStyle style)
+    internal static object MakeIconContent(string emoji, double fontSize, IconStyle style,
+        Phosphor.EmojiIcons.EmojiFontSet fontSet = Phosphor.EmojiIcons.EmojiFontSet.SegoeSystem,
+        System.Windows.Media.Brush? tintBrush = null)
     {
-        if (style != IconStyle.Colorful)
-            return emoji;
-        return new Emoji.Wpf.TextBlock { Text = emoji, FontSize = fontSize };
+        var icon = new Phosphor.EmojiIcons.EmojiIcon
+        {
+            Emoji = emoji,
+            DisplaySize = fontSize,
+            IconStyle = style,
+            FontSet = fontSet,
+        };
+        // Themed uses the purple accent brush; pass it through when supplied.
+        if (tintBrush != null)
+            icon.TintBrush = tintBrush;
+        return icon;
     }
 
     private static Dictionary<string, string[]>? _emojiKeywords;
@@ -4093,7 +4129,8 @@ public partial class DmdWindow : JukeboxWindow
     /// Suggested matches appear first with a highlight.
     /// </summary>
     internal static void UpdateIconGrid(WrapPanel iconGrid, System.Windows.Controls.ComboBox iconPicker, string text,
-        System.Windows.Media.Brush surfaceBrush, System.Windows.Media.Brush textBrush, System.Windows.Media.Brush accentBrush, IconStyle iconStyle = IconStyle.Default)
+        System.Windows.Media.Brush surfaceBrush, System.Windows.Media.Brush textBrush, System.Windows.Media.Brush accentBrush, IconStyle iconStyle = IconStyle.Color,
+        Phosphor.EmojiIcons.EmojiFontSet fontSet = Phosphor.EmojiIcons.EmojiFontSet.SegoeSystem)
     {
         iconGrid.Children.Clear();
         var suggestions = SuggestIcons(text);
@@ -4104,7 +4141,7 @@ public partial class DmdWindow : JukeboxWindow
             if (!shown.Add(emoji)) return;
             var btn = new System.Windows.Controls.Button
             {
-                Content = MakeIconContent(emoji, 20, iconStyle),
+                Content = MakeIconContent(emoji, 20, iconStyle, fontSet, accentBrush),
                 FontSize = 20,
                 Width = 38,
                 Height = 38,
@@ -4212,7 +4249,7 @@ public partial class DmdWindow : JukeboxWindow
         iconDebounce.Tick += (_, _) =>
         {
             iconDebounce.Stop();
-            UpdateIconGrid(iconGrid, iconPicker, input.Text, surfaceBrush, textBrush, accentBrush, _appSettings?.DmdIconStyle ?? IconStyle.Default);
+            UpdateIconGrid(iconGrid, iconPicker, input.Text, surfaceBrush, textBrush, accentBrush, _appSettings?.DmdIconStyle ?? IconStyle.Color, _appSettings?.DmdEmojiFontSet ?? Phosphor.EmojiIcons.EmojiFontSet.SegoeSystem);
         };
         input.TextChanged += (_, _) =>
         {
@@ -4249,7 +4286,7 @@ public partial class DmdWindow : JukeboxWindow
         {
             input.Focus();
             // Populate initial icon grid
-            UpdateIconGrid(iconGrid, iconPicker, input.Text, surfaceBrush, textBrush, accentBrush, _appSettings?.DmdIconStyle ?? IconStyle.Default);
+            UpdateIconGrid(iconGrid, iconPicker, input.Text, surfaceBrush, textBrush, accentBrush, _appSettings?.DmdIconStyle ?? IconStyle.Color, _appSettings?.DmdEmojiFontSet ?? Phosphor.EmojiIcons.EmojiFontSet.SegoeSystem);
         };
 
         if (dialog.ShowDialog() == true && !string.IsNullOrWhiteSpace(input.Text))

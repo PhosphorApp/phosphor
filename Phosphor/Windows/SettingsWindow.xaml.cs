@@ -936,9 +936,25 @@ public partial class SettingsWindow : JukeboxWindow
         SliderReactiveSpeed.Value = settings.ReactiveSpeedMs;
         SliderReactiveOverdrive.Value = settings.ReactiveOverdrive * 10;
 
-        foreach (var style in new[] { "Default", "Colorful" })
+        foreach (var style in new[] { "Color", "Desaturated", "Silhouette", "Themed" })
             CbIconStyle.Items.Add(style);
         CbIconStyle.SelectedIndex = (int)settings.DmdIconStyle;
+
+        foreach (var info in Phosphor.EmojiIcons.EmojiFontRegistry.All)
+            CbEmojiFontSet.Items.Add(info.DisplayName);
+        // Map the persisted set -> its position in the registry list (display order),
+        // which is NOT the same as the enum's numeric value.
+        var savedIndex = -1;
+        for (int i = 0; i < Phosphor.EmojiIcons.EmojiFontRegistry.All.Count; i++)
+        {
+            if (Phosphor.EmojiIcons.EmojiFontRegistry.All[i].Set == settings.DmdEmojiFontSet)
+            {
+                savedIndex = i;
+                break;
+            }
+        }
+        CbEmojiFontSet.SelectedIndex = savedIndex >= 0 ? savedIndex : 0;
+        UpdateEmojiSetRowState();
 
         foreach (var rot in new[] { "0°", "90°", "180°", "270°" })
             CbDmdRotation.Items.Add(rot);
@@ -3004,6 +3020,34 @@ public partial class SettingsWindow : JukeboxWindow
         // No-op; tracked via change-detection.
     }
 
+    private void CbIconStyle_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        UpdateEmojiSetRowState();
+    }
+
+    /// <summary>
+    /// Suppresses the automatic scroll a ComboBox (or other selectable child) triggers when its
+    /// selection changes. A selected item raises RequestBringIntoView, which bubbles to the
+    /// enclosing ScrollViewer and can jump the settings panel to the top. Marking it handled keeps
+    /// the panel scroll position stable. Attached to individual combos and to dynamic containers
+    /// like the plug-ins panel (where it catches every dynamically-added child via bubbling).
+    /// </summary>
+    private void ComboBox_SuppressBringIntoView(object sender, RequestBringIntoViewEventArgs e)
+    {
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// The Emoji Set applies to every icon style (Color/Desaturated/Silhouette/Themed all
+    /// derive from the selected font's glyphs), so the picker stays enabled for all styles.
+    /// </summary>
+    private void UpdateEmojiSetRowState()
+    {
+        if (EmojiSetRow == null) return;
+        EmojiSetRow.IsEnabled = true;
+        EmojiSetRow.Opacity = 1.0;
+    }
+
     private void SliderClockAnalogSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (TxtClockAnalogSize != null)
@@ -3787,6 +3831,9 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.DmdScreensaverDimTimeoutSeconds = CbDmdDimTimeout.SelectedIndex >= 0 && CbDmdDimTimeout.SelectedIndex < timeoutValues.Length
             ? timeoutValues[CbDmdDimTimeout.SelectedIndex] : 60;
         _settings.DmdIconStyle = (IconStyle)CbIconStyle.SelectedIndex;
+        var emojiIdx = CbEmojiFontSet.SelectedIndex;
+        if (emojiIdx >= 0 && emojiIdx < Phosphor.EmojiIcons.EmojiFontRegistry.All.Count)
+            _settings.DmdEmojiFontSet = Phosphor.EmojiIcons.EmojiFontRegistry.All[emojiIdx].Set;
         _settings.DmdRotation = CbDmdRotation.SelectedIndex switch { 1 => 90, 2 => 180, 3 => 270, _ => 0 };
         var newQueuePos = (QueuePosition)CbQueuePosition.SelectedIndex;
         if (newQueuePos != _settings.DmdQueuePosition)
