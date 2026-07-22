@@ -5,7 +5,7 @@
 > each phase has its own plan doc in this folder.
 >
 > **Branch:** `yt-dlp` (all work local — do **not** push unless explicitly asked).
-> **Analysis source of truth:** [`../../YT-DLP_MIGRATION_ANALYSIS.md`](../../YT-DLP_MIGRATION_ANALYSIS.md)
+> **Analysis source of truth:** [`../YT-DLP_MIGRATION_ANALYSIS.md`](../YT-DLP_MIGRATION_ANALYSIS.md)
 
 ---
 

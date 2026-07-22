@@ -309,4 +309,4 @@ Use `HttpClient` for network calls (respecting the host's configured timeout); u
 - **`Phosphor.Plugins.LocalFolder/`** — the full reference plug-in (this guide's running example).
 - **`Phosphor/Plugins/Loader/PluginLoader.cs`** — how the host discovers, version-gates, and isolates
   plug-ins (for understanding, not something you call).
-- **`PLUGIN_ARCHITECTURE_ANALYSIS.md`** — the design rationale and full changelog.
+- **`../dev_docs/PLUGIN_ARCHITECTURE_ANALYSIS.md`** — the design rationale and full changelog.

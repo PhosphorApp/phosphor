@@ -13,7 +13,7 @@ by third parties dropping a DLL into a `plug-ins` folder scanned at startup.
 > dynamic `AssemblyLoadContext` DLL loader, and a working third-party reference plug-in
 > (`Phosphor.Plugins.LocalFolder`). **Mid-phase notes below that say "todo", "deferred",
 > "when the flag is on/off", or "still single-server" are historical** — later entries and
-> this banner supersede them. For authoring a plug-in, see **`PLUGIN_AUTHORING_GUIDE.md`**.
+> this banner supersede them. For authoring a plug-in, see **`../docs/PLUGIN_AUTHORING_GUIDE.md`**.
 > Remaining items are conscious deferrals only: the untrusted-code
 > policy for third-party DLLs.
 > A working third-party live-radio source (**SiriusXM**) now ships on the `siriusxm`/`master` branch,

@@ -2,7 +2,7 @@
 
 First-pass, high-level feasibility notes for potential third-party **source** plug-ins,
 built on the capability-based contract in `Phosphor.Plugin.Abstractions` (see
-`PLUGIN_ARCHITECTURE_ANALYSIS.md` and `PLUGIN_AUTHORING_GUIDE.md`).
+`PLUGIN_ARCHITECTURE_ANALYSIS.md` and `../docs/PLUGIN_AUTHORING_GUIDE.md`).
 
 > **Scope.** These are *first-pass* assessments — feasibility, difficulty, cost, and
 > limitations only, not designs. Nothing here is committed work.
