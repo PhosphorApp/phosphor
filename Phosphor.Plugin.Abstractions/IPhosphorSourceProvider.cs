@@ -28,6 +28,16 @@ public interface IPhosphorSourceProvider
     string? Description => null;
 
     /// <summary>
+    /// Optional declaration that this source needs an external account or subscription to work (e.g.
+    /// Vimeo requires an API token tied to a Vimeo account). Purely advisory metadata: the host
+    /// surfaces a badge and a "Requires … Sign up: &lt;url&gt;" line in the Plug-ins settings tab so
+    /// users know upfront that setup involves signing up somewhere. <c>null</c> (the default) means the
+    /// source works with no account. This is distinct from a <see cref="PluginSettingType.Secret"/>
+    /// field, which only says "a credential is stored," not "you must go create one, possibly paid."
+    /// </summary>
+    AccountRequirement? Account => null;
+
+    /// <summary>
     /// The contract version this plug-in was built against. The host compares this to
     /// <see cref="PluginApi.Current"/> and refuses to load incompatible plug-ins.
     /// </summary>
@@ -63,3 +73,16 @@ public interface IPhosphorSourceProvider
     /// </summary>
     IPhosphorSource CreateInstance(string instanceId, IReadOnlyDictionary<string, string?> settings);
 }
+
+/// <summary>
+/// Advisory metadata describing an external account/subscription a source needs. The host renders it
+/// as a badge plus a one-line notice (e.g. "Requires a free Vimeo account. Sign up: &lt;url&gt;");
+/// it changes no behavior. The plug-in supplies the data, the host owns the presentation.
+/// </summary>
+/// <param name="Summary">
+/// Short human-readable requirement, e.g. "a free Vimeo account" or "a paid Plex Pass". The host
+/// composes this into "Requires {Summary}." so phrase it as a noun phrase without leading "Requires".
+/// </param>
+/// <param name="SignupUrl">Optional URL where the user can create the account; rendered as a link.</param>
+/// <param name="IsPaid">True when the account/subscription costs money, so the host can say so upfront.</param>
+public sealed record AccountRequirement(string Summary, string? SignupUrl = null, bool IsPaid = false);

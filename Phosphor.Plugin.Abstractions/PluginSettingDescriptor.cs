@@ -28,6 +28,15 @@ public sealed record PluginSettingDescriptor(
     public IReadOnlyList<string>? EnumValues { get; init; }
 
     /// <summary>
+    /// Optional one-click quick-fill buttons the host renders next to a text editor. Each preset is a
+    /// button that, when clicked, replaces the field's current text with the preset's value — letting
+    /// the plug-in offer canned values (e.g. a "Default" list or a "None" sentinel) without the host
+    /// knowing anything about the field's meaning. Null/empty renders a plain text box. Only honored
+    /// for text-style editors (ignored for Bool/Enum/Secret/FolderPath).
+    /// </summary>
+    public IReadOnlyList<PluginSettingPreset>? Presets { get; init; }
+
+    /// <summary>
     /// When true, this setting holds a <em>list</em> of values rather than one. The host renders an
     /// add/remove list editor (each row using the <see cref="Type"/>'s editor — e.g. a folder picker
     /// per row) and persists the list as newline-separated text in the single settings string. The
@@ -36,6 +45,13 @@ public sealed record PluginSettingDescriptor(
     /// </summary>
     public bool AllowMultiple { get; init; }
 }
+
+/// <summary>
+/// A one-click quick-fill button for a text setting. The plug-in supplies the <see cref="Label"/>
+/// (button caption) and the <see cref="Value"/> to drop into the field when clicked. The host renders
+/// the button and applies the value generically — it never needs to understand what the value means.
+/// </summary>
+public sealed record PluginSettingPreset(string Label, string Value);
 
 /// <summary>An interactive configuration action a source exposes (Tier 2 config).</summary>
 public sealed record ConfigAction(string Id, string Label, string? Description = null);

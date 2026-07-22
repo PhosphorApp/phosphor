@@ -65,16 +65,17 @@ public static class PluginSettingsFactory
 
     /// <summary>
     /// Returns provider metadata for a type id — display name, description, whether multiple
-    /// instances are allowed, whether the provider is experimental, and the settings schema — for the
-    /// settings UI to render editable fields without a live registry. Returns null for an unknown type id.
+    /// instances are allowed, whether the provider is experimental, its optional account requirement,
+    /// and the settings schema — for the settings UI to render editable fields without a live
+    /// registry. Returns null for an unknown type id.
     /// </summary>
-    public static (string DisplayName, string? Description, bool SupportsMultipleInstances, bool IsExperimental, IReadOnlyList<PluginSettingDescriptor> Schema)? DescribeProvider(string typeId)
+    public static (string DisplayName, string? Description, bool SupportsMultipleInstances, bool IsExperimental, AccountRequirement? Account, IReadOnlyList<PluginSettingDescriptor> Schema)? DescribeProvider(string typeId)
     {
         var p = CreateProvider(typeId);
         return p == null
             ? null
             : (p.DisplayName, p.Description, p.SupportsMultipleInstances,
-               p is Phosphor.Plugin.Abstractions.IExperimental, p.GetSettingsSchema());
+               p is Phosphor.Plugin.Abstractions.IExperimental, p.Account, p.GetSettingsSchema());
     }
 
     /// <summary>

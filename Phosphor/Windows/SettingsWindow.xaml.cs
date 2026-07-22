@@ -4372,8 +4372,9 @@ public partial class SettingsWindow : JukeboxWindow
                 VerticalAlignment = VerticalAlignment.Center,
             };
 
-            // Experimental providers get a small warning badge next to the title.
-            if (info?.IsExperimental == true)
+            // Experimental and/or account-required providers get small badges next to the title.
+            bool needsAccountBadge = info?.Account is not null;
+            if (info?.IsExperimental == true || needsAccountBadge)
             {
                 var titleRow = new System.Windows.Controls.StackPanel
                 {
@@ -4381,24 +4382,49 @@ public partial class SettingsWindow : JukeboxWindow
                     VerticalAlignment = VerticalAlignment.Center,
                 };
                 titleRow.Children.Add(title);
-                titleRow.Children.Add(new System.Windows.Controls.Border
+                if (info?.IsExperimental == true)
                 {
-                    Background = surface2,
-                    BorderBrush = dim,
-                    BorderThickness = new Thickness(1),
-                    CornerRadius = new System.Windows.CornerRadius(3),
-                    Padding = new Thickness(5, 1, 5, 1),
-                    Margin = new Thickness(8, 0, 0, 0),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    ToolTip = "Experimental — this source may be incomplete or unreliable.",
-                    Child = new System.Windows.Controls.TextBlock
+                    titleRow.Children.Add(new System.Windows.Controls.Border
                     {
-                        Text = "⚠ EXPERIMENTAL",
-                        Foreground = dim,
-                        FontWeight = FontWeights.SemiBold,
-                        FontSize = 9,
-                    },
-                });
+                        Background = surface2,
+                        BorderBrush = dim,
+                        BorderThickness = new Thickness(1),
+                        CornerRadius = new System.Windows.CornerRadius(3),
+                        Padding = new Thickness(5, 1, 5, 1),
+                        Margin = new Thickness(8, 0, 0, 0),
+                        VerticalAlignment = VerticalAlignment.Center,
+                        ToolTip = "Experimental — this source may be incomplete or unreliable.",
+                        Child = new System.Windows.Controls.TextBlock
+                        {
+                            Text = "⚠ EXPERIMENTAL",
+                            Foreground = dim,
+                            FontWeight = FontWeights.SemiBold,
+                            FontSize = 9,
+                        },
+                    });
+                }
+                if (needsAccountBadge)
+                {
+                    var acct = info!.Value.Account!;
+                    titleRow.Children.Add(new System.Windows.Controls.Border
+                    {
+                        Background = surface2,
+                        BorderBrush = dim,
+                        BorderThickness = new Thickness(1),
+                        CornerRadius = new System.Windows.CornerRadius(3),
+                        Padding = new Thickness(5, 1, 5, 1),
+                        Margin = new Thickness(8, 0, 0, 0),
+                        VerticalAlignment = VerticalAlignment.Center,
+                        ToolTip = $"Requires {acct.Summary}. Configure it in this source's settings below.",
+                        Child = new System.Windows.Controls.TextBlock
+                        {
+                            Text = acct.IsPaid ? "🔑 SUBSCRIPTION" : "🔑 ACCOUNT",
+                            Foreground = dim,
+                            FontWeight = FontWeights.SemiBold,
+                            FontSize = 9,
+                        },
+                    });
+                }
                 System.Windows.Controls.Grid.SetColumn(titleRow, 0);
                 headerGrid.Children.Add(titleRow);
             }
@@ -4449,6 +4475,44 @@ public partial class SettingsWindow : JukeboxWindow
                     TextWrapping = TextWrapping.Wrap,
                     Margin = new Thickness(0, 0, 0, 8),
                 });
+            }
+
+            // Account/subscription requirement — a one-line advisory with an optional signup link,
+            // mirroring the "Supports: …" line's style. Purely informational.
+            if (info?.Account is { } account)
+            {
+                var acctLine = new System.Windows.Controls.TextBlock
+                {
+                    Foreground = dim,
+                    FontSize = 11,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 0, 0, 8),
+                };
+                acctLine.Inlines.Add(new System.Windows.Documents.Run($"Requires {account.Summary}.")
+                {
+                    FontWeight = FontWeights.SemiBold,
+                });
+                if (!string.IsNullOrWhiteSpace(account.SignupUrl))
+                {
+                    acctLine.Inlines.Add(new System.Windows.Documents.Run(" Sign up: "));
+                    var link = new System.Windows.Documents.Hyperlink(
+                        new System.Windows.Documents.Run(account.SignupUrl))
+                    {
+                        Foreground = accent,
+                        NavigateUri = new Uri(account.SignupUrl),
+                    };
+                    var url = account.SignupUrl;
+                    link.Click += (_, _) =>
+                    {
+                        try
+                        {
+                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+                        }
+                        catch { /* best effort — a bad/unroutable URL just does nothing */ }
+                    };
+                    acctLine.Inlines.Add(link);
+                }
+                panel.Children.Add(acctLine);
             }
 
             // Supported capabilities (human-readable list of the interfaces the source implements).
@@ -4688,7 +4752,43 @@ public partial class SettingsWindow : JukeboxWindow
                     editor.ToolTip = d.HelpText;
 
                 _pluginFieldControls.Add((editor, cfg.InstanceId, d.Key));
-                AddSettingRow(grid, d.Label, d.HelpText, editor, text, dim);
+
+                // A plain text field can offer plug-in-supplied quick-fill buttons (e.g. "Default" /
+                // "None"). The host stays generic: it just drops the preset's value into the box. The
+                // inner TextBox is what's harvested (registered above), so wrapping it for display is
+                // purely cosmetic.
+                System.Windows.FrameworkElement display = editor;
+                if (editor is System.Windows.Controls.TextBox presetBox &&
+                    d.Presets is { Count: > 0 } presets)
+                {
+                    var presetRow = new System.Windows.Controls.DockPanel();
+                    var buttons = new System.Windows.Controls.StackPanel
+                    {
+                        Orientation = System.Windows.Controls.Orientation.Horizontal,
+                        Margin = new Thickness(8, 0, 0, 0),
+                        VerticalAlignment = VerticalAlignment.Center,
+                    };
+                    System.Windows.Controls.DockPanel.SetDock(buttons, System.Windows.Controls.Dock.Right);
+                    foreach (var preset in presets)
+                    {
+                        var presetBtn = new System.Windows.Controls.Button
+                        {
+                            Content = preset.Label,
+                            Padding = new Thickness(8, 3, 8, 3),
+                            Margin = new Thickness(4, 0, 0, 0),
+                            Cursor = System.Windows.Input.Cursors.Hand,
+                        };
+                        var value = preset.Value;
+                        presetBtn.Click += (_, _) => presetBox.Text = value;
+                        buttons.Children.Add(presetBtn);
+                    }
+                    presetBox.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
+                    presetRow.Children.Add(buttons);
+                    presetRow.Children.Add(presetBox);
+                    display = presetRow;
+                }
+
+                AddSettingRow(grid, d.Label, d.HelpText, display, text, dim);
             }
 
             // ── Caching policy selector — only meaningful for sources that can download/cache.
