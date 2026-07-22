@@ -62,7 +62,7 @@ public static class EmojiRenderer
     /// (handling surrogate pairs). Non-emoji symbols such as the fullwidth plus '＋' return false,
     /// letting callers fall back to plain text rendering.
     /// </summary>
-    private static bool FontHasGlyphs(SKTypeface typeface, string text)
+    private static bool FontHasGlyphs(SKFont font, string text)
     {
         var enumerator = System.Globalization.StringInfo.GetTextElementEnumerator(text);
         bool any = false;
@@ -71,7 +71,7 @@ public static class EmojiRenderer
             any = true;
             var element = (string)enumerator.Current;
             int cp = char.ConvertToUtf32(element, 0);
-            if (typeface.GetGlyph(cp) == 0)
+            if (!font.ContainsGlyph(cp))
                 return false;
         }
         return any;
@@ -112,17 +112,17 @@ public static class EmojiRenderer
 
         try
         {
+            // Create the font up front so the glyph-coverage check and the actual draw
+            // share it. Rendering uses ink-bounds scale-to-fit + center (font-agnostic),
+            // avoiding advance/vertical metrics that are unreliable for some color fonts.
+            using var measureFont = new SKFont(typeface, pixelSize);
+
             // If the font has no glyph for this text (e.g. non-emoji symbols like the
             // fullwidth plus '＋' used by the New Playlist tile), bail so the caller can
             // fall back to rendering the raw string as text.
-            if (!FontHasGlyphs(typeface, emoji))
+            if (!FontHasGlyphs(measureFont, emoji))
                 return null;
 
-            // Render the glyph at a nominal size, measure its true inked bounds, then
-            // scale-to-fit and center it in the output box. This is font-agnostic and
-            // avoids relying on advance widths / vertical metrics, which are unreliable
-            // for some color fonts, the cause of off-center ("left-justified") and blank glyphs.
-            using var measureFont = new SKFont(typeface, pixelSize);
             using var paint = new SKPaint { IsAntialias = true };
             if (grayscale)
             {
