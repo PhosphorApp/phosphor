@@ -3134,7 +3134,7 @@ public partial class SettingsWindow : JukeboxWindow
     /// </summary>
     private void UpdateGameOfLifeRulesVisibility()
     {
-        // Rules engine is temporarily forced to Conway (see docs/GameOfLifeRules.md),
+        // Rules engine is temporarily forced to Conway (see dev_docs/GameOfLifeRules.md),
         // so the Conway-only controls are always visible regardless of any
         // persisted GameOfLifeRulesEngine value from a previous session.
         if (PanelGameOfLifeConwayOnly != null)

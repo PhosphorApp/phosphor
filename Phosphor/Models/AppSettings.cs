@@ -520,7 +520,7 @@ public class AppSettings
     /// fields remain the edit surface, so this list is <em>derived</em> from them on each registry
     /// build and written back for round-trip visibility (the persisted section exists and reflects
     /// current config). A later increment (editable Plug-ins tab) makes this the authoritative edit
-    /// surface and stops deriving. See PLUGIN_ARCHITECTURE_ANALYSIS.md.
+    /// surface and stops deriving. See dev_docs/PLUGIN_ARCHITECTURE_ANALYSIS.md.
     /// </summary>
     public List<Phosphor.Plugins.PluginInstanceConfig> PluginInstances { get; set; } = [];
 
@@ -530,7 +530,7 @@ public class AppSettings
     /// Windows user on this machine). Default false — secrets are stored as plaintext, keeping the
     /// settings file portable. Enabling this trades portability for at-rest protection; the value is
     /// self-describing (<c>enc:dpapi:</c> prefix) so existing encrypted values still decrypt after
-    /// the option is turned off again. See PLUGIN_ARCHITECTURE_ANALYSIS.md.
+    /// the option is turned off again. See dev_docs/PLUGIN_ARCHITECTURE_ANALYSIS.md.
     /// </summary>
     public bool EncryptSecrets { get; set; }
 

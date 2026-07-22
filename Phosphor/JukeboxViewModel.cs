@@ -2808,7 +2808,7 @@ public partial class JukeboxViewModel : ObservableObject
     /// library/folder/collection), so the global search-source selector doesn't apply. Source-agnostic
     /// by design: today only Plex library browsing sets it, but any future scoped source (Jellyfin
     /// library, local-folder, …) should feed into this same signal rather than the UI checking a
-    /// per-source flag. When a generic scoped-search capability lands (see PLUGIN_ARCHITECTURE_ANALYSIS.md),
+    /// per-source flag. When a generic scoped-search capability lands (see dev_docs/PLUGIN_ARCHITECTURE_ANALYSIS.md),
     /// this becomes its natural home.
     /// </summary>
     public bool IsSearchScoped => IsGenericScopedSearchAvailable;

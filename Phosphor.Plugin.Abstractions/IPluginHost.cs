@@ -4,7 +4,7 @@ namespace Phosphor.Plugin.Abstractions;
 /// Services the host hands to a source at initialization so the plug-in never references
 /// host internals directly. This is the one-way door the plug-in may call back through;
 /// the host owns all threading/marshalling behind these members (see the threading notes
-/// in PLUGIN_ARCHITECTURE_ANALYSIS.md).
+/// in dev_docs/PLUGIN_ARCHITECTURE_ANALYSIS.md).
 /// </summary>
 public interface IPluginHost
 {

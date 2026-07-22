@@ -5,7 +5,7 @@
 	The stable contract that source plug-ins are built against. Deliberately tiny and
 	dependency-free so third-party plug-ins reference it WITHOUT bundling it (the host
 	supplies the single shared copy). Targets plain net8.0 (no -windows): plug-ins
-	produce data, never touch WPF/UI (see PLUGIN_ARCHITECTURE_ANALYSIS.md).
+	produce data, never touch WPF/UI (see dev_docs/PLUGIN_ARCHITECTURE_ANALYSIS.md).
   -->
   <PropertyGroup>
 	<TargetFramework>net8.0</TargetFramework>
@@ -29,7 +29,7 @@
 	`dotnet pack -c Release` produces the package. Plug-in authors reference it as
 	compile-only (<Private>false</Private> / <ExcludeAssets>runtime</ExcludeAssets>)
 	so the host supplies the single shared copy at runtime (see the plug-in loading
-	notes in PLUGIN_ARCHITECTURE_ANALYSIS.md).
+	notes in dev_docs/PLUGIN_ARCHITECTURE_ANALYSIS.md).
   -->
   <PropertyGroup>
 	<PackageId>Phosphor.Plugin.Abstractions</PackageId>

@@ -151,7 +151,7 @@ Console.WriteLine();
 Console.WriteLine("AUDIO (unchanged, still the blocker): this spike does NOT resolve a playable stream.");
 Console.WriteLine("Spotify audio is per-track-key encrypted over the AP protocol; yt-dlp has no extractor");
 Console.WriteLine("and there is no static-key trick like SiriusXM. Real Premium audio needs a librespot");
-Console.WriteLine("bridge (Path B) — that is the next spike if we pursue Spotify. See SOURCE_PLUGIN_CANDIDATES.md.");
+Console.WriteLine("bridge (Path B) — that is the next spike if we pursue Spotify. See dev_docs/SOURCE_PLUGIN_CANDIDATES.md.");
 return discoveryOk ? 0 : 1;
 
 

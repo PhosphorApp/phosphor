@@ -1190,7 +1190,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
         // one global color per tick, so we don't need the per-cell parent-color
         // average that Genetic mode does. The bitboard step computes neighbor
         // counts 64 cells at a time with bit-parallel adders. See
-        // PERFORMANCE_NOTES.md "Bitboard Simulation + EraBanded Color Mode".
+        // dev_docs/PERFORMANCE_NOTES.md "Bitboard Simulation + EraBanded Color Mode".
         if (ColorMode == ColorModeKind.EraBanded)
         {
             StepSimulationBitboard();
@@ -1305,7 +1305,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
         // StepRowBitboard so they run in parallel and stay hot in L1/L2.
         // The previous serial Array.Clear (32 MB) + fade pre-decay (16 MB)
         // were the dominant cost at 4K, drowning out the bitboard's compute
-        // win. See PERFORMANCE_NOTES.md for the diagnosis.
+        // win. See dev_docs/PERFORMANCE_NOTES.md for the diagnosis.
 
         Array.Clear(_sectorBirths);
         Array.Clear(_sectorAlive);

@@ -12,7 +12,7 @@ namespace Phosphor.Plugin.Abstractions;
 /// The source is a pure data producer: the host calls in and receives plain data back.
 /// A source must never assume a UI thread, touch WPF, or call back into the host beyond
 /// the services handed to it via <see cref="IPluginHost"/> (see the threading notes in
-/// PLUGIN_ARCHITECTURE_ANALYSIS.md).
+/// dev_docs/PLUGIN_ARCHITECTURE_ANALYSIS.md).
 /// </remarks>
 public interface IPhosphorSource
 {
