@@ -672,6 +672,52 @@
             </Border>
         </Grid>
 
+        <!-- First-launch hint card: overlays the free space at the bottom of the content column.
+             Lives in Column 0 so it can never cover the Queue (Column 2) or the Now Playing bar
+             (a sibling row). Dismissed via the Close button, re-enabled from the About settings tab. -->
+        <Border Grid.Column="0" x:Name="StartupHintCard" Panel.ZIndex="50"
+                Visibility="{Binding IsStartupHintVisible, Converter={StaticResource BoolVis}}"
+                VerticalAlignment="Bottom" HorizontalAlignment="Stretch"
+                Margin="0,12,0,0"
+                Background="{StaticResource Surface2Brush}" BorderBrush="{StaticResource AccentBrush}"
+                BorderThickness="1" CornerRadius="8" Padding="16,14">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="18" ShadowDepth="0" Opacity="0.55" Color="Black"/>
+            </Border.Effect>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                    <TextBlock Text="&#x1F44B; Initial setup" FontSize="17" FontWeight="Bold"
+                               Foreground="{StaticResource AccentBrush}" Margin="0,0,0,8"/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TextBrush}"
+                               FontSize="14" LineHeight="20" Margin="0,0,0,6">
+                        This is the main interface — the <Run FontWeight="SemiBold">DMD</Run> screen.
+                        You can place windows wherever you'd like; Phosphor labels them as the
+                        <Run FontWeight="SemiBold">Playfield</Run>, <Run FontWeight="SemiBold">Backglass</Run>,
+                        <Run FontWeight="SemiBold">DMD</Run>, and <Run FontWeight="SemiBold">Topper</Run> to make it easier to identify. 
+                        The DMD is the only required window, the rest can be turned off.                        
+                    </TextBlock>
+                    <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TextBrush}"
+                               FontSize="14" LineHeight="20">
+                        Open the <Run FontWeight="SemiBold">Settings</Run> (&#x2699;) icon to configure your
+                        sources on the <Run FontWeight="SemiBold">Plug-ins</Run> tab, set up your screens on the
+                        <Run FontWeight="SemiBold">General</Run> tab, and tinker with the
+                        <Run FontWeight="SemiBold">Visuals</Run> tab. There are lots of visualization options to make the experience your own. 
+                        Experiment and have fun! Once closed, you can re-open this message on the <Run FontWeight="SemiBold">Settings</Run> 
+                        <Run FontWeight="SemiBold">About</Run> tab.
+                    </TextBlock>
+                </StackPanel>
+                <Button Grid.Column="1" x:Name="StartupHintCloseButton" Content="&#x2715;"
+                        VerticalAlignment="Top" Width="28" Height="28" Padding="0" FontSize="16"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                        ToolTip="Dismiss (re-enable from Settings &#x2192; About)"
+                        Click="StartupHintClose_Click"/>
+            </Grid>
+        </Border>
+
         <!-- Queue splitter -->
         <GridSplitter x:Name="QueueSplitter" Grid.Column="1" Width="6" VerticalAlignment="Stretch"
                       HorizontalAlignment="Center" Background="Transparent"

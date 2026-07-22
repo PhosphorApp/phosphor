@@ -3158,9 +3158,16 @@
                         <StackPanel>
                         <TextBlock Text="ABOUT" FontSize="12" FontWeight="Bold"
                                    Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
-                        <TextBlock Text="Phosphor - a digital jukebox prototype for virtual pinball cabinets. This application may not be distributed without permission."
+                        <TextBlock Text="Phosphor - a digital media app for virtual pinball cabinets and desktops. This application may not be distributed without permission and may not be included on any commercial drive."
                                    FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
                                    TextWrapping="Wrap"/>
+                        <TextBlock Text="STARTUP HINT" FontSize="12" FontWeight="Bold"
+                                   Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
+                        <TextBlock Text="Show the one-time setup hint card on the DMD screen at launch"
+                                   FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
+                                   TextWrapping="Wrap"/>
+                        <CheckBox x:Name="CbShowStartupHint" Content="Show startup hint on next launch"
+                                  Foreground="{StaticResource TextBrush}" Margin="0,0,0,12"/>
                         <TextBlock Text="DEBUG LOG" FontSize="12" FontWeight="Bold"
                                    Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
                         <TextBlock Text="Create a debug log that logs events and errors"

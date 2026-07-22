@@ -168,6 +168,12 @@ public class AppSettings
     public bool ResizableWindows { get; set; } = true;
     public bool SetCursorOnLaunch { get; set; }
     public bool MoveCursorToSettings { get; set; }
+    /// <summary>
+    /// Shows the one-time "Initial setup" hint card on the DMD screen. Defaults to true so a fresh
+    /// install (and existing settings files that predate this flag) surface it once; the card's Close
+    /// button sets it false. Re-enabled via the About settings tab to show the hint again next launch.
+    /// </summary>
+    public bool ShowStartupHint { get; set; } = true;
     public bool CheckWindowsOnStartup { get; set; } = true;
     public bool CacheEnabled { get; set; }
     public double CacheMaxSizeGb { get; set; } = 5.0;

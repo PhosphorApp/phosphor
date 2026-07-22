@@ -823,6 +823,8 @@ public partial class DmdWindow : JukeboxWindow
         ApplyCursorHideTimeout();
         if (settings.SetCursorOnLaunch)
             Dispatcher.BeginInvoke(DispatcherPriority.Loaded, CenterCursorOnWindow);
+        if (DataContext is JukeboxViewModel hintVm)
+            hintVm.IsStartupHintVisible = settings.ShowStartupHint;
         _playfieldProxy = playfieldProxy;
         _backglassProxy = backglassProxy;
         _topperProxy = topperProxy;
@@ -1149,6 +1151,16 @@ public partial class DmdWindow : JukeboxWindow
     private void ToggleExpand_Click(object sender, RoutedEventArgs e) => ToggleExpand();
 
     private void CloseApp_Click(object sender, RoutedEventArgs e) => Close();
+
+    // Dismiss the first-launch hint card. Hides it now and clears the persisted flag so it stays
+    // hidden on future launches. AppSettings is saved on exit (no immediate write), per convention.
+    private void StartupHintClose_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is JukeboxViewModel vm)
+            vm.IsStartupHintVisible = false;
+        if (_appSettings != null)
+            _appSettings.ShowStartupHint = false;
+    }
 
     protected override void UpdateExpandButtonVisibility(bool isActive)
     {

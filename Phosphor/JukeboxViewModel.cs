@@ -1077,6 +1077,17 @@ public partial class JukeboxViewModel : ObservableObject
         set => SetProperty(ref _showCategories, value);
     }
 
+    private bool _isStartupHintVisible;
+    /// <summary>
+    /// Drives the one-time "Initial setup" hint card on the DMD screen. Seeded from
+    /// <see cref="AppSettings.ShowStartupHint"/> at launch and cleared when the user dismisses it.
+    /// </summary>
+    public bool IsStartupHintVisible
+    {
+        get => _isStartupHintVisible;
+        set => SetProperty(ref _isStartupHintVisible, value);
+    }
+
     private bool _isViewingPlaylist;
     public bool IsViewingPlaylist
     {

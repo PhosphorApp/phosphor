@@ -1077,7 +1077,7 @@ public partial class SettingsWindow : JukeboxWindow
         CbDebugLogging.IsChecked = settings.DebugLogging;
         UpdateDebugLogPathText();
         UpdateCrashLogStatus();
-
+        CbShowStartupHint.IsChecked = settings.ShowStartupHint;
         // Track list settings
         foreach (var c in new[] { 1, 2, 3, 4 })
             CbResultColumns.Items.Add(c);
@@ -3885,6 +3885,7 @@ public partial class SettingsWindow : JukeboxWindow
             ? ageValues[CbResultCacheMaxAge.SelectedIndex] : 168;
         _settings.DebugLogging = CbDebugLogging.IsChecked == true;
         DebugLog.Enabled = _settings.DebugLogging;
+        _settings.ShowStartupHint = CbShowStartupHint.IsChecked == true;
         // Harvest the editable Plug-ins tab into settings.PluginInstances (the plug-in path's config).
         HarvestPluginSourcesTab();
         if (CbResultColumns.SelectedItem is int cols)
