@@ -443,18 +443,37 @@ public partial class SettingsWindow : JukeboxWindow
         var state = new ScrollGuardState { UserOffset = sv.VerticalOffset, LastInputTick = Environment.TickCount };
         _scrollGuards.Add(sv, state);
 
+        // Only genuine SCROLL gestures count as intent. Clicking a control (checkbox, combo,
+        // button, radio) is NOT scroll intent — an earlier version marked any mouse-down/key-down
+        // as input, which whitelisted the very focus-driven jump we need to catch (it fires ~1ms
+        // after the click, inside the window). So we mark input only for the wheel, and for keys
+        // that actually scroll (PageUp/Down, Home/End). Scrollbar thumb drags move the offset
+        // directly and are preserved because UserOffset is updated whenever a scroll is accepted.
         void MarkInput() => state.LastInputTick = Environment.TickCount;
         sv.PreviewMouseWheel += (_, _) => MarkInput();
-        sv.PreviewMouseDown += (_, _) => MarkInput();
-        sv.PreviewKeyDown += (_, _) => MarkInput();
-        sv.PreviewTouchDown += (_, _) => MarkInput();
-
+        sv.PreviewTouchMove += (_, _) => MarkInput();
+        sv.PreviewKeyDown += (_, ke) =>
+        {
+            switch (ke.Key)
+            {
+                case Key.PageUp:
+                case Key.PageDown:
+                case Key.Home:
+                case Key.End:
+                    MarkInput();
+                    break;
+            }
+        };
+        // Dragging the scrollbar thumb: the Thumb raises DragStarted/DragDelta via the ScrollBar.
+        sv.AddHandler(System.Windows.Controls.Primitives.Thumb.DragDeltaEvent,
+            new System.Windows.Controls.Primitives.DragDeltaEventHandler((_, _) => MarkInput()), handledEventsToo: true);
         sv.ScrollChanged += (_, args) =>
         {
             if (state.Restoring) return;
             if (args.VerticalChange == 0) return;
 
-            // A change within a short window of real user input is intentional — accept it.
+            // A change within a short window of a real SCROLL gesture is intentional — accept it
+            // and remember the new position.
             if (Environment.TickCount - state.LastInputTick < 300)
             {
                 state.UserOffset = sv.VerticalOffset;
