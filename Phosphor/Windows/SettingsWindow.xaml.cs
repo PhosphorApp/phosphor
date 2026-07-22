@@ -373,28 +373,51 @@ public partial class SettingsWindow : JukeboxWindow
 
     public event Action? SettingsApplied;
 
-    static SettingsWindow()
+    private readonly RequestBringIntoViewEventHandler _suppressBringIntoView = (_, e) => e.Handled = true;
+
+    /// <summary>
+    /// Suppresses the "scroll jumps to top" bug: changing a ComboBox selection inside a
+    /// ScrollViewer makes the panel auto-scroll to bring the (re-focused) control into view.
+    ///
+    /// Fix strategy: attach a handler to the CONTENT child of every ScrollViewer.
+    /// RequestBringIntoView bubbles up from whatever element raised it, and the ScrollViewer
+    /// performs the scroll when the event reaches it. Because a ScrollViewer's content sits
+    /// directly below it in the tree, EVERY bring-into-view request in that tab must bubble
+    /// through the content child before reaching the ScrollViewer. Marking the event handled
+    /// there stops the scroll regardless of what raised it (ComboBox, ComboBoxItem, a re-focused
+    /// element, a virtualized container, etc.) — which the earlier ComboBox/ComboBoxItem-typed
+    /// class handlers missed intermittently.
+    ///
+    /// Known tradeoff (see docs/KNOWN_ISSUES.md): this also suppresses legitimate keyboard
+    /// focus-driven bring-into-view within the settings panels. Acceptable because the Settings
+    /// window is mouse-driven; cabinet keyboard shortcuts target playback, not settings.
+    /// </summary>
+    private void SuppressScrollIntoViewOnLoad(object sender, RoutedEventArgs e)
     {
-        // Robustly suppress the "scroll jumps to top" bug where changing a ComboBox selection
-        // inside a ScrollViewer makes the panel auto-scroll. RequestBringIntoView can be raised
-        // from two places: the selected ComboBoxItem (which lives in the dropdown popup's own
-        // visual tree) AND the ComboBox itself (in the main tree, e.g. when focus settles after
-        // a selection). Earlier per-instance and ComboBoxItem-only handlers caught it only
-        // intermittently because the triggering path varied per combo. Registering class handlers
-        // for BOTH types marks the event handled at the source before any ScrollViewer ancestor
-        // performs the scroll — covering every combo in the app, including dynamically-built
-        // plug-in setting dropdowns (e.g. Vimeo/DailyMotion video quality).
-        //
-        // Known tradeoff (see docs/KNOWN_ISSUES.md): this also suppresses the legitimate
-        // keyboard focus-driven bring-into-view for combos. Acceptable because the Settings
-        // window is mouse-driven; cabinet keyboard shortcuts target playback, not settings.
-        var suppress = new RequestBringIntoViewEventHandler((_, e) => e.Handled = true);
-        EventManager.RegisterClassHandler(
-            typeof(System.Windows.Controls.ComboBoxItem),
-            FrameworkElement.RequestBringIntoViewEvent, suppress);
-        EventManager.RegisterClassHandler(
-            typeof(System.Windows.Controls.ComboBox),
-            FrameworkElement.RequestBringIntoViewEvent, suppress);
+        foreach (var sv in FindVisualChildren<System.Windows.Controls.ScrollViewer>(this))
+        {
+            if (System.Windows.Media.VisualTreeHelper.GetChildrenCount(sv) == 0)
+                continue;
+            if (System.Windows.Media.VisualTreeHelper.GetChild(sv, 0) is UIElement content)
+            {
+                // Remove first to avoid double-registration if Loaded fires more than once.
+                content.RemoveHandler(FrameworkElement.RequestBringIntoViewEvent, _suppressBringIntoView);
+                content.AddHandler(FrameworkElement.RequestBringIntoViewEvent, _suppressBringIntoView, handledEventsToo: false);
+            }
+        }
+    }
+
+    private static IEnumerable<T> FindVisualChildren<T>(DependencyObject root) where T : DependencyObject
+    {
+        int count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < count; i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is T typed)
+                yield return typed;
+            foreach (var descendant in FindVisualChildren<T>(child))
+                yield return descendant;
+        }
     }
 
     public SettingsWindow(AppSettings settings)
@@ -403,6 +426,17 @@ public partial class SettingsWindow : JukeboxWindow
         _entries = settings.KeyBindings.ToEntries();
 
         InitializeComponent();
+
+        // Suppress the "scroll jumps to top" bug once the visual tree exists (see below).
+        Loaded += SuppressScrollIntoViewOnLoad;
+        // TabControl realizes each tab's content (and its ScrollViewer) lazily on first view,
+        // so re-run the wiring when the selected tab changes to cover tabs not yet realized at load.
+        SettingsTabs.SelectionChanged += (_, args) =>
+        {
+            if (!ReferenceEquals(args.OriginalSource, SettingsTabs)) return;
+            Dispatcher.BeginInvoke(new Action(() => SuppressScrollIntoViewOnLoad(this, new RoutedEventArgs())),
+                System.Windows.Threading.DispatcherPriority.Loaded);
+        };
 
         SetResizable(settings.ResizableWindows);
 
