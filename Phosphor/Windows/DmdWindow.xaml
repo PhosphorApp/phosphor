@@ -663,7 +663,8 @@
                         You can place windows wherever you'd like; Phosphor labels them as the
                         <Run FontWeight="SemiBold">Playfield</Run>, <Run FontWeight="SemiBold">Backglass</Run>,
                         <Run FontWeight="SemiBold">DMD</Run>, and <Run FontWeight="SemiBold">Topper</Run> to make it easier to identify. 
-                        The DMD is the only required window, the rest can be turned off.                        
+                        The DMD is the only required window, the rest can be turned off
+                        (<Run FontWeight="SemiBold">Settings &gt; General</Run>).
                     </TextBlock>
                     <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TextBrush}"
                                FontSize="14" LineHeight="20">
