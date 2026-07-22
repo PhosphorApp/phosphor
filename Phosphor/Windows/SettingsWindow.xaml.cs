@@ -373,6 +373,30 @@ public partial class SettingsWindow : JukeboxWindow
 
     public event Action? SettingsApplied;
 
+    static SettingsWindow()
+    {
+        // Robustly suppress the "scroll jumps to top" bug where changing a ComboBox selection
+        // inside a ScrollViewer makes the panel auto-scroll. RequestBringIntoView can be raised
+        // from two places: the selected ComboBoxItem (which lives in the dropdown popup's own
+        // visual tree) AND the ComboBox itself (in the main tree, e.g. when focus settles after
+        // a selection). Earlier per-instance and ComboBoxItem-only handlers caught it only
+        // intermittently because the triggering path varied per combo. Registering class handlers
+        // for BOTH types marks the event handled at the source before any ScrollViewer ancestor
+        // performs the scroll — covering every combo in the app, including dynamically-built
+        // plug-in setting dropdowns (e.g. Vimeo/DailyMotion video quality).
+        //
+        // Known tradeoff (see docs/KNOWN_ISSUES.md): this also suppresses the legitimate
+        // keyboard focus-driven bring-into-view for combos. Acceptable because the Settings
+        // window is mouse-driven; cabinet keyboard shortcuts target playback, not settings.
+        var suppress = new RequestBringIntoViewEventHandler((_, e) => e.Handled = true);
+        EventManager.RegisterClassHandler(
+            typeof(System.Windows.Controls.ComboBoxItem),
+            FrameworkElement.RequestBringIntoViewEvent, suppress);
+        EventManager.RegisterClassHandler(
+            typeof(System.Windows.Controls.ComboBox),
+            FrameworkElement.RequestBringIntoViewEvent, suppress);
+    }
+
     public SettingsWindow(AppSettings settings)
     {
         _settings = settings;
@@ -3023,18 +3047,6 @@ public partial class SettingsWindow : JukeboxWindow
     private void CbIconStyle_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
         UpdateEmojiSetRowState();
-    }
-
-    /// <summary>
-    /// Suppresses the automatic scroll a ComboBox (or other selectable child) triggers when its
-    /// selection changes. A selected item raises RequestBringIntoView, which bubbles to the
-    /// enclosing ScrollViewer and can jump the settings panel to the top. Marking it handled keeps
-    /// the panel scroll position stable. Attached to individual combos and to dynamic containers
-    /// like the plug-ins panel (where it catches every dynamically-added child via bubbling).
-    /// </summary>
-    private void ComboBox_SuppressBringIntoView(object sender, RequestBringIntoViewEventArgs e)
-    {
-        e.Handled = true;
     }
 
     /// <summary>

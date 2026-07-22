@@ -43,3 +43,6 @@ tools/SiriusXmSpike/*.local
 # Spotify spike — never commit the sp_dc cookie
 tools/SpotifySpike/spotify.local.json
 tools/SpotifySpike/*.local
+
+# Throwaway diagnostic spike projects (SkiaSharp/emoji rendering tests, etc.)
+_spike_*/

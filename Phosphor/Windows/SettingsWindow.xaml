@@ -1983,7 +1983,6 @@
                                           Background="{StaticResource Surface2Brush}"
                                           Foreground="{StaticResource TextBrush}"
                                           FontSize="12" BorderBrush="#333"
-                                          RequestBringIntoView="ComboBox_SuppressBringIntoView"
                                           SelectionChanged="CbIconStyle_SelectionChanged"/>
                             </DockPanel>
                             <DockPanel x:Name="EmojiSetRow" Margin="0,0,0,8">
@@ -1993,7 +1992,6 @@
                                           Background="{StaticResource Surface2Brush}"
                                           Foreground="{StaticResource TextBrush}"
                                           FontSize="12" BorderBrush="#333"
-                                          RequestBringIntoView="ComboBox_SuppressBringIntoView"
                                           ToolTip="The emoji font used for all icon styles."/>
                             </DockPanel>
                             <DockPanel Margin="0,0,0,8">
@@ -2960,8 +2958,7 @@
                             <TextBlock Text="Music and video sources are provided by plug-ins. This tab lists the configured sources and their settings — add or remove sources, enable/disable them, and edit their configuration here."
                                        FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
                                        TextWrapping="Wrap"/>
-                            <StackPanel x:Name="PanelPluginSources"
-                                        RequestBringIntoView="ComboBox_SuppressBringIntoView"/>
+                            <StackPanel x:Name="PanelPluginSources"/>
                             <TextBlock x:Name="PluginSourcesEmptyText"
                                        Text="No plug-in sources configured yet."
                                        FontSize="11" Foreground="{StaticResource TextDimBrush}"
