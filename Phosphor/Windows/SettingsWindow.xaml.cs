@@ -373,8 +373,6 @@ public partial class SettingsWindow : JukeboxWindow
 
     public event Action? SettingsApplied;
 
-    private readonly RequestBringIntoViewEventHandler _suppressBringIntoView = (_, e) => e.Handled = true;
-
     static SettingsWindow()
     {
         // Defense-in-depth: class handlers on the combo types PLUS a handler on each
@@ -411,18 +409,64 @@ public partial class SettingsWindow : JukeboxWindow
     /// focus-driven bring-into-view within the settings panels. Acceptable because the Settings
     /// window is mouse-driven; cabinet keyboard shortcuts target playback, not settings.
     /// </summary>
+    /// <summary>
+    /// Guards against the "scroll jumps to top" bug. Diagnostic logging proved the leaked scroll
+    /// is a bring-into-view whose OriginalSource IS the ScrollViewer itself (raised when a child —
+    /// e.g. a CheckBox or an internal element — takes focus). That path bubbles up and away from any
+    /// handler placed on child content, and WPF's own scroll runs in a ScrollViewer class handler
+    /// that fires before instance handlers, so it can't be cancelled from below. Instead we let the
+    /// scroll happen and immediately restore the user's intended offset: real user gestures (wheel,
+    /// scrollbar drag, nav keys) update the saved offset; programmatic jumps that occur without a
+    /// recent gesture are snapped back. Combined with the combo-type class handlers (which the log
+    /// confirmed already suppress the common case) this covers every path source-agnostically.
+    /// </summary>
     private void SuppressScrollIntoViewOnLoad(object sender, RoutedEventArgs e)
     {
         foreach (var sv in FindVisualChildren<System.Windows.Controls.ScrollViewer>(this))
+            AttachScrollGuard(sv);
+    }
+
+    // Per-ScrollViewer last user-scroll-intent offset and last-input timestamp.
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<System.Windows.Controls.ScrollViewer, ScrollGuardState> _scrollGuards = new();
+
+    private sealed class ScrollGuardState
+    {
+        public double UserOffset;
+        public int LastInputTick;
+        public bool Restoring;
+    }
+
+    private void AttachScrollGuard(System.Windows.Controls.ScrollViewer sv)
+    {
+        if (_scrollGuards.TryGetValue(sv, out _))
+            return; // already attached
+        var state = new ScrollGuardState { UserOffset = sv.VerticalOffset, LastInputTick = Environment.TickCount };
+        _scrollGuards.Add(sv, state);
+
+        void MarkInput() => state.LastInputTick = Environment.TickCount;
+        sv.PreviewMouseWheel += (_, _) => MarkInput();
+        sv.PreviewMouseDown += (_, _) => MarkInput();
+        sv.PreviewKeyDown += (_, _) => MarkInput();
+        sv.PreviewTouchDown += (_, _) => MarkInput();
+
+        sv.ScrollChanged += (_, args) =>
         {
-            // Attach to the ScrollViewer's actual Content element (a descendant of the
-            // ScrollContentPresenter that performs the scroll), so we intercept the event first.
-            if (sv.Content is UIElement content)
+            if (state.Restoring) return;
+            if (args.VerticalChange == 0) return;
+
+            // A change within a short window of real user input is intentional — accept it.
+            if (Environment.TickCount - state.LastInputTick < 300)
             {
-                content.RemoveHandler(FrameworkElement.RequestBringIntoViewEvent, _suppressBringIntoView);
-                content.AddHandler(FrameworkElement.RequestBringIntoViewEvent, _suppressBringIntoView, handledEventsToo: false);
+                state.UserOffset = sv.VerticalOffset;
+                return;
             }
-        }
+
+            // Otherwise it's a programmatic focus-driven jump — restore the user's position.
+            state.Restoring = true;
+            sv.ScrollToVerticalOffset(state.UserOffset);
+            Dispatcher.BeginInvoke(new Action(() => state.Restoring = false),
+                System.Windows.Threading.DispatcherPriority.Input);
+        };
     }
 
     /// <summary>
