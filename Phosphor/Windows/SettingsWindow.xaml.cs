@@ -375,18 +375,37 @@ public partial class SettingsWindow : JukeboxWindow
 
     private readonly RequestBringIntoViewEventHandler _suppressBringIntoView = (_, e) => e.Handled = true;
 
+    static SettingsWindow()
+    {
+        // Defense-in-depth: class handlers on the combo types PLUS a handler on each
+        // ScrollViewer's Content (wired in SuppressScrollIntoViewOnLoad). Both intercept the
+        // bubbling RequestBringIntoView at nodes BELOW the ScrollContentPresenter that performs
+        // the scroll, so the event is marked handled before the presenter ever sees it. (A class
+        // handler on ScrollContentPresenter itself would NOT help — WPF's own scroll handler is
+        // registered first and runs before ours.) The combo handlers catch the common source
+        // element; the Content handler catches everything else (re-focused/virtualized elements).
+        var suppress = new RequestBringIntoViewEventHandler((_, e) => e.Handled = true);
+        EventManager.RegisterClassHandler(
+            typeof(System.Windows.Controls.ComboBox),
+            FrameworkElement.RequestBringIntoViewEvent, suppress);
+        EventManager.RegisterClassHandler(
+            typeof(System.Windows.Controls.ComboBoxItem),
+            FrameworkElement.RequestBringIntoViewEvent, suppress);
+    }
+
     /// <summary>
     /// Suppresses the "scroll jumps to top" bug: changing a ComboBox selection inside a
     /// ScrollViewer makes the panel auto-scroll to bring the (re-focused) control into view.
     ///
-    /// Fix strategy: attach a handler to the CONTENT child of every ScrollViewer.
-    /// RequestBringIntoView bubbles up from whatever element raised it, and the ScrollViewer
-    /// performs the scroll when the event reaches it. Because a ScrollViewer's content sits
-    /// directly below it in the tree, EVERY bring-into-view request in that tab must bubble
-    /// through the content child before reaching the ScrollViewer. Marking the event handled
-    /// there stops the scroll regardless of what raised it (ComboBox, ComboBoxItem, a re-focused
-    /// element, a virtualized container, etc.) — which the earlier ComboBox/ComboBoxItem-typed
-    /// class handlers missed intermittently.
+    /// Mechanism: WPF performs the bring-into-view scroll in a class handler on
+    /// <c>ScrollContentPresenter</c> (inside the ScrollViewer template). To beat it we must mark
+    /// the bubbling <see cref="FrameworkElement.RequestBringIntoViewEvent"/> handled on an element
+    /// BELOW the presenter — i.e. the ScrollViewer's <see cref="ContentControl.Content"/>, through
+    /// which every request from that panel bubbles before reaching the presenter. (An earlier attempt
+    /// attached to the ScrollViewer's template root, which sits ABOVE the presenter, so the scroll
+    /// had already happened — that's why it didn't work.)
+    ///
+    /// This is paired with combo-type class handlers (defense in depth) registered in the static ctor.
     ///
     /// Known tradeoff (see docs/KNOWN_ISSUES.md): this also suppresses legitimate keyboard
     /// focus-driven bring-into-view within the settings panels. Acceptable because the Settings
@@ -396,14 +415,55 @@ public partial class SettingsWindow : JukeboxWindow
     {
         foreach (var sv in FindVisualChildren<System.Windows.Controls.ScrollViewer>(this))
         {
-            if (System.Windows.Media.VisualTreeHelper.GetChildrenCount(sv) == 0)
-                continue;
-            if (System.Windows.Media.VisualTreeHelper.GetChild(sv, 0) is UIElement content)
+            // Attach to the ScrollViewer's actual Content element (a descendant of the
+            // ScrollContentPresenter that performs the scroll), so we intercept the event first.
+            if (sv.Content is UIElement content)
             {
-                // Remove first to avoid double-registration if Loaded fires more than once.
                 content.RemoveHandler(FrameworkElement.RequestBringIntoViewEvent, _suppressBringIntoView);
                 content.AddHandler(FrameworkElement.RequestBringIntoViewEvent, _suppressBringIntoView, handledEventsToo: false);
             }
+        }
+    }
+
+    /// <summary>
+    /// DIAGNOSTIC (temporary): logs each RequestBringIntoView with the actual source element,
+    /// its type/name, the ancestor chain up to the first ScrollViewer, whether it was already
+    /// handled, and the requested rectangle. Lets us identify exactly what raises the scroll-jump.
+    /// Remove once the scroll-jump is confirmed fixed.
+    /// </summary>
+    private void LogBringIntoView(object sender, RequestBringIntoViewEventArgs e)
+    {
+        try
+        {
+            var src = e.OriginalSource as DependencyObject;
+            static string Describe(DependencyObject? d)
+            {
+                if (d is null) return "null";
+                var name = (d as FrameworkElement)?.Name;
+                return string.IsNullOrEmpty(name) ? d.GetType().Name : $"{d.GetType().Name}#{name}";
+            }
+
+            var chain = new System.Text.StringBuilder();
+            var cur = src;
+            int hops = 0;
+            string scroller = "none";
+            while (cur != null && hops < 40)
+            {
+                if (chain.Length > 0) chain.Append(" > ");
+                chain.Append(Describe(cur));
+                if (cur is System.Windows.Controls.ScrollViewer) { scroller = Describe(cur); break; }
+                cur = System.Windows.Media.VisualTreeHelper.GetParent(cur)
+                      ?? (cur as FrameworkElement)?.Parent as DependencyObject;
+                hops++;
+            }
+
+            var tab = (SettingsTabs?.SelectedItem as System.Windows.Controls.TabItem)?.Header?.ToString() ?? "?";
+            DebugLog.Log("BringIntoView",
+                $"tab='{tab}' handled={e.Handled} source={Describe(src)} scroller={scroller} rect={e.TargetRect} chain=[{chain}]");
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Log("BringIntoView", $"log failed: {ex.Message}");
         }
     }
 
@@ -426,6 +486,12 @@ public partial class SettingsWindow : JukeboxWindow
         _entries = settings.KeyBindings.ToEntries();
 
         InitializeComponent();
+
+        // DIAGNOSTIC (temporary): observe every RequestBringIntoView reaching the window — even
+        // ones already handled by the suppressors — to identify exactly what element raises the
+        // scroll-jump. Logged to the debug log; remove once the scroll-jump is confirmed fixed.
+        AddHandler(FrameworkElement.RequestBringIntoViewEvent,
+            new RequestBringIntoViewEventHandler(LogBringIntoView), handledEventsToo: true);
 
         // Suppress the "scroll jumps to top" bug once the visual tree exists (see below).
         Loaded += SuppressScrollIntoViewOnLoad;
