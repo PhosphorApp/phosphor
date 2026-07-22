@@ -291,7 +291,7 @@ public static class BlobMotion
                 double lengthAxis = h;
                 double crossAxis = w;
 
-                double targetAlong, targetAcross;
+                double targetAlong, targetAcross, targetSize;
 
                 switch (state.Phase)
                 {
@@ -304,10 +304,8 @@ public static class BlobMotion
                         targetAcross = Math.Clamp(across + drift, clampMin, clampMax);
                         stepDuration = (7.7 + rng.NextDouble() * 6.6) / Math.Max(0.1, speedMultiplier);
 
-                        // Grow toward 130% of base size
-                        double newSize = Math.Min(blobSize * 1.03, state.BaseSize * 1.3);
-                        blob.Width = newSize;
-                        blob.Height = newSize;
+                        // Grow toward 130% of base size (eased over the step, not snapped)
+                        targetSize = Math.Min(blobSize * 1.10, state.BaseSize * 1.3);
 
                         // Restore opacity as blob sinks
                         blob.Opacity = Math.Min(blob.Opacity + 0.02, state.BaseOpacity);
@@ -328,10 +326,8 @@ public static class BlobMotion
                         targetAcross = Math.Clamp(across + drift, clampMin2, clampMax2);
                         stepDuration = (6.6 + rng.NextDouble() * 6.6) / Math.Max(0.1, speedMultiplier);
 
-                        // Shrink toward 70% of base size
-                        double newSize = Math.Max(blobSize * 0.97, state.BaseSize * 0.7);
-                        blob.Width = newSize;
-                        blob.Height = newSize;
+                        // Shrink toward 70% of base size (eased over the step, not snapped)
+                        targetSize = Math.Max(blobSize * 0.90, state.BaseSize * 0.7);
 
                         // Dim slightly as it rises
                         blob.Opacity = Math.Max(blob.Opacity - 0.015, state.BaseOpacity * 0.4);
@@ -352,6 +348,9 @@ public static class BlobMotion
                         targetAlong = along + lengthAxis * (0.05 + rng.NextDouble() * 0.08);
                         stepDuration = (8.8 + rng.NextDouble() * 6.6) / Math.Max(0.1, speedMultiplier);
 
+                        // Hold current size through the crest
+                        targetSize = blobSize;
+
                         // Transition back to sinking
                         state.Phase = 0;
                         break;
@@ -361,6 +360,14 @@ public static class BlobMotion
                 // Map logical coords back to X/Y
                 toX = targetAcross;
                 toY = targetAlong;
+
+                // Position animates from the top-left corner. Because the blob grows
+                // or shrinks over the step, compensate the target corner so the blob's
+                // CENTER lands where intended — otherwise the size change shifts the
+                // corner and reads as a small jump at each step boundary.
+                double sizeDelta = targetSize - blobSize;
+                toX -= sizeDelta * 0.5;
+                toY -= sizeDelta * 0.5;
 
                 var lavaAnimX = new DoubleAnimation
                 {
@@ -375,17 +382,44 @@ public static class BlobMotion
                     EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
                 };
 
+                // Ease Width/Height across the step so the blob doesn't pop a few
+                // percent instantly at each retarget (the pop also shifts the
+                // top-left corner, which is what read as a small jump).
+                var lavaAnimW = new DoubleAnimation
+                {
+                    To = targetSize,
+                    Duration = TimeSpan.FromSeconds(stepDuration),
+                    EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+                };
+                var lavaAnimH = new DoubleAnimation
+                {
+                    To = targetSize,
+                    Duration = TimeSpan.FromSeconds(stepDuration),
+                    EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+                };
+
                 lavaAnimX.Completed += (_, _) =>
                 {
-                    blob.BeginAnimation(Canvas.LeftProperty, null);
-                    blob.BeginAnimation(Canvas.TopProperty, null);
+                    // Set base values BEFORE clearing the animations. Clearing first
+                    // makes WPF momentarily revert the property to the step's start
+                    // value, which can render as a single-frame snap — most visible on
+                    // slow phase-transition steps. Setting the base first means the
+                    // revert is a no-op.
                     Canvas.SetLeft(blob, toX);
                     Canvas.SetTop(blob, toY);
+                    blob.Width = targetSize;
+                    blob.Height = targetSize;
+                    blob.BeginAnimation(Canvas.LeftProperty, null);
+                    blob.BeginAnimation(Canvas.TopProperty, null);
+                    blob.BeginAnimation(FrameworkElement.WidthProperty, null);
+                    blob.BeginAnimation(FrameworkElement.HeightProperty, null);
                     onCompleted(blob);
                 };
 
                 blob.BeginAnimation(Canvas.LeftProperty, lavaAnimX);
                 blob.BeginAnimation(Canvas.TopProperty, lavaAnimY);
+                blob.BeginAnimation(FrameworkElement.WidthProperty, lavaAnimW);
+                blob.BeginAnimation(FrameworkElement.HeightProperty, lavaAnimH);
                 return;
             }
 
