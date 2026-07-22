@@ -155,5 +155,25 @@
     <Message Importance="high" Text="Deployed SiriusXM plug-in to $(SiriusXmPluginDest)" />
   </Target>
 
+  <!--
+    Trim unused native runtimes. Several NuGet packages (SkiaSharp ~40 MB, SQLitePCLRaw ~22 MB)
+    copy native libraries under runtimes\<RID>\ for every platform they support - win-x86/arm64,
+    osx, linux-*, browser-wasm, etc. Phosphor is Windows-x64 only (LibVLC, projectM, SharpDX/Vortice
+    are all win-x64 native), so every non-win-x64 runtime can never load and only bloats the output
+    (~60 MB combined). We delete them here rather than setting a RuntimeIdentifier, which would change
+    build/deploy semantics for the other native dependencies. Any runtimes\<RID> folder that isn't
+    win-x64 (and isn't the RID-agnostic 'win' folder, if present) is removed.
+  -->
+  <Target Name="TrimUnusedNativeRuntimes" AfterTargets="Build;Publish">
+    <ItemGroup>
+      <_AllRuntimeDir Include="$([System.IO.Directory]::GetDirectories('$(OutDir)runtimes'))"
+                      Condition="Exists('$(OutDir)runtimes')" />
+      <_UnusedRuntimeDir Include="@(_AllRuntimeDir)"
+                         Condition="'%(Filename)' != 'win-x64' and '%(Filename)' != 'win'" />
+    </ItemGroup>
+    <RemoveDir Directories="@(_UnusedRuntimeDir)" Condition="'@(_UnusedRuntimeDir)' != ''" />
+    <Message Importance="high" Text="Trimmed @(_UnusedRuntimeDir->Count()) unused native runtime(s) (kept win-x64)." />
+  </Target>
+
 
   </Project>
