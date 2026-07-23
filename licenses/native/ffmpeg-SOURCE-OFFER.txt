@@ -1,0 +1,33 @@
+FFmpeg — Corresponding Source Offer
+===================================
+
+Phosphor bundles the FFmpeg command-line tool (`dependencies/ffmpeg.exe`) and
+invokes it as a separate process to remux downloaded audio/video streams
+(stream copy, `-c copy`) and to extract single-frame thumbnails. FFmpeg is not
+linked into Phosphor; it runs as an independent program.
+
+Bundled build
+-------------
+  ffmpeg version 8.1-essentials_build-www.gyan.dev
+  Configuration: --enable-gpl --enable-version3 (GPLv3)
+  Source of binary: https://www.gyan.dev/ffmpeg/builds/
+
+Because this build is configured with `--enable-gpl` and `--enable-version3`,
+it is licensed under the GNU General Public License, version 3. The full license
+text is in `ffmpeg-GPLv3.txt` in this folder.
+
+Corresponding source code
+-------------------------
+In accordance with the GPL, the complete corresponding source code for this
+FFmpeg build is available from the following upstream locations:
+
+  * Build (with the exact configuration above) and its source packaging:
+	https://www.gyan.dev/ffmpeg/builds/     (see "Source Code" links per build)
+
+  * FFmpeg project source (canonical):
+	https://ffmpeg.org/download.html
+	https://git.ffmpeg.org/ffmpeg.git       (tag/commit matching the version above)
+
+Phosphor redistributes this binary unmodified. This notice relays the upstream
+corresponding-source location as permitted by GPLv3 §6 for redistribution of
+binaries obtained from a third party.

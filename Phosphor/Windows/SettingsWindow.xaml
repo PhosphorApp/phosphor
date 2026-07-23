@@ -3174,6 +3174,9 @@
                         <TextBlock FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
                                    TextWrapping="Wrap"
                                    Text="Emoji artwork: this app includes emoji fonts under their respective licenses — Twemoji © Twitter, Inc. and contributors (CC-BY 4.0); OpenMoji (CC-BY-SA 4.0); Noto Color Emoji © Google (SIL Open Font License 1.1); and Fluent Emoji © Microsoft (MIT License), packaged as a webfont by Tetsunori Nakayama. Segoe UI Emoji is a Microsoft system font used as provided by Windows. Full license texts are in the 'licenses' folder distributed with this application."/>
+                        <TextBlock FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
+                                   TextWrapping="Wrap"
+                                   Text="Phosphor also gratefully uses other open-source components, including FFmpeg (GPLv3, used as a separate command-line tool for remuxing and thumbnails), projectM and LibVLC (media playback), GLEW, LibVLCSharp, TagLibSharp, and YoutubeExplode. Their license texts — and, for FFmpeg, a corresponding-source offer — are in the 'licenses' folder distributed with this application."/>
                         <TextBlock Text="STARTUP HINT" FontSize="12" FontWeight="Bold"
                                    Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
                         <TextBlock Text="Show the one-time setup hint card on the DMD screen at launch"
