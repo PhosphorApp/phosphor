@@ -33,9 +33,18 @@ public class ThumbnailCacheConverter : IValueConverter
         // Fast path: already decoded in memory
         if (cache != null && cache.Enabled)
         {
-            var cachedPath = cache.TryGet(url);
+            // Stale-while-revalidate: serve ANY on-disk frame (fresh or stale) so the UI never flashes
+            // a raw network load — which, for a volatile Twitch preview, can be a black placeholder. A
+            // stale frame triggers a background refresh that only overwrites once a real frame arrives.
+            var (cachedPath, needsRefresh) = cache.TryGetStale(url);
             if (cachedPath != null)
             {
+                if (needsRefresh)
+                {
+                    DebugLog.Log("ThumbnailCache", $"Stale-serve + refresh: {System.IO.Path.GetFileName(cachedPath)}");
+                    _ = cache.GetOrDownloadAsync(url);
+                }
+
                 // Key the decoded-image cache on path + last-write time so an in-place overwrite
                 // (a volatile live preview refreshed in its stable-named file) invalidates the old
                 // decode instead of serving a stale frame for the process lifetime.
@@ -56,12 +65,14 @@ public class ThumbnailCacheConverter : IValueConverter
             }
             else
             {
-                // Not on disk yet — start caching it for next time.
+                // Nothing cached at all — start caching it for next time. We still fall through to a
+                // remote load below so SOMETHING shows on this first appearance.
+                DebugLog.Log("ThumbnailCache", $"Miss (no file), remote-load: {url}");
                 _ = cache.GetOrDownloadAsync(url);
             }
         }
 
-        // Cache miss (or caching disabled): load directly from the remote URL, but
+        // No cached frame exists yet (or caching disabled): load directly from the remote URL, but
         // decode at a downscaled size so WPF only uploads a small texture to the
         // shared render thread. This is what prevents the large-Plex-thumbnail
         // stutter while still always returning something displayable.

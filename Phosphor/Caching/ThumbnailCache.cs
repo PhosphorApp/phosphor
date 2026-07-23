@@ -75,7 +75,7 @@ public class ThumbnailCache
             }
 
             await File.WriteAllBytesAsync(filePath, data, ct);
-            DebugLog.Log("ThumbnailCache", $"Stored: {fileName} ({data.Length / 1024}KB)");
+            DebugLog.Log("ThumbnailCache", $"Stored: {fileName} ({data.Length / 1024}KB) bucket={volatileWindow?.ToString() ?? "none"} url={Truncate(StripVolatileToken(url), 120)}");
             Prune();
             return filePath;
         }
@@ -95,6 +95,23 @@ public class ThumbnailCache
 
         var filePath = Path.Combine(CacheDir, GetFileName(url));
         return File.Exists(filePath) && IsFresh(filePath, VolatileBucket(url)) ? filePath : null;
+    }
+
+    /// <summary>
+    /// Returns a cached file path if one exists on disk, <em>regardless of freshness</em>, plus whether
+    /// it is stale (a volatile frame whose window has rolled over) and so should be refreshed in the
+    /// background. Enables stale-while-revalidate: the UI keeps showing the last-good frame instead of
+    /// flashing a raw network load (which can be a black placeholder) while a refresh runs.
+    /// </summary>
+    public (string? Path, bool NeedsRefresh) TryGetStale(string url)
+    {
+        if (!_enabled || string.IsNullOrWhiteSpace(url))
+            return (null, false);
+
+        var filePath = Path.Combine(CacheDir, GetFileName(url));
+        if (!File.Exists(filePath))
+            return (null, true); // nothing cached → caller should fetch
+        return (filePath, !IsFresh(filePath, VolatileBucket(url)));
     }
 
     public void Purge()
@@ -185,6 +202,9 @@ public class ThumbnailCache
     /// <summary>Removes the "_pb" cache-buster so the filename is stable across buckets.</summary>
     private static string StripVolatileToken(string url) =>
         VolatileTokenRegex.Replace(url, "").TrimEnd('?', '&');
+
+    private static string Truncate(string s, int max) =>
+        s.Length <= max ? s : s[..max] + "…";
 
     /// <summary>
     /// A cached file is fresh when the URL is immutable (no bucket) OR the file was written within the
