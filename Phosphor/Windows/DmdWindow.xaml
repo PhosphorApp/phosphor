@@ -389,6 +389,7 @@
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          ScrollViewer.IsDeferredScrollingEnabled="True"
                          ScrollViewer.ScrollChanged="ResultsList_ScrollChanged"
+                         SelectionChanged="ResultsList_SelectionChanged"
                          MouseDoubleClick="ResultsList_MouseDoubleClick"
                          AllowDrop="True"
                          PreviewMouseLeftButtonDown="ResultsList_PreviewMouseLeftButtonDown"
@@ -410,6 +411,24 @@
                     <Style TargetType="ListBoxItem">
                         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                         <Setter Property="Padding" Value="0"/>
+                        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                        <!-- Tiles draw their own background/selection visuals, so strip the default
+                             container chrome (removes the hover highlight on header/label rows). -->
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <!-- Provider group header rows (grouped Favorites view) are labels only;
+                                 keep them from being selectable/focusable. -->
+                            <DataTrigger Binding="{Binding IsHeader}" Value="True">
+                                <Setter Property="Focusable" Value="False"/>
+                                <Setter Property="IsHitTestVisible" Value="False"/>
+                            </DataTrigger>
+                        </Style.Triggers>
                     </Style>
                 </ListBox.ItemContainerStyle>
                 <ListBox.ItemTemplate>

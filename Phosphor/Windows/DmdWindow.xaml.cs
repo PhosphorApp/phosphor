@@ -1697,18 +1697,33 @@ public partial class DmdWindow : JukeboxWindow
         {
             int count = vm.SearchResults.Count;
             if (count == 0) return;
+
+            int step = delta >= 0 ? 1 : -1;
             _resultsIndex += delta;
+
+            // Skip over non-selectable rows (provider group headers, separators, line breaks).
+            static bool IsSelectable(VideoItem it) => !it.IsHeader && !it.IsSeparator && !it.IsLineBreak;
+            while (_resultsIndex >= 0 && _resultsIndex < count && !IsSelectable(vm.SearchResults[_resultsIndex]))
+                _resultsIndex += step;
 
             if (_resultsIndex >= count)
             {
                 if (vm.CanLoadMore && !vm.IsSearching)
                     vm.LoadMoreResultsCommand.Execute(null);
                 _resultsIndex = count - 1;
+                // Back off onto the last selectable row.
+                while (_resultsIndex >= 0 && !IsSelectable(vm.SearchResults[_resultsIndex]))
+                    _resultsIndex--;
             }
             else if (_resultsIndex < 0)
             {
                 _resultsIndex = 0;
+                // Advance onto the first selectable row.
+                while (_resultsIndex < count && !IsSelectable(vm.SearchResults[_resultsIndex]))
+                    _resultsIndex++;
             }
+
+            if (_resultsIndex < 0 || _resultsIndex >= count) return;
 
             ResultsList.SelectedIndex = _resultsIndex;
             ResultsList.ScrollIntoView(ResultsList.SelectedItem);
@@ -1913,6 +1928,15 @@ public partial class DmdWindow : JukeboxWindow
         }
     }
 
+    private void ResultsList_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        // Provider group header rows are labels only; never leave them selected.
+        if (ResultsList.SelectedItem is VideoItem { IsHeader: true } or VideoItem { IsSeparator: true } or VideoItem { IsLineBreak: true })
+        {
+            ResultsList.SelectedItem = null;
+        }
+    }
+
     private void ResultsList_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         if (DataContext is not JukeboxViewModel vm) return;
@@ -2101,6 +2125,11 @@ public partial class DmdWindow : JukeboxWindow
         var style = new Style(typeof(System.Windows.Controls.ListBoxItem));
         style.Setters.Add(new Setter(System.Windows.Controls.Control.HorizontalContentAlignmentProperty, System.Windows.HorizontalAlignment.Stretch));
         style.Setters.Add(new Setter(PaddingProperty, new Thickness(0)));
+        // Tiles draw their own background/selection visuals, so strip the default container
+        // chrome. This removes the theme template's mouse-over highlight and focus rectangle
+        // that would otherwise appear on the non-interactive provider header/label rows.
+        style.Setters.Add(new Setter(FocusVisualStyleProperty, null));
+        style.Setters.Add(new Setter(TemplateProperty, MakeStrippedItemTemplate()));
         if (!double.IsNaN(width))
             style.Setters.Add(new Setter(WidthProperty, width));
 
@@ -2125,7 +2154,61 @@ public partial class DmdWindow : JukeboxWindow
             lineBreakTrigger.Setters.Add(new Setter(WidthProperty, hw));
             style.Triggers.Add(lineBreakTrigger);
         }
+
+        // Provider group header rows are labels only — keep them from being selectable/focusable.
+        var headerNonSelectable = new DataTrigger
+        {
+            Binding = new System.Windows.Data.Binding(nameof(VideoItem.IsHeader)),
+            Value = true
+        };
+        headerNonSelectable.Setters.Add(new Setter(FocusableProperty, false));
+        headerNonSelectable.Setters.Add(new Setter(IsHitTestVisibleProperty, false));
+        style.Triggers.Add(headerNonSelectable);
+
         return style;
+    }
+
+    // A minimal ListBoxItem template that renders content inside a highlight border. The border
+    // stays transparent normally and only fills on hover/selection. Header rows never trigger these
+    // (they are IsHitTestVisible=false and non-selectable), so they show no highlight.
+    private ControlTemplate MakeStrippedItemTemplate()
+    {
+        var template = new ControlTemplate(typeof(System.Windows.Controls.ListBoxItem));
+
+        var border = new System.Windows.FrameworkElementFactory(typeof(System.Windows.Controls.Border), "Bd");
+        border.SetValue(System.Windows.Controls.Border.BackgroundProperty, System.Windows.Media.Brushes.Transparent);
+        border.SetValue(System.Windows.Controls.Border.BorderBrushProperty, System.Windows.Media.Brushes.Transparent);
+        border.SetValue(System.Windows.Controls.Border.BorderThicknessProperty, new System.Windows.Thickness(2));
+        border.SetValue(System.Windows.Controls.Border.CornerRadiusProperty, new System.Windows.CornerRadius(4));
+
+        var presenter = new System.Windows.FrameworkElementFactory(typeof(System.Windows.Controls.ContentPresenter));
+        presenter.SetValue(System.Windows.Controls.ContentPresenter.HorizontalAlignmentProperty,
+            new System.Windows.TemplateBindingExtension(System.Windows.Controls.Control.HorizontalContentAlignmentProperty));
+        border.AppendChild(presenter);
+        template.VisualTree = border;
+
+        // Accent (purple) highlight ring on hover/selection; selection is a touch stronger.
+        var accentBrush = TryFindResource("AccentBrush") as System.Windows.Media.Brush
+            ?? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x9B, 0x59, 0xB6));
+
+        var hoverTrigger = new System.Windows.Trigger
+        {
+            Property = System.Windows.Controls.ListBoxItem.IsMouseOverProperty,
+            Value = true
+        };
+        hoverTrigger.Setters.Add(new Setter(System.Windows.Controls.Border.BorderBrushProperty, accentBrush, "Bd"));
+        template.Triggers.Add(hoverTrigger);
+
+        var selectedTrigger = new System.Windows.Trigger
+        {
+            Property = System.Windows.Controls.ListBoxItem.IsSelectedProperty,
+            Value = true
+        };
+        selectedTrigger.Setters.Add(new Setter(System.Windows.Controls.Border.BorderBrushProperty, accentBrush, "Bd"));
+        template.Triggers.Add(selectedTrigger);
+
+        template.Seal();
+        return template;
     }
 
     private void OpenPresetBrowser()
