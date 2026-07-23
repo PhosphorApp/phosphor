@@ -75,7 +75,7 @@ public class ThumbnailCache
             }
 
             await File.WriteAllBytesAsync(filePath, data, ct);
-            DebugLog.Log("ThumbnailCache", $"Stored: {fileName} ({data.Length / 1024}KB) bucket={volatileWindow?.ToString() ?? "none"} url={Truncate(StripVolatileToken(url), 120)}");
+            DebugLog.Log("ThumbnailCache", $"Stored: {fileName} ({data.Length / 1024}KB)");
             Prune();
             return filePath;
         }
@@ -202,9 +202,6 @@ public class ThumbnailCache
     /// <summary>Removes the "_pb" cache-buster so the filename is stable across buckets.</summary>
     private static string StripVolatileToken(string url) =>
         VolatileTokenRegex.Replace(url, "").TrimEnd('?', '&');
-
-    private static string Truncate(string s, int max) =>
-        s.Length <= max ? s : s[..max] + "…";
 
     /// <summary>
     /// A cached file is fresh when the URL is immutable (no bucket) OR the file was written within the

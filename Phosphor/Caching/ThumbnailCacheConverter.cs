@@ -40,10 +40,7 @@ public class ThumbnailCacheConverter : IValueConverter
             if (cachedPath != null)
             {
                 if (needsRefresh)
-                {
-                    DebugLog.Log("ThumbnailCache", $"Stale-serve + refresh: {System.IO.Path.GetFileName(cachedPath)}");
                     _ = cache.GetOrDownloadAsync(url);
-                }
 
                 // Key the decoded-image cache on path + last-write time so an in-place overwrite
                 // (a volatile live preview refreshed in its stable-named file) invalidates the old
@@ -67,7 +64,6 @@ public class ThumbnailCacheConverter : IValueConverter
             {
                 // Nothing cached at all — start caching it for next time. We still fall through to a
                 // remote load below so SOMETHING shows on this first appearance.
-                DebugLog.Log("ThumbnailCache", $"Miss (no file), remote-load: {url}");
                 _ = cache.GetOrDownloadAsync(url);
             }
         }
