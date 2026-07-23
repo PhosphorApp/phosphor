@@ -2957,7 +2957,14 @@ public partial class JukeboxViewModel : ObservableObject
                 if (cached != null)
                 {
                     foreach (var v in cached)
+                    {
+                        // Re-derive live favorite state from the owning source (the cached row carries
+                        // CanFavorite + the source link, but IsFavorite must reflect current toggles).
+                        if (v.CanFavorite && v.SourceInstanceId is { Length: > 0 } sid
+                            && _sourceRegistry?.ByInstance(sid) is Phosphor.Plugin.Abstractions.IFavoritable fav)
+                            v.IsFavorite = fav.IsFavorite(v.VideoId);
                         SearchResults.Add(v);
+                    }
                     _categoryCachePageIndex++;
                     _hasMoreResults = !isLast;
                     CanLoadMore = _hasMoreResults;

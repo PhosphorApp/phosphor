@@ -564,6 +564,12 @@ public class AppSettings
     public bool DebugLogging { get; set; }
 
     /// <summary>
+    /// Minimum log verbosity written when <see cref="DebugLogging"/> is on. Defaults to Debug (the
+    /// historical behavior); set to Trace to surface very chatty per-frame diagnostics.
+    /// </summary>
+    public LogLevel DebugLogLevel { get; set; } = LogLevel.Debug;
+
+    /// <summary>
     /// Genre/category names that have been hidden by the user from the DMD home screen.
     /// </summary>
     public List<string> HiddenCategories { get; set; } = [];

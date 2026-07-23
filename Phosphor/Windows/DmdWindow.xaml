@@ -12,7 +12,6 @@
         <local:BoolToVisibilityConverter x:Key="BoolVis"/>
         <local:QueueIndexConverter x:Key="QueueIndexConverter"/>
         <local:IsCurrentQueueItemConverter x:Key="IsCurrentQueueItemConverter"/>
-        <local:ThumbnailCacheConverter x:Key="ThumbnailCacheConverter"/>
         <local:FractionToCanvasLeftConverter x:Key="FractionToCanvasLeft"/>
         <local:EnumLabelConverter x:Key="EnumLabel"/>
 
@@ -471,7 +470,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <Image Grid.Column="0" Source="{Binding ThumbnailUrl, Converter={StaticResource ThumbnailCacheConverter}}"
+                                <Image Grid.Column="0" local:CachedImage.SourceUrl="{Binding ThumbnailUrl}"
                                        RenderOptions.BitmapScalingMode="LowQuality"
                                        Margin="0,0,8,0" VerticalAlignment="Top"
                                        Height="{Binding ActualHeight, ElementName=ItemContentPanel}">
@@ -796,7 +795,7 @@
                             <DockPanel Margin="0,2">
                                 <!-- Thumbnail with hover-to-remove overlay -->
                                 <Grid x:Name="QueueThumbnailGrid" DockPanel.Dock="Left" Width="{DynamicResource QueueThumbnailWidth}" Height="{DynamicResource QueueThumbnailHeight}" Margin="0,0,7,0" Cursor="Hand" ClipToBounds="True">
-                                    <Image x:Name="QueueThumbnailImage" Source="{Binding ThumbnailUrl, Converter={StaticResource ThumbnailCacheConverter}}" Stretch="Uniform" RenderOptions.BitmapScalingMode="LowQuality"/>
+                                    <Image x:Name="QueueThumbnailImage" local:CachedImage.SourceUrl="{Binding ThumbnailUrl}" Stretch="Uniform" RenderOptions.BitmapScalingMode="LowQuality"/>
                                     <Button x:Name="QueueDeleteBtn" Content="&#x2715;" FontSize="14" FontWeight="Bold"
                                             Background="#AA000000" Foreground="White" BorderThickness="0"
                                             HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
@@ -947,7 +946,7 @@
                         <Image Stretch="Uniform" MaxHeight="{Binding ActualHeight, ElementName=NowPlayingInfoPanel}">
                             <Image.Style>
                                 <Style TargetType="Image">
-                                    <Setter Property="Source" Value="{Binding CurrentlyPlaying.ThumbnailUrl, Converter={StaticResource ThumbnailCacheConverter}}"/>
+                                    <Setter Property="local:CachedImage.SourceUrl" Value="{Binding CurrentlyPlaying.ThumbnailUrl}"/>
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding CurrentlyPlaying}" Value="{x:Null}">
                                             <Setter Property="Source" Value="/default_thumb.png"/>

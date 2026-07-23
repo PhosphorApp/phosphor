@@ -2719,7 +2719,7 @@ public partial class DmdWindow : JukeboxWindow
             vm.SetupThumbnailCache(_appSettings.ThumbnailCacheEnabled, _appSettings.ThumbnailCacheMaxSizeMb);
             vm.SetupResultCache(_appSettings.ResultCacheEnabled, _appSettings.ResultCacheMaxAgeHours);
             LogStep("CacheSetup");
-            ThumbnailCacheConverter.Cache = vm.ThumbnailCache;
+            CachedImage.Cache = vm.ThumbnailCache;
             vm.VideoQuality = ytPlayback.Quality;
             vm.StereoAudio = ytPlayback.PreferStereo;
             vm.NetworkCachingMs = _appSettings.NetworkCachingMs;

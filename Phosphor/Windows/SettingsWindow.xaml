@@ -3205,6 +3205,12 @@
                                  TextWrapping="Wrap"/>
                         <CheckBox x:Name="CbDebugLogging" Content="Create DEBUG file"
                                   Foreground="{StaticResource TextBrush}"/>
+                        <StackPanel Orientation="Horizontal" Margin="20,6,0,0">
+                            <TextBlock Text="Verbosity" VerticalAlignment="Center" Margin="0,0,8,0"
+                                       Foreground="{StaticResource TextDimBrush}" FontSize="11"/>
+                            <ComboBox x:Name="CbDebugLogLevel" Width="120" FontSize="11"
+                                      SelectionChanged="CbDebugLogLevel_SelectionChanged"/>
+                        </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="20,2,0,0">
                             <TextBlock x:Name="DebugLogPathText"
                                        Foreground="{StaticResource TextDimBrush}" FontSize="10"

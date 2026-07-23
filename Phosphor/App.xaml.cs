@@ -33,6 +33,7 @@ public partial class App : Application
 
         _settings = AppSettings.Load();
         DebugLog.Enabled = _settings.DebugLogging;
+        DebugLog.MinimumLevel = _settings.DebugLogLevel;
         RenderPerformanceMonitor.Start();
         var appVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
         DebugLog.Log("App", $"Application starting - v{appVersion}");
@@ -67,7 +68,7 @@ public partial class App : Application
         viewModel.SetupPrefetch(_settings.PrefetchEnabled);
         viewModel.SetupThumbnailCache(_settings.ThumbnailCacheEnabled, _settings.ThumbnailCacheMaxSizeMb);
         viewModel.SetupResultCache(_settings.ResultCacheEnabled, _settings.ResultCacheMaxAgeHours);
-        ThumbnailCacheConverter.Cache = viewModel.ThumbnailCache;
+        CachedImage.Cache = viewModel.ThumbnailCache;
         viewModel.VideoQuality = ytPlayback.Quality;
         viewModel.StereoAudio = ytPlayback.PreferStereo;
         viewModel.PreemptiveCache = _settings.PreemptiveCache;

@@ -11,7 +11,6 @@ public class VideoItem : ObservableObject
 
     /// <summary>
     /// Raises PropertyChanged for the specified property name.
-    /// Used by ThumbnailCacheConverter to refresh bindings after async download.
     /// </summary>
     public void NotifyPropertyChanged(string propertyName) =>
         OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs(propertyName));

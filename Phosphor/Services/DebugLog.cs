@@ -5,6 +5,20 @@ using System.Text;
 namespace Phosphor;
 
 /// <summary>
+/// Severity/verbosity level for a log entry. Entries below <see cref="DebugLog.MinimumLevel"/> are
+/// dropped cheaply at the call site (before formatting), so verbose <see cref="Trace"/> diagnostics
+/// can stay permanently in the code and only surface when the user raises the level.
+/// </summary>
+public enum LogLevel
+{
+    Trace = 0,   // very chatty per-frame/per-item diagnostics (e.g. thumbnail loads)
+    Debug = 1,   // developer-facing detail (the historical default)
+    Info = 2,    // notable milestones (status, cache stores/invalidations)
+    Warning = 3, // recoverable problems (decode fallback, load miss)
+    Error = 4,   // failures / exceptions
+}
+
+/// <summary>
 /// Centralized debug logger. Writes to Phosphor_Debug_yyyyMMdd.log when enabled.
 /// All file I/O happens on a single background thread so callers (including the
 /// VLC audio callback thread and the WASAPI render thread) are never blocked.
@@ -12,6 +26,13 @@ namespace Phosphor;
 public static class DebugLog
 {
     public static bool Enabled { get; set; }
+
+    /// <summary>
+    /// Minimum level that is written. Entries below this are discarded at the call site before any
+    /// string formatting. Defaults to <see cref="LogLevel.Debug"/> to preserve historical behavior
+    /// (legacy category/message calls log at Debug).
+    /// </summary>
+    public static LogLevel MinimumLevel { get; set; } = LogLevel.Debug;
 
     // Bounded queue: if logging falls behind, drop oldest rather than block producers
     // or grow unbounded. 10K entries is ~minutes of normal logging.
@@ -39,7 +60,7 @@ public static class DebugLog
 
     public static void Log(string message)
     {
-        if (!Enabled) return;
+        if (!Enabled || LogLevel.Debug < MinimumLevel) return;
 
         // Format on the calling thread (cheap, allocation-only) so timestamps
         // reflect when the event happened, not when the writer drained it.
@@ -62,10 +83,32 @@ public static class DebugLog
     public static void Log(string category, string message) =>
         Log($"[{category}] {message}");
 
+    // ── Level-aware overloads ────────────────────────────────────────────────────
+    // Existing string/string-string calls keep logging at Debug (see above). New call sites can pass
+    // a level; Trace lines stay silent at the default MinimumLevel and only appear when raised.
+
+    public static void Log(LogLevel level, string message)
+    {
+        if (!Enabled || level < MinimumLevel) return;
+
+        var line = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
+        if (_queue.Count >= MaxQueuedEntries)
+        {
+            _queue.TryDequeue(out _);
+            Interlocked.Increment(ref _droppedCount);
+        }
+        _queue.Enqueue(line);
+        EnsureWriterStarted();
+        _signal.Set();
+    }
+
+    public static void Log(LogLevel level, string category, string message) =>
+        Log(level, $"[{category}] {message}");
+
     public static void LogException(string context, Exception? ex)
     {
-        if (!Enabled || ex == null) return;
-        Log($"[EXCEPTION] [{context}] {ex.GetType().Name}: {ex.Message}");
+        if (!Enabled || ex == null || LogLevel.Error < MinimumLevel) return;
+        Log(LogLevel.Error, $"[EXCEPTION] [{context}] {ex.GetType().Name}: {ex.Message}");
     }
 
     private static void EnsureWriterStarted()

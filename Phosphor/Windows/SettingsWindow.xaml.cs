@@ -1231,6 +1231,7 @@ public partial class SettingsWindow : JukeboxWindow
 
         // Debug
         CbDebugLogging.IsChecked = settings.DebugLogging;
+        PopulateDebugLogLevels(settings.DebugLogLevel);
         UpdateDebugLogPathText();
         UpdateCrashLogStatus();
         CbShowStartupHint.IsChecked = settings.ShowStartupHint;
@@ -2346,6 +2347,34 @@ public partial class SettingsWindow : JukeboxWindow
                 System.Windows.MessageBoxButton.OK,
                 System.Windows.MessageBoxImage.Information);
         }
+    }
+
+    private bool _debugLevelInitializing;
+
+    /// <summary>Fills the verbosity dropdown with the LogLevel values and selects the current one.</summary>
+    private void PopulateDebugLogLevels(LogLevel current)
+    {
+        _debugLevelInitializing = true;
+        CbDebugLogLevel.Items.Clear();
+        foreach (var lvl in Enum.GetValues<LogLevel>())
+            CbDebugLogLevel.Items.Add(lvl);
+        CbDebugLogLevel.SelectedItem = current;
+        _debugLevelInitializing = false;
+    }
+
+    /// <summary>
+    /// Applies the chosen verbosity immediately (debug settings take effect live, not on close) and
+    /// persists it now: a debug session often precedes a crash, so waiting for the on-exit save could
+    /// lose the very setting the user just enabled to capture that crash.
+    /// </summary>
+    private void CbDebugLogLevel_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_debugLevelInitializing) return;
+        if (CbDebugLogLevel.SelectedItem is not LogLevel level) return;
+
+        _settings.DebugLogLevel = level;
+        DebugLog.MinimumLevel = level;
+        try { _settings.Save(); } catch { /* best effort — never let a settings write crash the UI */ }
     }
 
     private void OpenDebugLog_Click(object sender, RoutedEventArgs e)
@@ -4105,6 +4134,11 @@ public partial class SettingsWindow : JukeboxWindow
             ? ageValues[CbResultCacheMaxAge.SelectedIndex] : 168;
         _settings.DebugLogging = CbDebugLogging.IsChecked == true;
         DebugLog.Enabled = _settings.DebugLogging;
+        if (CbDebugLogLevel.SelectedItem is LogLevel dbgLevel)
+        {
+            _settings.DebugLogLevel = dbgLevel;
+            DebugLog.MinimumLevel = dbgLevel;
+        }
         _settings.ShowStartupHint = CbShowStartupHint.IsChecked == true;
         // Harvest the editable Plug-ins tab into settings.PluginInstances (the plug-in path's config).
         HarvestPluginSourcesTab();

@@ -26,6 +26,11 @@ public class CachedVideoItem
     public string? StreamUrl { get; set; }
     public bool IsAudioOnly { get; set; }
     public string AudioTag { get; set; } = "";
+
+    // Source link + favorite affordance. Without these a cache-restored row loses its star (the
+    // action row's CanFavorite gate) and its owning-source link, so favoriting silently disappears.
+    public string? SourceInstanceId { get; set; }
+    public bool CanFavorite { get; set; }
 }
 
 /// <summary>
@@ -37,6 +42,13 @@ public class CachedResultMetadata
     public string Name { get; set; } = "";
     public DateTime CachedAtUtc { get; set; }
     public int TotalPages { get; set; }
+
+    /// <summary>
+    /// Cache-format stamp. Bumps when the cached item shape or app build changes so stale entries
+    /// written by a previous version (or before a settings reset) are discarded on load instead of
+    /// replayed — which otherwise surfaces as rows missing derived state (e.g. no favorite star).
+    /// </summary>
+    public string SchemaVersion { get; set; } = "";
 }
 
 /// <summary>
@@ -49,6 +61,12 @@ public sealed class ResultCache
 {
     private readonly string _cacheDir;
     private readonly string _filePrefix;
+
+    // Current cache-format stamp. Bump when CachedVideoItem's shape or restore semantics change so
+    // older on-disk entries are treated as a miss. Includes the app build version so an update also
+    // invalidates stale pages automatically.
+    private static readonly string CurrentSchemaVersion =
+        "v2+" + (System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0");
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -123,6 +141,16 @@ public sealed class ResultCache
             var data = JsonSerializer.Deserialize<CachedResultFile>(File.ReadAllText(path), JsonOptions);
             if (data == null) return null;
 
+            // Discard entries written by a different cache format / app build (e.g. before an update
+            // or a settings reset). Replaying them yields rows missing derived state (no favorite
+            // star, wrong source link), so treat a stamp mismatch as a miss and delete the file.
+            if (data.Metadata.SchemaVersion != CurrentSchemaVersion)
+            {
+                DebugLog.Log("ResultCache", $"Stale schema ('{data.Metadata.SchemaVersion}' != '{CurrentSchemaVersion}'): {key}");
+                try { File.Delete(path); } catch { }
+                return null;
+            }
+
             // Check expiry
             if ((DateTime.UtcNow - data.Metadata.CachedAtUtc).TotalHours > MaxAgeHours)
             {
@@ -167,6 +195,10 @@ public sealed class ResultCache
             {
                 data = JsonSerializer.Deserialize<CachedResultFile>(File.ReadAllText(path), JsonOptions)
                        ?? new CachedResultFile();
+                // Don't merge new pages into a stale-format file (that would re-stamp old pages as
+                // current). Start fresh when the existing stamp doesn't match.
+                if (data.Metadata.SchemaVersion != CurrentSchemaVersion)
+                    data = new CachedResultFile();
             }
             else
             {
@@ -176,6 +208,7 @@ public sealed class ResultCache
             data.Metadata.Source = _filePrefix.TrimEnd('_');
             data.Metadata.Name = key;
             data.Metadata.CachedAtUtc = DateTime.UtcNow;
+            data.Metadata.SchemaVersion = CurrentSchemaVersion;
 
             // Replace or add the page
             data.Pages.RemoveAll(p => p.PageIndex == pageIndex);
@@ -241,6 +274,8 @@ public sealed class ResultCache
         StreamUrl = v.StreamUrl,
         IsAudioOnly = v.IsAudioOnly,
         AudioTag = v.AudioTag,
+        SourceInstanceId = v.SourceInstanceId,
+        CanFavorite = v.CanFavorite,
     };
 
     private static VideoItem ToVideoItem(CachedVideoItem c) => new()
@@ -253,6 +288,8 @@ public sealed class ResultCache
         StreamUrl = c.StreamUrl,
         IsAudioOnly = c.IsAudioOnly,
         AudioTag = c.AudioTag,
+        SourceInstanceId = c.SourceInstanceId,
+        CanFavorite = c.CanFavorite,
     };
 }
 
