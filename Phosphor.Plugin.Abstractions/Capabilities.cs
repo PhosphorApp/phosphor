@@ -418,6 +418,26 @@ public interface IFavoritable
 }
 
 /// <summary>
+/// Optional capability: rebuild a fully-playable <see cref="SourceItem"/> from just a persisted
+/// <see cref="SourceItem.ItemId"/>, with no prior in-memory browse state. The host uses this to
+/// re-resolve items whose opaque <see cref="SourceItem.SourceState"/> did not survive being persisted
+/// (e.g. a live-stream queue entry restored from disk after a restart). Unlike
+/// <see cref="IFavoritable.GetFavorite"/> this is not limited to favorited items — any id the source
+/// recognizes can be rebuilt. Cheap by design: the source constructs it from the id alone (e.g. a
+/// Twitch live row's id is the channel login, so it rebuilds the channel's <em>current</em> live feed).
+/// Returns <c>null</c> when the source can no longer produce the item (e.g. the channel is offline).
+/// </summary>
+public interface IReplayableById
+{
+    /// <summary>
+    /// Rebuilds a playable <see cref="SourceItem"/> for <paramref name="itemId"/>, or <c>null</c> if
+    /// the source can no longer produce it. For live sources this reflects what is live <em>now</em>,
+    /// not whatever was live when the id was first captured.
+    /// </summary>
+    SourceItem? RebuildPlayable(string itemId);
+}
+
+/// <summary>
 /// A snapshot of a favorited item the host hands to a source at star-time, so the source can persist
 /// enough to rebuild it later via <see cref="IFavoritable.GetFavorite"/> — including
 /// <see cref="IsContainer"/> artists/albums (whose <see cref="ContainerState"/> carries the opaque

@@ -195,6 +195,23 @@ public sealed class FavoritesIndex
         }
     }
 
+    /// <summary>
+    /// Updates a stored entry's thumbnail (e.g. after a source lazily resolves a channel's live/VOD
+    /// preview) and persists. No-op if the key is absent or the value is unchanged.
+    /// </summary>
+    public void UpdateThumbnail(string sourceInstanceId, string itemId, string? thumbnailUrl)
+    {
+        var key = $"{sourceInstanceId}\u0000{itemId}";
+        lock (_gate)
+        {
+            if (_entries.TryGetValue(key, out var e) && e.ThumbnailUrl != thumbnailUrl)
+            {
+                e.ThumbnailUrl = thumbnailUrl;
+                Save();
+            }
+        }
+    }
+
     /// <summary>Removes an entry and persists. No-op if absent.</summary>
     public void Remove(string sourceInstanceId, string itemId)
     {

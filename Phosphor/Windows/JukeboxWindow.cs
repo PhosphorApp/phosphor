@@ -511,12 +511,16 @@ public class JukeboxWindow : Window
 
     private void ExpandToCurrentMonitor()
     {
+        // Find which monitor this window is currently on
+        var handle = new WindowInteropHelper(this).Handle;
+        ExpandToScreen(WinFormsScreen.FromHandle(handle));
+    }
+
+    private void ExpandToScreen(WinFormsScreen screen)
+    {
         _isExpanded = true;
         ResizeMode = ResizeMode.NoResize;
 
-        // Find which monitor this window is currently on
-        var handle = new WindowInteropHelper(this).Handle;
-        var screen = WinFormsScreen.FromHandle(handle);
         var bounds = screen.Bounds;
 
         // Convert physical pixels to WPF device-independent units
@@ -528,6 +532,34 @@ public class JukeboxWindow : Window
         Top = bounds.Top * dpiScaleY;
         Width = bounds.Width * dpiScaleX;
         Height = bounds.Height * dpiScaleY;
+    }
+
+    /// <summary>
+    /// Moves the window to the next monitor (round-robin) and expands it fullscreen there.
+    /// Automates sending the viewer to a second display / TV. No-op with a single monitor.
+    /// </summary>
+    public void MoveToNextDisplay()
+    {
+        var screens = WinFormsScreen.AllScreens;
+        if (screens.Length < 2) return;
+
+        // Save the current windowed position before we leave it (first move only).
+        if (!_isExpanded && _layout != null)
+        {
+            _layout.Left = Left;
+            _layout.Top = Top;
+            _layout.Width = Width;
+            _layout.Height = Height;
+        }
+
+        var handle = new WindowInteropHelper(this).Handle;
+        var current = WinFormsScreen.FromHandle(handle);
+        int index = Array.IndexOf(screens, current);
+        if (index < 0) index = 0;
+        var next = screens[(index + 1) % screens.Length];
+
+        ExpandToScreen(next);
+        UpdateExpandButtonVisibility(IsActive);
     }
 
     protected virtual void UpdateExpandButtonVisibility(bool isActive)

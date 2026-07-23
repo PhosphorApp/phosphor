@@ -3114,10 +3114,36 @@ public partial class JukeboxViewModel : ObservableObject
     {
         try
         {
-            var json = JsonSerializer.Serialize(Queue.ToList(), new JsonSerializerOptions { WriteIndented = true });
+            var json = JsonSerializer.Serialize(SanitizeForPersist(Queue), new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(QueuePath, json);
         }
         catch { }
+    }
+
+    /// <summary>
+    /// Produces the queue list to persist, stripping the ephemeral resolved URLs from live-stream
+    /// items so an expired URL is never written to disk. On restore those items re-resolve from their
+    /// id at play time (see <see cref="ResolveAndPlayLiveAsync"/>); persisting the URL would make the
+    /// player hand VLC a dead link and surface a misleading "stream timed out".
+    /// </summary>
+    private static List<VideoItem> SanitizeForPersist(IEnumerable<VideoItem> queue)
+    {
+        var list = new List<VideoItem>();
+        foreach (var item in queue)
+        {
+            if (item.IsLiveStream && (item.StreamUrl != null || item.AudioStreamUrl != null))
+            {
+                var copy = item.ShallowCopy();
+                copy.StreamUrl = null;
+                copy.AudioStreamUrl = null;
+                list.Add(copy);
+            }
+            else
+            {
+                list.Add(item);
+            }
+        }
+        return list;
     }
 
     /// <summary>
@@ -3286,7 +3312,11 @@ public partial class JukeboxViewModel : ObservableObject
         // Custom = user-defined manual order (drag-to-reorder); ignores the Sort axis entirely.
         // Markers (separators / line breaks) are only meaningful in this mode.
         if (grouping == FavoritesGrouping.Custom)
-            return _favoritesIndex.AllCustomOrderedWithMarkers().Select(ToFavoriteRowOrMarker).ToList();
+        {
+            var customRows = _favoritesIndex.AllCustomOrderedWithMarkers().Select(ToFavoriteRowOrMarker).ToList();
+            EnrichFavoriteThumbnails(customRows);
+            return customRows;
+        }
 
         var entries = _favoritesIndex.All(); // index default order = recently-added first
 
@@ -3299,25 +3329,71 @@ public partial class JukeboxViewModel : ObservableObject
             _ => src, // RecentlyAdded — keep index order
         };
 
+        List<VideoItem> result;
         if (grouping == FavoritesGrouping.Provider)
         {
             // Injected full-width header rows + items. Rendered as a single-column list (grouped mode
             // forces one column) so headers span and items stack beneath — the CollectionView-grouping
             // path is incompatible with the virtualizing wrap panel.
-            var rows = new List<VideoItem>();
+            result = new List<VideoItem>();
             foreach (var group in entries
                 .GroupBy(e => e.SourceLabel)
                 .OrderBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase))
             {
-                rows.Add(new VideoItem { IsHeader = true, HeaderText = group.Key });
-                rows.AddRange(Sorted(group).Select(ToFavoriteRow));
+                result.Add(new VideoItem { IsHeader = true, HeaderText = group.Key });
+                result.AddRange(Sorted(group).Select(ToFavoriteRow));
             }
-            return rows;
+        }
+        else
+        {
+            // None — flat list ordered by the chosen sort.
+            result = Sorted(entries).Select(ToFavoriteRow).ToList();
         }
 
-        // None — flat list ordered by the chosen sort.
-        return Sorted(entries).Select(ToFavoriteRow).ToList();
+        EnrichFavoriteThumbnails(result);
+        return result;
     }
+
+    /// <summary>
+    /// Fills in missing thumbnails for aggregated-favorite rows whose owning source can resolve one
+    /// lazily (e.g. a Twitch channel container has no stored thumbnail, but its live/most-recent-VOD
+    /// preview does). Runs off-thread per source, updates the row live, and writes the resolved
+    /// thumbnail back to the persisted index so subsequent opens are instant. For live sources the
+    /// value is refreshed each open, so the tile tracks the current broadcast.
+    /// </summary>
+    private void EnrichFavoriteThumbnails(IEnumerable<VideoItem> rows)
+    {
+        var pending = rows
+            .Where(r => !r.IsHeader && r.IsAggregatedFavorite
+                        && !string.IsNullOrEmpty(r.SourceInstanceId)
+                        && (r.IsLiveStream || r.IsGenericContainer || string.IsNullOrEmpty(r.ThumbnailUrl)))
+            .ToList();
+        if (pending.Count == 0) return;
+
+        foreach (var row in pending)
+        {
+            var source = _sourceRegistry?.ByInstance(row.SourceInstanceId!);
+            if (source is not Phosphor.Plugin.Abstractions.IReplayableById and not Phosphor.Plugin.Abstractions.IFavoritable)
+                continue;
+
+            _ = SafeFireAndForget(Task.Run(async () =>
+            {
+                Phosphor.Plugin.Abstractions.SourceItem? rebuilt =
+                    (source as Phosphor.Plugin.Abstractions.IFavoritable)?.GetFavorite(row.VideoId)
+                    ?? (source as Phosphor.Plugin.Abstractions.IReplayableById)?.RebuildPlayable(row.VideoId);
+                var thumb = rebuilt?.ThumbnailUrl;
+                if (string.IsNullOrEmpty(thumb) || thumb == row.ThumbnailUrl) return;
+
+                await RunOnUiAsync(() =>
+                {
+                    row.ThumbnailUrl = thumb!;
+                    row.NotifyPropertyChanged(nameof(VideoItem.ThumbnailUrl));
+                });
+                _favoritesIndex.UpdateThumbnail(row.SourceInstanceId!, row.VideoId, thumb);
+            }));
+        }
+    }
+
 
     /// <summary>Maps an index <see cref="FavoriteEntry"/> to a display/play row for the Favorites view.</summary>
     private VideoItem ToFavoriteRow(FavoriteEntry e) => new()
@@ -3502,15 +3578,19 @@ public partial class JukeboxViewModel : ObservableObject
         // Live/deferred items resolve lazily (a possibly-slow yt-dlp/proxy round-trip) BEFORE they can
         // start. Stop any current playback now so the previous track doesn't keep playing during the
         // resolve — and so a resolve that fails leaves silence, not the old track still audible.
-        if (item.StreamUrl == null &&
-            (item.PendingLiveSourceItem != null || item.PendingResolveSourceItem != null))
+        // Live streams ALWAYS re-resolve (their URLs are short-lived and must never be reused from a
+        // cached/persisted StreamUrl), so they stop-and-resolve regardless of StreamUrl.
+        if (item.IsLiveStream ||
+            (item.StreamUrl == null &&
+             (item.PendingLiveSourceItem != null || item.PendingResolveSourceItem != null)))
         {
             StopRequested?.Invoke();
         }
 
-        // Live streams (e.g. SiriusXM) resolve lazily at play time — resolve the local proxy URL
-        // now, then start playback. Everything else already has its StreamUrl (or plays by id).
-        if (item.IsLiveStream && item.StreamUrl == null && item.PendingLiveSourceItem != null)
+        // Live streams (e.g. Twitch, SiriusXM) resolve lazily at play time — resolve a fresh URL now,
+        // then start playback. A cached/persisted StreamUrl is deliberately ignored: live URLs expire,
+        // and after a restart the item is re-resolved from its id (see ResolveAndPlayLiveAsync).
+        if (item.IsLiveStream)
         {
             _ = SafeFireAndForget(ResolveAndPlayLiveAsync(item));
             return;
@@ -3551,10 +3631,33 @@ public partial class JukeboxViewModel : ObservableObject
     {
         SetStatusPrefix("Tuning");
         var source = SourceForItem(item);
-        if (source is not Phosphor.Plugin.Abstractions.IPlayableResolver resolver
-            || item.PendingLiveSourceItem is not Phosphor.Plugin.Abstractions.SourceItem sourceItem)
+        if (source is not Phosphor.Plugin.Abstractions.IPlayableResolver resolver)
         {
             StatusText = $"Can't play {item.Title}: source unavailable.";
+            PlayTransitioning = false;
+            return;
+        }
+
+        // Prefer the opaque in-session SourceItem. After a restart it round-trips through JSON to a
+        // JsonElement (not a SourceItem), so rebuild a fresh one from the persisted id — for a live
+        // Twitch row the id is the channel login, so this resolves whatever is live NOW.
+        var sourceItem = item.PendingLiveSourceItem as Phosphor.Plugin.Abstractions.SourceItem;
+        if (sourceItem == null && source is Phosphor.Plugin.Abstractions.IReplayableById replayable)
+        {
+            var id = item.VideoId;
+            sourceItem = await Task.Run(() => replayable.RebuildPlayable(id));
+            if (sourceItem != null)
+            {
+                // Keep the rebuilt item for subsequent replays this session, and refresh the stale
+                // display metadata (a live channel's current show differs from when it was queued).
+                item.PendingLiveSourceItem = sourceItem;
+                RefreshLiveMetadata(item, sourceItem);
+            }
+        }
+
+        if (sourceItem == null)
+        {
+            StatusText = $"Can't tune {item.Title} — not live right now.";
             PlayTransitioning = false;
             return;
         }
@@ -3566,7 +3669,8 @@ public partial class JukeboxViewModel : ObservableObject
             if (stream?.PrimaryUri is { Length: > 0 } url)
             {
                 item.StreamUrl = url;
-                item.PendingLiveSourceItem = null; // resolved
+                // NB: do NOT clear PendingLiveSourceItem — live URLs expire, so the item must stay
+                // re-resolvable for the next play (and the persisted StreamUrl is dropped on save).
                 // Guard against the user having moved on while we were tuning.
                 if (ReferenceEquals(CurrentlyPlaying, item))
                     PlayRequested?.Invoke(item.VideoId);
@@ -3582,6 +3686,31 @@ public partial class JukeboxViewModel : ObservableObject
             DebugLog.LogException($"Live resolve '{item.VideoId}'", ex);
             StatusText = $"Can't tune {item.Title}: {ex.Message}";
             PlayTransitioning = false;
+        }
+    }
+
+    /// <summary>
+    /// Refreshes a live item's display metadata (title/author/thumbnail) from a freshly-rebuilt
+    /// <see cref="Phosphor.Plugin.Abstractions.SourceItem"/> so the "now playing" UI reflects the
+    /// channel's <em>current</em> show rather than a stale title captured when it was queued.
+    /// </summary>
+    private static void RefreshLiveMetadata(
+        VideoItem item, Phosphor.Plugin.Abstractions.SourceItem sourceItem)
+    {
+        if (!string.IsNullOrEmpty(sourceItem.Title) && sourceItem.Title != item.Title)
+        {
+            item.Title = sourceItem.Title;
+            item.NotifyPropertyChanged(nameof(VideoItem.Title));
+        }
+        if (!string.IsNullOrEmpty(sourceItem.Subtitle) && sourceItem.Subtitle != item.Author)
+        {
+            item.Author = sourceItem.Subtitle!;
+            item.NotifyPropertyChanged(nameof(VideoItem.Author));
+        }
+        if (!string.IsNullOrEmpty(sourceItem.ThumbnailUrl) && sourceItem.ThumbnailUrl != item.ThumbnailUrl)
+        {
+            item.ThumbnailUrl = sourceItem.ThumbnailUrl!;
+            item.NotifyPropertyChanged(nameof(VideoItem.ThumbnailUrl));
         }
     }
 

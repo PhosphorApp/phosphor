@@ -17,6 +17,12 @@ public class VideoItem : ObservableObject
         OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs(propertyName));
 
     /// <summary>
+    /// Returns a shallow copy of this item. Used when persisting a variant of an item (e.g. the queue
+    /// saver strips ephemeral live-stream URLs on a copy so the live original stays playable in-session).
+    /// </summary>
+    public VideoItem ShallowCopy() => (VideoItem)MemberwiseClone();
+
+    /// <summary>
     /// When set, the player uses this URL directly instead of resolving via YouTube.
     /// Used for Plex and other direct-stream sources.
     /// </summary>

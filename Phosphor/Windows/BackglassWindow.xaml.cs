@@ -225,6 +225,8 @@ public partial class BackglassWindow : JukeboxWindow
             _expandButtonHideTimer.Stop();
             if (ExpandButton != null)
                 ExpandButton.Visibility = Visibility.Collapsed;
+            if (MoveDisplayButton != null)
+                MoveDisplayButton.Visibility = Visibility.Collapsed;
         };
 
         // Prevent this window from stealing focus when the VLC VideoView
@@ -232,6 +234,11 @@ public partial class BackglassWindow : JukeboxWindow
         ShowActivated = false;
 
         InitializeComponent();
+
+        // The Backglass is intentionally non-activating (WS_EX_NOACTIVATE), so its
+        // Activated event never fires on mouse interaction. Re-reveal the auto-hiding
+        // expand controls on any pointer movement over the WPF surface instead.
+        PreviewMouseMove += (_, _) => RevealExpandButton();
 
         IsVisibleChanged += OnIsVisibleChanged;
 
@@ -292,6 +299,7 @@ public partial class BackglassWindow : JukeboxWindow
         if (isActive)
         {
             ExpandButton.Visibility = Visibility.Visible;
+            if (MoveDisplayButton != null) MoveDisplayButton.Visibility = Visibility.Visible;
             _expandButtonHideTimer.Stop();
             _expandButtonHideTimer.Start();
         }
@@ -299,6 +307,7 @@ public partial class BackglassWindow : JukeboxWindow
         {
             _expandButtonHideTimer.Stop();
             ExpandButton.Visibility = Visibility.Collapsed;
+            if (MoveDisplayButton != null) MoveDisplayButton.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -307,6 +316,22 @@ public partial class BackglassWindow : JukeboxWindow
         _expandButtonHideTimer.Stop();
         if (ExpandButton != null)
             ExpandButton.Visibility = Visibility.Collapsed;
+        if (MoveDisplayButton != null)
+            MoveDisplayButton.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// Re-shows the auto-hiding expand/move controls and restarts the hide timer.
+    /// Driven by pointer movement over the Backglass because the window is
+    /// non-activating and never fires <see cref="System.Windows.Window.Activated"/>.
+    /// </summary>
+    private void RevealExpandButton()
+    {
+        if (ExpandButton == null) return;
+        ExpandButton.Visibility = Visibility.Visible;
+        if (MoveDisplayButton != null) MoveDisplayButton.Visibility = Visibility.Visible;
+        _expandButtonHideTimer.Stop();
+        _expandButtonHideTimer.Start();
     }
 
     private void HookVideoViewForDrag()
@@ -332,6 +357,9 @@ public partial class BackglassWindow : JukeboxWindow
             child.MouseMove += (_, me) =>
             {
                 child.Cursor = GetChildResizeCursor(me.X, me.Y);
+                // WPF PreviewMouseMove doesn't fire over the WinForms video surface,
+                // so reveal the auto-hiding expand/move controls from here too.
+                Dispatcher.BeginInvoke(RevealExpandButton);
             };
         }
     }
@@ -1504,6 +1532,11 @@ public partial class BackglassWindow : JukeboxWindow
     private void ToggleExpand_Click(object sender, RoutedEventArgs e)
     {
         ToggleExpand();
+    }
+
+    private void MoveDisplay_Click(object sender, RoutedEventArgs e)
+    {
+        MoveToNextDisplay();
     }
 
     protected override void OnClosed(EventArgs e)
