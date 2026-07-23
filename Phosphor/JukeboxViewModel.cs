@@ -3205,11 +3205,17 @@ public partial class JukeboxViewModel : ObservableObject
         if (item.IsAggregatedFavorite)
         {
             var source = _sourceRegistry?.ByInstance(item.SourceInstanceId ?? "");
-            if (source is Phosphor.Plugin.Abstractions.IFavoritable fav
-                && fav.GetFavorite(item.VideoId) is { IsContainer: true } node)
+            if (source is Phosphor.Plugin.Abstractions.IFavoritable fav)
             {
-                await PlayContainerAsync(ToContainerLeafItem(node, fav));
-                return;
+                // GetFavorite may do blocking network I/O — never run it on the UI thread (a blocking
+                // plug-in call there freezes the whole app and forces an ungraceful kill).
+                var id = item.VideoId;
+                var node = await Task.Run(() => fav.GetFavorite(id));
+                if (node is { IsContainer: true })
+                {
+                    await PlayContainerAsync(ToContainerLeafItem(node, fav));
+                    return;
+                }
             }
             StatusText = $"Can't play {item.Title}: source unavailable.";
             return;
@@ -3855,7 +3861,7 @@ public partial class JukeboxViewModel : ObservableObject
             return;
         }
 
-        var sourceItem = fav.GetFavorite(favRow.VideoId);
+        var sourceItem = await Task.Run(() => fav.GetFavorite(favRow.VideoId));
         if (sourceItem is null)
         {
             StatusText = $"Can't play {favRow.Title}: no longer available.";
