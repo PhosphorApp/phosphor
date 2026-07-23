@@ -455,12 +455,12 @@ public class AppSettings
     /// When true, saves a PNG snapshot of each color-sampled frame for diagnostics.
     /// </summary>
     public bool ProjectMSaveColorSampleFrame { get; set; }
-    public IconStyle DmdIconStyle { get; set; } = IconStyle.Themed;
+    public IconStyle DmdIconStyle { get; set; } = IconStyle.Color;
     /// <summary>
     /// The emoji font whose glyphs drive every icon style (Color/Desaturated/Silhouette/Themed).
-    /// Defaults to Segoe (Windows) for safety — it's always present on Windows and needs no bundled file.
+    /// Defaults to Twemoji.
     /// </summary>
-    public Phosphor.EmojiIcons.EmojiFontSet DmdEmojiFontSet { get; set; } = Phosphor.EmojiIcons.EmojiFontSet.SegoeSystem;
+    public Phosphor.EmojiIcons.EmojiFontSet DmdEmojiFontSet { get; set; } = Phosphor.EmojiIcons.EmojiFontSet.Twemoji;
     public int DmdRotation { get; set; }
     public QueuePosition DmdQueuePosition { get; set; } = QueuePosition.Right;
     /// <summary>

@@ -488,48 +488,6 @@ public partial class SettingsWindow : JukeboxWindow
         };
     }
 
-    /// <summary>
-    /// DIAGNOSTIC (temporary): logs each RequestBringIntoView with the actual source element,
-    /// its type/name, the ancestor chain up to the first ScrollViewer, whether it was already
-    /// handled, and the requested rectangle. Lets us identify exactly what raises the scroll-jump.
-    /// Remove once the scroll-jump is confirmed fixed.
-    /// </summary>
-    private void LogBringIntoView(object sender, RequestBringIntoViewEventArgs e)
-    {
-        try
-        {
-            var src = e.OriginalSource as DependencyObject;
-            static string Describe(DependencyObject? d)
-            {
-                if (d is null) return "null";
-                var name = (d as FrameworkElement)?.Name;
-                return string.IsNullOrEmpty(name) ? d.GetType().Name : $"{d.GetType().Name}#{name}";
-            }
-
-            var chain = new System.Text.StringBuilder();
-            var cur = src;
-            int hops = 0;
-            string scroller = "none";
-            while (cur != null && hops < 40)
-            {
-                if (chain.Length > 0) chain.Append(" > ");
-                chain.Append(Describe(cur));
-                if (cur is System.Windows.Controls.ScrollViewer) { scroller = Describe(cur); break; }
-                cur = System.Windows.Media.VisualTreeHelper.GetParent(cur)
-                      ?? (cur as FrameworkElement)?.Parent as DependencyObject;
-                hops++;
-            }
-
-            var tab = (SettingsTabs?.SelectedItem as System.Windows.Controls.TabItem)?.Header?.ToString() ?? "?";
-            DebugLog.Log("BringIntoView",
-                $"tab='{tab}' handled={e.Handled} source={Describe(src)} scroller={scroller} rect={e.TargetRect} chain=[{chain}]");
-        }
-        catch (Exception ex)
-        {
-            DebugLog.Log("BringIntoView", $"log failed: {ex.Message}");
-        }
-    }
-
     private static IEnumerable<T> FindVisualChildren<T>(DependencyObject root) where T : DependencyObject
     {
         int count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
@@ -550,13 +508,7 @@ public partial class SettingsWindow : JukeboxWindow
 
         InitializeComponent();
 
-        // DIAGNOSTIC (temporary): observe every RequestBringIntoView reaching the window — even
-        // ones already handled by the suppressors — to identify exactly what element raises the
-        // scroll-jump. Logged to the debug log; remove once the scroll-jump is confirmed fixed.
-        AddHandler(FrameworkElement.RequestBringIntoViewEvent,
-            new RequestBringIntoViewEventHandler(LogBringIntoView), handledEventsToo: true);
-
-        // Suppress the "scroll jumps to top" bug once the visual tree exists (see below).
+        // Guard the "scroll jumps to top" bug once the visual tree exists (see below).
         Loaded += SuppressScrollIntoViewOnLoad;
         // TabControl realizes each tab's content (and its ScrollViewer) lazily on first view,
         // so re-run the wiring when the selected tab changes to cover tabs not yet realized at load.

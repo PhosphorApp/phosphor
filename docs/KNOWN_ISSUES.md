@@ -3,28 +3,37 @@
 Tracked, intentionally-deferred issues. Each entry notes the tradeoff and where the
 relevant code lives so it's easy to pick up later.
 
-## Settings ComboBox — keyboard bring-into-view suppressed
+## Settings panel — focus-driven scroll jumps are corrected by a position guard
 
-**Where:** `Phosphor/Windows/SettingsWindow.xaml.cs` — static constructor class handlers
-for `ComboBox` / `ComboBoxItem` `RequestBringIntoView`.
+**Where:** `Phosphor/Windows/SettingsWindow.xaml.cs` — `AttachScrollGuard` /
+`SuppressScrollIntoViewOnLoad`, plus `ComboBox`/`ComboBoxItem` class handlers in the
+static constructor.
 
-**Context:** Changing a `ComboBox` selection inside a `ScrollViewer` used to jump the
-settings panel scroll position (usually to the top). This was fixed by registering class
-handlers that mark `RequestBringIntoView` as handled for both `ComboBox` and
-`ComboBoxItem`, covering every combo including dynamically-built plug-in dropdowns
-(e.g. Vimeo/DailyMotion video quality).
+**Context:** Changing a control inside a `ScrollViewer` (selecting a combo item, toggling
+a checkbox, clicking a plug-in button) used to jump the settings panel scroll position
+(often to the top). Diagnostic logging proved the leaked scroll is a `RequestBringIntoView`
+whose `OriginalSource` is the **`ScrollViewer` itself**, raised when a child takes focus.
+That event originates at the scroll host and bubbles *up and away* from any child handler,
+and WPF's own scroll runs in a `ScrollViewer` class handler before instance handlers — so it
+cannot be cancelled from below (several attempts to do so failed intermittently).
 
-**Tradeoff / known issue:** Suppressing `RequestBringIntoView` on the `ComboBox` type
-also disables the *legitimate* behavior of auto-scrolling an off-screen combo into view
-when it receives focus via keyboard (Tab). The Settings window is primarily mouse-driven
-(cabinet keyboard shortcuts target playback, not settings), so this is an acceptable
-trade for now.
+**Fix:** A **scroll-position guard**. Each `ScrollViewer` remembers the user's intended
+vertical offset, updated only on genuine *scroll gestures* (mouse wheel, scrollbar thumb
+drag, PageUp/PageDown/Home/End, touch move). On any `ScrollChanged` that occurs without a
+recent scroll gesture — i.e. a programmatic focus jump — the guard restores the saved
+offset. This is source-agnostic: it doesn't matter what raised the scroll. The combo class
+handlers remain as a cheap first layer for the common case.
 
-**Possible future fix:** Make the handler selective instead of blanket-suppressing —
-e.g. only mark handled when the requested rectangle corresponds to the combo/item that is
-already visible (a selection-driven scroll), and let through genuine focus-driven
-bring-into-view when the target is off-screen. Would restore keyboard navigation without
-reintroducing the selection jump.
+**Tradeoff / known issue:** Legitimate keyboard focus-driven bring-into-view within the
+panels is also neutralized (a Tab to an off-screen control won't auto-scroll it into view).
+The Settings window is mouse-driven (cabinet keyboard shortcuts target playback, not
+settings), so this is acceptable. There is also a theoretical one-frame "restore" bounce
+when a jump is undone; it has not been observable in testing.
+
+**Possible future refinement:** Distinguish a genuine off-screen focus target (should scroll)
+from an already-visible one (should not), so keyboard navigation to off-screen controls still
+works while spurious jumps are suppressed.
+
 
 ## Forward-scrubbing streaming (non-cached) YouTube videos can fail
 
