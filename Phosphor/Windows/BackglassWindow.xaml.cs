@@ -17,6 +17,9 @@ public partial class BackglassWindow : JukeboxWindow
     private MediaPlayer? _mediaPlayer;
     private readonly Random _rng = new();
     private readonly DispatcherTimer _colorTimer;
+    // Debounces IdleCanvas resize so the blob pattern is rebuilt (re-centered) only
+    // once dragging settles, avoiding a storm of rebuilds while the window is resized.
+    private readonly DispatcherTimer _resizeDebounceTimer = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private DispatcherTimer? _positionTimer;
     // Wall-clock start of the current live stream, used to show elapsed time (LibVLC's Time reflects
     // the live DVR window, not elapsed-since-start). Null when not playing a live stream.
@@ -217,6 +220,8 @@ public partial class BackglassWindow : JukeboxWindow
     {
         _colorTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         _colorTimer.Tick += ColorCycleBlobs;
+
+        _resizeDebounceTimer.Tick += OnResizeDebounceTick;
 
         _logoDimTimer.Tick += LogoDimTimer_Tick;
         _morphTimer.Tick += MorphTimer_Tick;
@@ -1595,6 +1600,9 @@ public partial class BackglassWindow : JukeboxWindow
         {
             _idleAnimStarted = true;
 
+            IdleCanvas.SizeChanged -= OnIdleCanvasSizeChanged;
+            IdleCanvas.SizeChanged += OnIdleCanvasSizeChanged;
+
             _currentPattern = BlobTransition.Create(_blobPattern, MakeConfig());
             _currentPattern.Enter(() => { });
             // Record whether this was built against a real canvas. If the app started
@@ -1607,6 +1615,42 @@ public partial class BackglassWindow : JukeboxWindow
 
         DrawRecordOverlay(RecordOverlay, _logoRings);
         DrawCircularTitle(TitleCanvas, _logoSpin);
+    }
+
+    /// <summary>
+    /// When the IdleCanvas is resized (e.g. the window is dragged to a new size), the blob
+    /// pattern needs to be rebuilt so its elements re-center against the new dimensions.
+    /// The logo/record overlays recenter continuously via their own SizeChanged handlers,
+    /// but rebuilding the whole pattern on every intermediate resize event would be wasteful,
+    /// so the rebuild is debounced until the resize settles.
+    /// </summary>
+    private void OnIdleCanvasSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (!_idleAnimStarted || IdleCanvas.ActualWidth < 1 || IdleCanvas.ActualHeight < 1)
+            return;
+
+        // Self-rendering patterns handle their own resize via canvas SizeChanged.
+        if (_blobPattern is BlobPattern.ProjectM or BlobPattern.Mandelbrot)
+            return;
+
+        _resizeDebounceTimer.Stop();
+        _resizeDebounceTimer.Start();
+    }
+
+    private void OnResizeDebounceTick(object? sender, EventArgs e)
+    {
+        _resizeDebounceTimer.Stop();
+
+        if (!_idleAnimStarted || IdleCanvas.ActualWidth < 1 || IdleCanvas.ActualHeight < 1)
+            return;
+
+        if (_blobPattern is BlobPattern.ProjectM or BlobPattern.Mandelbrot)
+            return;
+
+        _currentPattern?.Dispose();
+        _currentPattern = BlobTransition.Create(_blobPattern, MakeConfig());
+        _currentPattern.Enter(() => { });
+        _idlePatternLaidOut = true;
     }
 
     /// <summary>
