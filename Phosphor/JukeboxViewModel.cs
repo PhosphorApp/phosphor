@@ -1098,6 +1098,7 @@ public partial class JukeboxViewModel : ObservableObject
             {
                 OnPropertyChanged(nameof(IsViewingStaticPlaylist));
                 OnPropertyChanged(nameof(IsViewingFavorites));
+                OnPropertyChanged(nameof(ShowRemoveFromPlaylist));
                 OnPropertyChanged(nameof(IsFavoritesGroupedView));
             }
         }
@@ -1196,6 +1197,13 @@ public partial class JukeboxViewModel : ObservableObject
     public bool IsViewingFavorites => IsViewingStaticPlaylist && ActivePlaylistName == "Favorites";
 
     /// <summary>
+    /// True when a per-row "Remove from Playlist" button should show: any static playlist EXCEPT the
+    /// aggregated Favorites view, where the star toggle already removes the favorite (the ✕ would be
+    /// redundant with un-starring).
+    /// </summary>
+    public bool ShowRemoveFromPlaylist => IsViewingStaticPlaylist && !IsViewingFavorites;
+
+    /// <summary>
     /// True when the Favorites view is grouped by provider — the DMD swaps the results panel to a
     /// vertical stack (full-width headers + rows) instead of the multi-column wrap panel.
     /// </summary>
@@ -1242,6 +1250,7 @@ public partial class JukeboxViewModel : ObservableObject
             if (SetProperty(ref _activePlaylistName, value) && IsViewingPlaylist)
                 LoadPlaylist(value);
             OnPropertyChanged(nameof(IsViewingFavorites));
+            OnPropertyChanged(nameof(ShowRemoveFromPlaylist));
             OnPropertyChanged(nameof(IsFavoritesGroupedView));
         }
     }
@@ -2133,6 +2142,7 @@ public partial class JukeboxViewModel : ObservableObject
             {
                 OnPropertyChanged(nameof(IsViewingStaticPlaylist));
                 OnPropertyChanged(nameof(IsViewingFavorites));
+                OnPropertyChanged(nameof(ShowRemoveFromPlaylist));
                 OnPropertyChanged(nameof(IsFavoritesGroupedView));
             }
         }

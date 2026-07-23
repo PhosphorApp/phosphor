@@ -566,7 +566,7 @@
                                         <Button Content="&#x2715;" ToolTip="Remove from Playlist" Padding="{DynamicResource TrackButtonPadding}" FontSize="{DynamicResource TrackButtonFontSize}" Margin="4,0,0,0"
                                                 Command="{Binding DataContext.RemoveFromPlaylistCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding}"
-                                                Visibility="{Binding DataContext.IsViewingStaticPlaylist, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource BoolVis}}"/>
+                                                Visibility="{Binding DataContext.ShowRemoveFromPlaylist, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource BoolVis}}"/>
                                         <Button Content="&#x1F50E;" ToolTip="Find Similar" Padding="{DynamicResource TrackButtonPadding}" FontSize="{DynamicResource TrackButtonFontSize}" Margin="4,0,0,0"
                                                 Command="{Binding DataContext.FindSimilarCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding}"
