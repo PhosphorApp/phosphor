@@ -36,7 +36,11 @@ public class ThumbnailCacheConverter : IValueConverter
             var cachedPath = cache.TryGet(url);
             if (cachedPath != null)
             {
-                if (_decodedCache.TryGetValue(cachedPath, out var cachedBi))
+                // Key the decoded-image cache on path + last-write time so an in-place overwrite
+                // (a volatile live preview refreshed in its stable-named file) invalidates the old
+                // decode instead of serving a stale frame for the process lifetime.
+                var decodeKey = DecodeKey(cachedPath);
+                if (decodeKey != null && _decodedCache.TryGetValue(decodeKey, out var cachedBi))
                     return cachedBi;
 
                 // Decode synchronously from disk at a downscaled size and return it now.
@@ -46,7 +50,7 @@ public class ThumbnailCacheConverter : IValueConverter
                 var localBi = CreateLocalBitmapImage(cachedPath);
                 if (localBi != null)
                 {
-                    _decodedCache[cachedPath] = localBi;
+                    if (decodeKey != null) _decodedCache[decodeKey] = localBi;
                     return localBi;
                 }
             }
@@ -84,6 +88,17 @@ public class ThumbnailCacheConverter : IValueConverter
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();
+
+    /// <summary>
+    /// A decoded-cache key that changes when the file is overwritten in place (path + last-write time),
+    /// so a refreshed volatile thumbnail isn't masked by a stale in-memory decode. Null if the file
+    /// can't be stat'd (caller then falls back to a fresh decode).
+    /// </summary>
+    private static string? DecodeKey(string filePath)
+    {
+        try { return $"{filePath}|{File.GetLastWriteTimeUtc(filePath).Ticks}"; }
+        catch { return null; }
+    }
 
     private static BitmapImage? CreateLocalBitmapImage(string filePath)
     {

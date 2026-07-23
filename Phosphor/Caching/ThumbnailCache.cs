@@ -2,6 +2,7 @@ using System.IO;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Phosphor;
 
@@ -50,8 +51,9 @@ public class ThumbnailCache
 
         var fileName = GetFileName(url);
         var filePath = Path.Combine(CacheDir, fileName);
+        var volatileWindow = VolatileBucket(url);
 
-        if (File.Exists(filePath))
+        if (File.Exists(filePath) && IsFresh(filePath, volatileWindow))
         {
             // Touch file to mark as recently used
             try { File.SetLastAccessTimeUtc(filePath, DateTime.UtcNow); } catch { }
@@ -62,6 +64,16 @@ public class ThumbnailCache
         try
         {
             var data = await Http.GetByteArrayAsync(url, ct);
+
+            // Reject tiny placeholder frames (e.g. Twitch's ~1KB black "starting soon" preview served
+            // in the first moments of a broadcast) for volatile URLs: don't cache, so the next refresh
+            // retries and picks up the real frame once it exists. Immutable URLs are always kept.
+            if (volatileWindow != null && data.Length < MinVolatileBytes)
+            {
+                DebugLog.Log("ThumbnailCache", $"Skipped tiny volatile thumb ({data.Length}B): {fileName}");
+                return null;
+            }
+
             await File.WriteAllBytesAsync(filePath, data, ct);
             DebugLog.Log("ThumbnailCache", $"Stored: {fileName} ({data.Length / 1024}KB)");
             Prune();
@@ -74,7 +86,7 @@ public class ThumbnailCache
     }
 
     /// <summary>
-    /// Returns a cached file path if available, without downloading.
+    /// Returns a cached file path if available and still fresh, without downloading.
     /// </summary>
     public string? TryGet(string url)
     {
@@ -82,7 +94,7 @@ public class ThumbnailCache
             return null;
 
         var filePath = Path.Combine(CacheDir, GetFileName(url));
-        return File.Exists(filePath) ? filePath : null;
+        return File.Exists(filePath) && IsFresh(filePath, VolatileBucket(url)) ? filePath : null;
     }
 
     public void Purge()
@@ -146,9 +158,48 @@ public class ThumbnailCache
 
     private static string GetFileName(string url)
     {
-        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(url)));
+        // Hash the STABLE url (minus the volatile "_pb" cache-buster) so a channel's live preview maps
+        // to ONE file that overwrites in place each window — instead of piling up a new file per bucket.
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(StripVolatileToken(url))));
         var ext = GetExtension(url);
         return $"{hash}{ext}";
+    }
+
+    // ── Volatile (time-bucketed) thumbnail support ───────────────────────────────
+    // Sources that serve a stable URL with mutating bytes (e.g. Twitch live previewImageURL) append a
+    // "_pb={bucket}" token that rolls over every couple minutes. We key the file on the stable URL but
+    // only serve it while the current window's bucket matches, so a stale/blank frame self-heals.
+
+    private const long MinVolatileBytes = 2 * 1024; // frames smaller than this are treated as placeholders
+
+    private static readonly Regex VolatileTokenRegex =
+        new(@"[?&]_pb=(\d+)", RegexOptions.Compiled);
+
+    /// <summary>Returns the volatile bucket value if the URL carries a "_pb" token, else null.</summary>
+    private static long? VolatileBucket(string url)
+    {
+        var m = VolatileTokenRegex.Match(url);
+        return m.Success && long.TryParse(m.Groups[1].Value, out var b) ? b : null;
+    }
+
+    /// <summary>Removes the "_pb" cache-buster so the filename is stable across buckets.</summary>
+    private static string StripVolatileToken(string url) =>
+        VolatileTokenRegex.Replace(url, "").TrimEnd('?', '&');
+
+    /// <summary>
+    /// A cached file is fresh when the URL is immutable (no bucket) OR the file was written within the
+    /// current volatile window (its mtime maps to the same bucket the caller is asking for). This makes
+    /// a stable-named volatile file behave as if it expires when its window rolls over.
+    /// </summary>
+    private static bool IsFresh(string filePath, long? bucket)
+    {
+        if (bucket == null) return true; // immutable URL — always fresh
+        try
+        {
+            var writtenBucket = new DateTimeOffset(File.GetLastWriteTimeUtc(filePath)).ToUnixTimeSeconds() / 120;
+            return writtenBucket >= bucket.Value;
+        }
+        catch { return false; }
     }
 
     private static string GetExtension(string url)
