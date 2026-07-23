@@ -46,3 +46,6 @@ tools/SpotifySpike/*.local
 
 # Throwaway diagnostic spike projects (SkiaSharp/emoji rendering tests, etc.)
 _spike_*/
+
+# Draft app license — kept local only until finalized
+LICENSE.draft.txt
