@@ -86,6 +86,12 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>EmojiFonts\%(Filename)%(Extension)</Link>
     </Content>
+    <!-- Ship the bundled-font license texts next to the app so the About-tab reference
+         resolves and end users receive the required license/attribution notices. -->
+    <Content Include="..\licenses\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>licenses\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
