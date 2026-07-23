@@ -3905,6 +3905,24 @@ public partial class JukeboxViewModel : ObservableObject
             return;
         }
 
+        // Source-defined "Play all" policy: a recency feed (e.g. a Twitch channel) plays only the
+        // latest leaf — the live feed injected at offset 0, else the most recent VOD — rather than
+        // queueing the whole back-catalog. Sources without the capability default to QueueAll.
+        var source = _sourceRegistry?.ByInstance(container.GenericSourceInstanceId ?? "");
+        if (source is Phosphor.Plugin.Abstractions.IContainerPlayPolicy policy)
+        {
+            var containerItem = new Phosphor.Plugin.Abstractions.SourceItem
+            {
+                SourceInstanceId = container.GenericSourceInstanceId ?? "",
+                ItemId = container.GenericCategoryId ?? container.VideoId,
+                Title = container.Title,
+                IsContainer = true,
+                SourceState = container.GenericSourceState,
+            };
+            if (policy.GetPlayAllBehavior(containerItem) == Phosphor.Plugin.Abstractions.ContainerPlayAll.PlayLatestOnly)
+                leaves = leaves.Take(1).ToList();
+        }
+
         int firstIndex = Queue.Count;
         foreach (var track in leaves)
         {

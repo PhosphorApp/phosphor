@@ -437,6 +437,39 @@ public interface IReplayableById
     SourceItem? RebuildPlayable(string itemId);
 }
 
+/// <summary>How the host should treat a "Play all" action on a container.</summary>
+public enum ContainerPlayAll
+{
+    /// <summary>Queue every leaf and play from the first — the default (e.g. an album played whole).</summary>
+    QueueAll,
+
+    /// <summary>
+    /// Queue and play only the <em>first</em> leaf — the right behavior for a recency feed rather than
+    /// a curated set (e.g. a Twitch channel: play what's live now, else the most recent VOD, not the
+    /// entire back-catalog).
+    /// </summary>
+    PlayLatestOnly,
+}
+
+/// <summary>
+/// Optional capability: a source declares how "Play all" should behave for its containers, letting a
+/// recency feed (e.g. a Twitch channel) play only the latest item instead of queueing everything.
+/// Sources that don't implement this default to <see cref="ContainerPlayAll.QueueAll"/> — the
+/// album-style "queue the whole thing" behavior — so existing sources are unaffected.
+/// </summary>
+public interface IContainerPlayPolicy
+{
+    /// <summary>Returns the "Play all" behavior for <paramref name="container"/>.</summary>
+    ContainerPlayAll GetPlayAllBehavior(SourceItem container);
+
+    /// <summary>
+    /// Optional short verb label for the container's play button/tooltip (e.g. "Play latest"), or
+    /// <c>null</c> to use the host default ("Play all"). Lets the affordance read honestly when the
+    /// behavior isn't "queue everything".
+    /// </summary>
+    string? PlayAllLabel(SourceItem container) => null;
+}
+
 /// <summary>
 /// A snapshot of a favorited item the host hands to a source at star-time, so the source can persist
 /// enough to rebuild it later via <see cref="IFavoritable.GetFavorite"/> — including
