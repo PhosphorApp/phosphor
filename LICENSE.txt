@@ -1,0 +1,177 @@
+PolyForm Noncommercial License 1.0.0
+
+<https://polyformproject.org/licenses/noncommercial/1.0.0>
+
+## Acceptance
+
+In order to get any license under these terms, you must agree
+to them as both strict obligations and conditions to all your
+licenses.
+
+## Copyright License
+
+The licensor grants you a copyright license for the software to
+do everything you might do with the software that would otherwise
+infringe the licensor's copyright in it for any permitted purpose,
+other than distributing the software or making changes or new
+works based on the software.
+
+## Patent License
+
+The licensor grants you a patent license for the software that
+covers patent claims the licensor can license, or becomes able to
+license, that you would infringe by using the software.
+
+## Noncommercial Purposes
+
+Any noncommercial purpose is a permitted purpose.
+
+## Personal Uses
+
+Personal use for research, experiment, and testing for the
+benefit of public knowledge, personal study, private
+entertainment, hobby projects, amateur pursuits, or religious
+observance, without any anticipated commercial application,
+doesn't count as use for a commercial purpose.
+
+## Noncommercial Organizations
+
+Use by any charitable organization, educational institution,
+public research organization, public safety or health
+organization, environmental protection organization, or
+government institution counts as use for a permitted purpose
+regardless of the source of funding or obligations resulting
+from the funding.
+
+## Distribution License
+
+The licensor grants you an additional copyright license to
+distribute copies of the software. Your license to distribute
+covers distributing the software with changes and new works based
+on the software.
+
+## Notices
+
+You must ensure that anyone who gets a copy of any part of the
+software from you also gets a copy of these terms or the URL for
+them above, as well as copies of any plain-text lines beginning
+with `Required Notice:` that the licensor provided with the
+software. For example:
+
+> Required Notice: Copyright YYYY Brian Hitney (Phosphor)
+
+## Changes and New Works License
+
+The licensor grants you a copyright license to make changes and
+new works based on the software for any permitted purpose.
+
+## Patent Defense
+
+If you make any written claim that the software infringes or
+contributes to infringement of any patent, your patent license
+for the software granted under these terms ends immediately. If
+your company makes such a claim, your patent license ends
+immediately for work on behalf of your company.
+
+## Violations
+
+The first time you are notified in writing that you have violated
+any of these terms, or done anything with the software not covered
+by your licenses, your licenses can nonetheless continue if you
+come into full compliance with these terms, and take practical
+steps to correct past violations, within 32 days of receiving
+notice. Otherwise, all your licenses end immediately.
+
+## No Liability
+
+***As far as the law allows, the software comes as is, without
+any warranty or condition, and the licensor will not be liable to
+you for any damages arising out of these terms or the use or
+nature of the software, under any kind of legal claim.***
+
+## Definitions
+
+The **licensor** is the individual or entity offering these terms,
+and the **software** is the software the licensor makes available
+under these terms.
+
+**You** refers to the individual or entity agreeing to these
+terms.
+
+**Your company** is any legal entity, sole proprietorship, or
+other kind of organization that you work for, plus all
+organizations that have control over, are under the control of, or
+are under common control with that organization. **Control** means
+ownership of substantially all the assets of an entity, or the
+power to direct its management and policies by vote, contract, or
+otherwise. Control can be direct or indirect.
+
+**Your licenses** are all the licenses granted to you for the
+software under these terms.
+
+**Use** means anything you do with the software requiring one of
+your licenses.
+
+
+-------------------------------------------------------------------------------
+Required Notice: Copyright (c) 2026 Brian Hitney (Phosphor)
+
+The following notices are part of this license and are provided as
+`Required Notice:` text under the "Notices" section above. Anyone who receives a
+copy of the software must also receive a copy of these notices.
+
+ADDITIONAL NOTICE — NO COMMERCIAL REDISTRIBUTION OR PRELOADED MEDIA
+-------------------------------------------------------------------------------
+Phosphor is provided free of charge for personal, noncommercial use.
+
+For the avoidance of doubt: the "Distribution License" and "Changes and New
+Works License" sections above are granted ONLY for a permitted (noncommercial)
+purpose, as defined in the "Noncommercial Purposes" section. They do NOT grant
+any right to distribute Phosphor commercially. Reading any single section in
+isolation does not expand these rights.
+
+Without limiting the terms above, the following are expressly NOT permitted:
+
+  * Selling, licensing, or otherwise distributing Phosphor for a fee.
+  * Including Phosphor on any drive, disk, memory card, preloaded system,
+	"plug-and-play" build, or other media that is offered for sale or other
+	commercial consideration — whether the fee is described as being for the
+	software, for the media, for "assembly," for "curation," or otherwise.
+  * Bundling Phosphor with virtual pinball tables, front ends, or other content
+	as part of a commercial product or paid package.
+
+Distributing the media does not exempt the distribution of the software it
+contains. If money changes hands for something that includes Phosphor, that is
+commercial distribution and is not permitted under this license.
+
+Individuals may freely share Phosphor with one another at no charge.
+
+
+ADDITIONAL NOTICE — EXTENSIBILITY, THIRD-PARTY COMPONENTS, AND USER RESPONSIBILITY
+-------------------------------------------------------------------------------
+Phosphor is a general-purpose media player built around an extensible plug-in
+architecture. It does not target or depend on any particular source or service.
+Instead, independent plug-ins may add support for various sources, and the core
+application provides only the abstraction layer through which such plug-ins
+interface. Any given source plug-in is one interchangeable component among many
+and is not integral to the application.
+
+Phosphor may also make use of independent, general-purpose third-party tools
+that are developed and maintained by others. Where present, such tools are
+included for convenience, unmodified, and Phosphor is not affiliated with,
+endorsed by, or sponsored by their authors or by any third-party source.
+
+You are solely responsible for how you use Phosphor and for ensuring that your
+use of any source, service, content, or tool complies with the applicable terms,
+licenses, and laws in your jurisdiction. Access to and use of any third-party
+source or service is governed by that party's own terms, not by Phosphor or its
+author. Phosphor does not host, provide, or distribute any third-party media
+content.
+
+To the maximum extent permitted by law, the author of Phosphor is not
+responsible or liable for how you use the software, for your use of any
+third-party source or tool, or for any content you access, download, store, or
+play. The software is provided "as is," without warranty of any kind, as further
+described in the "No Liability" section above.
+
+

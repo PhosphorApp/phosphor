@@ -2304,6 +2304,50 @@ public partial class SettingsWindow : JukeboxWindow
         DebugLogPathText.Text = $"Writes to logs/{filename}";
     }
 
+    private void ViewLicense_Click(object sender, RoutedEventArgs e)
+    {
+        var path = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "LICENSE.txt");
+        if (System.IO.File.Exists(path))
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = path,
+                UseShellExecute = true
+            });
+        }
+        else
+        {
+            System.Windows.MessageBox.Show(
+                this,
+                "The license file could not be found next to the application.",
+                "License",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Information);
+        }
+    }
+
+    private void OpenLicensesFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var dir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "licenses");
+        if (System.IO.Directory.Exists(dir))
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"\"{dir}\""
+            });
+        }
+        else
+        {
+            System.Windows.MessageBox.Show(
+                this,
+                "The 'licenses' folder could not be found next to the application.",
+                "Licenses",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Information);
+        }
+    }
+
     private void OpenDebugLog_Click(object sender, RoutedEventArgs e)
     {
         var filename = $"Phosphor_Debug_{DateTime.Now:yyyyMMdd}.log";

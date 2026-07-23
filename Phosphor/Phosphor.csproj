@@ -92,6 +92,11 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>licenses\%(RecursiveDir)%(Filename)%(Extension)</Link>
     </Content>
+    <!-- Ship Phosphor's own license next to the app so the About tab can open it. -->
+    <Content Include="..\LICENSE.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>LICENSE.txt</Link>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
