@@ -1,11 +1,10 @@
 # Bundled Font Licenses
 
-Phosphor bundles several open-license emoji fonts (in `Phosphor/Assets/EmojiFonts/`)
-used to render DMD tile icons. Each font is redistributed **unmodified** under its
-respective license. The full, verbatim license texts are in this folder.
+Phosphor gratefully uses several open-license emoji fonts (in `Phosphor/Assets/EmojiFonts/`)
+to render DMD tile icons. Each font is included unmodified, and its full, verbatim license
+text is in this folder. Attribution is also shown on the app's About tab.
 
-Segoe UI Emoji is **not** bundled — it is a Microsoft system font loaded from the host
-operating system, so no redistribution license applies.
+Segoe UI Emoji is not bundled — it is a Microsoft system font provided by Windows.
 
 | Font file | Set name | License | License text |
 |-----------|----------|---------|--------------|
@@ -16,14 +15,9 @@ operating system, so no redistribution license applies.
 
 ## Notes
 
-- **CC-BY 4.0 / CC-BY-SA 4.0 (Twemoji, OpenMoji):** require attribution, which is
-  provided on the app's About tab and here.
-- **CC-BY-SA 4.0 (OpenMoji):** the "ShareAlike" obligation applies only to *modified/adapted*
-  versions of the OpenMoji font that are then redistributed. Phosphor ships OpenMoji
-  unmodified, so ShareAlike does not apply to Phosphor or its source code.
-- **SIL OFL 1.1 (Noto):** the font may be bundled and redistributed freely; it may not be sold
-  on its own, and modified versions may not use the reserved font name.
-- **MIT (Fluent):** permissive; requires the copyright notice and license text (included here).
-
-None of these licenses restrict Phosphor's own licensing, distribution, or monetization —
-they govern only the font files themselves.
+- **Twemoji (CC-BY 4.0):** included unmodified, with attribution on the About tab and the
+  full license text here.
+- **OpenMoji (CC-BY-SA 4.0):** included unmodified, with attribution on the About tab and the
+  full license text here.
+- **Noto Color (SIL OFL 1.1):** included unmodified, with the full license text here.
+- **Fluent Flat (MIT):** included unmodified, with the copyright notice and full license text here.
