@@ -304,7 +304,8 @@ public partial class BackglassWindow : JukeboxWindow
         if (isActive)
         {
             ExpandButton.Visibility = Visibility.Visible;
-            if (MoveDisplayButton != null) MoveDisplayButton.Visibility = Visibility.Visible;
+            if (MoveDisplayButton != null)
+                MoveDisplayButton.Visibility = MoveViewerButtonsAllowed ? Visibility.Visible : Visibility.Collapsed;
             _expandButtonHideTimer.Stop();
             _expandButtonHideTimer.Start();
         }
@@ -334,7 +335,8 @@ public partial class BackglassWindow : JukeboxWindow
     {
         if (ExpandButton == null) return;
         ExpandButton.Visibility = Visibility.Visible;
-        if (MoveDisplayButton != null) MoveDisplayButton.Visibility = Visibility.Visible;
+        if (MoveDisplayButton != null)
+            MoveDisplayButton.Visibility = MoveViewerButtonsAllowed ? Visibility.Visible : Visibility.Collapsed;
         _expandButtonHideTimer.Stop();
         _expandButtonHideTimer.Start();
     }

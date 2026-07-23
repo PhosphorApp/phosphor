@@ -15,6 +15,7 @@ using ScrollViewer = System.Windows.Controls.ScrollViewer;
 using TextBox = System.Windows.Controls.TextBox;
 using WpfColor = System.Windows.Media.Color;
 using WpfPoint = System.Windows.Point;
+using WinFormsScreen = System.Windows.Forms.Screen;
 
 namespace Phosphor;
 
@@ -854,6 +855,8 @@ public partial class DmdWindow : JukeboxWindow
         _backglassProxy = backglassProxy;
         _topperProxy = topperProxy;
 
+        UpdateMoveViewerButtonVisibility();
+
         // Wire mouse/key events from other windows to reset DMD dim idle
         // Must dispatch to each window's owning thread to avoid cross-thread access
         var dmdHandle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
@@ -1174,6 +1177,26 @@ public partial class DmdWindow : JukeboxWindow
     }
 
     private void ToggleExpand_Click(object sender, RoutedEventArgs e) => ToggleExpand();
+
+    // Moves the BACKGLASS viewer (not the DMD) to the next display. Convenience control so users
+    // can cast the video window from the DMD they already have in front of them.
+    private void MoveViewer_Click(object sender, RoutedEventArgs e) =>
+        _backglassProxy?.MoveViewerToNextDisplay();
+
+    /// <summary>
+    /// Shows the DMD "move viewer" button only when the user opted in, the backglass window is
+    /// enabled (there's a viewer to move), and at least two displays are connected.
+    /// </summary>
+    private void UpdateMoveViewerButtonVisibility()
+    {
+        if (MoveViewerButton == null) return;
+        bool show = _appSettings?.ShowMoveViewerButtons == true
+                    && _appSettings.ShowBackglass
+                    && WinFormsScreen.AllScreens.Length >= 2;
+        MoveViewerButton.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        // Match the subtle look of the neighboring title-bar buttons.
+        MoveViewerButton.Opacity = 0.50;
+    }
 
     private void CloseApp_Click(object sender, RoutedEventArgs e) => Close();
 
@@ -2570,6 +2593,9 @@ public partial class DmdWindow : JukeboxWindow
         else
             _backglassProxy?.Hide();
 
+        // Refresh the DMD move-viewer button now that ShowBackglass / ShowMoveViewerButtons may have changed
+        UpdateMoveViewerButtonVisibility();
+
         // Show/hide playfield window
         if (_appSettings.ShowPlayfield)
             _playfieldProxy?.Show();
@@ -2920,6 +2946,9 @@ public partial class DmdWindow : JukeboxWindow
         FullscreenButton.Width = Math.Max(24, baseButtonDim);
         FullscreenButton.Height = Math.Max(24, baseButtonDim);
         FullscreenButton.FontSize = Math.Max(10, baseFontSize);
+        MoveViewerButton.Width = Math.Max(24, baseButtonDim);
+        MoveViewerButton.Height = Math.Max(24, baseButtonDim);
+        MoveViewerButton.FontSize = Math.Max(10, baseFontSize - 2);
         CloseAppButton.Width = Math.Max(24, baseButtonDim);
         CloseAppButton.Height = Math.Max(24, baseButtonDim);
         CloseAppButton.FontSize = Math.Max(10, baseFontSize);
@@ -3987,6 +4016,10 @@ public partial class DmdWindow : JukeboxWindow
         if (FullscreenButton != null) FullscreenButton.Visibility = visibility;
         if (SettingsButtonCtrl != null) SettingsButtonCtrl.Visibility = visibility;
         if (CloseAppButton != null) CloseAppButton.Visibility = visibility;
+        if (visibility == Visibility.Visible)
+            UpdateMoveViewerButtonVisibility();
+        else if (MoveViewerButton != null)
+            MoveViewerButton.Visibility = Visibility.Collapsed;
     }
 
     private void ApplyCursorHideTimeout()

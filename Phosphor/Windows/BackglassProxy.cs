@@ -80,6 +80,13 @@ public sealed class BackglassProxy : IPinupFollower
     public void ForceHideExpandButton() =>
         _dispatcher.BeginInvoke(() => _window.ForceHideExpandButton());
 
+    /// <summary>
+    /// Moves the backglass viewer window to the next display (round-robin) and expands it there.
+    /// Invoked from the DMD window so users can cast the viewer without hunting for the backglass.
+    /// </summary>
+    public void MoveViewerToNextDisplay() =>
+        _dispatcher.BeginInvoke(() => _window.MoveToNextDisplay());
+
     public void ResetPosition(double left, double top, double width, double height) =>
         _dispatcher.BeginInvoke(() => _window.ResetPosition(left, top, width, height));
 

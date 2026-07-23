@@ -617,6 +617,7 @@ public partial class SettingsWindow : JukeboxWindow
         CbResizableWindows.IsChecked = settings.ResizableWindows;
         CbSetCursorOnLaunch.IsChecked = settings.SetCursorOnLaunch;
         CbMoveCursorToSettings.IsChecked = settings.MoveCursorToSettings;
+        CbShowMoveViewerButtons.IsChecked = settings.ShowMoveViewerButtons;
         CbCheckWindowsOnStartup.IsChecked = settings.CheckWindowsOnStartup;
         CbShowBackglass.IsChecked = settings.ShowBackglass;
         CbShowPlayfield.IsChecked = settings.ShowPlayfield;
@@ -3863,6 +3864,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.ResizableWindows = CbResizableWindows.IsChecked == true;
         _settings.SetCursorOnLaunch = CbSetCursorOnLaunch.IsChecked == true;
         _settings.MoveCursorToSettings = CbMoveCursorToSettings.IsChecked == true;
+        _settings.ShowMoveViewerButtons = CbShowMoveViewerButtons.IsChecked == true;
         _settings.CheckWindowsOnStartup = CbCheckWindowsOnStartup.IsChecked == true;
         _settings.ShowBackglass = CbShowBackglass.IsChecked == true;
         _settings.ShowPlayfield = CbShowPlayfield.IsChecked == true;

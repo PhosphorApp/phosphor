@@ -171,6 +171,9 @@
             <Button x:Name="FullscreenButton" Content="&#x26F6;" ToolTip="Toggle Fullscreen (F11)"
                     Click="ToggleExpand_Click" DockPanel.Dock="Right"
                     Width="36" Height="36" FontSize="16" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Margin="4,0,0,0"/>
+            <Button x:Name="MoveViewerButton" Content="&#x1F5B5;&#xFE0E;&#x2192;" ToolTip="Move viewer to next display"
+                    Click="MoveViewer_Click" DockPanel.Dock="Right" Visibility="Collapsed"
+                    Width="36" Height="36" FontSize="14" Padding="4,0,0,0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Margin="4,0,0,0"/>
             <Button x:Name="SettingsButtonCtrl" Content="&#x2699;" ToolTip="Settings (F10)"
                     Click="SettingsButton_Click" DockPanel.Dock="Right"
                     Width="36" Height="36" FontSize="16" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Margin="4,0,0,0"/>

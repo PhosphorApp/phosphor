@@ -75,6 +75,9 @@
                             <CheckBox x:Name="CbMoveCursorToSettings" Content="Move cursor to settings page when opening settings"
                                       Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
                                       ToolTip="When enabled, the mouse cursor is moved to the center of the settings window when it opens."/>
+                            <CheckBox x:Name="CbShowMoveViewerButtons" Content="Show move viewer icons"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
+                                      ToolTip="Shows a 'move viewer to next display' icon on the DMD and backglass windows, letting you send the video viewer to a second monitor / TV. Only appears when more than one display is connected."/>
                             <CheckBox x:Name="CbAutoPlayQueue" Content="Auto play queue on start"
                                       Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"
                                       ToolTip="When enabled, if there are items in the queue on launch, playback starts automatically."/>

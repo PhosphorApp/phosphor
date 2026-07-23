@@ -14,10 +14,10 @@
                 Opacity="0.5" Panel.ZIndex="10"/>
 
         <!-- Move-to-next-display button (sends the viewer to a second monitor / TV) -->
-        <Button x:Name="MoveDisplayButton" Content="🖵" ToolTip="Move viewer to next display"
+        <Button x:Name="MoveDisplayButton" Content="🖵&#xFE0E;→" ToolTip="Move viewer to next display"
                 Click="MoveDisplay_Click"
                 HorizontalAlignment="Right" VerticalAlignment="Top"
-                Width="28" Height="28" FontSize="13" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Margin="0,4,36,0"
+                Width="28" Height="28" FontSize="12" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Margin="0,4,36,0"
                 Opacity="0.5" Panel.ZIndex="10"/>
 
         <!-- VideoView is added/removed from the tree dynamically in code-behind

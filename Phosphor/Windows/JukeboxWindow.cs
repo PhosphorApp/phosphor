@@ -702,6 +702,17 @@ public class JukeboxWindow : Window
 
     private AppSettings? _appSettings;
 
+    /// <summary>Current settings, if applied. Exposed to derived windows for visibility gating.</summary>
+    protected AppSettings? AppSettings => _appSettings;
+
+    /// <summary>
+    /// True when the "move viewer to next display" controls should be offered: the user opted in
+    /// via <see cref="AppSettings.ShowMoveViewerButtons"/> and at least two displays are connected
+    /// (the move is a no-op with a single monitor).
+    /// </summary>
+    protected bool MoveViewerButtonsAllowed =>
+        _appSettings?.ShowMoveViewerButtons == true && WinFormsScreen.AllScreens.Length >= 2;
+
     public void SetAppSettings(AppSettings settings)
     {
         _appSettings = settings;
