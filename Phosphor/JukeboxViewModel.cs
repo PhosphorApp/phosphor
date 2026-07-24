@@ -1044,7 +1044,11 @@ public partial class JukeboxViewModel : ObservableObject
             if (SetProperty(ref _statusText, value))
             {
                 OnPropertyChanged(nameof(DisplayStatusText));
-                DebugLog.Log(ClassifyStatusLevel(value), "Status", value);
+                // Gate the classifier on logging being enabled: it's cheap (a few substring scans at
+                // user-action frequency), but computing a level only to discard it when logging is off
+                // is pure waste. Skip it in the common (disabled) case.
+                if (DebugLog.Enabled)
+                    DebugLog.Log(ClassifyStatusLevel(value), "Status", value);
             }
         }
     }

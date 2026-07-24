@@ -89,9 +89,36 @@ Rules of thumb:
 - Existing `DebugLog.Log("Cat", msg)` and `DebugLog.Log(msg)` default to **Debug** — leaving a call
   untouched is safe, it just stays at Debug.
 - `LogException(...)` is already **Error**; no need to touch those.
-- The level gate short-circuits **before** string formatting, so tagging hot paths `Trace` also
-  removes their formatting cost at default verbosity — a minor perf win, not just noise reduction.
 - Verify each pass with a build. No behavioral changes expected beyond log routing.
+
+### Guard expensive log-argument computation
+
+The level/enabled gate lives **inside** `DebugLog.Log`, so anything you pass as an argument is
+computed **before** the gate can reject it (C# evaluates arguments first). For the vast majority of
+calls this is irrelevant — a `$"..."` interpolation of a couple of fields is cheap and fine to leave
+unguarded even at `Trace`.
+
+But when a log call's arguments do **non-trivial work**, guard the whole call so that work is skipped
+when it wouldn't be logged. Examples of "non-trivial": `string.Join` over a collection, LINQ, an
+expensive `ToString()`, a classifier/formatter, allocation-heavy string building.
+
+```csharp
+// Cheap args → leave unguarded (the gate handles it):
+DebugLog.Log(LogLevel.Trace, "Cat", $"item {id} took {ms}ms");
+
+// Expensive args → guard so the work is skipped when logging is off / below level:
+if (DebugLog.Enabled)                                   // logging off is the common prod state
+    DebugLog.Log(ClassifyLevel(msg), "Status", msg);    // classifier + call skipped entirely
+
+// Guard on level too when the payload itself is expensive and only wanted at a low level:
+if (DebugLog.Enabled && LogLevel.Trace >= DebugLog.MinimumLevel)
+    DebugLog.Log(LogLevel.Trace, "Cat", string.Join(", ", bigList.Select(x => x.Dump())));
+```
+
+Real example: the `Status` classifier (`ClassifyStatusLevel` in `JukeboxViewModel`) is gated with
+`if (DebugLog.Enabled)` — not for CPU cost (it runs at user-action frequency), but because computing a
+level only to discard it when logging is off is the wrong pattern. Rule of thumb: **cheap args = trust
+the gate; expensive args = guard the call.**
 
 ---
 
@@ -99,6 +126,12 @@ Rules of thumb:
 
 Newest first. Note the date, what was retagged, and anything discovered.
 
+- **2025 — Gate expensive log-argument work + convention.** Gated the `Status` classifier with
+  `if (DebugLog.Enabled)` so it isn't computed when logging is off (the common prod state). Added a
+  "Guard expensive log-argument computation" convention: the level/enabled gate is inside `DebugLog.Log`,
+  so arguments are evaluated first — cheap interpolation is fine unguarded, but non-trivial arg work
+  (string.Join/LINQ/classifier/expensive ToString) should be guarded. Also corrected an earlier
+  convention bullet that implied the gate runs before caller-side formatting.
 - **2025 — ApplySettings + Status + PluginLoader pass.** **ApplySettings:** the per-step perf-timing
   helpers (`LogStep`/`_LogStep` in `DmdWindow`/`SettingsWindow`) → **Trace**. **PluginLoader:** no-folder
   + loaded-provider → **Info**; incompatible-version reject → **Warning** (the ignore/dup/missing-tool
