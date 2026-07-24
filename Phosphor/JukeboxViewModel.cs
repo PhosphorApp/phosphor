@@ -73,15 +73,35 @@ public partial class JukeboxViewModel : ObservableObject
         _sourceRegistry?.DescribeSources() ?? [];
 
     /// <summary>
-    /// Updates the active YouTube engine tool (yt-dlp) and returns a user-facing status line.
-    /// Routes through the plug-in source's <c>IUpdatable</c> capability. Returns a not-supported
-    /// message when no updatable YouTube source is configured.
+    /// Whether a loaded source currently exposes an updatable engine tool (e.g. yt-dlp). Reflects
+    /// live registry state so the app-level "Update now" control can enable/disable accurately.
     /// </summary>
-    public async Task<string> UpdatePluginEngineOrLegacyAsync(CancellationToken ct = default)
+    public bool IsEngineToolUpdatable =>
+        _sourceRegistry?
+            .WithCapability<Phosphor.Plugin.Abstractions.IUpdatable>()
+            .Any(u => u.SupportsUpdate) ?? false;
+
+    /// <summary>
+    /// Raised after <see cref="BuildSourceRegistryAsync"/> finishes rebuilding the source registry,
+    /// so UI (e.g. the Settings window's yt-dlp strip) can refresh state that depends on which
+    /// sources are currently loaded. Marshal to the UI thread in the handler as needed.
+    /// </summary>
+    public event Action? SourceRegistryRebuilt;
+
+    /// <summary>
+    /// Updates the shared engine tool (yt-dlp) and returns a user-facing status line. yt-dlp is an
+    /// app-wide dependency any source may use, so this routes through the first loaded source that
+    /// exposes the generic <c>IUpdatable</c> capability with <c>SupportsUpdate == true</c> — not the
+    /// YouTube source specifically. Returns a not-supported message when no such source is loaded.
+    /// </summary>
+    public async Task<string> UpdateEngineToolAsync(CancellationToken ct = default)
     {
-        if (_sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.IUpdatable u && u.SupportsUpdate)
+        var updatable = _sourceRegistry?
+            .WithCapability<Phosphor.Plugin.Abstractions.IUpdatable>()
+            .FirstOrDefault(u => u.SupportsUpdate);
+        if (updatable != null)
         {
-            var result = await u.UpdateAsync(ct);
+            var result = await updatable.UpdateAsync(ct);
             return result.DisplayString;
         }
 
@@ -140,6 +160,9 @@ public partial class JukeboxViewModel : ObservableObject
             try { await previous.DisposeAsync(); }
             catch (Exception ex) { DebugLog.LogException("SourceRegistry dispose (previous)", ex); }
         }
+
+        try { SourceRegistryRebuilt?.Invoke(); }
+        catch (Exception ex) { DebugLog.LogException("SourceRegistryRebuilt handlers", ex); }
     }
 
     /// <summary>

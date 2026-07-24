@@ -4474,6 +4474,11 @@ public partial class SettingsWindow : JukeboxWindow
     private readonly List<(System.Windows.Controls.Control Control, string InstanceId, string Key)> _pluginFieldControls = new();
     private readonly Dictionary<string, System.Windows.Controls.TextBox> _pluginDisplayNameBoxes = new();
     private readonly Dictionary<string, System.Windows.Controls.CheckBox> _pluginEnabledBoxes = new();
+    // App-level yt-dlp "Update now" controls, tracked so an Apply (which rebuilds the source
+    // registry) can refresh their enabled state without closing/reopening the window.
+    private System.Windows.Controls.Button? _ytDlpUpdateBtn;
+    private System.Windows.Controls.TextBlock? _ytDlpUpdateResult;
+    private bool _ytDlpRebuildHooked;
     // Per-instance caching-policy selector (Default / Always / Never → AllowCaching null/true/false).
     private readonly Dictionary<string, System.Windows.Controls.ComboBox> _pluginCachingBoxes = new();
 
@@ -4562,6 +4567,89 @@ public partial class SettingsWindow : JukeboxWindow
                 Text = "Encrypts secret plug-in settings at rest using Windows DPAPI, tied to your "
                      + "Windows user account on this PC. The settings file is then no longer portable "
                      + "to another machine or user. Leave off to keep secrets as plain text.",
+                Foreground = dimBrush,
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 14),
+            });
+        }
+
+        // ── yt-dlp engine tool (app-level) — yt-dlp is a shared external tool any source may use,
+        // so its update controls live here at the top of the tab rather than inside one plug-in's
+        // card. "Update now" routes through the first loaded source exposing the IUpdatable
+        // capability; the toggle persists regardless of which engine is currently active. ──
+        {
+            var dimBrush = (System.Windows.Media.Brush)FindResource("TextDimBrush");
+            var textBrush = (System.Windows.Media.Brush)FindResource("TextBrush");
+
+            PanelPluginSources.Children.Add(new System.Windows.Controls.TextBlock
+            {
+                Text = "yt-dlp engine tool",
+                Foreground = textBrush,
+                FontWeight = FontWeights.Bold,
+                FontSize = 12,
+                Margin = new Thickness(0, 0, 0, 4),
+            });
+
+            var vm = Owner?.DataContext as JukeboxViewModel;
+            bool updatable = vm?.IsEngineToolUpdatable ?? false;
+
+            var updateRow = new System.Windows.Controls.StackPanel
+            {
+                Orientation = System.Windows.Controls.Orientation.Horizontal,
+                Margin = new Thickness(0, 0, 0, 4),
+            };
+            var updateBtn = new System.Windows.Controls.Button
+            {
+                Content = "Update now",
+                Padding = new Thickness(8, 5, 8, 5),
+                Margin = new Thickness(0, 4, 0, 4),
+                VerticalAlignment = VerticalAlignment.Center,
+                IsEnabled = updatable,
+            };
+            var updateResult = new System.Windows.Controls.TextBlock
+            {
+                Foreground = dimBrush,
+                FontSize = 11,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(10, 0, 0, 0),
+                TextWrapping = TextWrapping.Wrap,
+                Text = updatable ? "" : "No loaded source uses yt-dlp.",
+            };
+            updateBtn.Click += async (_, _) => await UpdatePluginEngineAsync(updateBtn, updateResult);
+            updateRow.Children.Add(updateBtn);
+            updateRow.Children.Add(updateResult);
+            PanelPluginSources.Children.Add(updateRow);
+
+            // Keep references so an Apply (which rebuilds the source registry) can refresh the
+            // enabled state without needing to close/reopen the window.
+            _ytDlpUpdateBtn = updateBtn;
+            _ytDlpUpdateResult = updateResult;
+
+            // Subscribe once so registry rebuilds (from Apply) refresh the strip live.
+            if (vm != null && !_ytDlpRebuildHooked)
+            {
+                vm.SourceRegistryRebuilt += OnSourceRegistryRebuilt;
+                Closed += (_, _) => vm.SourceRegistryRebuilt -= OnSourceRegistryRebuilt;
+                _ytDlpRebuildHooked = true;
+            }
+
+            var autoUpdate = new System.Windows.Controls.CheckBox
+            {
+                Content = "Automatically check for updates on startup",
+                IsChecked = _settings.YtDlpAutoUpdate,
+                Foreground = dimBrush,
+                FontSize = 11,
+                Margin = new Thickness(0, 0, 0, 4),
+            };
+            autoUpdate.Checked += (_, _) => _settings.YtDlpAutoUpdate = true;
+            autoUpdate.Unchecked += (_, _) => _settings.YtDlpAutoUpdate = false;
+            PanelPluginSources.Children.Add(autoUpdate);
+
+            PanelPluginSources.Children.Add(new System.Windows.Controls.TextBlock
+            {
+                Text = "yt-dlp is a shared tool used by some video/audio sources. It self-"
+                     + "updates independently of the app; the startup check is throttled to once per week.",
                 Foreground = dimBrush,
                 FontSize = 11,
                 TextWrapping = TextWrapping.Wrap,
@@ -4839,45 +4927,6 @@ public partial class SettingsWindow : JukeboxWindow
                     hideRow.Children.Add(hideBtn);
                     hideRow.Children.Add(hideResult);
                     panel.Children.Add(hideRow);
-                }
-
-                // ── "Update engine" — for sources whose backing tool can self-update (e.g. yt-dlp). ──
-                if (capSource is Phosphor.Plugin.Abstractions.IUpdatable { SupportsUpdate: true })
-                {
-                    var updateRow = new System.Windows.Controls.StackPanel
-                    {
-                        Orientation = System.Windows.Controls.Orientation.Horizontal,
-                        Margin = new Thickness(0, 0, 0, 4),
-                    };
-                    var updateBtn = new System.Windows.Controls.Button
-                    {
-                        Content = "Update engine", Padding = new Thickness(8, 3, 8, 3),
-                        VerticalAlignment = VerticalAlignment.Center,
-                    };
-                    var updateResult = new System.Windows.Controls.TextBlock
-                    {
-                        Foreground = dim, FontSize = 11, VerticalAlignment = VerticalAlignment.Center,
-                        Margin = new Thickness(10, 0, 0, 0), TextWrapping = TextWrapping.Wrap,
-                    };
-                    updateBtn.Click += async (_, _) =>
-                    {
-                        await UpdatePluginEngineAsync(updateBtn, updateResult);
-                    };
-                    updateRow.Children.Add(updateBtn);
-                    updateRow.Children.Add(updateResult);
-                    panel.Children.Add(updateRow);
-
-                    // Auto-update-on-startup toggle (persists to AppSettings.YtDlpAutoUpdate).
-                    var autoUpdate = new System.Windows.Controls.CheckBox
-                    {
-                        Content = "Automatically check for updates on startup",
-                        IsChecked = _settings.YtDlpAutoUpdate,
-                        Foreground = dim, FontSize = 11,
-                        Margin = new Thickness(0, 0, 0, 8),
-                    };
-                    autoUpdate.Checked += (_, _) => _settings.YtDlpAutoUpdate = true;
-                    autoUpdate.Unchecked += (_, _) => _settings.YtDlpAutoUpdate = false;
-                    panel.Children.Add(autoUpdate);
                 }
 
                 // ── "Rescan library" — for sources that build a catalog from backing content
@@ -6053,7 +6102,7 @@ public partial class SettingsWindow : JukeboxWindow
         {
             var vm = Owner?.DataContext as JukeboxViewModel;
             var status = vm != null
-                ? await vm.UpdatePluginEngineOrLegacyAsync()
+                ? await vm.UpdateEngineToolAsync()
                 : "Update not supported by the active engine";
             result.Text = status;
             result.Foreground = System.Windows.Media.Brushes.Gray;
@@ -6071,7 +6120,25 @@ public partial class SettingsWindow : JukeboxWindow
     }
 
     /// <summary>
-    /// Invokes an <see cref="Phosphor.Plugin.Abstractions.IConfigurable"/> action for an instance
+    /// Refreshes the app-level yt-dlp "Update now" control after the source registry rebuilds
+    /// (e.g. from Apply), so enabling a source that uses yt-dlp takes effect without reopening the
+    /// window. Marshals to the UI thread since the rebuild completes off it.
+    /// </summary>
+    private void OnSourceRegistryRebuilt()
+    {
+        void Refresh()
+        {
+            if (_ytDlpUpdateBtn == null) return;
+            var vm = Owner?.DataContext as JukeboxViewModel;
+            bool updatable = vm?.IsEngineToolUpdatable ?? false;
+            _ytDlpUpdateBtn.IsEnabled = updatable;
+            if (_ytDlpUpdateResult != null)
+                _ytDlpUpdateResult.Text = updatable ? "" : "No loaded source uses yt-dlp.";
+        }
+
+        if (Dispatcher.CheckAccess()) Refresh();
+        else Dispatcher.BeginInvoke(new Action(Refresh));
+    }
     /// (e.g. Plex "browse libraries"): harvests current edits, builds a transient source from the
     /// instance config, runs the action, shows a checkbox selection dialog, applies the result via
     /// the source, and merges the returned settings back into the instance. Re-renders the tab.

@@ -450,22 +450,17 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// If yt-dlp auto-update is enabled and the yt-dlp engine is in use, runs a throttled
-    /// self-update in the background (at most once per week). Fire-and-forget: never blocks
-    /// startup and swallows failures. The last-check timestamp is persisted on exit.
+    /// If yt-dlp auto-update is enabled, runs a throttled self-update in the background (at most
+    /// once per week). yt-dlp is an app-wide tool, so this is intentionally agnostic to which
+    /// plug-in uses it — the update routes through the first loaded source exposing the
+    /// <c>IUpdatable</c> capability and no-ops harmlessly if none does. Fire-and-forget: never
+    /// blocks startup and swallows failures. The last-check timestamp is persisted on exit.
     /// </summary>
     private void MaybeAutoUpdateYtDlp(JukeboxViewModel viewModel)
     {
         if (!_settings.YtDlpAutoUpdate)
         {
             DebugLog.Log(LogLevel.Debug, "YtDlpUpdater", "Startup auto-update skipped: auto-update disabled");
-            return;
-        }
-        var ytEngines = Phosphor.Plugins.PluginSettingsFactory.ReadYouTubePlayback(_settings.PluginInstances);
-        if (ytEngines.Video != VideoEngineKind.YtDlp
-            && ytEngines.Search != SearchEngineKind.YtDlp)
-        {
-            DebugLog.Log(LogLevel.Debug, "YtDlpUpdater", "Startup auto-update skipped: yt-dlp is not the active engine");
             return;
         }
 
@@ -483,8 +478,8 @@ public partial class App : Application
         {
             try
             {
-                // Routes through the plug-in IUpdatable when the plug-in path is enabled, else legacy.
-                var status = await viewModel.UpdatePluginEngineOrLegacyAsync();
+                // Routes through the first loaded source exposing the IUpdatable capability.
+                var status = await viewModel.UpdateEngineToolAsync();
                 DebugLog.Log(LogLevel.Info, "YtDlpUpdater", $"Startup auto-update: {status}");
             }
             catch (Exception ex)
