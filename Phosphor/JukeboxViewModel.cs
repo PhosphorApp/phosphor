@@ -3315,7 +3315,20 @@ public partial class JukeboxViewModel : ObservableObject
         if (!newState && item.IsAggregatedFavorite && IsViewingStaticPlaylist
             && ActivePlaylistName == "Favorites")
         {
-            SearchResults.Remove(item);
+            // Only remove if the row is still present — removing a stale item (e.g. a rapid
+            // double-click / repeated unfavorite) can desync VirtualizingWrapPanel's size cache and
+            // throw ArgumentOutOfRangeException. Guard + swallow-and-log so it never bubbles to the UI.
+            if (SearchResults.Contains(item))
+            {
+                try
+                {
+                    SearchResults.Remove(item);
+                }
+                catch (Exception ex)
+                {
+                    DebugLog.LogException("ToggleFavorite: remove aggregated favorite row", ex);
+                }
+            }
             StatusText = $"Unfavorited: {item.Title} — {SearchResults.Count} favorite(s) remain";
             return;
         }
