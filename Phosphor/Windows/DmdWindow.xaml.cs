@@ -522,7 +522,7 @@ public partial class DmdWindow : JukeboxWindow
                 placed++;
             }
         }
-        DebugLog.Log("Chapters", $"PositionChapterTicks: {placed}/{vm.ChapterTickPositions.Count} placed, width={width:F1}");
+        DebugLog.Log(LogLevel.Trace, "Chapters", $"PositionChapterTicks: {placed}/{vm.ChapterTickPositions.Count} placed, width={width:F1}");
     }
 
     private void WirePlaylistPicker()
@@ -844,7 +844,7 @@ public partial class DmdWindow : JukeboxWindow
 
     public void SetAppContext(AppSettings settings, PlayfieldProxy playfieldProxy, BackglassProxy backglassProxy, TopperProxy topperProxy)
     {
-        DebugLog.Log("DMD", "SetAppContext: begin");
+        DebugLog.Log(LogLevel.Debug, "DMD", "SetAppContext: begin");
         _appSettings = settings;
         ApplyCursorHideTimeout();
         if (settings.SetCursorOnLaunch)
@@ -1059,7 +1059,7 @@ public partial class DmdWindow : JukeboxWindow
         }
 
         StartDirectInputPoller();
-        DebugLog.Log("DMD", "SetAppContext: complete");
+        DebugLog.Log(LogLevel.Debug, "DMD", "SetAppContext: complete");
     }
 
     private void StartDirectInputPoller()
@@ -4055,7 +4055,7 @@ public partial class DmdWindow : JukeboxWindow
         _ssCurrentPattern.Exit(() =>
         {
             var newPattern = BlobTransition.CurrentRandomPattern;
-            DebugLog.Log("DMD", $"Transition {_ssBlobPattern} -> {newPattern} blob pattern");
+            DebugLog.Log(LogLevel.Trace, "DMD", $"Transition {_ssBlobPattern} -> {newPattern} blob pattern");
             _ssBlobPattern = newPattern;
 
             _ssCurrentPattern?.Dispose();

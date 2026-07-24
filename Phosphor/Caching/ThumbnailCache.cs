@@ -57,7 +57,7 @@ public class ThumbnailCache
         {
             // Touch file to mark as recently used
             try { File.SetLastAccessTimeUtc(filePath, DateTime.UtcNow); } catch { }
-            DebugLog.Log("ThumbnailCache", $"Hit: {fileName}");
+            DebugLog.Log(LogLevel.Trace, "ThumbnailCache", $"Hit: {fileName}");
             return filePath;
         }
 
@@ -70,12 +70,12 @@ public class ThumbnailCache
             // retries and picks up the real frame once it exists. Immutable URLs are always kept.
             if (volatileWindow != null && data.Length < MinVolatileBytes)
             {
-                DebugLog.Log("ThumbnailCache", $"Skipped tiny volatile thumb ({data.Length}B): {fileName}");
+                DebugLog.Log(LogLevel.Trace, "ThumbnailCache", $"Skipped tiny volatile thumb ({data.Length}B): {fileName}");
                 return null;
             }
 
             await File.WriteAllBytesAsync(filePath, data, ct);
-            DebugLog.Log("ThumbnailCache", $"Stored: {fileName} ({data.Length / 1024}KB)");
+            DebugLog.Log(LogLevel.Trace, "ThumbnailCache", $"Stored: {fileName} ({data.Length / 1024}KB)");
             Prune();
             return filePath;
         }
@@ -116,7 +116,7 @@ public class ThumbnailCache
 
     public void Purge()
     {
-        DebugLog.Log("ThumbnailCache", "Purging all thumbnails");
+        DebugLog.Log(LogLevel.Info, "ThumbnailCache", "Purging all thumbnails");
         try
         {
             if (Directory.Exists(CacheDir))
@@ -164,7 +164,7 @@ public class ThumbnailCache
                 try
                 {
                     totalSize -= file.Length;
-                    DebugLog.Log("ThumbnailCache", $"Pruned: {file.Name} ({file.Length / 1024}KB)");
+                    DebugLog.Log(LogLevel.Trace, "ThumbnailCache", $"Pruned: {file.Name} ({file.Length / 1024}KB)");
                     file.Delete();
                 }
                 catch { /* file in use */ }

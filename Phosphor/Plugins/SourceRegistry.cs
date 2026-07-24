@@ -103,7 +103,7 @@ public sealed class SourceRegistry : IAsyncDisposable
             var provider = CreateProvider(cfg.TypeId);
             if (provider == null)
             {
-                DebugLog.Log("SourceRegistry", $"Unknown provider type '{cfg.TypeId}' — skipping instance '{cfg.InstanceId}'");
+                DebugLog.Log(LogLevel.Warning, "SourceRegistry", $"Unknown provider type '{cfg.TypeId}' — skipping instance '{cfg.InstanceId}'");
                 continue;
             }
 

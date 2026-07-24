@@ -33,11 +33,11 @@ public static class DiscoveredProviders
             var typeId = plugin.Provider.TypeId;
             if (reserved.Contains(typeId))
             {
-                DebugLog.Log("PluginLoader", $"Ignoring plug-in '{typeId}' — shadows a reserved type id.");
+                DebugLog.Log(LogLevel.Warning, "PluginLoader", $"Ignoring plug-in '{typeId}' — shadows a reserved type id.");
                 continue;
             }
             if (!_providers.TryAdd(typeId, plugin.Provider))
-                DebugLog.Log("PluginLoader", $"Ignoring duplicate plug-in type id '{typeId}'.");
+                DebugLog.Log(LogLevel.Warning, "PluginLoader", $"Ignoring duplicate plug-in type id '{typeId}'.");
             else
                 WarnOnMissingRequiredTools(plugin.Provider, baseDirectory);
         }
@@ -54,7 +54,7 @@ public static class DiscoveredProviders
         {
             if (string.IsNullOrWhiteSpace(tool)) continue;
             if (!ToolExists(tool, baseDirectory))
-                DebugLog.Log("PluginLoader",
+                DebugLog.Log(LogLevel.Warning, "PluginLoader",
                     $"Plug-in '{provider.TypeId}' declares required tool '{tool}', which is missing — " +
                     "the source may fail at runtime.");
         }

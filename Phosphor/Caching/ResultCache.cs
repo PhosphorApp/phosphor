@@ -91,12 +91,12 @@ public sealed class ResultCache
             if (File.Exists(path))
             {
                 File.Delete(path);
-                DebugLog.Log("ResultCache", $"Invalidated cache file: {path}");
+                DebugLog.Log(LogLevel.Info, "ResultCache", $"Invalidated cache file: {path}");
             }
         }
         catch (Exception ex)
         {
-            DebugLog.Log("ResultCache", $"Failed to invalidate cache file {path}: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "ResultCache", $"Failed to invalidate cache file {path}: {ex.Message}");
         }
     }
 
@@ -146,7 +146,7 @@ public sealed class ResultCache
             // star, wrong source link), so treat a stamp mismatch as a miss and delete the file.
             if (data.Metadata.SchemaVersion != CurrentSchemaVersion)
             {
-                DebugLog.Log("ResultCache", $"Stale schema ('{data.Metadata.SchemaVersion}' != '{CurrentSchemaVersion}'): {key}");
+                DebugLog.Log(LogLevel.Info, "ResultCache", $"Stale schema ('{data.Metadata.SchemaVersion}' != '{CurrentSchemaVersion}'): {key}");
                 try { File.Delete(path); } catch { }
                 return null;
             }
@@ -154,7 +154,7 @@ public sealed class ResultCache
             // Check expiry
             if ((DateTime.UtcNow - data.Metadata.CachedAtUtc).TotalHours > MaxAgeHours)
             {
-                DebugLog.Log("ResultCache", $"Expired: {key} (age {(DateTime.UtcNow - data.Metadata.CachedAtUtc).TotalHours:F1}h > {MaxAgeHours}h)");
+                DebugLog.Log(LogLevel.Trace, "ResultCache", $"Expired: {key} (age {(DateTime.UtcNow - data.Metadata.CachedAtUtc).TotalHours:F1}h > {MaxAgeHours}h)");
                 try { File.Delete(path); } catch { }
                 return null;
             }
@@ -162,17 +162,17 @@ public sealed class ResultCache
             var page = data.Pages.FirstOrDefault(p => p.PageIndex == pageIndex);
             if (page == null)
             {
-                DebugLog.Log("ResultCache", $"Miss (page {pageIndex} not found): {key}");
+                DebugLog.Log(LogLevel.Trace, "ResultCache", $"Miss (page {pageIndex} not found): {key}");
                 return null;
             }
 
             isLastPage = page.IsLastPage;
-            DebugLog.Log("ResultCache", $"Hit: {key} page {pageIndex} ({page.Items.Count} items)");
+            DebugLog.Log(LogLevel.Trace, "ResultCache", $"Hit: {key} page {pageIndex} ({page.Items.Count} items)");
             return page.Items.Select(ToVideoItem).ToList();
         }
         catch (Exception ex)
         {
-            DebugLog.Log("ResultCache", $"Failed to read cache for {key}: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "ResultCache", $"Failed to read cache for {key}: {ex.Message}");
             try { File.Delete(path); } catch { }
             return null;
         }
@@ -221,11 +221,11 @@ public sealed class ResultCache
 
             data.Metadata.TotalPages = data.Pages.Count;
             File.WriteAllText(path, JsonSerializer.Serialize(data, JsonOptions));
-            DebugLog.Log("ResultCache", $"Stored: {key} page {pageIndex} ({items.Count} items)");
+            DebugLog.Log(LogLevel.Trace, "ResultCache", $"Stored: {key} page {pageIndex} ({items.Count} items)");
         }
         catch (Exception ex)
         {
-            DebugLog.Log("ResultCache", $"Store error for {key}: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "ResultCache", $"Store error for {key}: {ex.Message}");
         }
     }
 
@@ -234,7 +234,7 @@ public sealed class ResultCache
     /// </summary>
     public void Purge()
     {
-        DebugLog.Log("ResultCache", $"Purging cache files with prefix '{_filePrefix}'");
+        DebugLog.Log(LogLevel.Info, "ResultCache", $"Purging cache files with prefix '{_filePrefix}'");
         try
         {
             if (!Directory.Exists(_cacheDir)) return;
@@ -245,7 +245,7 @@ public sealed class ResultCache
         }
         catch (Exception ex)
         {
-            DebugLog.Log("ResultCache", $"Purge error: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "ResultCache", $"Purge error: {ex.Message}");
         }
     }
 

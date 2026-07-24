@@ -99,6 +99,17 @@ Rules of thumb:
 
 Newest first. Note the date, what was retagged, and anything discovered.
 
+- **2025 — First clutter-reduction pass (host categories).** Retagged the clear-cut high-volume host
+  categories using a production `[GENERIC]` scan as the backlog. **Trace:** Volume (per-slider-tick),
+  Chapters (per-item tick/restore/position), MediaEnded per-dispatcher step, RebuildCategories (perf
+  timings), PlaylistPrefetch, ThumbnailCache Hit/Stored/Pruned/Skipped, WinVolume level reads, DMD blob
+  transition, ResultCache per-page hit/miss/store/expire. **Debug:** Play started, Ditti diagnostics,
+  SourceRegistry routing, YtDlpUpdater skips, DMD SetAppContext, Chapters count. **Info:** App startup
+  lifecycle, SourceRegistry "Built N", ThumbnailCache/ResultCache purge/invalidate, MediaEnded live-drop,
+  DirectInput enumeration, YtDlpUpdater update result. **Warning:** LibVLC pre-init fail, WinVolume query
+  fail, Ditti failures, YtDlpUpdater failure, PluginLoader shadow/duplicate/missing-tool, SourceRegistry
+  unknown provider, ResultCache read/store/purge errors. **Deferred:** `Status` (per-message split) and
+  the Volume debounce — see Follow-up Work Items.
 - **2025 — `[GENERIC]` scan script.** Added a "what's NOT yet migrated" PowerShell script (and
   variants) that filters `[GENERIC]` lines from recent logs, groups by the following `[Category]`, and
   sorts by volume — the retag backlog, generated from real logs. Plus a source-side scan to catch
@@ -180,18 +191,23 @@ file. Retagging the top few reclaims most of the log's readability.
        Do this before picking the next target.
 3. [ ] **ApplySettings** + **RebuildCategories** — settings/category churn (verify still current).
 4. [ ] **DOF** family (DOF-Bridge + DOF) — cohesive connect/reconnect/shutdown pass.
-5. [ ] **Volume / WinVolume**, **Status**, **App** — misc high/medium volume.
+5. [ ] **`Status`** — needs per-message split (see Follow-up Work Items), not a blanket retag.
 6. [ ] **Plugin:* runtime logs** — per-source sweep. (Note: extracted plug-ins each have their own
        `DebugLog` shim → `Trace.WriteLine`, like Plex; retag them there, not in the host.)
 7. [ ] **Visualization** (Matrix, Mandelbrot, ProjectM, PERF.*) — per-frame → Trace, keep PERF stalls Warning.
 8. [ ] Remaining low-volume categories — fold into a final "misc sweep."
 
 ### Done
+- [x] **Host clutter pass** — Volume, Chapters, MediaEnded, RebuildCategories, PlaylistPrefetch,
+      ThumbnailCache, WinVolume, App, Ditti, YtDlpUpdater, SourceRegistry, PluginLoader, DMD,
+      DirectInput, ResultCache, Play retagged (see Work Log). `Status` deferred.
 - [x] **Plumbing: `IPluginHost` leveled logging** — `Log(LogLevel, string)` added to the contract;
       Path-A plug-in logs can now be leveled at their call sites.
 - [x] **SiriusXM** — 9 failure sites → Warning via the new leveled `_host.Log`. First Path-A retag.
 - [x] **Plex** — `PlexService.cs` `DiagLog` → Trace; failures → Warning; connect → Info. Plug-in shim
       (`PlexDebugLog.cs`) made level-aware. Share was historical (pre-extraction), not current load.
+
+
 - [x] **CachedImage** — see Work Log (2025 foundation pass). Confirmed low runtime volume (~0.1%).
 
 ---
@@ -266,6 +282,26 @@ Variants:
 > Complement with a **source-side** scan (catches call sites that didn't happen to fire in a session):
 > `Select-String -Path .\**\*.cs -Pattern 'DebugLog\.Log\("' ` finds `Log(category, message)` calls
 > with no level; `DebugLog\.Log\("[^"]*"\)` finds bare `Log(message)` calls. Exclude `\obj\` / `\bin\`.
+
+---
+
+## Follow-up Work Items
+
+Non-blocking items surfaced during retagging — not pure level changes, so parked here for a deliberate
+pass rather than done inline.
+
+- [ ] **`Status` category — split by nature (per-message levels).** `Status` mirrors user-facing status
+      text, so a single level is wrong. Same category emits both routine and error content, e.g.:
+      - `[Status] Playing: David Bowie - Modern Love …` → **Info**
+      - `[Status] Playback failed: server unreachable or stream timed out` → **Warning/Error**
+      Needs per-call-site classification (or a helper that infers level from a status kind), not a blanket
+      retag. Left as `[GENERIC]` until then. Sources: `SetStatus*`/`StatusText` writers in
+      `JukeboxViewModel` and window code.
+- [ ] **Volume-slider log flood → debounce.** `BackglassWindow.xaml.cs:410` (`VolumeChanged` handler)
+      logs on every slider tick; dragging floods the log. Retagged to **Trace** (so it's silent at
+      default), but the underlying **lack of debounce** on `VolumeChanged` is worth addressing on its own
+      (also saves redundant `SetVolume`/VLC calls). Debounce the volume apply + log, or log only on
+      drag-end.
 
 ---
 

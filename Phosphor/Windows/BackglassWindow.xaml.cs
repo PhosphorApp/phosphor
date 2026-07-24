@@ -407,7 +407,7 @@ public partial class BackglassWindow : JukeboxWindow
             if (_usingGaplessPlayer && _gaplessPlayer != null)
                 _gaplessPlayer.SetVolume(v);
             EnsureVlcInitialized().Volume = VolumeTaper.VlcVolume(v);
-            DebugLog.Log("Volume", $"Volume set to {v}");
+            DebugLog.Log(LogLevel.Trace, "Volume", $"Volume set to {v}");
         });
 
         _positionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
@@ -829,7 +829,7 @@ public partial class BackglassWindow : JukeboxWindow
                     // Play from local muxed file � instant, no buffering, seekable
                     vm?.SetStatusPrefix("Cached");
                     vm?.SetCurrentFromCache(true);
-                    DebugLog.Log("Play", $"Cached playback: {cached.FilePath}");
+                    DebugLog.Log(LogLevel.Debug, "Play", $"Cached playback: {cached.FilePath}");
                     var media = new Media(_libVLC, new Uri(cached.FilePath));
                     _lastLocalFilePath = cached.FilePath;
                     _mediaPlayer.Play(media);
@@ -839,7 +839,7 @@ public partial class BackglassWindow : JukeboxWindow
                     if (cached.Chapters is { Count: > 0 } && vm?.CurrentlyPlaying is { } cp && cp.Chapters == null)
                     {
                         cp.Chapters = cached.Chapters;
-                        DebugLog.Log("Chapters", $"Restored {cached.Chapters.Count} chapters from cache");
+                        DebugLog.Log(LogLevel.Trace, "Chapters", $"Restored {cached.Chapters.Count} chapters from cache");
                         vm.NotifyCachedChaptersRestored();
                     }
                 }
@@ -981,7 +981,7 @@ public partial class BackglassWindow : JukeboxWindow
             {
                 var seekable = _mediaPlayer.IsSeekable;
                 var length = _mediaPlayer.Length;
-                DebugLog.Log("Play", $"Streaming playback started | Seekable={seekable} Length={length}ms | Note: seeking may be unreliable for progressive YouTube streams (no seek index until fully downloaded)");
+                DebugLog.Log(LogLevel.Debug, "Play", $"Streaming playback started | Seekable={seekable} Length={length}ms | Note: seeking may be unreliable for progressive YouTube streams (no seek index until fully downloaded)");
             }
 
             // Notify so the DMD window can reclaim focus
@@ -1326,10 +1326,10 @@ public partial class BackglassWindow : JukeboxWindow
     private void OnMediaEnded(object? sender, EventArgs e)
     {
         if (_mediaPlayer == null) return;
-        DebugLog.Log("MediaEnded", $"EndReached fired | State={_mediaPlayer.State} Time={_mediaPlayer.Time} Length={_mediaPlayer.Length} Pos={_mediaPlayer.Position:F4}");
+        DebugLog.Log(LogLevel.Debug, "MediaEnded", $"EndReached fired | State={_mediaPlayer.State} Time={_mediaPlayer.Time} Length={_mediaPlayer.Length} Pos={_mediaPlayer.Position:F4}");
         Dispatcher.BeginInvoke(() =>
         {
-            DebugLog.Log("MediaEnded", "Processing on dispatcher");
+            DebugLog.Log(LogLevel.Trace, "MediaEnded", "Processing on dispatcher");
             _positionTimer?.Stop();
             _infoTimer?.Stop();
             VideoInfoChanged?.Invoke("");
@@ -1339,7 +1339,7 @@ public partial class BackglassWindow : JukeboxWindow
             // is a later refinement.
             if (DataContext is JukeboxViewModel liveVm && liveVm.CurrentlyPlaying?.IsLiveStream == true)
             {
-                DebugLog.Log("MediaEnded", "Live stream ended (dropped) — not auto-advancing.");
+                DebugLog.Log(LogLevel.Info, "MediaEnded", "Live stream ended (dropped) — not auto-advancing.");
                 return;
             }
 

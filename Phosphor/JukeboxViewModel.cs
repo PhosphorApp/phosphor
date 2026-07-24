@@ -119,7 +119,7 @@ public partial class JukeboxViewModel : ObservableObject
 
             await registry.BuildAsync(settings.PluginInstances);
             _sourceRegistry = registry;
-            DebugLog.Log("SourceRegistry", $"Built {registry.Sources.Count} source(s)");
+            DebugLog.Log(LogLevel.Info, "SourceRegistry", $"Built {registry.Sources.Count} source(s)");
             WireCacheDownloadOverride();
 
             // Render tiles immediately from the persisted categories.json entries (no network wait),
@@ -210,7 +210,7 @@ public partial class JukeboxViewModel : ObservableObject
 
         _pluginBrowseTiles.Clear();
         _pluginBrowseTiles.AddRange(tiles);
-        DebugLog.Log("SourceRegistry", $"Built {tiles.Count} plug-in browse tile(s).");
+        DebugLog.Log(LogLevel.Info, "SourceRegistry", $"Built {tiles.Count} plug-in browse tile(s).");
 
         // Sync these root tiles into the persisted genre-category entries so they participate in the
         // unified sort/visibility model (like Plex tiles). Prunes stale, preserves user customization.
@@ -858,7 +858,7 @@ public partial class JukeboxViewModel : ObservableObject
     {
         var chapters = _currentlyPlaying?.Chapters;
         var duration = _playbackDuration;
-        DebugLog.Log("Chapters", $"UpdateChapterTickPositions: chapters={chapters?.Count ?? 0} duration={duration}");
+        DebugLog.Log(LogLevel.Trace, "Chapters", $"UpdateChapterTickPositions: chapters={chapters?.Count ?? 0} duration={duration}");
         if (chapters == null || chapters.Count == 0 || duration <= 1)
         {
             ChapterTickPositions = [];
@@ -868,7 +868,7 @@ public partial class JukeboxViewModel : ObservableObject
             .Select(c => c.StartTime.TotalMilliseconds / duration)
             .Where(p => p > 0 && p < 1)
             .ToList();
-        DebugLog.Log("Chapters", $"Tick positions: [{string.Join(", ", ticks.Select(t => t.ToString("F3")))}]");
+        DebugLog.Log(LogLevel.Trace, "Chapters", $"Tick positions: [{string.Join(", ", ticks.Select(t => t.ToString("F3")))}]");
         ChapterTickPositions = ticks;
     }
 
@@ -1567,14 +1567,14 @@ public partial class JukeboxViewModel : ObservableObject
         var source = sourceInstanceId != null ? _sourceRegistry?.ByInstance(sourceInstanceId) : _sourceRegistry?.YouTube;
         if (source is Phosphor.Plugin.Abstractions.ITextSearchCapable capable)
         {
-            DebugLog.Log("SourceRegistry", $"Search routed through plug-in source '{source.InstanceId}'");
+            DebugLog.Log(LogLevel.Debug, "SourceRegistry", $"Search routed through plug-in source '{source.InstanceId}'");
             return MapPluginSearch(capable, query);
         }
 
         // Requested source gone/not searchable — fall back to YouTube, else an empty result.
         if (_sourceRegistry?.YouTube is Phosphor.Plugin.Abstractions.ITextSearchCapable yt)
         {
-            DebugLog.Log("SourceRegistry", "Search fell back to plug-in YouTube source");
+            DebugLog.Log(LogLevel.Debug, "SourceRegistry", "Search fell back to plug-in YouTube source");
             return MapPluginSearch(yt, query);
         }
 
@@ -1827,7 +1827,7 @@ public partial class JukeboxViewModel : ObservableObject
                 AudioOnly = audioOnly,
             };
             var resolved = await resolver.ResolveAsync(probe, prefs, ct);
-            DebugLog.Log("SourceRegistry", "Stream resolution routed through plug-in YouTube source");
+            DebugLog.Log(LogLevel.Debug, "SourceRegistry", "Stream resolution routed through plug-in YouTube source");
             return resolved == null ? null : MapResolvedStream(resolved);
         }
 
@@ -1881,7 +1881,7 @@ public partial class JukeboxViewModel : ObservableObject
             // The caches mux separate video+audio; use the plug-in result only when fully populated.
             if (result?.VideoFilePath is { } vp && result.AudioFilePath is { } ap)
             {
-                DebugLog.Log("SourceRegistry", "Stream download routed through plug-in YouTube source");
+                DebugLog.Log(LogLevel.Debug, "SourceRegistry", "Stream download routed through plug-in YouTube source");
                 return new Video.VideoDownload(
                     vp, ap, result.VideoContainer ?? "", result.AudioContainer ?? "", result.Resolution ?? "");
             }
@@ -2230,13 +2230,13 @@ public partial class JukeboxViewModel : ObservableObject
         // "New Playlist" action tile at the end
         items.Add(new Category { Name = "New Playlist", Icon = "＋", IsNewPlaylist = true });
 
-        DebugLog.Log("RebuildCategories", $"Build list ({items.Count} items): {sw.ElapsedMilliseconds}ms");
+        DebugLog.Log(LogLevel.Trace, "RebuildCategories", $"Build list ({items.Count} items): {sw.ElapsedMilliseconds}ms");
         sw.Restart();
 
         // Batch-update: replace all items and fire a single Reset notification
         Categories.ReplaceAll(items);
 
-        DebugLog.Log("RebuildCategories", $"ReplaceAll: {sw.ElapsedMilliseconds}ms");
+        DebugLog.Log(LogLevel.Trace, "RebuildCategories", $"ReplaceAll: {sw.ElapsedMilliseconds}ms");
     }
 
     // ── Category browsing ──
@@ -3090,7 +3090,7 @@ public partial class JukeboxViewModel : ObservableObject
                             _categoryCachePageIndex, prefetchItems, !_hasMoreResults);
                         _categoryCachePageIndex++;
                         CanLoadMore = _hasMoreResults;
-                        DebugLog.Log("PlaylistPrefetch", $"Prefetched {prefetchItems.Count} items for next page");
+                        DebugLog.Log(LogLevel.Trace, "PlaylistPrefetch", $"Prefetched {prefetchItems.Count} items for next page");
                     }
                 }
             }
@@ -4752,7 +4752,7 @@ public partial class JukeboxViewModel : ObservableObject
                 if (chapters.Count > 0)
                 {
                     item.Chapters = chapters;
-                    DebugLog.Log("Chapters", $"Chapters ({chapterSource}): {chapters.Count}");
+                    DebugLog.Log(LogLevel.Debug, "Chapters", $"Chapters ({chapterSource}): {chapters.Count}");
                     if (ReferenceEquals(item, _currentlyPlaying))
                     {
                         UpdateChapterTickPositions();

@@ -39,7 +39,7 @@ public sealed class DirectInputPoller : IDisposable
         Task.Run(() =>
         {
             EnumerateDevices();
-            DebugLog.Log("DirectInput", $"Enumeration complete: {_devices.Count} device(s) found");
+            DebugLog.Log(LogLevel.Info, "DirectInput", $"Enumeration complete: {_devices.Count} device(s) found");
             if (_devices.Count > 0)
                 _timer.Dispatcher.BeginInvoke(() => _timer.Start());
         });

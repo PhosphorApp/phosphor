@@ -36,8 +36,8 @@ public partial class App : Application
         DebugLog.MinimumLevel = _settings.DebugLogLevel;
         RenderPerformanceMonitor.Start();
         var appVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
-        DebugLog.Log("App", $"Application starting - v{appVersion}");
-        DebugLog.Log("App", "Loading settings complete");
+        DebugLog.Log(LogLevel.Info, "App", $"Application starting - v{appVersion}");
+        DebugLog.Log(LogLevel.Info, "App", "Loading settings complete");
 
         // Pre-initialize a shared LibVLC instance on a background thread.
         // Both the startup ditti and backglass reuse this single instance.
@@ -45,14 +45,14 @@ public partial class App : Application
         {
             try
             {
-                DebugLog.Log("App", "Pre-initializing shared LibVLC...");
+                DebugLog.Log(LogLevel.Info, "App", "Pre-initializing shared LibVLC...");
                 var vlc = new LibVLC("--no-video-title-show", "--network-caching=3000", "--http-reconnect");
-                DebugLog.Log("App", "Shared LibVLC pre-initialized");
+                DebugLog.Log(LogLevel.Info, "App", "Shared LibVLC pre-initialized");
                 return vlc;
             }
             catch (Exception ex)
             {
-                DebugLog.Log("App", $"Shared LibVLC pre-init failed: {ex.Message}");
+                DebugLog.Log(LogLevel.Warning, "App", $"Shared LibVLC pre-init failed: {ex.Message}");
                 return (LibVLC?)null;
             }
         });
@@ -94,7 +94,7 @@ public partial class App : Application
         _dmdWindow.CheckWindowPositionOnStartup = _settings.CheckWindowsOnStartup;
         _dmdWindow.ApplyLayout(_settings.Dmd);
         _dmdWindow.Show();
-        DebugLog.Log("App", "DmdWindow shown");
+        DebugLog.Log(LogLevel.Info, "App", "DmdWindow shown");
 
         // DMD is the main window — closing it exits the app
         MainWindow = _dmdWindow;
@@ -104,7 +104,7 @@ public partial class App : Application
         // Keep splash visible until all windows are shown.
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
         {
-            DebugLog.Log("App", "Deferred startup: begin");
+            DebugLog.Log(LogLevel.Info, "App", "Deferred startup: begin");
             _backglassProxy = CreateBackglassOnOwnThread(viewModel);
             _playfieldProxy = CreatePlayfieldOnOwnThread();
             _topperProxy = CreateTopperOnOwnThread(viewModel);
@@ -206,7 +206,7 @@ public partial class App : Application
             {
                 if (_settings.AutoPlayQueueOnStart)
                 {
-                    DebugLog.Log("App", $"Deferred startup: auto-playing queue from index {restoreIndex}");
+                    DebugLog.Log(LogLevel.Info, "App", $"Deferred startup: auto-playing queue from index {restoreIndex}");
                     viewModel.PlayFromQueueIndex(restoreIndex);
                 }
                 else
@@ -216,7 +216,7 @@ public partial class App : Application
             }
             else if (_settings.AutoPlayQueueOnStart && viewModel.Queue.Count > 0)
             {
-                DebugLog.Log("App", "Deferred startup: auto-playing queue from start");
+                DebugLog.Log(LogLevel.Info, "App", "Deferred startup: auto-playing queue from start");
                 viewModel.PlayCommand.Execute(null);
             }
 
@@ -224,7 +224,7 @@ public partial class App : Application
             PlayStartupDitti(viewModel);
 
             LogWindowsAudioLevel("Startup");
-            DebugLog.Log("App", "Deferred startup complete");
+            DebugLog.Log(LogLevel.Info, "App", "Deferred startup complete");
 
             // Low-priority: start the Pinup sync coordinator (DMD-owned) after all windows
             // are up. It registers every screen in Pinup mode and drives them in lockstep;
@@ -386,7 +386,7 @@ public partial class App : Application
     private void OnMainWindowClosed(object? sender, EventArgs e)
     {
         LogWindowsAudioLevel("Shutdown");
-        DebugLog.Log("App", "Application shutting down");
+        DebugLog.Log(LogLevel.Info, "App", "Application shutting down");
 
         // Ensure DOF bridge is shut down (fallback if async closing didn't complete)
         _dmdWindow.ShutdownDof();
@@ -458,21 +458,21 @@ public partial class App : Application
     {
         if (!_settings.YtDlpAutoUpdate)
         {
-            DebugLog.Log("YtDlpUpdater", "Startup auto-update skipped: auto-update disabled");
+            DebugLog.Log(LogLevel.Debug, "YtDlpUpdater", "Startup auto-update skipped: auto-update disabled");
             return;
         }
         var ytEngines = Phosphor.Plugins.PluginSettingsFactory.ReadYouTubePlayback(_settings.PluginInstances);
         if (ytEngines.Video != VideoEngineKind.YtDlp
             && ytEngines.Search != SearchEngineKind.YtDlp)
         {
-            DebugLog.Log("YtDlpUpdater", "Startup auto-update skipped: yt-dlp is not the active engine");
+            DebugLog.Log(LogLevel.Debug, "YtDlpUpdater", "Startup auto-update skipped: yt-dlp is not the active engine");
             return;
         }
 
         var sinceLast = DateTime.UtcNow - _settings.YtDlpLastUpdateCheck;
         if (sinceLast < TimeSpan.FromDays(7))
         {
-            DebugLog.Log("YtDlpUpdater",
+            DebugLog.Log(LogLevel.Debug, "YtDlpUpdater",
                 $"Startup auto-update skipped: throttled (last check {sinceLast.TotalDays:F1} days ago, min 7). " +
                 "Pressing the manual update button also resets this timer.");
             return;
@@ -485,11 +485,11 @@ public partial class App : Application
             {
                 // Routes through the plug-in IUpdatable when the plug-in path is enabled, else legacy.
                 var status = await viewModel.UpdatePluginEngineOrLegacyAsync();
-                DebugLog.Log("YtDlpUpdater", $"Startup auto-update: {status}");
+                DebugLog.Log(LogLevel.Info, "YtDlpUpdater", $"Startup auto-update: {status}");
             }
             catch (Exception ex)
             {
-                DebugLog.Log("YtDlpUpdater", $"Startup auto-update failed: {ex.Message}");
+                DebugLog.Log(LogLevel.Warning, "YtDlpUpdater", $"Startup auto-update failed: {ex.Message}");
             }
         });
     }
@@ -501,10 +501,10 @@ public partial class App : Application
         if (paths.Count == 0 && !string.IsNullOrWhiteSpace(_settings.StartupDittiPath))
             paths = new List<string> { _settings.StartupDittiPath };
 
-        DebugLog.Log("Ditti", $"PlayStartupDitti called: Enabled={_settings.EnableStartupDitti}, Count={paths.Count}, AutoPlay={_settings.AutoPlayQueueOnStart}, QueueCount={viewModel.Queue.Count}");
-        if (!_settings.EnableStartupDitti) { DebugLog.Log("Ditti", "Skipped: not enabled"); return; }
-        if (paths.Count == 0) { DebugLog.Log("Ditti", "Skipped: no paths"); return; }
-        if (_settings.AutoPlayQueueOnStart && viewModel.Queue.Count > 0) { DebugLog.Log("Ditti", "Skipped: auto-play queue active"); return; }
+        DebugLog.Log(LogLevel.Debug, "Ditti", $"PlayStartupDitti called: Enabled={_settings.EnableStartupDitti}, Count={paths.Count}, AutoPlay={_settings.AutoPlayQueueOnStart}, QueueCount={viewModel.Queue.Count}");
+        if (!_settings.EnableStartupDitti) { DebugLog.Log(LogLevel.Debug, "Ditti", "Skipped: not enabled"); return; }
+        if (paths.Count == 0) { DebugLog.Log(LogLevel.Debug, "Ditti", "Skipped: no paths"); return; }
+        if (_settings.AutoPlayQueueOnStart && viewModel.Queue.Count > 0) { DebugLog.Log(LogLevel.Debug, "Ditti", "Skipped: auto-play queue active"); return; }
 
         // Resolve relative paths against base directory; filter to ones that exist
         var resolved = new List<string>();
@@ -517,9 +517,9 @@ public partial class App : Application
             if (System.IO.File.Exists(full))
                 resolved.Add(full);
             else
-                DebugLog.Log("Ditti", $"Skipping missing file: {p}");
+                DebugLog.Log(LogLevel.Debug, "Ditti", $"Skipping missing file: {p}");
         }
-        if (resolved.Count == 0) { DebugLog.Log("Ditti", "Skipped: no existing files"); return; }
+        if (resolved.Count == 0) { DebugLog.Log(LogLevel.Debug, "Ditti", "Skipped: no existing files"); return; }
 
         var dittiPath = resolved[Random.Shared.Next(resolved.Count)];
         StartDittiPlayback(viewModel, dittiPath);
@@ -568,7 +568,7 @@ public partial class App : Application
             // Log failures gracefully (e.g. unsupported format)
             _dittiPlayer.MediaFailed += (_, args) =>
             {
-                DebugLog.Log("Ditti", $"WPF MediaPlayer failed: {args.ErrorException?.Message}");
+                DebugLog.Log(LogLevel.Warning, "Ditti", $"WPF MediaPlayer failed: {args.ErrorException?.Message}");
                 cleanupDittiEvents();
                 Dispatcher.BeginInvoke(() =>
                 {
@@ -580,11 +580,11 @@ public partial class App : Application
 
             _dittiPlayer.Open(new Uri(dittiPath, UriKind.Absolute));
             _dittiPlayer.Play();
-            DebugLog.Log("Ditti", $"Startup ditti playing (WPF MediaPlayer): {dittiPath}");
+            DebugLog.Log(LogLevel.Debug, "Ditti", $"Startup ditti playing (WPF MediaPlayer): {dittiPath}");
         }
         catch (Exception ex)
         {
-            DebugLog.Log("Ditti", $"Startup ditti failed: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "Ditti", $"Startup ditti failed: {ex.Message}");
             if (viewModel.CurrentlyPlaying?.VideoId == "ditti:startup")
                 viewModel.CurrentlyPlaying = null;
             DisposeStartupDitti();
@@ -634,15 +634,15 @@ public partial class App : Application
                 {
                     var vol = session.SimpleAudioVolume.Volume;
                     var muted = session.SimpleAudioVolume.Mute;
-                    DebugLog.Log("WinVolume", $"{context}: Per-app volume={vol:P0}, Muted={muted}");
+                    DebugLog.Log(LogLevel.Trace, "WinVolume", $"{context}: Per-app volume={vol:P0}, Muted={muted}");
                     return;
                 }
             }
-            DebugLog.Log("WinVolume", $"{context}: No audio session found for this process");
+            DebugLog.Log(LogLevel.Debug, "WinVolume", $"{context}: No audio session found for this process");
         }
         catch (Exception ex)
         {
-            DebugLog.Log("WinVolume", $"{context}: Failed to query per-app volume: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "WinVolume", $"{context}: Failed to query per-app volume: {ex.Message}");
         }
     }
 
