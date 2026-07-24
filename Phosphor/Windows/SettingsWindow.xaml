@@ -2728,6 +2728,93 @@
                                        FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,10" Padding="0,0,0,4"
                                        TextWrapping="Wrap"/>
 
+                            <!-- Screen Scaling -->
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Screen Scaling:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="100"/>
+                                <TextBlock x:Name="ScreenScalingValueText" Text="0" Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" DockPanel.Dock="Right" Width="40"
+                                           TextAlignment="Right"/>
+                                <Slider x:Name="SliderScreenScaling" Minimum="-100" Maximum="100" Value="0"
+                                        VerticalAlignment="Center" IsMoveToPointEnabled="True"
+                                        ValueChanged="SliderScreenScaling_ValueChanged"
+                                        ToolTip="Uniformly scale all topper elements. Negative = smaller, Positive = larger."/>
+                            </DockPanel>
+
+                            <!-- Logo Shape -->
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Logo Shape:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="100"/>
+                                <TextBlock x:Name="DistortionValueText" Text="0" Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" DockPanel.Dock="Right" Width="40"
+                                           TextAlignment="Right"/>
+                                <Slider x:Name="SliderDistortion" Minimum="-100" Maximum="100" Value="0"
+                                        VerticalAlignment="Center" IsMoveToPointEnabled="True"
+                                        ValueChanged="SliderDistortion_ValueChanged"
+                                        ToolTip="Adjust to make the logo look round on non-standard monitors. Negative = taller, Positive = wider."/>
+                            </DockPanel>
+
+                            <!-- Logo Controls -->
+                            <CheckBox x:Name="CbTopperLogoSpin" Content="Spin logo"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"/>
+                            <CheckBox x:Name="CbTopperLogoShadow" Content="Logo drop shadow"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,4,0,0"
+                                      ToolTip="Renders a soft drop shadow behind the spinning logo text on the topper. Disabling can reduce render-thread load on lower-end cabinets."/>
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <TextBlock Text="Logo brightness:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="100"/>
+                                <Slider x:Name="SliderTopperLogoBrightness" Minimum="0" Maximum="100" Value="100"
+                                        Width="200" VerticalAlignment="Center" IsMoveToPointEnabled="True"
+                                        IsSnapToTickEnabled="True" TickFrequency="5"
+                                        ValueChanged="SliderTopperLogoBrightness_ValueChanged"/>
+                                <TextBlock x:Name="TopperLogoBrightnessValueText" Text="100%" Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" Margin="8,0,0,0"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <TextBlock Text="Logo rings:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="100"/>
+                                <Grid Width="200" VerticalAlignment="Center">
+                                    <Slider x:Name="SliderTopperLogoRings" Minimum="0" Maximum="2" Value="2"
+                                            IsSnapToTickEnabled="True" TickFrequency="1"
+                                            TickPlacement="BottomRight" IsMoveToPointEnabled="True"
+                                            ValueChanged="SliderTopperLogoRings_ValueChanged"/>
+                                    <Grid Margin="5,28,5,0" IsHitTestVisible="False">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="Off" FontSize="11"
+                                                   Foreground="{StaticResource TextDimBrush}" HorizontalAlignment="Left"/>
+                                        <TextBlock Grid.Column="1" Text="Reduced" FontSize="11"
+                                                   Foreground="{StaticResource TextDimBrush}" HorizontalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="Standard" FontSize="11"
+                                                   Foreground="{StaticResource TextDimBrush}" HorizontalAlignment="Right"/>
+                                    </Grid>
+                                </Grid>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <TextBlock Text="Ring brightness:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="100"/>
+                                <Slider x:Name="SliderTopperRingBrightness" Minimum="0" Maximum="100" Value="25"
+                                        Width="200" VerticalAlignment="Center" IsMoveToPointEnabled="True"
+                                        IsSnapToTickEnabled="True" TickFrequency="5"
+                                        ValueChanged="SliderTopperRingBrightness_ValueChanged"/>
+                                <TextBlock x:Name="TopperRingBrightnessValueText" Text="25%" Foreground="{StaticResource TextDimBrush}"
+                                           VerticalAlignment="Center" Margin="8,0,0,0"/>
+                            </StackPanel>
+                            <TextBlock Text="Logo Color:" Foreground="{StaticResource TextBrush}"
+                                       Margin="0,8,0,4"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,0">
+                                <RadioButton x:Name="RbTopperLogoColorOff" Content="Off" GroupName="TopperLogoColor"
+                                             Foreground="{StaticResource TextBrush}" Margin="0,0,12,0"/>
+                                <RadioButton x:Name="RbTopperLogoColorMorph" Content="Slow Morph" GroupName="TopperLogoColor"
+                                             Foreground="{StaticResource TextBrush}" Margin="0,0,12,0"/>
+                                <RadioButton x:Name="RbTopperLogoColorReactive" Content="Reactive" GroupName="TopperLogoColor"
+                                             Foreground="{StaticResource TextBrush}" Margin="0,0,0,0"
+                                             ToolTip="Logo color follows the dominant playfield color (blobs/ProjectM)."/>
+                            </StackPanel>
+
                             <!-- ═══ SECTION: Topper Ambient Content ═══ -->
                             <TextBlock Text="AMBIENT CONTENT" FontSize="12" FontWeight="Bold"
                                 Foreground="{StaticResource AccentBrush}" Margin="0,4,0,4"/>
@@ -2855,96 +2942,6 @@
                             <TextBlock Text="When 'Pinup Popper' is selected, the topper plays clips from the Pinup playlists configured on the General tab. Playlist selection, the clip duration, and which media folder each window uses are all set on the General tab."
                                        FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,6"
                                        TextWrapping="Wrap"/>
-
-                            <TextBlock Text="TOPPER DISPLAY" FontSize="12" FontWeight="Bold"
-                                Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
-
-                            <!-- Screen Scaling -->
-                            <DockPanel Margin="0,0,0,8">
-                                <TextBlock Text="Screen Scaling:" Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Width="100"/>
-                                <TextBlock x:Name="ScreenScalingValueText" Text="0" Foreground="{StaticResource TextDimBrush}"
-                                           VerticalAlignment="Center" DockPanel.Dock="Right" Width="40"
-                                           TextAlignment="Right"/>
-                                <Slider x:Name="SliderScreenScaling" Minimum="-100" Maximum="100" Value="0"
-                                        VerticalAlignment="Center" IsMoveToPointEnabled="True"
-                                        ValueChanged="SliderScreenScaling_ValueChanged"
-                                        ToolTip="Uniformly scale all topper elements. Negative = smaller, Positive = larger."/>
-                            </DockPanel>
-
-                            <!-- Logo Shape -->
-                            <DockPanel Margin="0,0,0,8">
-                                <TextBlock Text="Logo Shape:" Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Width="100"/>
-                                <TextBlock x:Name="DistortionValueText" Text="0" Foreground="{StaticResource TextDimBrush}"
-                                           VerticalAlignment="Center" DockPanel.Dock="Right" Width="40"
-                                           TextAlignment="Right"/>
-                                <Slider x:Name="SliderDistortion" Minimum="-100" Maximum="100" Value="0"
-                                        VerticalAlignment="Center" IsMoveToPointEnabled="True"
-                                        ValueChanged="SliderDistortion_ValueChanged"
-                                        ToolTip="Adjust to make the logo look round on non-standard monitors. Negative = taller, Positive = wider."/>
-                            </DockPanel>
-
-                            <!-- Logo Controls -->
-                            <CheckBox x:Name="CbTopperLogoSpin" Content="Spin logo"
-                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"/>
-                            <CheckBox x:Name="CbTopperLogoShadow" Content="Logo drop shadow"
-                                      Foreground="{StaticResource TextBrush}" Margin="0,4,0,0"
-                                      ToolTip="Renders a soft drop shadow behind the spinning logo text on the topper. Disabling can reduce render-thread load on lower-end cabinets."/>
-                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                <TextBlock Text="Logo brightness:" Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Width="100"/>
-                                <Slider x:Name="SliderTopperLogoBrightness" Minimum="0" Maximum="100" Value="100"
-                                        Width="200" VerticalAlignment="Center" IsMoveToPointEnabled="True"
-                                        IsSnapToTickEnabled="True" TickFrequency="5"
-                                        ValueChanged="SliderTopperLogoBrightness_ValueChanged"/>
-                                <TextBlock x:Name="TopperLogoBrightnessValueText" Text="100%" Foreground="{StaticResource TextDimBrush}"
-                                           VerticalAlignment="Center" Margin="8,0,0,0"/>
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                <TextBlock Text="Logo rings:" Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Width="100"/>
-                                <Grid Width="200" VerticalAlignment="Center">
-                                    <Slider x:Name="SliderTopperLogoRings" Minimum="0" Maximum="2" Value="2"
-                                            IsSnapToTickEnabled="True" TickFrequency="1"
-                                            TickPlacement="BottomRight" IsMoveToPointEnabled="True"
-                                            ValueChanged="SliderTopperLogoRings_ValueChanged"/>
-                                    <Grid Margin="5,28,5,0" IsHitTestVisible="False">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="Off" FontSize="11"
-                                                   Foreground="{StaticResource TextDimBrush}" HorizontalAlignment="Left"/>
-                                        <TextBlock Grid.Column="1" Text="Reduced" FontSize="11"
-                                                   Foreground="{StaticResource TextDimBrush}" HorizontalAlignment="Center"/>
-                                        <TextBlock Grid.Column="2" Text="Standard" FontSize="11"
-                                                   Foreground="{StaticResource TextDimBrush}" HorizontalAlignment="Right"/>
-                                    </Grid>
-                                </Grid>
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                <TextBlock Text="Ring brightness:" Foreground="{StaticResource TextBrush}"
-                                           VerticalAlignment="Center" Width="100"/>
-                                <Slider x:Name="SliderTopperRingBrightness" Minimum="0" Maximum="100" Value="25"
-                                        Width="200" VerticalAlignment="Center" IsMoveToPointEnabled="True"
-                                        IsSnapToTickEnabled="True" TickFrequency="5"
-                                        ValueChanged="SliderTopperRingBrightness_ValueChanged"/>
-                                <TextBlock x:Name="TopperRingBrightnessValueText" Text="25%" Foreground="{StaticResource TextDimBrush}"
-                                           VerticalAlignment="Center" Margin="8,0,0,0"/>
-                            </StackPanel>
-                            <TextBlock Text="Logo Color:" Foreground="{StaticResource TextBrush}"
-                                       Margin="0,8,0,4"/>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,0">
-                                <RadioButton x:Name="RbTopperLogoColorOff" Content="Off" GroupName="TopperLogoColor"
-                                             Foreground="{StaticResource TextBrush}" Margin="0,0,12,0"/>
-                                <RadioButton x:Name="RbTopperLogoColorMorph" Content="Slow Morph" GroupName="TopperLogoColor"
-                                             Foreground="{StaticResource TextBrush}" Margin="0,0,12,0"/>
-                                <RadioButton x:Name="RbTopperLogoColorReactive" Content="Reactive" GroupName="TopperLogoColor"
-                                             Foreground="{StaticResource TextBrush}" Margin="0,0,0,0"
-                                             ToolTip="Logo color follows the dominant playfield color (blobs/ProjectM)."/>
-                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </ScrollViewer>

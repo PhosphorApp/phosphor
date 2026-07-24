@@ -228,7 +228,7 @@ public class AppSettings
     public LogoColorMode LogoColorMode { get; set; }
     public bool BackglassAudioOnly { get; set; }
     public bool LogoSpin { get; set; } = true;
-    public bool LogoShadow { get; set; } = true;
+    public bool LogoShadow { get; set; } = false;
     public LogoRingsMode LogoRings { get; set; } = LogoRingsMode.Standard;
     public int LogoRingsBrightness { get; set; } = 25;
     public int LogoBrightness { get; set; } = 100;
@@ -236,7 +236,7 @@ public class AppSettings
     public double TopperDistortion { get; set; }
     public double TopperScreenScaling { get; set; }
     public bool TopperLogoSpin { get; set; } = true;
-    public bool TopperLogoShadow { get; set; } = true;
+    public bool TopperLogoShadow { get; set; } = false;
     public LogoRingsMode TopperLogoRings { get; set; } = LogoRingsMode.Standard;
     public int TopperLogoRingsBrightness { get; set; } = 25;
     public int TopperLogoBrightness { get; set; } = 100;

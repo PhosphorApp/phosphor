@@ -2110,22 +2110,22 @@ public partial class BackglassWindow : JukeboxWindow
         // means WPF re-rasterizes the subtree per frame during the ~2s animation,
         // which is negligible for the small logo subtree.
 
-        var titleChildren = _titleInnerCanvas?.Children ?? TitleCanvas.Children;
+        // Strip composition state during the morph to avoid per-frame blur re-raster
+        // (mirrors TopperWindow so both logos morph in lockstep).
+        SuspendCompositionForMorph(duration);
 
-        foreach (var child in titleChildren)
+        // Animate the single shared title brush once (all glyphs reference it).
+        int __titleAnims = 0, __recordAnims = 0;
+        if (_titleBrush is { IsFrozen: false } titleBrush)
         {
-            if (child is System.Windows.Controls.TextBlock tb
-                && tb.Foreground is WpfMedia.SolidColorBrush brush
-                && !brush.IsFrozen)
+            var titleAnim = new ColorAnimation
             {
-                var anim = new ColorAnimation
-                {
-                    To = WpfColor.FromArgb(180, titleColor.R, titleColor.G, titleColor.B),
-                    Duration = duration,
-                    EasingFunction = ease
-                };
-                brush.BeginAnimation(WpfMedia.SolidColorBrush.ColorProperty, anim);
-            }
+                To = WpfColor.FromArgb(180, titleColor.R, titleColor.G, titleColor.B),
+                Duration = duration,
+                EasingFunction = ease
+            };
+            titleBrush.BeginAnimation(WpfMedia.SolidColorBrush.ColorProperty, titleAnim);
+            __titleAnims++;
         }
 
         foreach (var child in RecordOverlay.Children)
@@ -2144,6 +2144,7 @@ public partial class BackglassWindow : JukeboxWindow
                             EasingFunction = ease
                         };
                         fill.BeginAnimation(WpfMedia.SolidColorBrush.ColorProperty, anim);
+                        __recordAnims++;
                     }
                 }
                 if (ellipse.Stroke is WpfMedia.SolidColorBrush stroke && !stroke.IsFrozen)
@@ -2156,6 +2157,7 @@ public partial class BackglassWindow : JukeboxWindow
                         EasingFunction = ease
                     };
                     stroke.BeginAnimation(WpfMedia.SolidColorBrush.ColorProperty, anim);
+                    __recordAnims++;
                 }
             }
         }
@@ -2170,6 +2172,7 @@ public partial class BackglassWindow : JukeboxWindow
         int __gc2 = GC.CollectionCount(2) - __gc2Before;
         DebugLog.Log("PERF.LogoMorph",
             $"MorphLogoToColor color={color} elapsedMs={__sw.Elapsed.TotalMilliseconds:F2} " +
+            $"titleAnims={__titleAnims} recordAnims={__recordAnims} shadow={_logoShadow} " +
             $"gc0={__gc0} gc1={__gc1} gc2={__gc2}");
 #endif
     }
@@ -2229,6 +2232,9 @@ public partial class BackglassWindow : JukeboxWindow
 
     private void MorphLogoColors()
     {
+#if DEBUG
+        var __sw = System.Diagnostics.Stopwatch.StartNew();
+#endif
         double titleHue = _rng.NextDouble() * 360;
         double recordHue = _rng.NextDouble() * 360;
         var titleColor = ColorHelper.HsvToColor(titleHue, 0.8, 0.75);
@@ -2236,24 +2242,23 @@ public partial class BackglassWindow : JukeboxWindow
 
         var duration = TimeSpan.FromSeconds(1);
         var ease = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
+        int __titleAnims = 0, __recordAnims = 0;
 
-        // Animate title text brushes
-        var titleChildren = _titleInnerCanvas?.Children ?? TitleCanvas.Children;
+        // Strip composition state during the morph to avoid per-frame blur re-raster
+        // (mirrors TopperWindow so both logos morph in lockstep).
+        SuspendCompositionForMorph(duration);
 
-        foreach (var child in titleChildren)
+        // Animate the single shared title brush once (all glyphs reference it).
+        if (_titleBrush is { IsFrozen: false } titleBrush)
         {
-            if (child is System.Windows.Controls.TextBlock tb
-                && tb.Foreground is WpfMedia.SolidColorBrush brush
-                && !brush.IsFrozen)
+            var titleAnim = new ColorAnimation
             {
-                var anim = new ColorAnimation
-                {
-                    To = WpfColor.FromArgb(180, titleColor.R, titleColor.G, titleColor.B),
-                    Duration = duration,
-                    EasingFunction = ease
-                };
-                brush.BeginAnimation(WpfMedia.SolidColorBrush.ColorProperty, anim);
-            }
+                To = WpfColor.FromArgb(180, titleColor.R, titleColor.G, titleColor.B),
+                Duration = duration,
+                EasingFunction = ease
+            };
+            titleBrush.BeginAnimation(WpfMedia.SolidColorBrush.ColorProperty, titleAnim);
+            __titleAnims++;
         }
 
         // Animate record overlay brushes (preserve original alpha)
@@ -2273,6 +2278,7 @@ public partial class BackglassWindow : JukeboxWindow
                             EasingFunction = ease
                         };
                         fill.BeginAnimation(WpfMedia.SolidColorBrush.ColorProperty, anim);
+                        __recordAnims++;
                     }
                 }
                 if (ellipse.Stroke is WpfMedia.SolidColorBrush stroke && !stroke.IsFrozen)
@@ -2285,11 +2291,18 @@ public partial class BackglassWindow : JukeboxWindow
                         EasingFunction = ease
                     };
                     stroke.BeginAnimation(WpfMedia.SolidColorBrush.ColorProperty, anim);
+                    __recordAnims++;
                 }
             }
         }
 
         LogoColorsMorphed?.Invoke(titleColor, recordColor);
+#if DEBUG
+        __sw.Stop();
+        DebugLog.Log("PERF.LogoMorph",
+            $"MorphLogoColors elapsedMs={__sw.Elapsed.TotalMilliseconds:F2} " +
+            $"titleAnims={__titleAnims} recordAnims={__recordAnims} shadow={_logoShadow}");
+#endif
     }
 
     private void ResetLogoColors()
@@ -2298,17 +2311,11 @@ public partial class BackglassWindow : JukeboxWindow
         var ease = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
         var defaultTitle = WpfColor.FromArgb(180, 0x88, 0xCC, 0xFF);
 
-        var titleChildren = _titleInnerCanvas?.Children ?? TitleCanvas.Children;
-
-        foreach (var child in titleChildren)
+        // Animate the single shared title brush once (all glyphs reference it).
+        if (_titleBrush is { IsFrozen: false } titleBrush)
         {
-            if (child is System.Windows.Controls.TextBlock tb
-                && tb.Foreground is WpfMedia.SolidColorBrush brush
-                && !brush.IsFrozen)
-            {
-                var anim = new ColorAnimation { To = defaultTitle, Duration = duration, EasingFunction = ease };
-                brush.BeginAnimation(WpfMedia.SolidColorBrush.ColorProperty, anim);
-            }
+            var titleAnim = new ColorAnimation { To = defaultTitle, Duration = duration, EasingFunction = ease };
+            titleBrush.BeginAnimation(WpfMedia.SolidColorBrush.ColorProperty, titleAnim);
         }
 
         foreach (var child in RecordOverlay.Children)
@@ -2459,9 +2466,66 @@ public partial class BackglassWindow : JukeboxWindow
 
     private static bool _titleSpin = true;
     private static bool _morphColors;
-    private static bool _logoShadow = true;
+    private static bool _logoShadow = false;
     private static string _logoText = "\u2022 VPIN JUKEBOX \u2022 VPIN JUKEBOX ";
     private static System.Windows.Controls.Canvas? _titleInnerCanvas;
+    // Shared brush used by all title glyphs — captured so morphs animate it once
+    // instead of redundantly per glyph (all 28 TextBlocks share this instance).
+    private static WpfMedia.SolidColorBrush? _titleBrush;
+    // Morph composition-state suspension (mirrors TopperWindow.RunMorph so the two
+    // windows stay in lockstep). While a morph runs, the DropShadowEffect + BitmapCache
+    // on the title inner canvas (and the record overlay cache) are stripped so the
+    // render thread doesn't re-rasterize the blurred cached surface every frame — the
+    // main source of morph hitching. Ref-counted so overlapping morphs don't restore early.
+    private int _activeMorphs;
+    private WpfMedia.Effects.Effect? _savedTitleEffect;
+    private WpfMedia.CacheMode? _savedTitleCache;
+    private WpfMedia.CacheMode? _savedRecordCache;
+
+    /// <summary>
+    /// Strips the expensive composition state (drop shadow + bitmap caches) for the
+    /// duration of a color morph, then restores it. Mirrors TopperWindow.RunMorph exactly
+    /// (immediate strip, ref-counted, restore at exactly <paramref name="duration"/>) so
+    /// the backglass and topper logos morph in visual lockstep.
+    /// </summary>
+    private void SuspendCompositionForMorph(TimeSpan duration)
+    {
+        if (_activeMorphs == 0)
+        {
+            if (_titleInnerCanvas != null)
+            {
+                _savedTitleEffect = _titleInnerCanvas.Effect;
+                _savedTitleCache = _titleInnerCanvas.CacheMode;
+                _titleInnerCanvas.Effect = null;
+                _titleInnerCanvas.CacheMode = null;
+            }
+            _savedRecordCache = RecordOverlay.CacheMode;
+            RecordOverlay.CacheMode = null;
+        }
+        _activeMorphs++;
+
+        // Schedule restore. A one-shot DispatcherTimer avoids relying on
+        // ColorAnimation.Completed, which fires per-brush and would restore too early
+        // if any single brush finished before the rest. Ref-counted so overlapping
+        // morphs (rapid song changes) don't restore until the last one ends.
+        var restoreTimer = new DispatcherTimer { Interval = duration };
+        restoreTimer.Tick += (_, _) =>
+        {
+            restoreTimer.Stop();
+            if (--_activeMorphs > 0) return;
+
+            if (_titleInnerCanvas != null)
+            {
+                _titleInnerCanvas.Effect = _savedTitleEffect;
+                _titleInnerCanvas.CacheMode = _savedTitleCache;
+            }
+            RecordOverlay.CacheMode = _savedRecordCache;
+            _savedTitleEffect = null;
+            _savedTitleCache = null;
+            _savedRecordCache = null;
+        };
+        restoreTimer.Start();
+    }
 
     public void SetLogoText(string text)
     {
@@ -2507,6 +2571,7 @@ public partial class BackglassWindow : JukeboxWindow
 
         var brush = new WpfMedia.SolidColorBrush(WpfColor.FromArgb(180, 0x88, 0xCC, 0xFF));
         if (!_morphColors) brush.Freeze();
+        _titleBrush = brush.IsFrozen ? null : brush;
         var font = new WpfMedia.FontFamily("Segoe UI");
 
         // When not spinning, rotate the starting angle so the two bullet

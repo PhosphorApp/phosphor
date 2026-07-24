@@ -31,7 +31,7 @@ public partial class TopperWindow : JukeboxWindow
     private int _blobCount = 4;
     private int _blobSizeOffset;
     private bool _morphColors;
-    private bool _logoShadow = true;
+    private bool _logoShadow = false;
     private System.Windows.Controls.Canvas? _titleInnerCanvas;
     private int _activeMorphs;
     private WpfMedia.Effects.Effect? _savedTitleEffect;
