@@ -12,6 +12,14 @@ public interface IPluginHost
     void Log(string message);
 
     /// <summary>
+    /// Structured logging at an explicit <see cref="LogLevel"/> so plug-in logs participate in the
+    /// host's verbosity filtering. Entries below the host's minimum level are dropped. The default
+    /// implementation forwards to <see cref="Log(string)"/> (which logs at the host's Debug-equivalent
+    /// level) so existing hosts and call sites keep working unchanged.
+    /// </summary>
+    void Log(LogLevel level, string message) => Log(message);
+
+    /// <summary>
     /// A shared <see cref="HttpClient"/> for the plug-in to use. Supplied by the host so
     /// connection pooling and defaults are consistent; the plug-in must not dispose it.
     /// </summary>

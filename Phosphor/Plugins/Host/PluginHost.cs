@@ -34,6 +34,21 @@ public sealed class PluginHost : IPluginHost
 
     public void Log(string message) => DebugLog.Log($"Plugin:{_instanceId}", message);
 
+    public void Log(Phosphor.Plugin.Abstractions.LogLevel level, string message) =>
+        DebugLog.Log(MapLevel(level), $"Plugin:{_instanceId}", message);
+
+    // Map the plug-in contract's LogLevel onto the host logger's LogLevel. Kept explicit (rather than
+    // a cast) so the two enums can evolve independently without silently mis-mapping.
+    private static LogLevel MapLevel(Phosphor.Plugin.Abstractions.LogLevel level) => level switch
+    {
+        Phosphor.Plugin.Abstractions.LogLevel.Trace => LogLevel.Trace,
+        Phosphor.Plugin.Abstractions.LogLevel.Debug => LogLevel.Debug,
+        Phosphor.Plugin.Abstractions.LogLevel.Info => LogLevel.Info,
+        Phosphor.Plugin.Abstractions.LogLevel.Warning => LogLevel.Warning,
+        Phosphor.Plugin.Abstractions.LogLevel.Error => LogLevel.Error,
+        _ => LogLevel.Debug,
+    };
+
     public string? GetSecret(string key) => _secrets.TryGetValue(key, out var v) ? v : null;
 
     public void SetSecret(string key, string? value) => _secrets[key] = value;

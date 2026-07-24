@@ -85,6 +85,14 @@ Rules of thumb:
 
 Newest first. Note the date, what was retagged, and anything discovered.
 
+- **2025 — `IPluginHost` leveled logging (plumbing) + SiriusXM.** Added `LogLevel` to the plug-in
+  contract (`Phosphor.Plugin.Abstractions/LogLevel.cs`) and a `Log(LogLevel, string)` overload on
+  `IPluginHost` (default interface method forwards to `Log(string)` so existing hosts/call sites are
+  unchanged). `PluginHost` maps the contract level onto the host `DebugLog` level, so **Path-A plug-in
+  logs now participate in verbosity filtering** and still land in the host log tagged `[Plugin:{id}]`.
+  Demonstrated the pattern by retagging SiriusXM: added a leveled `Log` helper overload and moved its
+  9 failure/warning sites (favorites/hidden/lineup read-write failures, channel-not-found, resolve
+  failure, auth failure) to **Warning**.
 - **2025 — Plex retag + volume-data correction.** Retagged `Phosphor.Plugins.Plex/PlexService.cs`:
   the per-track `DiagLog` helper (audio-stream selection dump, chapter probes, compilation-album
   search — all 15 sites funnel through it) now logs at **Trace**; the 3 genuine failure sites →
@@ -156,6 +164,9 @@ file. Retagging the top few reclaims most of the log's readability.
 8. [ ] Remaining low-volume categories — fold into a final "misc sweep."
 
 ### Done
+- [x] **Plumbing: `IPluginHost` leveled logging** — `Log(LogLevel, string)` added to the contract;
+      Path-A plug-in logs can now be leveled at their call sites.
+- [x] **SiriusXM** — 9 failure sites → Warning via the new leveled `_host.Log`. First Path-A retag.
 - [x] **Plex** — `PlexService.cs` `DiagLog` → Trace; failures → Warning; connect → Info. Plug-in shim
       (`PlexDebugLog.cs`) made level-aware. Share was historical (pre-extraction), not current load.
 - [x] **CachedImage** — see Work Log (2025 foundation pass). Confirmed low runtime volume (~0.1%).
@@ -195,11 +206,26 @@ Use this section to record anything found during retagging that's worth remember
 logs, dead log lines, categories that should be renamed/merged, hot paths that shouldn't log at all,
 etc.). These aren't part of the level migration but are cheap to capture while we're in the code.
 
-- **Extracted plug-ins have their own `DebugLog`.** The Plex plug-in (and by the same pattern the
-  other extracted source plug-ins: Emby, Jellyfin, SiriusXM, iHeartRadio, LocalFolder, Vimeo, …) can't
-  see the host's logger across the plug-in load boundary, so each carries a small `DebugLog` shim that
-  forwards to `Trace.WriteLine`. When retagging a plug-in, add level support to *its* shim, not the
-  host's. These logs do **not** land in the host's `Phosphor_Debug_*.log` file.
+- **Two plug-in logging paths — know which one you're touching.** There is **no per-plug-in log file**;
+  everything ultimately targets the host's single `Phosphor_Debug_yyyyMMdd.log` (in
+  `Phosphor/bin/<config>/net8.0-windows/logs/`) — *if* it reaches the host at all.
+  - **Path A — via `IPluginHost.Log` (reaches the host file).** Most plug-ins (Emby, Jellyfin,
+    SiriusXM, iHeartRadio, …) log through `_host.Log(...)`. `PluginHost.Log` routes to the host
+    `DebugLog` as `DebugLog.Log($"Plugin:{instanceId}", msg)` — hence the `[Plugin:emby]` /
+    `[Plugin:siriusxm]` tags in the log file. **`IPluginHost` now exposes `Log(LogLevel, string)`**
+    (contract enum `Phosphor.Plugin.Abstractions.LogLevel`; `PluginHost` maps it onto the host
+    logger), so these retags happen **at the call site inside the plug-in** by passing a level — no
+    plug-in shim needed. Untagged `Log(string)` calls still default to Debug-equivalent.
+  - **Path B — via an internal `DebugLog` shim → `Trace.WriteLine` (does NOT reach any file).** Only
+    **two** projects do this: `Phosphor.Plugins.Plex/PlexDebugLog.cs` and
+    `Phosphor.Plugins.YouTube/Engines/DebugLog.cs`. These exist because relocated in-box code kept
+    calling a bare `DebugLog.Log(...)`. Their output goes to the **VS Output window / trace listeners**
+    only — it vanishes in a normal run. Retag level support in *that shim*. (Correction to an earlier
+    note: it is NOT true that every extracted plug-in has such a shim — most use Path A.)
+- **Consequence for Plex specifically:** the Plex `DiagLog` lines we retagged go to `Trace.WriteLine`,
+  so they never hit the host log file in a normal run anyway. The retag is still correct for consistency
+  and for debugger-output readability, but don't expect Plex lines in `Phosphor_Debug_*.log` from the
+  current build.
 - **Volume samples can be dominated by historical logging.** The Plex ~75% share came from a prior dev
   cycle when Plex was in-box on the host logger; it's meaningless for current prioritization. Always
   confirm a category's logging still exists in current source (and reaches the host log) before
