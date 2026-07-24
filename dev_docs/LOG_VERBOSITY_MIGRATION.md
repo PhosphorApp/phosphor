@@ -120,12 +120,29 @@ Real example: the `Status` classifier (`ClassifyStatusLevel` in `JukeboxViewMode
 level only to discard it when logging is off is the wrong pattern. Rule of thumb: **cheap args = trust
 the gate; expensive args = guard the call.**
 
+### Prefer a real `[Category]` over an inline message prefix
+
+Some legacy calls baked the source name into the message text, e.g.
+`DebugLog.Log($"{GetType().Name}: monitor … running at {hz} Hz")` → `[GENERIC] BackglassWindow: monitor …`.
+That's ambiguous (is `BackglassWindow` the category or free text?) and not filterable. When retagging,
+lift the prefix into the category argument: `DebugLog.Log(level, GetType().Name, "monitor … 144 Hz")`
+→ `[Info] [BackglassWindow] monitor … 144 Hz`. `GetType().Name` is a fine dynamic category for
+base-class logging shared by several window subclasses (it names the concrete window that logged).
+
 ---
 
 ## Work Log
 
 Newest first. Note the date, what was retagged, and anything discovered.
 
+- **2025 — VideoCache + window monitor notifications.** **VideoCache** (16 sites): per-item
+  hit/miss/store/evict/chapters → Trace; store/evicting → Debug; purge + index-verification-complete →
+  Info; ffmpeg/mux/download failures → Warning. **Window notifications:** the monitor-Hz + refresh-rate
+  logs in `JukeboxWindow` (base class) used `GetType().Name` as an inline message prefix, producing
+  ambiguous `[GENERIC] BackglassWindow: monitor …` lines. Converted to
+  `Log(level, GetType().Name, msg)` so the concrete window becomes a proper **`[Category]`** →
+  `[Info] [BackglassWindow] monitor … 144 Hz` (refresh-rate detection failure → Warning). Dropped the
+  unmigrated caller count 131 → 113.
 - **2025 — DOF pass (`DofClient.cs`, 27 sites).** Largest single-file cluster, done as one cohesive
   pass. **Trace:** per-trigger sends (`Trigger`, `Auto-off`, `Reconnect auto-off`) and bridge stdout
   passthrough (`[DOF-Bridge]`). **Debug:** args, using-bridge detail. **Info:** connect/reconnect/
@@ -214,6 +231,7 @@ $hits | Group-Object Filename | Sort-Object Count -Descending | Select-Object Co
 ```
 
 Snapshots (newest first):
+- **113** after VideoCache + window monitor notifications (VideoCache 16 → 0, JukeboxWindow 2 → 0).
 - **~131** after the DOF pass (DofClient.cs 27 → 0).
 - **158** after ApplySettings/Status/PluginLoader (baseline for the DOF pass).
 - ~230+ at the start (pre-migration, approx from the initial call-site inventory).
@@ -269,10 +287,13 @@ file. Retagging the top few reclaims most of the log's readability.
 4. [ ] **Plugin:* runtime logs** — per-source sweep. (Note: extracted plug-ins each have their own
        `DebugLog` shim → `Trace.WriteLine`, like Plex; retag them there, not in the host.)
 5. [ ] **Visualization** (Matrix, Mandelbrot, ProjectM, PERF.*) — per-frame → Trace, keep PERF stalls Warning.
-6. [ ] **Misc high-count files** — VideoCache (16), GaplessAudioPlayer (12), PrefetchCache (6),
+6. [ ] **Misc high-count files** — BackglassWindow (16), GaplessAudioPlayer (12), PrefetchCache (6),
        PresetBrowser (6), FavoritesIndex (4), etc. Fold into a "misc sweep."
 
 ### Done
+- [x] **VideoCache** (16 sites) + **window monitor notifications** (`JukeboxWindow`, 2 sites) —
+      per-item → Trace, milestones → Info, failures → Warning; window Hz logs given a proper
+      `[WindowName]` category via `GetType().Name`.
 - [x] **DOF** (`DofClient.cs`, 27 sites) — per-trigger/passthrough → Trace; milestones → Info;
       failures → Warning; reconnect-gave-up → Error. Largest single-file cluster cleared.
 - [x] **ApplySettings / Status / PluginLoader** — perf-timing → Trace; loader milestones → Info,

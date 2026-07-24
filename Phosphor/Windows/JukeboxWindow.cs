@@ -629,12 +629,12 @@ public class JukeboxWindow : Window
             {
                 _lastRefreshRate = hz;
                 _lastMonitorDevice = device;
-                DebugLog.Log($"{GetType().Name}: monitor {device} running at {hz} Hz");
+                DebugLog.Log(LogLevel.Info, GetType().Name, $"monitor {device} running at {hz} Hz");
             }
         }
         catch (Exception ex)
         {
-            DebugLog.Log($"{GetType().Name}: failed to detect refresh rate – {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, GetType().Name, $"failed to detect refresh rate – {ex.Message}");
         }
     }
 

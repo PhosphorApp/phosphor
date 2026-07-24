@@ -64,7 +64,7 @@ public class VideoCache
             var entry = _entries.FirstOrDefault(e => e.VideoId == videoId);
             if (entry == null)
             {
-                DebugLog.Log("VideoCache", $"Miss: {videoId}");
+                DebugLog.Log(LogLevel.Trace, "VideoCache", $"Miss: {videoId}");
                 return null;
             }
 
@@ -72,7 +72,7 @@ public class VideoCache
 
             if (!File.Exists(filePath))
             {
-                DebugLog.Log("VideoCache", $"Stale entry removed (file missing): {videoId}");
+                DebugLog.Log(LogLevel.Trace, "VideoCache", $"Stale entry removed (file missing): {videoId}");
                 _entries.Remove(entry);
                 SaveIndex();
                 return null;
@@ -81,7 +81,7 @@ public class VideoCache
             entry.LastAccessed = DateTime.UtcNow;
             SaveIndex();
 
-            DebugLog.Log("VideoCache", $"Hit: {videoId} ({entry.Resolution}, {entry.SizeBytes / 1024 / 1024}MB)");
+            DebugLog.Log(LogLevel.Trace, "VideoCache", $"Hit: {videoId} ({entry.Resolution}, {entry.SizeBytes / 1024 / 1024}MB)");
             return new CachedVideo(filePath, entry.Resolution, entry.Chapters);
         }
     }
@@ -150,7 +150,7 @@ public class VideoCache
 
             if (!muxed)
             {
-                DebugLog.Log("VideoCache", $"Mux failed for {videoId} — ffmpeg may not be installed");
+                DebugLog.Log(LogLevel.Warning, "VideoCache", $"Mux failed for {videoId} — ffmpeg may not be installed");
                 try { File.Delete(muxedPath); } catch { }
                 return;
             }
@@ -173,12 +173,12 @@ public class VideoCache
                 Evict();
             }
 
-            DebugLog.Log("VideoCache", $"Stored: {videoId} ({totalSize / 1024 / 1024}MB, {resolution})");
+            DebugLog.Log(LogLevel.Debug, "VideoCache", $"Stored: {videoId} ({totalSize / 1024 / 1024}MB, {resolution})");
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            DebugLog.Log("VideoCache", $"Download failed for {videoId}: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "VideoCache", $"Download failed for {videoId}: {ex.Message}");
             // Clean up partial files
             CleanPartialFiles(videoId);
         }
@@ -197,7 +197,7 @@ public class VideoCache
             {
                 entry.Chapters = chapters;
                 SaveIndex();
-                DebugLog.Log("VideoCache", $"Stored {chapters.Count} chapters for {videoId}");
+                DebugLog.Log(LogLevel.Trace, "VideoCache", $"Stored {chapters.Count} chapters for {videoId}");
             }
         }
     }
@@ -218,7 +218,7 @@ public class VideoCache
     {
         lock (_lock)
         {
-            DebugLog.Log("VideoCache", $"Purging {_entries.Count} entries");
+            DebugLog.Log(LogLevel.Info, "VideoCache", $"Purging {_entries.Count} entries");
             _entries.Clear();
             SaveIndex();
         }
@@ -253,7 +253,7 @@ public class VideoCache
         var totalSize = _entries.Sum(e => e.SizeBytes);
         if (totalSize <= _maxBytes) return;
 
-        DebugLog.Log("VideoCache", $"Evicting: {totalSize / 1024 / 1024}MB exceeds {_maxBytes / 1024 / 1024}MB limit");
+        DebugLog.Log(LogLevel.Debug, "VideoCache", $"Evicting: {totalSize / 1024 / 1024}MB exceeds {_maxBytes / 1024 / 1024}MB limit");
 
         // Sort by oldest accessed first
         var sorted = _entries.OrderBy(e => e.LastAccessed).ToList();
@@ -267,7 +267,7 @@ public class VideoCache
 
             totalSize -= entry.SizeBytes;
             _entries.Remove(entry);
-            DebugLog.Log("VideoCache", $"Evicted: {entry.VideoId} ({entry.SizeBytes / 1024 / 1024}MB)");
+            DebugLog.Log(LogLevel.Trace, "VideoCache", $"Evicted: {entry.VideoId} ({entry.SizeBytes / 1024 / 1024}MB)");
         }
 
         SaveIndex();
@@ -316,7 +316,7 @@ public class VideoCache
             using var proc = System.Diagnostics.Process.Start(psi);
             if (proc == null)
             {
-                DebugLog.Log("VideoCache", "ffmpeg process failed to start");
+                DebugLog.Log(LogLevel.Warning, "VideoCache", "ffmpeg process failed to start");
                 return false;
             }
 
@@ -325,7 +325,7 @@ public class VideoCache
 
             if (proc.ExitCode != 0)
             {
-                DebugLog.Log("VideoCache", $"ffmpeg exited with code {proc.ExitCode}: {stderr[..Math.Min(stderr.Length, 1000)]}");
+                DebugLog.Log(LogLevel.Warning, "VideoCache", $"ffmpeg exited with code {proc.ExitCode}: {stderr[..Math.Min(stderr.Length, 1000)]}");
                 try { File.Delete(outputPath); } catch { }
                 return false;
             }
@@ -334,7 +334,7 @@ public class VideoCache
         }
         catch (Exception ex)
         {
-            DebugLog.Log("VideoCache", $"ffmpeg mux failed: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "VideoCache", $"ffmpeg mux failed: {ex.Message}");
             try { File.Delete(outputPath); } catch { }
             return false;
         }
@@ -380,10 +380,10 @@ public class VideoCache
         foreach (var entry in removed)
         {
             _entries.Remove(entry);
-            DebugLog.Log("VideoCache", $"Index verification: removed missing file entry '{entry.FileName}' (VideoId: {entry.VideoId})");
+            DebugLog.Log(LogLevel.Trace, "VideoCache", $"Index verification: removed missing file entry '{entry.FileName}' (VideoId: {entry.VideoId})");
         }
 
-        DebugLog.Log("VideoCache", $"Index verification complete: {removed.Count} stale entry(ies) removed");
+        DebugLog.Log(LogLevel.Info, "VideoCache", $"Index verification complete: {removed.Count} stale entry(ies) removed");
         SaveIndex();
     }
 
@@ -420,7 +420,7 @@ public class VideoCache
         }
 
         File.WriteAllText(path, sb.ToString(), System.Text.Encoding.UTF8);
-        DebugLog.Log("VideoCache", $"Wrote {chapters.Count} chapters to {Path.GetFileName(path)}");
+        DebugLog.Log(LogLevel.Trace, "VideoCache", $"Wrote {chapters.Count} chapters to {Path.GetFileName(path)}");
         return path;
     }
 
