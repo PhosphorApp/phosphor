@@ -65,6 +65,16 @@ public class BlobState
     public double MergeTargetY { get; set; } = double.NaN;
     /// <summary>Gravity pattern: target size to lerp toward after a merge (NaN = none).</summary>
     public double MergeTargetSize { get; set; } = double.NaN;
+    /// <summary>Gravity pattern: seconds remaining on an active color fade after a merge (0 = none).</summary>
+    public double ColorFadeRemaining { get; set; }
+    /// <summary>Gravity pattern: total duration of the active color fade.</summary>
+    public double ColorFadeDuration { get; set; }
+    /// <summary>Gravity pattern: color to fade from (start of the merge color transition).</summary>
+    public System.Windows.Media.Color ColorFadeFrom { get; set; }
+    /// <summary>Gravity pattern: color to fade toward (blended merge result).</summary>
+    public System.Windows.Media.Color ColorFadeTo { get; set; }
+    /// <summary>Gravity pattern: seconds remaining on a collision pulse (scale bump), 0 = none.</summary>
+    public double CollisionPulseRemaining { get; set; }
 }
 
 /// <summary>

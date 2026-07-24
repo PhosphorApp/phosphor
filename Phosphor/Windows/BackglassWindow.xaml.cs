@@ -2336,6 +2336,10 @@ public partial class BackglassWindow : JukeboxWindow
 
     private void ColorCycleBlobs(object? sender, EventArgs e)
     {
+        // The Gravity pattern owns its own color (physics-driven hues + slow hue
+        // drift in the simulator), so don't overwrite it here.
+        if (_currentPattern?.PatternType == BlobPattern.Gravity) return;
+
         var brushes = _currentPattern?.Brushes;
         var gradBrushes = _currentPattern?.GradientBrushes;
         if (brushes == null || brushes.Count == 0) return;

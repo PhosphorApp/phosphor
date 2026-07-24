@@ -78,11 +78,45 @@ public sealed class GravitySimulator : IDisposable
     private double _cameraDriftTimer = 0.0;
     private const double SimSpaceMultiplier = 3.0;    // sim space is 3× canvas dimensions
     private const double CameraMinZoom = 1.0 / SimSpaceMultiplier;
-    private const double CameraMaxZoom = 1.3;
-    private const double CameraDriftIntervalSec = 20.0;
-    private const double CameraZoomLerpSpeed = 0.5;   // per-second convergence for zoom
-    private const double CameraDriftLerpSpeed = 0.3;   // per-second convergence for rotation/pan
-    private const double CameraMassFraction = 0.80;    // fraction of total mass to keep in frame
+
+    /// <summary>Maximum camera zoom-in factor. Default 1.3.</summary>
+    public static double CameraMaxZoom { get; set; } = 1.3;
+
+    /// <summary>Interval (seconds) between random rotation drift target picks. Default 20.</summary>
+    public static double CameraDriftIntervalSec { get; set; } = 20.0;
+
+    /// <summary>Per-second convergence for zoom. Lower = slower/gentler zoom. Default 0.1.</summary>
+    public static double CameraZoomLerpSpeed { get; set; } = 0.1;
+
+    /// <summary>Per-second convergence for pan (center-of-mass follow). Very slow to be barely perceptible. Default 0.02.</summary>
+    public static double CameraPanLerpSpeed { get; set; } = 0.02;
+
+    /// <summary>Per-second convergence for rotation drift. Default 0.3.</summary>
+    public static double CameraDriftLerpSpeed { get; set; } = 0.3;
+
+    /// <summary>Fraction of total mass to keep in frame when computing zoom. Default 0.80.</summary>
+    public static double CameraMassFraction { get; set; } = 0.80;
+
+    /// <summary>Duration (seconds) of the color fade when two bodies merge. 0 = instant. Default 0.5.</summary>
+    public static double MergeColorFadeSec { get; set; } = 2.5;
+
+    /// <summary>Duration (seconds) of the color fade-in for spawned fragments (split/pierce/supernova/comet). 0 = instant. Default 0.3.</summary>
+    public static double SpawnColorFadeSec { get; set; } = 0.3;
+
+    /// <summary>Very slow global hue drift applied to each body's own color, in degrees per second. 0 = off. Default 1.0 (full rotation every 6 minutes).</summary>
+    public static double HueDriftDegreesPerSec { get; set; } = 1.0;
+
+    /// <summary>Radial gradient mid-stop offset (0–1). Lower = softer/fuzzier edge falloff. Default 0.55.</summary>
+    public static double GradientMidStop { get; set; } = 0.55;
+
+    /// <summary>Radial gradient mid-stop alpha (0–255). Lower = more translucent. Default 200.</summary>
+    public static byte GradientMidAlpha { get; set; } = 200;
+
+    /// <summary>Extra scale applied to a body when it collides, as a fraction (0 = off). Default 0.25 (+25%).</summary>
+    public static double CollisionPulseScale { get; set; } = 0.25;
+
+    /// <summary>Duration (seconds) of the collision pulse decay. Default 0.35.</summary>
+    public static double CollisionPulseSec { get; set; } = 0.35;
 
     public GravitySimulator(
         List<FrameworkElement> blobs,
@@ -358,6 +392,40 @@ public sealed class GravitySimulator : IDisposable
                 if (s.MergeImmunity <= 0)
                     s.GravityImmuneFrom = null;
             }
+
+            // Animated color fade after a merge
+            if (s.ColorFadeRemaining > 0)
+            {
+                s.ColorFadeRemaining = Math.Max(0, s.ColorFadeRemaining - dt);
+                double t = s.ColorFadeDuration > 0
+                    ? 1.0 - (s.ColorFadeRemaining / s.ColorFadeDuration)
+                    : 1.0;
+                Color from = s.ColorFadeFrom;
+                Color to = s.ColorFadeTo;
+                byte cr = (byte)(from.R + (to.R - from.R) * t);
+                byte cg = (byte)(from.G + (to.G - from.G) * t);
+                byte cb = (byte)(from.B + (to.B - from.B) * t);
+                Color cur = Color.FromRgb(cr, cg, cb);
+                RecolorGradient(i, cur);
+            }
+
+            // Collision pulse: brief scale bump that eases back to 1.0
+            if (s.CollisionPulseRemaining > 0 && CollisionPulseSec > 0)
+            {
+                s.CollisionPulseRemaining = Math.Max(0, s.CollisionPulseRemaining - dt);
+                double p = s.CollisionPulseRemaining / CollisionPulseSec; // 1 -> 0
+                double scale = 1.0 + CollisionPulseScale * p;
+                if (_blobs[i].RenderTransform is not ScaleTransform pst)
+                {
+                    pst = new ScaleTransform(scale, scale);
+                    _blobs[i].RenderTransform = pst;
+                }
+                else
+                {
+                    pst.ScaleX = scale;
+                    pst.ScaleY = scale;
+                }
+            }
         }
 
         // --- Collision detection: merge or split ---
@@ -392,6 +460,32 @@ public sealed class GravitySimulator : IDisposable
 
         // --- Diagnostic overlay (independent of camera roam) ---
         UpdateDiagnostics();
+
+        // --- Very slow global hue drift (owns color across playfield + backglass) ---
+        UpdateHueDrift(dt, count);
+    }
+
+    /// <summary>
+    /// Rotates each body's own color hue by a tiny amount per frame for a slow,
+    /// barely-perceptible color morph. Preserves each stop's alpha and skips bodies
+    /// with an active color fade so merge/spawn transitions aren't disturbed.
+    /// </summary>
+    private void UpdateHueDrift(double dt, int count)
+    {
+        if (HueDriftDegreesPerSec <= 0) return;
+
+        double deltaHue = HueDriftDegreesPerSec * dt;
+        for (int i = 0; i < count && i < _brushes.Count; i++)
+        {
+            // Don't fight an in-progress merge/spawn fade.
+            if (i < _states.Count && _states[i].ColorFadeRemaining > 0) continue;
+
+            Color c = _brushes[i].Color;
+            var (h, s, v) = RgbToHsv(c);
+            h = (h + deltaHue) % 360.0;
+            if (h < 0) h += 360.0;
+            RecolorGradient(i, HsvToRgb(h, s, v));
+        }
     }
 
     private void UpdateCamera(double dt)
@@ -489,12 +583,13 @@ public sealed class GravitySimulator : IDisposable
 
         // --- Lerp toward targets ---
         double zoomLerp = 1.0 - Math.Pow(1.0 - CameraZoomLerpSpeed, dt);
+        double panLerp = 1.0 - Math.Pow(1.0 - CameraPanLerpSpeed, dt);
         double driftLerp = 1.0 - Math.Pow(1.0 - CameraDriftLerpSpeed, dt);
 
         _cameraZoom += (targetZoom - _cameraZoom) * zoomLerp;
         _cameraAngle += (_cameraTargetAngle - _cameraAngle) * driftLerp;
-        _cameraOffsetX += (targetOffsetX - _cameraOffsetX) * zoomLerp;
-        _cameraOffsetY += (targetOffsetY - _cameraOffsetY) * zoomLerp;
+        _cameraOffsetX += (targetOffsetX - _cameraOffsetX) * panLerp;
+        _cameraOffsetY += (targetOffsetY - _cameraOffsetY) * panLerp;
 
         // Apply
         _cameraScale.ScaleX = _cameraZoom;
@@ -644,6 +739,10 @@ public sealed class GravitySimulator : IDisposable
                     // look like galaxies merging rather than billiard balls.
                     collided[i] = true; collided[j] = true;
                     MergeBodies(i, j);
+
+                    // Brief scale pulse on the survivor as a visual cue of the interaction.
+                    if (CollisionPulseScale > 0 && j < _states.Count)
+                        _states[j].CollisionPulseRemaining = CollisionPulseSec;
 
                     // Check if the survivor exceeds the supernova threshold
                     double supernovaThreshold = GravityBlobPattern.SupernovaMass;
@@ -962,7 +1061,7 @@ public sealed class GravitySimulator : IDisposable
             byte dg = (byte)Math.Clamp(parentColor.G + _rng.Next(-20, 10), 0, 255);
             byte db = (byte)Math.Clamp(parentColor.B + _rng.Next(-20, 10), 0, 255);
 
-            CreateBody(fx - size * 0.5, fy - size * 0.5, size, tvx, tvy, Color.FromRgb(dr, dg, db));
+            CreateBody(fx - size * 0.5, fy - size * 0.5, size, tvx, tvy, Color.FromRgb(dr, dg, db), fadeFrom: parentColor);
             _states[^1].MergeImmunity = 4.0; // long immunity so trail particles visibly separate
             _states[^1].GravityImmuneFrom = _blobs[parentIdx]; // ignore gravity from parent
         }
@@ -1032,16 +1131,20 @@ public sealed class GravitySimulator : IDisposable
             Color fragColor = Color.FromRgb(dr, dg, db);
 
             CreateBody(fx - fragSize * 0.5, fy - fragSize * 0.5, fragSize,
-                Math.Cos(angle) * speed, Math.Sin(angle) * speed, fragColor);
+                Math.Cos(angle) * speed, Math.Sin(angle) * speed, fragColor, fadeFrom: color);
             _states[^1].MergeImmunity = 1.5; // longer immunity so fragments spread out
         }
     }
 
-    private void CreateBody(double x, double y, double size, double vx, double vy, Color? color = null)
+    private void CreateBody(double x, double y, double size, double vx, double vy, Color? color = null, Color? fadeFrom = null)
     {
         Color c = color ?? RandomHue();
-        var brush = new SolidColorBrush(c);
-        var gradBrush = MakeSubtleGradient(c);
+
+        // Optionally start the body at a "from" color and fade to its final color,
+        // so fragments spawned by split/pierce/supernova don't pop in abruptly.
+        Color startColor = (SpawnColorFadeSec > 0 && fadeFrom.HasValue) ? fadeFrom.Value : c;
+        var brush = new SolidColorBrush(startColor);
+        var gradBrush = MakeSubtleGradient(startColor);
 
         double opacity = _intensity + _rng.NextDouble() * 0.1;
 
@@ -1062,13 +1165,21 @@ public sealed class GravitySimulator : IDisposable
         _blobs.Add(blob);
         _brushes.Add(brush);
         _gradBrushes.Add(gradBrush);
-        _states.Add(new BlobState
+        var state = new BlobState
         {
             VelocityX = vx,
             VelocityY = vy,
             BaseSize = size,
             BaseOpacity = opacity,
-        });
+        };
+        if (SpawnColorFadeSec > 0 && fadeFrom.HasValue && startColor != c)
+        {
+            state.ColorFadeFrom = startColor;
+            state.ColorFadeTo = c;
+            state.ColorFadeDuration = SpawnColorFadeSec;
+            state.ColorFadeRemaining = SpawnColorFadeSec;
+        }
+        _states.Add(state);
     }
 
     /// <summary>
@@ -1083,18 +1194,28 @@ public sealed class GravitySimulator : IDisposable
         byte b = (byte)((c1.B * mSrc + c2.B * mDst) / totalMass);
         Color blended = Color.FromRgb(r, g, b);
 
-        _brushes[dst].Color = blended;
-        var newGrad = MakeSubtleGradient(blended);
-        _gradBrushes[dst] = newGrad;
-        _blobs[dst].SetValue(Shape.FillProperty, newGrad);
+        if (MergeColorFadeSec <= 0 || dst >= _states.Count)
+        {
+            RecolorGradient(dst, blended);
+            return;
+        }
+
+        // Start a smooth color fade from the surviving body's current color to the blend.
+        var st = _states[dst];
+        st.ColorFadeFrom = c2;
+        st.ColorFadeTo = blended;
+        st.ColorFadeDuration = MergeColorFadeSec;
+        st.ColorFadeRemaining = MergeColorFadeSec;
     }
 
     /// <summary>
     /// Creates a subtle radial gradient — solid center fading to transparent at the edge.
-    /// Just enough softness to avoid a hard vector look.
+    /// Just enough softness to avoid a hard vector look. Shared by the pattern's initial
+    /// blob creation and the simulator's spawned bodies so both stay in sync.
     /// </summary>
-    private static RadialGradientBrush MakeSubtleGradient(Color c)
+    public static RadialGradientBrush MakeSubtleGradient(Color c)
     {
+        double mid = Math.Clamp(GradientMidStop, 0.01, 0.99);
         return new RadialGradientBrush
         {
             GradientOrigin = new Point(0.5, 0.5),
@@ -1104,10 +1225,30 @@ public sealed class GravitySimulator : IDisposable
             GradientStops = new GradientStopCollection
             {
                 new(c, 0.0),
-                new(c, 0.7),
+                new(Color.FromArgb(GradientMidAlpha, c.R, c.G, c.B), mid),
                 new(Color.FromArgb(0, c.R, c.G, c.B), 1.0),
             }
         };
+    }
+
+    /// <summary>
+    /// Recolors the RGB of an existing gradient brush's stops in place, preserving each
+    /// stop's current alpha. This lets the simulator update a blob's color without
+    /// resetting the alpha profile that another owner (e.g. the backglass color cycler)
+    /// may have set, and avoids allocating a new brush every frame during color fades.
+    /// </summary>
+    private void RecolorGradient(int idx, Color rgb)
+    {
+        // Keep the solid brush (used as the color source elsewhere) in sync.
+        var solid = _brushes[idx];
+        solid.Color = Color.FromArgb(solid.Color.A, rgb.R, rgb.G, rgb.B);
+
+        var stops = _gradBrushes[idx].GradientStops;
+        for (int s = 0; s < stops.Count; s++)
+        {
+            byte a = stops[s].Color.A;
+            stops[s].Color = Color.FromArgb(a, rgb.R, rgb.G, rgb.B);
+        }
     }
 
     private Color RandomHue()
@@ -1115,6 +1256,29 @@ public sealed class GravitySimulator : IDisposable
         // HSV with full saturation/value, random hue
         double h = _rng.NextDouble() * 360.0;
         return HsvToRgb(h, 0.9, 1.0);
+    }
+
+    private static (double h, double s, double v) RgbToHsv(Color color)
+    {
+        double r = color.R / 255.0;
+        double g = color.G / 255.0;
+        double b = color.B / 255.0;
+        double max = Math.Max(r, Math.Max(g, b));
+        double min = Math.Min(r, Math.Min(g, b));
+        double delta = max - min;
+
+        double h = 0;
+        if (delta > 1e-6)
+        {
+            if (max == r) h = 60.0 * (((g - b) / delta) % 6.0);
+            else if (max == g) h = 60.0 * (((b - r) / delta) + 2.0);
+            else h = 60.0 * (((r - g) / delta) + 4.0);
+        }
+        if (h < 0) h += 360.0;
+
+        double s = max <= 1e-6 ? 0 : delta / max;
+        double v = max;
+        return (h, s, v);
     }
 
     private static Color HsvToRgb(double h, double s, double v)

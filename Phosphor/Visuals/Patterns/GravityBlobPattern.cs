@@ -72,20 +72,8 @@ public sealed class GravityBlobPattern : BlobPatternBase
             var brush = new SolidColorBrush(c);
             _brushes.Add(brush);
 
-            // Subtle gradient: solid center, soft transparent edge
-            var gradBrush = new RadialGradientBrush
-            {
-                GradientOrigin = new Point(0.5, 0.5),
-                Center = new Point(0.5, 0.5),
-                RadiusX = 0.5,
-                RadiusY = 0.5,
-                GradientStops = new GradientStopCollection
-                {
-                    new(c, 0.0),
-                    new(c, 0.7),
-                    new(Color.FromArgb(0, c.R, c.G, c.B), 1.0),
-                }
-            };
+            // Subtle gradient: solid center, soft transparent edge (shared with simulator)
+            var gradBrush = GravitySimulator.MakeSubtleGradient(c);
             _gradBrushes.Add(gradBrush);
 
             double opacity = _intensity + _rng.NextDouble() * 0.1;
