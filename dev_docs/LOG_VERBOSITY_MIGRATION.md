@@ -126,6 +126,13 @@ the gate; expensive args = guard the call.**
 
 Newest first. Note the date, what was retagged, and anything discovered.
 
+- **2025 — DOF pass (`DofClient.cs`, 27 sites).** Largest single-file cluster, done as one cohesive
+  pass. **Trace:** per-trigger sends (`Trigger`, `Auto-off`, `Reconnect auto-off`) and bridge stdout
+  passthrough (`[DOF-Bridge]`). **Debug:** args, using-bridge detail. **Info:** connect/reconnect/
+  reconnected, connection-lost, reconnect attempt, shutdown, cleanup complete, consumer exited, bridge
+  normal exit. **Warning:** handler/reset/trigger/shutdown/cleanup failures, exe-not-found, exited-
+  immediately, failed-to-start, enqueue-fail, bridge stderr (`[DOF-Bridge-ERR]`), kill-on-timeout.
+  **Error:** reconnect gave up after max attempts. Dropped the unmigrated caller count 158 → ~131.
 - **2025 — Gate expensive log-argument work + convention.** Gated the `Status` classifier with
   `if (DebugLog.Enabled)` so it isn't computed when logging is off (the common prod state). Added a
   "Guard expensive log-argument computation" convention: the level/enabled gate is inside `DebugLog.Log`,
@@ -187,6 +194,35 @@ Newest first. Note the date, what was retagged, and anything discovered.
 
 ## Candidates (Backlog)
 
+### Migration progress (unmigrated caller count)
+
+The concrete "how much is left" metric is the number of `DebugLog.Log(...)` call sites still using the
+level-less (`[GENERIC]`) overloads. Count it with:
+
+```powershell
+# Unmigrated host+plugin callers: DebugLog.Log(...) WITHOUT a leading LogLevel arg.
+# Excludes the logger's own method definitions and bin/obj.
+$hits = Get-ChildItem -Path . -Recurse -Include *.cs |
+    Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } |
+    Select-String -Pattern 'DebugLog\.Log\(' |
+    Where-Object {
+        $_.Line -notmatch 'DebugLog\.Log\(\s*LogLevel\.' -and
+        $_.Line -notmatch 'void\s+Log\(' -and $_.Line -notmatch 'public static void Log'
+    }
+"UNMIGRATED CALLERS: $($hits.Count)"
+$hits | Group-Object Filename | Sort-Object Count -Descending | Select-Object Count, Name
+```
+
+Snapshots (newest first):
+- **~131** after the DOF pass (DofClient.cs 27 → 0).
+- **158** after ApplySettings/Status/PluginLoader (baseline for the DOF pass).
+- ~230+ at the start (pre-migration, approx from the initial call-site inventory).
+
+Caveats on the count: a chunk is **plugin-side (Path B)** — `YtDlpVideoEngine.cs`, `YtDlpUpdater.cs`
+log through the YouTube plug-in's own `Trace.WriteLine` shim (separate retag track). And `PluginHost.cs`
+(2) are the *routing* methods themselves, which forward whatever level a plug-in passes — they don't
+need call-site levels. So the effective host backlog is somewhat below the raw number.
+
 Prioritized by **runtime log volume** — the share of actual log lines a category emits — sampled from
 the 10 most recent debug logs (~230K lines total). This is far more actionable than call-site count:
 some categories have only a couple of `DebugLog.Log(...)` sites but sit in a hot loop and dominate the
@@ -197,6 +233,7 @@ file. Retagging the top few reclaims most of the log's readability.
 > ~75% share was entirely historical — from when Plex was in-box using the host logger. The extracted
 > plug-in now logs via its own `Trace.WriteLine` shim, so those lines don't even reach the host log
 > anymore. Treat the numbers below as a starting hypothesis, not ground truth.
+
 
 > **Re-sample periodically.** As categories get retagged (and thus quieted at default level), re-run
 > the tally to re-prioritize. See "How to re-sample" below. A **fresh sample is due** — the current one
@@ -229,13 +266,15 @@ file. Retagging the top few reclaims most of the log's readability.
 2. [ ] **Re-sample the logs** — get a realistic baseline now that the historical Plex data is understood.
        Do this before picking the next target.
 3. [ ] **ApplySettings** + **RebuildCategories** — settings/category churn (verify still current).
-4. [ ] **DOF** family (DOF-Bridge + DOF) — cohesive connect/reconnect/shutdown pass.
-5. [ ] **Plugin:* runtime logs** — per-source sweep. (Note: extracted plug-ins each have their own
+4. [ ] **Plugin:* runtime logs** — per-source sweep. (Note: extracted plug-ins each have their own
        `DebugLog` shim → `Trace.WriteLine`, like Plex; retag them there, not in the host.)
-6. [ ] **Visualization** (Matrix, Mandelbrot, ProjectM, PERF.*) — per-frame → Trace, keep PERF stalls Warning.
-7. [ ] Remaining low-volume categories — fold into a final "misc sweep."
+5. [ ] **Visualization** (Matrix, Mandelbrot, ProjectM, PERF.*) — per-frame → Trace, keep PERF stalls Warning.
+6. [ ] **Misc high-count files** — VideoCache (16), GaplessAudioPlayer (12), PrefetchCache (6),
+       PresetBrowser (6), FavoritesIndex (4), etc. Fold into a "misc sweep."
 
 ### Done
+- [x] **DOF** (`DofClient.cs`, 27 sites) — per-trigger/passthrough → Trace; milestones → Info;
+      failures → Warning; reconnect-gave-up → Error. Largest single-file cluster cleared.
 - [x] **ApplySettings / Status / PluginLoader** — perf-timing → Trace; loader milestones → Info,
       incompatible → Warning; Status classified at the setter (Warning on failure wording, else Info).
 - [x] **Host clutter pass** — Volume, Chapters, MediaEnded, RebuildCategories, PlaylistPrefetch,
@@ -246,8 +285,6 @@ file. Retagging the top few reclaims most of the log's readability.
 - [x] **SiriusXM** — 9 failure sites → Warning via the new leveled `_host.Log`. First Path-A retag.
 - [x] **Plex** — `PlexService.cs` `DiagLog` → Trace; failures → Warning; connect → Info. Plug-in shim
       (`PlexDebugLog.cs`) made level-aware. Share was historical (pre-extraction), not current load.
-
-
 - [x] **CachedImage** — see Work Log (2025 foundation pass). Confirmed low runtime volume (~0.1%).
 
 ---

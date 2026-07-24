@@ -45,7 +45,7 @@ public class DofClient : IDisposable, IAsyncDisposable
         if (_state == state) return;
         _state = state;
         try { StatusChanged?.Invoke(state); }
-        catch (Exception ex) { DebugLog.Log($"[DOF] StatusChanged handler error: {ex.Message}"); }
+        catch (Exception ex) { DebugLog.Log(LogLevel.Warning, $"[DOF] StatusChanged handler error: {ex.Message}"); }
     }
 
     // FIFO command queue — unbounded, single consumer
@@ -118,14 +118,14 @@ public class DofClient : IDisposable, IAsyncDisposable
             var bridgePath = ResolveBridgePath();
             if (!File.Exists(bridgePath))
             {
-                DebugLog.Log($"[DOF] Bridge executable not found: {bridgePath}");
+                DebugLog.Log(LogLevel.Warning, $"[DOF] Bridge executable not found: {bridgePath}");
                 return false;
             }
 
-            DebugLog.Log($"[DOF] Using bridge: {bridgePath} (64-bit OS: {Environment.Is64BitOperatingSystem})");
+            DebugLog.Log(LogLevel.Info, $"[DOF] Using bridge: {bridgePath} (64-bit OS: {Environment.Is64BitOperatingSystem})");
 
             var arguments = $"-rom {_romName}" + (_simulatorMode ? " -simulator" : "");
-            DebugLog.Log($"[DOF] Arguments: {arguments}");
+            DebugLog.Log(LogLevel.Debug, $"[DOF] Arguments: {arguments}");
 
             _bridgeProcess = new Process
             {
@@ -142,11 +142,11 @@ public class DofClient : IDisposable, IAsyncDisposable
             };
             _bridgeProcess.OutputDataReceived += (s, e) =>
             {
-                if (e.Data != null) DebugLog.Log($"[DOF-Bridge] {e.Data}");
+                if (e.Data != null) DebugLog.Log(LogLevel.Trace, $"[DOF-Bridge] {e.Data}");
             };
             _bridgeProcess.ErrorDataReceived += (s, e) =>
             {
-                if (e.Data != null) DebugLog.Log($"[DOF-Bridge-ERR] {e.Data}");
+                if (e.Data != null) DebugLog.Log(LogLevel.Warning, $"[DOF-Bridge-ERR] {e.Data}");
             };
             _bridgeProcess.Exited += OnBridgeProcessExited;
             _bridgeProcess.Start();
@@ -156,7 +156,7 @@ public class DofClient : IDisposable, IAsyncDisposable
             // Check if the bridge process exited immediately (e.g. DOF config not found)
             if (_bridgeProcess.WaitForExit(500))
             {
-                DebugLog.Log($"[DOF] Bridge process exited immediately with code {_bridgeProcess.ExitCode}.");
+                DebugLog.Log(LogLevel.Warning, $"[DOF] Bridge process exited immediately with code {_bridgeProcess.ExitCode}.");
                 CleanupConnection();
                 return false;
             }
@@ -176,12 +176,12 @@ public class DofClient : IDisposable, IAsyncDisposable
                 _consumerTask = Task.Run(() => ProcessCommandQueueAsync(_consumerCts.Token));
             }
 
-            DebugLog.Log("[DOF] Connected to DofBridge.");
+            DebugLog.Log(LogLevel.Info, "[DOF] Connected to DofBridge.");
             return true;
         }
         catch (Exception ex)
         {
-            DebugLog.Log($"[DOF] Failed to start bridge: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, $"[DOF] Failed to start bridge: {ex.Message}");
             CleanupConnection();
             return false;
         }
@@ -193,7 +193,7 @@ public class DofClient : IDisposable, IAsyncDisposable
     /// </summary>
     private void OnBridgeProcessExited(object? sender, EventArgs e)
     {
-        DebugLog.Log($"[DOF] Bridge process exited with code {(sender as Process)?.ExitCode}.");
+        DebugLog.Log(LogLevel.Info, $"[DOF] Bridge process exited with code {(sender as Process)?.ExitCode}.");
         if (_disposed || !_started) return;
         _ = ReconnectAsync();
     }
@@ -211,7 +211,7 @@ public class DofClient : IDisposable, IAsyncDisposable
         try
         {
             SetState(ConnectionState.Connecting);
-            DebugLog.Log("[DOF] Connection lost — attempting to reconnect.");
+            DebugLog.Log(LogLevel.Warning, "[DOF] Connection lost — attempting to reconnect.");
 
             // Tear down the dead process/pipe but keep the consumer and _activeTriggers.
             CleanupConnection();
@@ -229,17 +229,17 @@ public class DofClient : IDisposable, IAsyncDisposable
 
                 if (_disposed) return;
 
-                DebugLog.Log($"[DOF] Reconnect attempt {attempt + 1}/{maxAttempts}...");
+                DebugLog.Log(LogLevel.Info, $"[DOF] Reconnect attempt {attempt + 1}/{maxAttempts}...");
                 if (await LaunchAndConnectAsync())
                 {
                     ResetToKnownGoodState();
                     SetState(ConnectionState.Connected);
-                    DebugLog.Log("[DOF] Reconnected to DofBridge.");
+                    DebugLog.Log(LogLevel.Info, "[DOF] Reconnected to DofBridge.");
                     return;
                 }
             }
 
-            DebugLog.Log("[DOF] Reconnect gave up after max attempts.");
+            DebugLog.Log(LogLevel.Error, "[DOF] Reconnect gave up after max attempts.");
             SetState(ConnectionState.Faulted);
         }
         finally
@@ -263,7 +263,7 @@ public class DofClient : IDisposable, IAsyncDisposable
             {
                 foreach (var ((type, number), _) in _activeTriggers)
                 {
-                    DebugLog.Log($"[DOF] Reconnect auto-off {type}{number}=0");
+                    DebugLog.Log(LogLevel.Trace, $"[DOF] Reconnect auto-off {type}{number}=0");
                     _writer.Write(type);
                     _writer.Write(number);
                     _writer.Write(0);
@@ -273,7 +273,7 @@ public class DofClient : IDisposable, IAsyncDisposable
             }
             catch (Exception ex)
             {
-                DebugLog.Log($"[DOF] Reconnect reset failed: {ex.Message}");
+                DebugLog.Log(LogLevel.Warning, $"[DOF] Reconnect reset failed: {ex.Message}");
             }
         }
     }
@@ -287,7 +287,7 @@ public class DofClient : IDisposable, IAsyncDisposable
 
         if (!_commandChannel.Writer.TryWrite((tableElementType, number, value)))
         {
-            DebugLog.Log($"[DOF] Failed to enqueue trigger {tableElementType}{number}={value}");
+            DebugLog.Log(LogLevel.Warning, $"[DOF] Failed to enqueue trigger {tableElementType}{number}={value}");
         }
     }
 
@@ -334,7 +334,7 @@ public class DofClient : IDisposable, IAsyncDisposable
                 }
                 catch (Exception ex)
                 {
-                    DebugLog.Log($"[DOF] Trigger failed: {ex.Message}");
+                    DebugLog.Log(LogLevel.Warning, $"[DOF] Trigger failed: {ex.Message}");
                     // A write failure means the pipe/bridge is gone. Kick off recovery;
                     // if the process-exit event already started it, this is a no-op.
                     if (!_disposed && _started)
@@ -347,12 +347,12 @@ public class DofClient : IDisposable, IAsyncDisposable
         }
         catch (OperationCanceledException) { }
 
-        DebugLog.Log("[DOF] Command queue consumer exited.");
+        DebugLog.Log(LogLevel.Info, "[DOF] Command queue consumer exited.");
     }
 
     private void WriteTrigger(char type, int number, int value)
     {
-        DebugLog.Log($"[DOF] Trigger {type}{number}={value}");
+        DebugLog.Log(LogLevel.Trace, $"[DOF] Trigger {type}{number}={value}");
         lock (_writeLock)
         {
             if (_writer == null || _pipe?.IsConnected != true)
@@ -380,7 +380,7 @@ public class DofClient : IDisposable, IAsyncDisposable
         _disposed = true;
         _started = false;
 
-        DebugLog.Log("[DOF] Shutting down DofBridge.");
+        DebugLog.Log(LogLevel.Info, "[DOF] Shutting down DofBridge.");
 
         // Stop the consumer
         _consumerCts?.Cancel();
@@ -400,7 +400,7 @@ public class DofClient : IDisposable, IAsyncDisposable
         _disposed = true;
         _started = false;
 
-        DebugLog.Log("[DOF] Shutting down DofBridge.");
+        DebugLog.Log(LogLevel.Info, "[DOF] Shutting down DofBridge.");
 
         _consumerCts?.Cancel();
         _commandChannel.Writer.TryComplete();
@@ -428,7 +428,7 @@ public class DofClient : IDisposable, IAsyncDisposable
                     // Turn off all active triggers before shutdown
                     foreach (var ((type, number), _) in _activeTriggers)
                     {
-                        DebugLog.Log($"[DOF] Auto-off {type}{number}=0");
+                        DebugLog.Log(LogLevel.Trace, $"[DOF] Auto-off {type}{number}=0");
                         _writer.Write(type);
                         _writer.Write(number);
                         _writer.Write(0);
@@ -442,7 +442,7 @@ public class DofClient : IDisposable, IAsyncDisposable
             }
             catch (Exception ex)
             {
-                DebugLog.Log($"[DOF] Shutdown send failed: {ex.Message}");
+                DebugLog.Log(LogLevel.Warning, $"[DOF] Shutdown send failed: {ex.Message}");
             }
         }
     }
@@ -474,13 +474,13 @@ public class DofClient : IDisposable, IAsyncDisposable
                     _bridgeProcess.WaitForExit(3000);
                     if (!_bridgeProcess.HasExited)
                     {
-                        DebugLog.Log("[DOF] Bridge process did not exit in time, killing.");
+                        DebugLog.Log(LogLevel.Warning, "[DOF] Bridge process did not exit in time, killing.");
                         _bridgeProcess.Kill();
                     }
                 }
                 catch (Exception ex)
                 {
-                    DebugLog.Log($"[DOF] Connection cleanup error: {ex.Message}");
+                    DebugLog.Log(LogLevel.Warning, $"[DOF] Connection cleanup error: {ex.Message}");
                 }
             }
 
@@ -496,7 +496,7 @@ public class DofClient : IDisposable, IAsyncDisposable
 
         CleanupConnection();
 
-        DebugLog.Log("[DOF] Cleanup complete.");
+        DebugLog.Log(LogLevel.Info, "[DOF] Cleanup complete.");
         SetState(ConnectionState.Disconnected);
     }
 }
