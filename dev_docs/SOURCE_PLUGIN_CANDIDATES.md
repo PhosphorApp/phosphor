@@ -42,6 +42,7 @@ Every candidate is judged against what the architecture already gives a source:
 | **iHeartRadio** | Live stations **+ on-demand podcasts** | **Key-less REST API — raw non-DRM stream URLs + podcast MP3s (no yt-dlp, no proxy)** | Low | Free | 🟢 **Shipped** — `Phosphor.Plugins.IHeartRadio`, key-less, no proxy; live radio + podcasts (see below) |
 | **SiriusXM** | Live channels (auth) + some on-demand | Custom C# client (auth+lineup ✅ proven) + HLS AES proxy | Med–High | Paid sub | 🟢 **Shipped** — `Phosphor.Plugins.SiriusXM` (see below) |
 | **Spotify** | On-demand audio (huge catalog) | Discovery: SpotAPI-style C# client ⚠️ (rotating-secret TOTP) / Audio: **librespot** (Premium) ❌ | High | Paid sub (Premium) | 🟠 Hard — **spiked; recommend against** (brittle discovery + ToS rejection + unbuilt audio) |
+| **Deezer** | On-demand audio (huge catalog) | Discovery: key-less REST API ✅ / Audio: **Blowfish-CBC decrypt proxy + ARL (Premium)** ❌ | High | Paid sub (Premium) | 🟠 Hard — clean discovery, but bespoke decrypt subsystem; **most tractable DRM candidate** |
 | **Tidal** | On-demand audio | ❌ DRM, no legal stream URL | High/blocked | Paid sub | ❌ Not viable |
 | **Pandora** | Personalized radio session | ❌ DRM + session model | High/blocked | Free/Paid | ❌ Not viable |
 
@@ -425,6 +426,74 @@ evidence: **two brittle subsystems** (rotating-secret discovery **+** an unbuilt
 (Vimeo/SoundCloud/Bandcamp). Revisit only if the goal specifically requires Spotify and someone accepts
 the maintenance + policy exposure; the next step would be a **librespot** audio spike, not more discovery
 work.
+
+#### 💡 Idea — "every user is their own developer" (per-user OAuth keys)
+The thought: sidestep the brittle private-web-API emulation by making **each user register their own
+free Spotify app** and paste their **Client ID** into a Phosphor UI (the **Vimeo per-user-token model**),
+then use the **official Web API** via proper OAuth (Authorization Code + PKCE).
+- **Fixes the discovery half — genuinely.** A real registered app uses the documented, stable Web API:
+  no rotating-TOTP-secret scraping, no `totpVer` expiry cat-and-mouse, no inline ToS-rejection body. The
+  user's own playlists/likes/albums/search all work cleanly and **within ToS**. This is very buildable
+  and mirrors what Vimeo already does.
+- **Does NOT fix the viability-deciding half — audio.** The official Web API returns **metadata and
+  control only, never a decryptable stream** — the same wall as SpotAPI. `IPlayableResolver` still gets
+  nothing playable; yt-dlp still doesn't support Spotify; there's still no static-key proxy trick. So
+  even a perfect per-user-OAuth discovery layer still forces the doc's **Path A** (Spotify-as-catalog
+  over YouTube audio, a novelty) or **Path B** (librespot + Premium).
+- **The two halves don't compose cleanly.** librespot authenticates as a Spotify **Connect device**
+  using the user's Premium credentials — it does **not** consume the Web API app's OAuth token. So
+  requiring dev onboarding (register app, redirect URI, paste Client ID) buys a nicer discovery layer
+  **on top of** still needing the librespot audio bridge — more user friction, and still no audio by
+  itself.
+- **Verdict:** a real improvement to the *discovery* half (worth remembering **if** we ever build the
+  librespot audio spike), but it leaves the audio question exactly where it was. **Does not move Spotify
+  out of `🟠 Hard`.**
+
+#### ❌ Dead end — the Spotify Web Playback SDK (headless browser) is NOT an audio source
+Tempting-but-dead: run the **Web Playback SDK** in a hidden browser and grab the audio.
+- **What it is:** a **JavaScript library that only runs inside a browser DOM**, playing audio through
+  **EME/Widevine DRM** in that browser's media stack. Premium-only; registers as a Connect device. So
+  "headless" really means hosting a full hidden Chromium (WebView2/CEF) inside Phosphor — not headless.
+- **Why it can't feed the jukebox:** the decrypted audio lives **inside the browser's Widevine
+  sandbox**. There is **no supported API to pull the decrypted stream out** — no PCM callback, no stream
+  handle. It plays straight to the default Windows audio device, so it **can't** route into Phosphor's
+  LibVLC pipeline, the audio-reactive visualizer taps, or per-screen audio routing. WASAPI loopback
+  capture is a hack (grabs all system audio, adds latency, breaks the clean visualizer tap, and is a
+  DRM-circumvention move).
+- **What it legitimately offers:** remote **control** (play/pause/seek/volume) + now-playing metadata of
+  a Premium session — a "Spotify remote" feature, **useless as an audio source**.
+- **Verdict:** the SDK is a **control-plane, not a stream source**. It does not replace the librespot
+  question — **librespot remains the only path to real, routable Spotify audio** (it does the AP
+  handshake and emits actual PCM/OGG you can pipe into ffmpeg/LibVLC and tap for visuals). The
+  `🟠 Hard` / "park it" verdict stands.
+
+### Deezer — **first-pass (discovery easy, DRM audio the blocker)**
+- **Shape:** the **Spotify shape** — two independent subsystems (clean discovery, DRM-walled audio) —
+  but **materially more tractable than Spotify** on both halves.
+- **Discovery: genuinely easy (key-less).** A real public REST API (`api.deezer.com`) with `/search`,
+  `/album`, `/artist`, `/chart`, `/editorial`; much of the read/search surface is **unauthenticated**,
+  similar to Dailymotion. A `DeezerClient` mirroring `DailymotionClient` gets `IBrowsable` +
+  `ITextSearchCapable` + `IPagedBrowsable` cheaply. This half is a 🟢.
+- **Playback: the blocker (Blowfish + ARL).** Full-track audio is **Blowfish-CBC encrypted** (key
+  derived from an MD5 of the track ID, applied to every 3rd 2048-byte chunk) and requires an
+  authenticated **ARL session cookie** to fetch the encrypted stream URL. **yt-dlp does not support
+  Deezer** (extractor removed over DRM), so there's no in-box drop-in path. Required work = custom
+  `DeezerClient` (ARL login → token → private `get_url`) + a **local decrypt proxy** (SiriusXM shape)
+  that Blowfish-decrypts chunks in-transit and serves plain audio to LibVLC.
+- **Does Premium help?** **Necessary but not sufficient.** A Premium account provides the ARL that
+  authorizes fetching the *full-track* encrypted stream (lifts the 30s cap), but the bytes are **still
+  Blowfish-encrypted** — Premium removes the *authorization* wall, not the *encryption* wall. The free
+  fallback is unauthenticated **30-second preview MP3s** (`preview` field, unencrypted) — fine for a
+  demo, not a jukebox source.
+- **Cost:** Free discovery; full playback needs a paid Premium sub.
+- **Effort & verdict:** `🟠 Hard`, but the **most tractable DRM candidate** — Blowfish with a derivable
+  per-track key is simpler than Spotify's AP/Widevine handshake, and the decrypt can plausibly live in a
+  SiriusXM-style **local C# proxy** rather than an external tool (no librespot equivalent needed). Still
+  carries ToS sensitivity and a "build a bespoke decrypt subsystem" cost, so **not** a clean drop-in like
+  Vimeo/Dailymotion/SoundCloud. Ranks **above Spotify** (simpler decrypt, cleaner discovery, no
+  rotating-secret scraping) but **well below the yt-dlp drop-ins**. **Recommendation:** revisit only if
+  someone specifically wants Deezer and will own a **Phase-0 Blowfish-decrypt proxy spike** (prove:
+  ARL login → encrypted stream URL → in-proxy Blowfish decrypt → ffmpeg accepts the output).
 
 ---
 
