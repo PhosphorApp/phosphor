@@ -99,6 +99,10 @@ Rules of thumb:
 
 Newest first. Note the date, what was retagged, and anything discovered.
 
+- **2025 — `[GENERIC]` scan script.** Added a "what's NOT yet migrated" PowerShell script (and
+  variants) that filters `[GENERIC]` lines from recent logs, groups by the following `[Category]`, and
+  sorts by volume — the retag backlog, generated from real logs. Plus a source-side scan to catch
+  call sites that didn't fire in a session.
 - **2025 — Level tags in log output + `[GENERIC]` marker.** Every log line now carries its tag after
   the timestamp (`[Info] [Category] msg`). Legacy untagged calls emit `[GENERIC]` (not `[Debug]`) so
   migration progress is greppable — `[GENERIC]` = not yet migrated; goal is to drive it to zero.
@@ -216,6 +220,52 @@ $counts.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 3
 
 Note: the sample reflects whatever verbosity/features were exercised in those sessions (e.g. heavy Plex
 use inflates Plex's share). Take shares as directional, not absolute.
+
+---
+
+## How to find what's NOT yet migrated (`[GENERIC]` scan)
+
+Every unmigrated call logs as `[GENERIC] [Category] …`. This scans the most recent logs for those,
+groups by the **category that follows `[GENERIC]`**, and sorts so the highest-volume unmigrated
+sources surface first — i.e. the highest-value retag targets. Drive this list toward empty.
+
+```powershell
+# The category token right after [GENERIC], e.g. "[GENERIC] [RebuildCategories] ..." -> RebuildCategories
+$logs = Get-ChildItem -Path .\Phosphor\bin\Debug\net8.0-windows\logs -Filter *.log |
+	Sort-Object LastWriteTime -Descending | Select-Object -First 10
+$counts = @{}; $total = 0
+foreach ($f in $logs) {
+	foreach ($line in Get-Content $f.FullName) {
+		# [ts] [GENERIC] [Category] message   (Category optional)
+		if ($line -match '^\[[\d:.]+\]\s+\[GENERIC\]\s+(?:\[([^\]]+)\]\s*)?(.*)$') {
+			$total++
+			$cat = if ($Matches[1]) { $Matches[1] } else { '(no category)' }
+			$counts[$cat] = ($counts[$cat] + 1)
+		}
+	}
+}
+"UNMIGRATED [GENERIC] LINES: $total across $($counts.Count) categories"
+$counts.GetEnumerator() | Sort-Object Value -Descending |
+	ForEach-Object { "{0,7:N0}  {1}" -f $_.Value, $_.Name }
+```
+
+Variants:
+- **Just the distinct categories, alphabetical** (a checklist of what's left):
+  ```powershell
+  Select-String -Path .\Phosphor\bin\Debug\net8.0-windows\logs\*.log -Pattern '\[GENERIC\]\s+\[([^\]]+)\]' -AllMatches |
+	  ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value } |
+	  Sort-Object -Unique
+  ```
+- **Raw unmigrated lines from the newest log** (to read actual messages before retagging):
+  ```powershell
+  $newest = Get-ChildItem .\Phosphor\bin\Debug\net8.0-windows\logs\*.log |
+	  Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  Select-String -Path $newest.FullName -Pattern '\[GENERIC\]' | ForEach-Object { $_.Line }
+  ```
+
+> Complement with a **source-side** scan (catches call sites that didn't happen to fire in a session):
+> `Select-String -Path .\**\*.cs -Pattern 'DebugLog\.Log\("' ` finds `Log(category, message)` calls
+> with no level; `DebugLog\.Log\("[^"]*"\)` finds bare `Log(message)` calls. Exclude `\obj\` / `\bin\`.
 
 ---
 
