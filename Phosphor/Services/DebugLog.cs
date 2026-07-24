@@ -60,46 +60,24 @@ public static class DebugLog
 
     public static void Log(string message)
     {
+        // Legacy/untagged call: filtered at Debug severity but labeled [GENERIC] (not [Debug]) so a
+        // post-hoc scan can distinguish "not yet migrated to an explicit level" from a deliberate Debug.
         if (!Enabled || LogLevel.Debug < MinimumLevel) return;
-
-        // Format on the calling thread (cheap, allocation-only) so timestamps
-        // reflect when the event happened, not when the writer drained it.
-        var line = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
-
-        // Bounded enqueue — if we're already at the cap, drop the oldest entry
-        // to keep producers wait-free. This guarantees we never stall the audio
-        // path even under pathological I/O conditions.
-        if (_queue.Count >= MaxQueuedEntries)
-        {
-            _queue.TryDequeue(out _);
-            Interlocked.Increment(ref _droppedCount);
-        }
-
-        _queue.Enqueue(line);
-        EnsureWriterStarted();
-        _signal.Set();
+        Enqueue(Format(GenericTag, message));
     }
 
     public static void Log(string category, string message) =>
         Log($"[{category}] {message}");
 
     // ── Level-aware overloads ────────────────────────────────────────────────────
-    // Existing string/string-string calls keep logging at Debug (see above). New call sites can pass
-    // a level; Trace lines stay silent at the default MinimumLevel and only appear when raised.
+    // Existing string/string-string calls keep logging at Debug severity but are labeled [GENERIC]
+    // (see above). New call sites pass an explicit level, which is stamped into the line as [Level];
+    // Trace lines stay silent at the default MinimumLevel and only appear when raised.
 
     public static void Log(LogLevel level, string message)
     {
         if (!Enabled || level < MinimumLevel) return;
-
-        var line = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
-        if (_queue.Count >= MaxQueuedEntries)
-        {
-            _queue.TryDequeue(out _);
-            Interlocked.Increment(ref _droppedCount);
-        }
-        _queue.Enqueue(line);
-        EnsureWriterStarted();
-        _signal.Set();
+        Enqueue(Format(LevelTag(level), message));
     }
 
     public static void Log(LogLevel level, string category, string message) =>
@@ -109,6 +87,39 @@ public static class DebugLog
     {
         if (!Enabled || ex == null || LogLevel.Error < MinimumLevel) return;
         Log(LogLevel.Error, $"[EXCEPTION] [{context}] {ex.GetType().Name}: {ex.Message}");
+    }
+
+    // Label used for legacy/untagged calls so unmigrated log sites are easy to spot/grep.
+    private const string GenericTag = "GENERIC";
+
+    private static string LevelTag(LogLevel level) => level switch
+    {
+        LogLevel.Trace => "Trace",
+        LogLevel.Debug => "Debug",
+        LogLevel.Info => "Info",
+        LogLevel.Warning => "Warning",
+        LogLevel.Error => "Error",
+        _ => GenericTag,
+    };
+
+    // Single formatting point: timestamp + level/status tag + message. Formatting happens on the
+    // calling thread (cheap, allocation-only) so the timestamp reflects when the event happened.
+    private static string Format(string tag, string message) =>
+        $"[{DateTime.Now:HH:mm:ss.fff}] [{tag}] {message}";
+
+    // Bounded enqueue — if we're already at the cap, drop the oldest entry to keep producers
+    // wait-free. This guarantees we never stall the audio path under pathological I/O.
+    private static void Enqueue(string line)
+    {
+        if (_queue.Count >= MaxQueuedEntries)
+        {
+            _queue.TryDequeue(out _);
+            Interlocked.Increment(ref _droppedCount);
+        }
+
+        _queue.Enqueue(line);
+        EnsureWriterStarted();
+        _signal.Set();
     }
 
     private static void EnsureWriterStarted()

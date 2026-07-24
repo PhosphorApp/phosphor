@@ -53,6 +53,20 @@ can dominate the log.
 Levels are defined in `DebugLog.cs` as `LogLevel { Trace, Debug, Info, Warning, Error }`.
 Default `MinimumLevel` is `Debug`.
 
+**Every log line is now stamped with its tag** right after the timestamp, so logs are filterable
+after the fact (e.g. `Select-String '\[Warning\]'`):
+
+```
+[22:25:29.158] [Info] [RebuildCategories] Build list (25 items): 0ms      ← migrated, explicit level
+[22:25:29.201] [GENERIC] [SomeCategory] ...                               ← NOT yet migrated
+```
+
+- `[Trace]` / `[Debug]` / `[Info]` / `[Warning]` / `[Error]` — an **explicit** level was passed.
+- `[GENERIC]` — a **legacy/untagged** call (`Log(string)` / `Log(category, message)`). Still filtered
+  at Debug severity, but the distinct label makes it trivial to find what's left to migrate:
+  `Select-String '\[GENERIC\]'` on a log (or grep the source for `DebugLog.Log("` without a level).
+  **The goal of the migration is to drive `[GENERIC]` toward zero.**
+
 | Level | Use for | Examples |
 |-------|---------|----------|
 | **Trace** | Very chatty, per-frame / per-item / per-tick diagnostics. Silent by default. | Thumbnail loads per row, cache hit/miss per item, prefetch bookkeeping, render-tick detail, seek/scrub deltas. |
@@ -85,6 +99,11 @@ Rules of thumb:
 
 Newest first. Note the date, what was retagged, and anything discovered.
 
+- **2025 — Level tags in log output + `[GENERIC]` marker.** Every log line now carries its tag after
+  the timestamp (`[Info] [Category] msg`). Legacy untagged calls emit `[GENERIC]` (not `[Debug]`) so
+  migration progress is greppable — `[GENERIC]` = not yet migrated; goal is to drive it to zero.
+  Centralized formatting in `DebugLog` (single `Format`/`Enqueue` path); applied the same tagging to
+  the Plex and YouTube plug-in shims for consistency.
 - **2025 — `IPluginHost` leveled logging (plumbing) + SiriusXM.** Added `LogLevel` to the plug-in
   contract (`Phosphor.Plugin.Abstractions/LogLevel.cs`) and a `Log(LogLevel, string)` overload on
   `IPluginHost` (default interface method forwards to `Log(string)` so existing hosts/call sites are
