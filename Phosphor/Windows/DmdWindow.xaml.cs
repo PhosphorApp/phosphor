@@ -2394,7 +2394,7 @@ public partial class DmdWindow : JukeboxWindow
         if (_appSettings == null) return;
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        void LogStep(string step) { DebugLog.Log("ApplySettings", $"{step}: {sw.ElapsedMilliseconds}ms"); sw.Restart(); }
+        void LogStep(string step) { DebugLog.Log(LogLevel.Trace, "ApplySettings", $"{step}: {sw.ElapsedMilliseconds}ms"); sw.Restart(); }
 
         _playfieldProxy?.SetStaticImage(_appSettings.PlayfieldStaticImagePath);
         _playfieldProxy?.SetVideoPath(_appSettings.PlayfieldVideoPath);

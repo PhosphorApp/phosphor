@@ -42,7 +42,7 @@ public static class PluginLoader
 
         if (!Directory.Exists(root))
         {
-            DebugLog.Log("PluginLoader", $"No plug-ins folder at '{root}' — skipping dynamic load.");
+            DebugLog.Log(LogLevel.Info, "PluginLoader", $"No plug-ins folder at '{root}' — skipping dynamic load.");
             return results;
         }
 
@@ -96,13 +96,13 @@ public static class PluginLoader
                         results.Add(LoadedPlugin.Rejected(dllPath, provider.TypeId,
                             $"Incompatible contract version {provider.ApiVersion} " +
                             $"(host supports {PluginApi.MinimumSupported}–{PluginApi.Current})."));
-                        DebugLog.Log("PluginLoader",
+                        DebugLog.Log(LogLevel.Warning, "PluginLoader",
                             $"Rejected '{provider.TypeId}' from {Path.GetFileName(dllPath)}: ApiVersion {provider.ApiVersion} incompatible.");
                         continue;
                     }
 
                     results.Add(LoadedPlugin.Loaded(dllPath, provider));
-                    DebugLog.Log("PluginLoader",
+                    DebugLog.Log(LogLevel.Info, "PluginLoader",
                         $"Loaded provider '{provider.TypeId}' ({provider.DisplayName}) from {Path.GetFileName(dllPath)}.");
                 }
                 catch (Exception ex)

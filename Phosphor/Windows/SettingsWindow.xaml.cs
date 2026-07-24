@@ -3881,7 +3881,7 @@ public partial class SettingsWindow : JukeboxWindow
     private void ApplySettings()
     {
         var _sw = System.Diagnostics.Stopwatch.StartNew();
-        void _LogStep(string step) { DebugLog.Log("ApplySettings", $"{step}: {_sw.ElapsedMilliseconds}ms"); _sw.Restart(); }
+        void _LogStep(string step) { DebugLog.Log(LogLevel.Trace, "ApplySettings", $"{step}: {_sw.ElapsedMilliseconds}ms"); _sw.Restart(); }
 
         foreach (var entry in _entries)
             _settings.KeyBindings.ApplyEntry(entry);

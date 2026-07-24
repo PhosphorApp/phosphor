@@ -1044,10 +1044,30 @@ public partial class JukeboxViewModel : ObservableObject
             if (SetProperty(ref _statusText, value))
             {
                 OnPropertyChanged(nameof(DisplayStatusText));
-                DebugLog.Log("Status", value);
+                DebugLog.Log(ClassifyStatusLevel(value), "Status", value);
             }
         }
     }
+
+    // Status text is user-facing and mixes routine messages ("Playing: …", "Loading …") with genuine
+    // problems ("Playback failed …", "… unreachable"). Rather than reclassify every StatusText writer,
+    // infer a level from the message at this single choke point: failure-ish wording → Warning, else
+    // Info. Keeps status noise out of the default Debug view only for the routine cases while still
+    // surfacing failures.
+    private static LogLevel ClassifyStatusLevel(string? message)
+    {
+        if (string.IsNullOrEmpty(message)) return LogLevel.Info;
+        // Case-insensitive scan for failure indicators. Intentionally conservative — false negatives
+        // just log at Info (harmless); we don't want routine text mislabeled as Warning.
+        foreach (var kw in StatusWarningKeywords)
+            if (message.Contains(kw, StringComparison.OrdinalIgnoreCase))
+                return LogLevel.Warning;
+        return LogLevel.Info;
+    }
+
+    private static readonly string[] StatusWarningKeywords =
+        ["fail", "error", "unreachable", "timed out", "timeout", "unavailable", "can't", "cannot",
+         "unable", "no playable", "not found", "denied", "invalid", "refused"];
 
     private string _statusPrefix = "";
     private CancellationTokenSource? _statusPrefixCts;

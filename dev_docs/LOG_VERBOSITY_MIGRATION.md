@@ -99,6 +99,12 @@ Rules of thumb:
 
 Newest first. Note the date, what was retagged, and anything discovered.
 
+- **2025 — ApplySettings + Status + PluginLoader pass.** **ApplySettings:** the per-step perf-timing
+  helpers (`LogStep`/`_LogStep` in `DmdWindow`/`SettingsWindow`) → **Trace**. **PluginLoader:** no-folder
+  + loaded-provider → **Info**; incompatible-version reject → **Warning** (the ignore/dup/missing-tool
+  sites were already Warning). **Status:** resolved the deferred follow-up with a **classifier at the
+  single `StatusText` setter** — failure wording → Warning, else Info — so the many scattered
+  `StatusText = …` writers didn't each need touching.
 - **2025 — First clutter-reduction pass (host categories).** Retagged the clear-cut high-volume host
   categories using a production `[GENERIC]` scan as the backlog. **Trace:** Volume (per-slider-tick),
   Chapters (per-item tick/restore/position), MediaEnded per-dispatcher step, RebuildCategories (perf
@@ -191,13 +197,14 @@ file. Retagging the top few reclaims most of the log's readability.
        Do this before picking the next target.
 3. [ ] **ApplySettings** + **RebuildCategories** — settings/category churn (verify still current).
 4. [ ] **DOF** family (DOF-Bridge + DOF) — cohesive connect/reconnect/shutdown pass.
-5. [ ] **`Status`** — needs per-message split (see Follow-up Work Items), not a blanket retag.
-6. [ ] **Plugin:* runtime logs** — per-source sweep. (Note: extracted plug-ins each have their own
+5. [ ] **Plugin:* runtime logs** — per-source sweep. (Note: extracted plug-ins each have their own
        `DebugLog` shim → `Trace.WriteLine`, like Plex; retag them there, not in the host.)
-7. [ ] **Visualization** (Matrix, Mandelbrot, ProjectM, PERF.*) — per-frame → Trace, keep PERF stalls Warning.
-8. [ ] Remaining low-volume categories — fold into a final "misc sweep."
+6. [ ] **Visualization** (Matrix, Mandelbrot, ProjectM, PERF.*) — per-frame → Trace, keep PERF stalls Warning.
+7. [ ] Remaining low-volume categories — fold into a final "misc sweep."
 
 ### Done
+- [x] **ApplySettings / Status / PluginLoader** — perf-timing → Trace; loader milestones → Info,
+      incompatible → Warning; Status classified at the setter (Warning on failure wording, else Info).
 - [x] **Host clutter pass** — Volume, Chapters, MediaEnded, RebuildCategories, PlaylistPrefetch,
       ThumbnailCache, WinVolume, App, Ditti, YtDlpUpdater, SourceRegistry, PluginLoader, DMD,
       DirectInput, ResultCache, Play retagged (see Work Log). `Status` deferred.
@@ -290,13 +297,13 @@ Variants:
 Non-blocking items surfaced during retagging — not pure level changes, so parked here for a deliberate
 pass rather than done inline.
 
-- [ ] **`Status` category — split by nature (per-message levels).** `Status` mirrors user-facing status
-      text, so a single level is wrong. Same category emits both routine and error content, e.g.:
-      - `[Status] Playing: David Bowie - Modern Love …` → **Info**
-      - `[Status] Playback failed: server unreachable or stream timed out` → **Warning/Error**
-      Needs per-call-site classification (or a helper that infers level from a status kind), not a blanket
-      retag. Left as `[GENERIC]` until then. Sources: `SetStatus*`/`StatusText` writers in
-      `JukeboxViewModel` and window code.
+- [x] **`Status` category — split by nature (per-message levels).** ✅ Resolved via a **classifier at
+      the single `StatusText` setter choke point** (`JukeboxViewModel`): failure-ish wording
+      (`fail`, `error`, `unreachable`, `timed out`, `unavailable`, `can't`, `not found`, …) → **Warning**;
+      everything else → **Info**. Avoided reclassifying the many scattered `StatusText = …` writers.
+      Conservative by design — false negatives just log at Info. Example split:
+      - `[Info] [Status] Playing: David Bowie - Modern Love …`
+      - `[Warning] [Status] Playback failed: server unreachable or stream timed out`
 - [ ] **Volume-slider log flood → debounce.** `BackglassWindow.xaml.cs:410` (`VolumeChanged` handler)
       logs on every slider tick; dragging floods the log. Retagged to **Trace** (so it's silent at
       default), but the underlying **lack of debounce** on `VolumeChanged` is worth addressing on its own
