@@ -1465,7 +1465,7 @@ public sealed class ProjectMRenderer : IDisposable
     {
         var msg = $"[ProjectM] {message}";
         System.Diagnostics.Debug.WriteLine(msg);
-        DebugLog.Log("ProjectM", message);
+        DebugLog.Log(LogLevel.Debug, "ProjectM", message);
     }
 
     private void OnPresetSwitched(bool isHardCut, uint index, IntPtr userData)

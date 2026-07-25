@@ -1150,7 +1150,7 @@ public sealed class GameOfLifePattern : BlobPatternBase
                 Array.Sort(_frameTimeSamplesMs, 0, _frameTimeSamples);
                 double p95 = _frameTimeSamplesMs[(int)(_frameTimeSamples * 0.95)];
                 double median = _frameTimeSamplesMs[_frameTimeSamples / 2];
-                DebugLog.Log($"[GoL] Timing window frames {FrameTimingWarmupFrames + 1}–{FrameTimingWarmupFrames + FrameTimingWindowFrames}: " +
+                DebugLog.Log(LogLevel.Trace, "GoL", $"Timing window frames {FrameTimingWarmupFrames + 1}–{FrameTimingWarmupFrames + FrameTimingWindowFrames}: " +
                     $"mean={mean:F2} ms  median={median:F2} ms  min={_frameTimeMinMs:F2} ms  max={_frameTimeMaxMs:F2} ms  p95={p95:F2} ms  " +
                     $"grid={_gridW}x{_gridH} ({_gridW * _gridH} cells)  mode={ColorMode}");
                 _frameTimingReported = true;

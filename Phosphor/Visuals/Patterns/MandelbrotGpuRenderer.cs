@@ -481,7 +481,7 @@ float4 PS(VS_OUT input) : SV_Target
     {
         var msg = $"[MandelbrotGPU] {message}";
         System.Diagnostics.Debug.WriteLine(msg);
-        DebugLog.Log("MandelbrotGPU", message);
+        DebugLog.Log(LogLevel.Debug, "MandelbrotGPU", message);
     }
 
     public void Dispose()

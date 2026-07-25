@@ -135,7 +135,16 @@ base-class logging shared by several window subclasses (it names the concrete wi
 
 Newest first. Note the date, what was retagged, and anything discovered.
 
-- **2025 — PresetBrowser + SettingsWindow + PrefetchCache pass.** **PresetBrowserWindow** (6 sites):
+- **2025 — Visualization pass.** Retagged the pattern/renderer diagnostics. **MandelbrotPattern**
+  (4): target-switch + `LogGpu` helper + boundary-point discovered → **Debug**; discovery-failed
+  fallback → **Warning** (lifted the inline `Mandelbrot:` prefix into the category). **MatrixBlobPattern**
+  (3): per-color-cycle / PulseDominantColor detail → **Trace**. **ProjectMPattern** / **ProjectMRenderer**
+  / **MandelbrotGpuRenderer** `Log`/`LogGpu` helpers → **Debug**. **GameOfLifePattern** (1): the frame-
+  timing window summary → **Trace** (lifted `[GoL]` prefix into category). **EmojiRenderer**
+  (`Emoji/EmojiRenderer.cs`, 3): font-missing / typeface-load / render failures → **Warning**.
+  **Discovery:** a second stray empty `Visuals/EmojiRenderer.cs` (the real one is `Emoji/`) — removed.
+  Dropped the unmigrated caller count ~59 → ~44.
+- **2025 — PresetBrowser + SettingsWindow + PrefetchCache pass.**
   the `BtnUnfavoriteFolder_Click` entry → **Debug**, its indented per-step detail (early returns,
   folderPath, file count, per-file move) → **Trace**. **SettingsWindow** (6 sites): all failure sites
   (`Pinup` playlist-load / BuildGameList, `Settings` Apply/Save/Close/SettingsApplied handler
@@ -254,6 +263,7 @@ $hits | Group-Object Filename | Sort-Object Count -Descending | Select-Object Co
 ```
 
 Snapshots (newest first):
+- **~44** after Visualization (Mandelbrot 4, Matrix 3, ProjectM 2, GoL 1, MandelbrotGPU 1, Emoji 3).
 - **~59** after PresetBrowser (6 → 0) + SettingsWindow (6 → 0) + PrefetchCache (6 → 0).
 - **~77** after GaplessAudioPlayer (12 → 0) + DmdWindow (9 → 0).
 - **~98** after BackglassWindow (BackglassWindow.xaml.cs 16 → 0).
@@ -312,12 +322,14 @@ file. Retagging the top few reclaims most of the log's readability.
 3. [ ] **ApplySettings** + **RebuildCategories** — settings/category churn (verify still current).
 4. [ ] **Plugin:* runtime logs** — per-source sweep. (Note: extracted plug-ins each have their own
        `DebugLog` shim → `Trace.WriteLine`, like Plex; retag them there, not in the host.)
-5. [ ] **Visualization** (Matrix, Mandelbrot, ProjectM, PERF.*) — per-frame → Trace, keep PERF stalls Warning.
+5. [ ] **Visualization** (Matrix, Mandelbrot, ProjectM, PERF.*) — per-frame → Trace, keep PERF stalls Warning. ✅ done
 6. [ ] **Misc high-count files** — BackglassWindow (16), GaplessAudioPlayer (12), PrefetchCache (6),
        PresetBrowser (6), FavoritesIndex (4), etc. Fold into a "misc sweep."
 
 ### Done
-- [x] **PresetBrowser + SettingsWindow + PrefetchCache** (6 sites each) — PresetBrowser click detail →
+- [x] **Visualization** (Mandelbrot/Matrix/ProjectM/GoL/MandelbrotGPU/Emoji) — per-frame/cycle detail
+      → Trace; GPU/preset/target helpers → Debug; discovery + Emoji render failures → Warning.
+- [x] **PresetBrowser + SettingsWindow + PrefetchCache** (6 sites each) —
       Debug/Trace; SettingsWindow failures → Warning; PrefetchCache per-item → Trace, mux/ffmpeg
       failures → Warning.
 - [x] **GaplessAudioPlayer** (12 sites) + **DmdWindow** (9 sites) —

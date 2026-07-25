@@ -619,7 +619,7 @@ public sealed class MandelbrotPattern : BlobPatternBase
             var (re, im) = PickTarget(_rng);
             _targetRe = re;
             _targetIm = im;
-            DebugLog.Log($"Mandelbrot: switching to ({re:G10}, {im:G10}) because {reason}");
+            DebugLog.Log(LogLevel.Debug, "Mandelbrot", $"switching to ({re:G10}, {im:G10}) because {reason}");
             _centerRe = _targetRe;
             _centerIm = _targetIm;
             _spiralAngle = _rng.NextDouble() * Math.PI * 2;
@@ -1179,7 +1179,7 @@ public sealed class MandelbrotPattern : BlobPatternBase
     {
         var msg = $"[Mandelbrot] {message}";
         System.Diagnostics.Debug.WriteLine(msg);
-        DebugLog.Log("Mandelbrot", message);
+        DebugLog.Log(LogLevel.Debug, "Mandelbrot", message);
     }
 
     protected override void CleanupCanvas()
@@ -1418,11 +1418,11 @@ public sealed class MandelbrotPattern : BlobPatternBase
         // Only return if we found a reasonably interesting point
         if (bestSpread > 15)
         {
-            DebugLog.Log("Mandelbrot", $"Discovered boundary point ({bestPoint!.Value.Re:F10}, {bestPoint.Value.Im:F10}) spread={bestSpread:F1}");
+            DebugLog.Log(LogLevel.Debug, "Mandelbrot", $"Discovered boundary point ({bestPoint!.Value.Re:F10}, {bestPoint.Value.Im:F10}) spread={bestSpread:F1}");
             return bestPoint;
         }
 
-        DebugLog.Log("Mandelbrot", $"Discovery failed (best spread={bestSpread:F1}), falling back to curated library");
+        DebugLog.Log(LogLevel.Warning, "Mandelbrot", $"Discovery failed (best spread={bestSpread:F1}), falling back to curated library");
         return null;
     }
 }

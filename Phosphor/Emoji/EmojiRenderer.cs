@@ -86,14 +86,14 @@ public static class EmojiRenderer
             {
                 if (!File.Exists(path))
                 {
-                    DebugLog.Log("EmojiRenderer", $"Font file missing for {s}: {path}");
+                    DebugLog.Log(LogLevel.Warning, "EmojiRenderer", $"Font file missing for {s}: {path}");
                     return null;
                 }
                 return SKTypeface.FromFile(path);
             }
             catch (Exception ex)
             {
-                DebugLog.Log("EmojiRenderer", $"Failed to load typeface {s}: {ex.Message}");
+                DebugLog.Log(LogLevel.Warning, "EmojiRenderer", $"Failed to load typeface {s}: {ex.Message}");
                 return null;
             }
         });
@@ -187,7 +187,7 @@ public static class EmojiRenderer
         }
         catch (Exception ex)
         {
-            DebugLog.Log("EmojiRenderer", $"Render failed for '{emoji}' set={set} size={pixelSize}: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "EmojiRenderer", $"Render failed for '{emoji}' set={set} size={pixelSize}: {ex.Message}");
             return null;
         }
     }

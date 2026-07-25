@@ -402,6 +402,6 @@ public sealed class ProjectMPattern : BlobPatternBase
     {
         var msg = $"[ProjectM] {message}";
         System.Diagnostics.Debug.WriteLine(msg);
-        DebugLog.Log("ProjectM", message);
+        DebugLog.Log(LogLevel.Debug, "ProjectM", message);
     }
 }
