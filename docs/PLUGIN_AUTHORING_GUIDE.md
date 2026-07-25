@@ -277,8 +277,7 @@ the reference resolves the path in `BrowseAsync`; networked sources resolve lazi
 threading behind it.
 
 ```csharp
-void   Log(string message);                     // into the app diagnostics log
-void   Log(LogLevel level, string message);     // same, at an explicit verbosity level
+void   Log(LogLevel level, string message);     // into the app diagnostics log, at an explicit level
 HttpClient HttpClient { get; }                  // shared, pooled — do NOT dispose it
 string InstanceCacheDirectory { get; }          // a per-instance folder you may write to
 string? GetSecret(string key);                  // credential store (optional DPAPI encryption at rest; off by default)
@@ -289,6 +288,40 @@ void   ReportStatus(string message);            // user-facing status (host mars
 
 Use `HttpClient` for network calls (respecting the host's configured timeout); use
 `InstanceCacheDirectory` for any index/catalog you persist.
+
+### Logging
+
+`Log` takes an explicit `LogLevel` — there is no level-less overload, so every log line carries a
+deliberate verbosity. Your lines land in the host's single diagnostics log tagged `[Plugin:{instanceId}]`
+and are filtered by the user's **Verbosity** setting, so a chatty plug-in stays quiet by default and
+its detail is one setting-change (not a rebuild) away.
+
+```csharp
+_host.Log(LogLevel.Warning, $"MySource: search '{query}' failed — {ex.Message}");
+```
+
+`LogLevel` (in `Phosphor.Plugin.Abstractions`) and when to use each:
+
+| Level | Use for |
+|-------|---------|
+| `Trace` | Very chatty per-item/per-request diagnostics (silent at the default level). |
+| `Debug` | Developer-facing detail — resolution decisions, config/milestone summaries. |
+| `Info`  | Notable milestones a curious user would want (connected, source ready). |
+| `Warning` | Recoverable problems and fallbacks — most `catch` blocks belong here. |
+| `Error` | Failures that break the operation. |
+
+Rules of thumb: if it fires more than once per user action it's probably `Trace`; if losing it would
+hide a real bug it's at least `Warning`. Interpolating a couple of fields is cheap and fine to leave
+unguarded, but if a log argument does non-trivial work (`string.Join`/LINQ/an expensive `ToString`),
+guard the whole call so it's skipped when it wouldn't be logged.
+
+If you thread a logger into your own internal helpers (a client, a resolver), keep that seam a plain
+`Action<string>?` (or a leveled delegate if it needs more than one level) and adapt at the call site —
+e.g. `s => host.Log(LogLevel.Debug, s)`. That's an implementation detail; the only contract is
+`IPluginHost.Log(LogLevel, string)`.
+
+For user-facing messages that should appear in the app's status line (not the diagnostics log), use
+`ReportStatus` instead.
 
 ---
 
