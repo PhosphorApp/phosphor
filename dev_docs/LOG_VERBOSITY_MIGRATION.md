@@ -135,7 +135,22 @@ base-class logging shared by several window subclasses (it names the concrete wi
 
 Newest first. Note the date, what was retagged, and anything discovered.
 
-- **2025 — VideoCache + window monitor notifications.** **VideoCache** (16 sites): per-item
+- **2025 — GaplessAudioPlayer + DmdWindow pass.** **GaplessAudioPlayer** (`GaplessAudioPlayer.cs`,
+  12 sites, all `GaplessPCM`): per-track lifecycle milestones (Play, primed-next, decoder
+  switch/start) → **Debug**; per-callback / per-buffer internals (leading/trailing silence trim,
+  `cb#` peak dumps, flush/drain/EndReached queue bookkeeping) → **Trace**. **DmdWindow**
+  (`DmdWindow.xaml.cs`, 9 sites): `ScrubBar` drag-start/complete + IsSeeking toggles → **Trace**;
+  `Settings` apply-handler failures, `[DOF]` bridge start/startup-trigger failures, and
+  `EmojiKeywords` load failure → **Warning**. Dropped the unmigrated caller count ~98 → ~77.
+- **2025 — BackglassWindow pass
+  as one pass. **Trace:** the whole `Seek` diagnostic cluster (PCM gapless seek, requested/skipped,
+  fast-check/verify samples), the `RandomPerSong` blob `Backglass` transition, and the `#if DEBUG`
+  `PERF.LogoMorph` timing dumps. **Debug:** `Gapless` primed-next + swap-to-primed, `GaplessPCM`
+  playing-via-queue, `Seek` cache-ready switch. **Info:** `GaplessPCM` playback-finished (all tracks
+  drained). **Warning:** `Seek` not-seekable + seek-failed restarts, and `PERF.BackglassStall` render-
+  gap markers (kept as Warning per the backlog — don't hide stalls). The volume-slider handler was
+  already Trace (see Follow-up). Dropped the unmigrated caller count 114 → ~98.
+- **2025 — VideoCache + window monitor notifications.**
   hit/miss/store/evict/chapters → Trace; store/evicting → Debug; purge + index-verification-complete →
   Info; ffmpeg/mux/download failures → Warning. **Window notifications:** the monitor-Hz + refresh-rate
   logs in `JukeboxWindow` (base class) used `GetType().Name` as an inline message prefix, producing
@@ -231,6 +246,8 @@ $hits | Group-Object Filename | Sort-Object Count -Descending | Select-Object Co
 ```
 
 Snapshots (newest first):
+- **~77** after GaplessAudioPlayer (12 → 0) + DmdWindow (9 → 0).
+- **~98** after BackglassWindow (BackglassWindow.xaml.cs 16 → 0).
 - **113** after VideoCache + window monitor notifications (VideoCache 16 → 0, JukeboxWindow 2 → 0).
 - **~131** after the DOF pass (DofClient.cs 27 → 0).
 - **158** after ApplySettings/Status/PluginLoader (baseline for the DOF pass).
@@ -291,6 +308,12 @@ file. Retagging the top few reclaims most of the log's readability.
        PresetBrowser (6), FavoritesIndex (4), etc. Fold into a "misc sweep."
 
 ### Done
+- [x] **GaplessAudioPlayer** (12 sites) + **DmdWindow** (9 sites) — gapless per-track milestones →
+      Debug, per-buffer/callback internals → Trace; DmdWindow ScrubBar → Trace, Settings/DOF/Emoji
+      failures → Warning.
+- [x] **BackglassWindow** (`BackglassWindow.xaml.cs`, 16 sites) —
+      timing → Trace; gapless prime/swap + cache-switch → Debug; tracks-drained → Info; seek-failed
+      restarts + PERF.BackglassStall → Warning.
 - [x] **VideoCache** (16 sites) + **window monitor notifications** (`JukeboxWindow`, 2 sites) —
       per-item → Trace, milestones → Info, failures → Warning; window Hz logs given a proper
       `[WindowName]` category via `GetType().Name`.

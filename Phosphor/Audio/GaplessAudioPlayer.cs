@@ -73,7 +73,7 @@ public sealed class GaplessAudioPlayer : IDisposable
         // Guard against zero/negative volume passed in before the user has changed it
         if (volumePercent <= 0) volumePercent = 100;
         _volume = VolumeTaper.Amplitude(volumePercent);
-        DebugLog.Log("GaplessPCM", $"Play: volume={volumePercent} ({_volume:F2})");
+        DebugLog.Log(LogLevel.Debug, "GaplessPCM", $"Play: volume={volumePercent} ({_volume:F2})");
         _activeDecoder = _decoderA;
         _pendingDecoder = _decoderB;
         _activeDecoder.Reset();
@@ -100,7 +100,7 @@ public sealed class GaplessAudioPlayer : IDisposable
     {
         _pendingDecoder.Reset();
         _pendingDecoder.Start(streamUri);
-        DebugLog.Log("GaplessPCM", $"Primed next track on decoder {_pendingDecoder.Name}");
+        DebugLog.Log(LogLevel.Debug, "GaplessPCM", $"Primed next track on decoder {_pendingDecoder.Name}");
     }
 
     /// <summary>
@@ -168,7 +168,7 @@ public sealed class GaplessAudioPlayer : IDisposable
         if (_pendingDecoder.Queue.IsEmpty && !_pendingDecoder.IsStarted)
             return false;
 
-        DebugLog.Log("GaplessPCM", $"Switching from decoder {_activeDecoder.Name} to {_pendingDecoder.Name}");
+        DebugLog.Log(LogLevel.Debug, "GaplessPCM", $"Switching from decoder {_activeDecoder.Name} to {_pendingDecoder.Name}");
 
         var oldActive = _activeDecoder;
         _activeDecoder = _pendingDecoder;
@@ -271,7 +271,7 @@ public sealed class GaplessAudioPlayer : IDisposable
             player.SetAudioFormat("S16N", SampleRate, Channels);
             player.SetAudioCallbacks(_playCb, _pauseCb, _resumeCb, _flushCb, _drainCb);
 
-            DebugLog.Log("GaplessPCM", $"Decoder {Name} starting: {streamUri}");
+            DebugLog.Log(LogLevel.Debug, "GaplessPCM", $"Decoder {Name} starting: {streamUri}");
 
             player.EndReached += OnEndReached;
             player.LengthChanged += OnLengthChanged;
@@ -378,13 +378,13 @@ public sealed class GaplessAudioPlayer : IDisposable
                 {
                     _seenAudio = true;
                     if (_leadingTrimmedShorts > 0)
-                        DebugLog.Log("GaplessPCM", $"Decoder {Name} trimmed {_leadingTrimmedShorts / Channels} leading silent samples ({_leadingTrimmedShorts * 1000L / (SampleRate * Channels)}ms)");
+                        DebugLog.Log(LogLevel.Trace, "GaplessPCM", $"Decoder {Name} trimmed {_leadingTrimmedShorts / Channels} leading silent samples ({_leadingTrimmedShorts * 1000L / (SampleRate * Channels)}ms)");
                 }
                 else if (_leadingTrimBudgetShorts <= 0)
                 {
                     // Budget exhausted without finding audio — stop trimming
                     _seenAudio = true;
-                    DebugLog.Log("GaplessPCM", $"Decoder {Name} leading trim budget exhausted at {_leadingTrimmedShorts / Channels} samples");
+                    DebugLog.Log(LogLevel.Trace, "GaplessPCM", $"Decoder {Name} leading trim budget exhausted at {_leadingTrimmedShorts / Channels} samples");
                 }
             }
 
@@ -410,7 +410,7 @@ public sealed class GaplessAudioPlayer : IDisposable
                     float v = Math.Abs(buffer[i]);
                     if (v > peak) peak = v;
                 }
-                DebugLog.Log("GaplessPCM", $"Decoder {Name} cb#{n}: count={count} peak={peak:F4} s16[0]={shortBuffer[startOffset]} s16[1]={(usableShorts > 1 ? shortBuffer[startOffset + 1] : (short)0)}");
+                DebugLog.Log(LogLevel.Trace, "GaplessPCM", $"Decoder {Name} cb#{n}: count={count} peak={peak:F4} s16[0]={shortBuffer[startOffset]} s16[1]={(usableShorts > 1 ? shortBuffer[startOffset + 1] : (short)0)}");
             }
 
             if (Interlocked.Increment(ref _queuedChunks) >= MaxQueuedChunks)
@@ -436,11 +436,11 @@ public sealed class GaplessAudioPlayer : IDisposable
             // seek/reset where we'd want to discard buffered audio.
             if (_drainSignaled)
             {
-                DebugLog.Log("GaplessPCM", $"Decoder {Name} ignoring post-drain flush (preserving {_queuedChunks} buffered chunks)");
+                DebugLog.Log(LogLevel.Trace, "GaplessPCM", $"Decoder {Name} ignoring post-drain flush (preserving {_queuedChunks} buffered chunks)");
                 return;
             }
 
-            DebugLog.Log("GaplessPCM", $"Decoder {Name} OnAudioFlush (queue had {_queuedChunks} chunks)");
+            DebugLog.Log(LogLevel.Trace, "GaplessPCM", $"Decoder {Name} OnAudioFlush (queue had {_queuedChunks} chunks)");
             while (Queue.TryDequeue(out _)) { }
             _queuedChunks = 0;
             _queueGate.Set();
@@ -448,7 +448,7 @@ public sealed class GaplessAudioPlayer : IDisposable
 
         private void OnAudioDrain(IntPtr data)
         {
-            DebugLog.Log("GaplessPCM", $"Decoder {Name} OnAudioDrain (queue has {_queuedChunks} chunks)");
+            DebugLog.Log(LogLevel.Trace, "GaplessPCM", $"Decoder {Name} OnAudioDrain (queue has {_queuedChunks} chunks)");
 
             // Compute trailing silence trim: snapshot the queue (no more chunks will be
             // enqueued after drain), walk from the tail counting bit-exact zero floats,
@@ -476,7 +476,7 @@ public sealed class GaplessAudioPlayer : IDisposable
             _playableFloatLimit = produced - trailingZeroFloats;
 
             if (trailingZeroFloats > 0)
-                DebugLog.Log("GaplessPCM", $"Decoder {Name} trimming {trailingZeroFloats / Channels} trailing silent samples ({trailingZeroFloats * 1000L / (SampleRate * Channels)}ms)");
+                DebugLog.Log(LogLevel.Trace, "GaplessPCM", $"Decoder {Name} trimming {trailingZeroFloats / Channels} trailing silent samples ({trailingZeroFloats * 1000L / (SampleRate * Channels)}ms)");
 
             _drainSignaled = true;
             // Don't set IsFinished here — wait until the mixer has drained our
@@ -485,7 +485,7 @@ public sealed class GaplessAudioPlayer : IDisposable
 
         private void OnEndReached(object? sender, EventArgs e)
         {
-            DebugLog.Log("GaplessPCM", $"Decoder {Name} EndReached (queue has {_queuedChunks} chunks, drained={_drainSignaled})");
+            DebugLog.Log(LogLevel.Trace, "GaplessPCM", $"Decoder {Name} EndReached (queue has {_queuedChunks} chunks, drained={_drainSignaled})");
             // Don't set IsFinished here either — wait for the mixer to fully
             // drain the queue before declaring this decoder finished.
         }

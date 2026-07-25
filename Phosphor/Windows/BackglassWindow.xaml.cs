@@ -506,7 +506,7 @@ public partial class BackglassWindow : JukeboxWindow
         mp.SetPause(true);
 
         _nextMediaPlayer = mp;
-        DebugLog.Log("Gapless", $"Primed next track: {nextTrack.Title} ({nextTrack.VideoId})");
+        DebugLog.Log(LogLevel.Debug, "Gapless", $"Primed next track: {nextTrack.Title} ({nextTrack.VideoId})");
     }
 
     /// <summary>
@@ -535,7 +535,7 @@ public partial class BackglassWindow : JukeboxWindow
                 if (DataContext is JukeboxViewModel vm && hasNext)
                 {
                     vm.AdvanceQueueGapless();
-                    DebugLog.Log("GaplessPCM", "Track advanced via PCM queue");
+                    DebugLog.Log(LogLevel.Debug, "GaplessPCM", "Track advanced via PCM queue");
 
                     // Notify listeners (DmdWindow.OnPlaybackStartedTransition) so
                     // per-track-change features (RandomPerSong transitions, Game of
@@ -550,7 +550,7 @@ public partial class BackglassWindow : JukeboxWindow
         {
             Dispatcher.BeginInvoke(() =>
             {
-                DebugLog.Log("GaplessPCM", "Playback finished (all tracks drained)");
+                DebugLog.Log(LogLevel.Info, "GaplessPCM", "Playback finished (all tracks drained)");
                 _usingGaplessPlayer = false;
                 _positionTimer?.Stop();
 
@@ -786,7 +786,7 @@ public partial class BackglassWindow : JukeboxWindow
                 _positionTimer?.Start();
                 PlaybackStarted?.Invoke();
                 vm.NotifyPlaybackStarted();
-                DebugLog.Log("GaplessPCM", $"Playing via PCM queue: {vm.CurrentlyPlaying.Title}");
+                DebugLog.Log(LogLevel.Debug, "GaplessPCM", $"Playing via PCM queue: {vm.CurrentlyPlaying.Title}");
                 return;
             }
 
@@ -1014,18 +1014,18 @@ public partial class BackglassWindow : JukeboxWindow
             if (_usingGaplessPlayer && _gaplessPlayer != null)
             {
                 _gaplessPlayer.Seek(timeMs);
-                DebugLog.Log("Seek", $"PCM gapless seek to {timeMs}ms");
+                DebugLog.Log(LogLevel.Trace, "Seek", $"PCM gapless seek to {timeMs}ms");
                 return;
             }
 
             if (_mediaPlayer == null) return;
             var length = _mediaPlayer.Length;
             var seekable = _mediaPlayer.IsSeekable;
-            DebugLog.Log("Seek", $"Requested: {timeMs}ms | State={_mediaPlayer.State} Length={length} Time={_mediaPlayer.Time} Seekable={seekable}");
+            DebugLog.Log(LogLevel.Trace, "Seek", $"Requested: {timeMs}ms | State={_mediaPlayer.State} Length={length} Time={_mediaPlayer.Time} Seekable={seekable}");
 
             if (length <= 0)
             {
-                DebugLog.Log("Seek", "Skipped: Length <= 0");
+                DebugLog.Log(LogLevel.Trace, "Seek", "Skipped: Length <= 0");
                 return;
             }
 
@@ -1058,7 +1058,7 @@ public partial class BackglassWindow : JukeboxWindow
                     : null;
                 if (cached != null)
                 {
-                    DebugLog.Log("Seek", $"Cache ready — switching from live stream to cached file for reliable scrub: {cached.FilePath}");
+                    DebugLog.Log(LogLevel.Debug, "Seek", $"Cache ready — switching from live stream to cached file for reliable scrub: {cached.FilePath}");
                     SwitchToCachedFileAndSeek(cached, targetMs);
                     return;
                 }
@@ -1077,7 +1077,7 @@ public partial class BackglassWindow : JukeboxWindow
             // in a known good state.
             if (!seekable)
             {
-                DebugLog.Log("Seek", "IsSeekable=false — restarting playback from the beginning (use transient caching for reliable scrubbing)");
+                DebugLog.Log(LogLevel.Warning, "Seek", "IsSeekable=false — restarting playback from the beginning (use transient caching for reliable scrubbing)");
 
                 var vm = DataContext as JukeboxViewModel;
                 var videoIdToRestart = _lastPlayingVideoId;
@@ -1140,7 +1140,7 @@ public partial class BackglassWindow : JukeboxWindow
                     bool sawBuffering = bufferTicksFast > 0;
                     bool nearTargetFast = Math.Abs(sample1 - targetMs) <= Math.Max(5000L, (long)(length * 0.02));
 
-                    DebugLog.Log("Seek", $"Fast check ({fastCheckDelayMs}ms): sample1={sample1} bufferTicks={bufferTicksFast} sawBuffering={sawBuffering} nearTargetFast={nearTargetFast}");
+                    DebugLog.Log(LogLevel.Trace, "Seek", $"Fast check ({fastCheckDelayMs}ms): sample1={sample1} bufferTicks={bufferTicksFast} sawBuffering={sawBuffering} nearTargetFast={nearTargetFast}");
 
                     // Confirm with a second sample to ensure time is actually advancing.
                     await Task.Delay(finalCheckDelayMs, verifyCt);
@@ -1162,13 +1162,13 @@ public partial class BackglassWindow : JukeboxWindow
                         // activity OR Time is still advancing. Both signals are sufficient.
                         bool seekHealthy = nearTarget && (sawBuffering || advancing);
 
-                        DebugLog.Log("Seek", $"Verify: sample2={sample2} progress={progress}ms (was {timeBefore}, target {targetMs}) nearTarget={nearTarget} advancing={advancing} sawBuffering={sawBuffering} healthy={seekHealthy}");
+                        DebugLog.Log(LogLevel.Trace, "Seek", $"Verify: sample2={sample2} progress={progress}ms (was {timeBefore}, target {targetMs}) nearTarget={nearTarget} advancing={advancing} sawBuffering={sawBuffering} healthy={seekHealthy}");
 
                         if (seekHealthy) return;
 
                         // Wedge confirmed. Bail out cleanly: stop and restart from the
                         // beginning so the user has a known, controllable state.
-                        DebugLog.Log("Seek", "Seek failed — restarting playback from the beginning (use transient caching for reliable scrubbing)");
+                        DebugLog.Log(LogLevel.Warning, "Seek", "Seek failed — restarting playback from the beginning (use transient caching for reliable scrubbing)");
 
                         var vm = DataContext as JukeboxViewModel;
                         var videoIdToRestart = _lastPlayingVideoId;
@@ -1348,7 +1348,7 @@ public partial class BackglassWindow : JukeboxWindow
                 // Gapless: if a next player is primed, swap it in immediately
                 if (_nextMediaPlayer != null && _gaplessPrimed)
                 {
-                    DebugLog.Log("Gapless", "Swapping to primed next player");
+                    DebugLog.Log(LogLevel.Debug, "Gapless", "Swapping to primed next player");
                     var oldPlayer = _mediaPlayer;
 
                     // Swap the player reference and resume the pre-loaded track
@@ -1935,7 +1935,7 @@ public partial class BackglassWindow : JukeboxWindow
         _currentPattern.Exit(() =>
         {
             var newPattern = BlobTransition.CurrentRandomPattern;
-            DebugLog.Log("Backglass", $"Transition {_blobPattern} -> {newPattern} blob pattern");
+            DebugLog.Log(LogLevel.Trace, "Backglass", $"Transition {_blobPattern} -> {newPattern} blob pattern");
             _blobPattern = newPattern;
 
             _currentPattern?.Dispose();
@@ -2170,7 +2170,7 @@ public partial class BackglassWindow : JukeboxWindow
         int __gc0 = GC.CollectionCount(0) - __gc0Before;
         int __gc1 = GC.CollectionCount(1) - __gc1Before;
         int __gc2 = GC.CollectionCount(2) - __gc2Before;
-        DebugLog.Log("PERF.LogoMorph",
+        DebugLog.Log(LogLevel.Trace, "PERF.LogoMorph",
             $"MorphLogoToColor color={color} elapsedMs={__sw.Elapsed.TotalMilliseconds:F2} " +
             $"titleAnims={__titleAnims} recordAnims={__recordAnims} shadow={_logoShadow} " +
             $"gc0={__gc0} gc1={__gc1} gc2={__gc2}");
@@ -2207,7 +2207,7 @@ public partial class BackglassWindow : JukeboxWindow
             double gapMs = (now - _lastRenderTick).TotalMilliseconds;
             if (gapMs > StallThresholdMs)
             {
-                DebugLog.Log("PERF.BackglassStall",
+                DebugLog.Log(LogLevel.Warning, "PERF.BackglassStall",
                     $"render gap {gapMs:F1}ms (threshold {StallThresholdMs:F0}ms)");
             }
         }
@@ -2299,7 +2299,7 @@ public partial class BackglassWindow : JukeboxWindow
         LogoColorsMorphed?.Invoke(titleColor, recordColor);
 #if DEBUG
         __sw.Stop();
-        DebugLog.Log("PERF.LogoMorph",
+        DebugLog.Log(LogLevel.Trace, "PERF.LogoMorph",
             $"MorphLogoColors elapsedMs={__sw.Elapsed.TotalMilliseconds:F2} " +
             $"titleAnims={__titleAnims} recordAnims={__recordAnims} shadow={_logoShadow}");
 #endif

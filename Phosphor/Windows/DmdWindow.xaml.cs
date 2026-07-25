@@ -362,7 +362,7 @@ public partial class DmdWindow : JukeboxWindow
                 _scrubDragging = true;
                 if (DataContext is JukeboxViewModel vm)
                 {
-                    DebugLog.Log("ScrubBar", $"DragStarted | Value={ScrubBar.Value} Max={ScrubBar.Maximum} IsSeeking→true");
+                    DebugLog.Log(LogLevel.Trace, "ScrubBar", $"DragStarted | Value={ScrubBar.Value} Max={ScrubBar.Maximum} IsSeeking→true");
                     vm.IsSeeking = true;
                 }
             }));
@@ -374,14 +374,14 @@ public partial class DmdWindow : JukeboxWindow
                 if (DataContext is JukeboxViewModel vm)
                 {
                     var seekPos = SnapToChapter(vm, (long)ScrubBar.Value);
-                    DebugLog.Log("ScrubBar", $"DragCompleted | SeekTo={seekPos} Duration={vm.PlaybackDuration} Position={vm.PlaybackPosition}");
+                    DebugLog.Log(LogLevel.Trace, "ScrubBar", $"DragCompleted | SeekTo={seekPos} Duration={vm.PlaybackDuration} Position={vm.PlaybackPosition}");
                     if (vm.CurrentlyPlaying?.Chapters?.Count > 0)
                         vm.PlayTransitioning = true;
                     vm.SeekTo(seekPos);
                     Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
                     {
                         vm.IsSeeking = false;
-                        DebugLog.Log("ScrubBar", "IsSeeking→false");
+                        DebugLog.Log(LogLevel.Trace, "ScrubBar", "IsSeeking→false");
                     });
                 }
             }));
@@ -2284,7 +2284,7 @@ public partial class DmdWindow : JukeboxWindow
             }
             catch (Exception ex)
             {
-                DebugLog.Log("Settings", $"SettingsApplied handler failed: {ex}");
+                DebugLog.Log(LogLevel.Warning, "Settings", $"SettingsApplied handler failed: {ex}");
             }
         };
         _settingsAppliedDuringDialog = false;
@@ -2308,7 +2308,7 @@ public partial class DmdWindow : JukeboxWindow
             }
             catch (Exception ex)
             {
-                DebugLog.Log("Settings", $"ApplySettingsFromWindow (post-close) failed: {ex}");
+                DebugLog.Log(LogLevel.Warning, "Settings", $"ApplySettingsFromWindow (post-close) failed: {ex}");
             }
         }
 
@@ -2817,7 +2817,7 @@ public partial class DmdWindow : JukeboxWindow
             var simulatorMode = _appSettings?.DofSimulator == true;
             if (!await _dofClient.StartAsync(romName, simulatorMode))
             {
-                DebugLog.Log("[DOF]", "Failed to start bridge");
+                DebugLog.Log(LogLevel.Warning, "[DOF]", "Failed to start bridge");
                 _dofClient = null;
                 return false;
             }
@@ -2825,7 +2825,7 @@ public partial class DmdWindow : JukeboxWindow
         }
         catch (Exception ex)
         {
-            DebugLog.Log("[DOF]", $"Failed to start bridge: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "[DOF]", $"Failed to start bridge: {ex.Message}");
             _dofClient = null;
             return false;
         }
@@ -2855,7 +2855,7 @@ public partial class DmdWindow : JukeboxWindow
             }
             catch (Exception ex)
             {
-                DebugLog.Log("[DOF]", $"Startup trigger failed: {ex.Message}");
+                DebugLog.Log(LogLevel.Warning, "[DOF]", $"Startup trigger failed: {ex.Message}");
             }
 
             // Delay color band activation so startup effects have time to run (skip if already running)
@@ -4194,7 +4194,7 @@ public partial class DmdWindow : JukeboxWindow
         }
         catch (Exception ex)
         {
-            DebugLog.Log("EmojiKeywords", $"Failed to load emoji_keywords.json: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "EmojiKeywords", $"Failed to load emoji_keywords.json: {ex.Message}");
             _emojiKeywords = [];
         }
         return _emojiKeywords;
