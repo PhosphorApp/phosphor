@@ -135,7 +135,20 @@ base-class logging shared by several window subclasses (it names the concrete wi
 
 Newest first. Note the date, what was retagged, and anything discovered.
 
-- **2025 — Visualization pass.** Retagged the pattern/renderer diagnostics. **MandelbrotPattern**
+- **2025 — Misc host sweep (host backlog cleared).** Retagged the remaining scattered host sites
+  across 13 files. **Warning:** all the persistence/IO failure sites — `FavoritesIndex`
+  (Load/Save/LoadOrder/SaveOrder), `GenreCategoryStore` (load + both save paths), `PinupSettings`
+  (Load/Save), `AppSettings` (Save/SaveAsync), `SecretProtector` (Protect/Unprotect), `PinupDatabase`
+  (playlist query), `Pinup` load-failed — plus the "No {playfield|backglass|topper} video for"
+  ambient-Pinup misses. **Trace:** the `Playfield` / `Topper` `RandomPerSong` blob transitions (match
+  Backglass). **Debug:** `Network` timeout-set, `PreemptiveCache` job-start, `Pinup` load-skipped.
+  **Info:** `Pinup` load-complete milestone, `PluginHost.ReportStatus` (plugin status). **Left as-is
+  (correctly):** `JukeboxViewModel` `ClassifyStatusLevel(value)` (the Status classifier — already
+  leveled) and `PluginHost.MapLevel` line (the routing method that forwards a plug-in's level).
+  Dropped the unmigrated caller count ~44 → **19**, all of which are now the **Path-B YouTube shim**
+  (`YtDlpVideoEngine` 8, `YtDlpUpdater` 4, `StreamSelector` 3, `SearchEngineFactory`/`VideoEngineFactory`
+  1 each) — the last remaining track. **The host backlog is effectively cleared.**
+- **2025 — Visualization pass.**
   (4): target-switch + `LogGpu` helper + boundary-point discovered → **Debug**; discovery-failed
   fallback → **Warning** (lifted the inline `Mandelbrot:` prefix into the category). **MatrixBlobPattern**
   (3): per-color-cycle / PulseDominantColor detail → **Trace**. **ProjectMPattern** / **ProjectMRenderer**
@@ -263,6 +276,10 @@ $hits | Group-Object Filename | Sort-Object Count -Descending | Select-Object Co
 ```
 
 Snapshots (newest first):
+- **19** after the misc host sweep — all remaining are the Path-B YouTube shim (`YtDlpVideoEngine` 8,
+  `YtDlpUpdater` 4, `StreamSelector` 3, `SearchEngineFactory`/`VideoEngineFactory` 1 each) plus the
+  `JukeboxViewModel` Status-classifier line and the `PluginHost` routing method (both intentionally
+  level-less). **Host backlog cleared.**
 - **~44** after Visualization (Mandelbrot 4, Matrix 3, ProjectM 2, GoL 1, MandelbrotGPU 1, Emoji 3).
 - **~59** after PresetBrowser (6 → 0) + SettingsWindow (6 → 0) + PrefetchCache (6 → 0).
 - **~77** after GaplessAudioPlayer (12 → 0) + DmdWindow (9 → 0).
@@ -324,10 +341,14 @@ file. Retagging the top few reclaims most of the log's readability.
        `DebugLog` shim → `Trace.WriteLine`, like Plex; retag them there, not in the host.)
 5. [ ] **Visualization** (Matrix, Mandelbrot, ProjectM, PERF.*) — per-frame → Trace, keep PERF stalls Warning. ✅ done
 6. [ ] **Misc high-count files** — BackglassWindow (16), GaplessAudioPlayer (12), PrefetchCache (6),
-       PresetBrowser (6), FavoritesIndex (4), etc. Fold into a "misc sweep."
+       PresetBrowser (6), FavoritesIndex (4), etc. Fold into a "misc sweep." ✅ done — host backlog cleared.
 
 ### Done
-- [x] **Visualization** (Mandelbrot/Matrix/ProjectM/GoL/MandelbrotGPU/Emoji) — per-frame/cycle detail
+- [x] **Misc host sweep** — FavoritesIndex, GenreCategoryStore, PinupSettings, AppSettings,
+      SecretProtector, PinupDatabase, PinupPlaylistLoader, Playfield/Topper/Backglass ambient,
+      JukeboxViewModel Network/PreemptiveCache, PluginHost.ReportStatus. Persistence/IO failures →
+      Warning; blob transitions → Trace; milestones → Debug/Info. **Host backlog cleared.**
+- [x] **Visualization** (Mandelbrot/Matrix/ProjectM/GoL/MandelbrotGPU/Emoji) —
       → Trace; GPU/preset/target helpers → Debug; discovery + Emoji render failures → Warning.
 - [x] **PresetBrowser + SettingsWindow + PrefetchCache** (6 sites each) —
       Debug/Trace; SettingsWindow failures → Warning; PrefetchCache per-item → Trace, mux/ffmpeg

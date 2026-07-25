@@ -253,7 +253,7 @@ public partial class TopperWindow
         _pinupCurrentPath = file;
         if (file == null)
         {
-            DebugLog.Log("TopperPinup", $"No topper video for: {canonicalPlayfieldGlob}");
+            DebugLog.Log(LogLevel.Warning, "TopperPinup", $"No topper video for: {canonicalPlayfieldGlob}");
             if (_videoMode && _pinupMode)
                 StopVideoPlayback();
             return;

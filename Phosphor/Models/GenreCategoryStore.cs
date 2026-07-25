@@ -88,7 +88,7 @@ public static class GenreCategoryStore
         }
         catch (Exception ex)
         {
-            DebugLog.Log("GenreCategoryStore", $"Failed to load categories.json: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "GenreCategoryStore", $"Failed to load categories.json: {ex.Message}");
         }
 
         return [];
@@ -202,7 +202,7 @@ public static class GenreCategoryStore
         catch (Exception ex)
         {
             _cachedEntries = null;
-            DebugLog.Log("GenreCategoryStore", $"Failed to save categories.json: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "GenreCategoryStore", $"Failed to save categories.json: {ex.Message}");
         }
     }
 
@@ -221,7 +221,7 @@ public static class GenreCategoryStore
             }
             catch (Exception ex)
             {
-                DebugLog.Log("GenreCategoryStore", $"Failed to save categories.json: {ex.Message}");
+                DebugLog.Log(LogLevel.Warning, "GenreCategoryStore", $"Failed to save categories.json: {ex.Message}");
             }
         });
     }

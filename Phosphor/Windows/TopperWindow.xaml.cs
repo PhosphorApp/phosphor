@@ -280,7 +280,7 @@ public partial class TopperWindow : JukeboxWindow
         _currentPattern.Exit(() =>
         {
             var newPattern = BlobTransition.CurrentRandomPattern;
-            DebugLog.Log("Topper", $"Transition {_blobPattern} -> {newPattern} blob pattern");
+            DebugLog.Log(LogLevel.Trace, "Topper", $"Transition {_blobPattern} -> {newPattern} blob pattern");
             _blobPattern = newPattern;
 
             _currentPattern?.Dispose();

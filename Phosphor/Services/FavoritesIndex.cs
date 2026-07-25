@@ -239,7 +239,7 @@ public sealed class FavoritesIndex
         }
         catch (Exception ex)
         {
-            DebugLog.Log("FavoritesIndex", $"Load failed: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "FavoritesIndex", $"Load failed: {ex.Message}");
         }
     }
 
@@ -253,7 +253,7 @@ public sealed class FavoritesIndex
         }
         catch (Exception ex)
         {
-            DebugLog.Log("FavoritesIndex", $"Save failed: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "FavoritesIndex", $"Save failed: {ex.Message}");
         }
     }
 
@@ -268,7 +268,7 @@ public sealed class FavoritesIndex
         }
         catch (Exception ex)
         {
-            DebugLog.Log("FavoritesIndex", $"LoadOrder failed: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "FavoritesIndex", $"LoadOrder failed: {ex.Message}");
         }
     }
 
@@ -281,7 +281,7 @@ public sealed class FavoritesIndex
         }
         catch (Exception ex)
         {
-            DebugLog.Log("FavoritesIndex", $"SaveOrder failed: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "FavoritesIndex", $"SaveOrder failed: {ex.Message}");
         }
     }
 }

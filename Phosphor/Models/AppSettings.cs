@@ -687,7 +687,7 @@ public class AppSettings
             }
             catch (IOException ex)
             {
-                DebugLog.Log("Settings", $"Save failed after retries: {ex.Message}");
+                DebugLog.Log(LogLevel.Warning, "Settings", $"Save failed after retries: {ex.Message}");
             }
         }
     }
@@ -710,7 +710,7 @@ public class AppSettings
                 }
                 catch (IOException ex)
                 {
-                    DebugLog.Log("Settings", $"SaveAsync failed after retries: {ex.Message}");
+                    DebugLog.Log(LogLevel.Warning, "Settings", $"SaveAsync failed after retries: {ex.Message}");
                 }
             }
         });

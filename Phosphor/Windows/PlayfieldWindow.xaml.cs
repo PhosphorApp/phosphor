@@ -722,7 +722,7 @@ public partial class PlayfieldWindow : JukeboxWindow
         _currentPattern.Exit(() =>
         {
             var newPattern = BlobTransition.CurrentRandomPattern;
-            DebugLog.Log("Playfield", $"Transition {_blobPattern} -> {newPattern} blob pattern");
+            DebugLog.Log(LogLevel.Trace, "Playfield", $"Transition {_blobPattern} -> {newPattern} blob pattern");
             _blobPattern = newPattern;
 
             _currentPattern?.Dispose();
@@ -980,7 +980,7 @@ public partial class PlayfieldWindow : JukeboxWindow
         _pinupCurrentPath = file;
         if (file == null)
         {
-            DebugLog.Log("Pinup", $"No playfield video for: {canonicalPlayfieldGlob}");
+            DebugLog.Log(LogLevel.Warning, "Pinup", $"No playfield video for: {canonicalPlayfieldGlob}");
             // No file for this game on the playfield — show black by stopping playback.
             if (_videoMode && _pinupMode)
                 StopVideoPlayback();

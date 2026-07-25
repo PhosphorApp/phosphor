@@ -29,7 +29,7 @@ public static class PinupPlaylistLoader
                     !File.Exists(pinup.PopperDbPath) ||
                     pinup.Playlists.Count == 0)
                 {
-                    DebugLog.Log("Pinup", "Load skipped: no DB path or playlists configured.");
+                    DebugLog.Log(LogLevel.Debug, "Pinup", "Load skipped: no DB path or playlists configured.");
                     onLoaded(Array.Empty<string>());
                     return;
                 }
@@ -40,7 +40,7 @@ public static class PinupPlaylistLoader
                     pinup.PopperDbPath, pinup.Playlists.Where(p => p.Enabled));
                 pinup.Save();
 
-                DebugLog.Log("Pinup",
+                DebugLog.Log(LogLevel.Info, "Pinup",
                     $"Load complete: {pinup.Playlists.Count} playlists, {pinup.Games.Count} games.");
 
                 var globs = pinup.Games
@@ -51,7 +51,7 @@ public static class PinupPlaylistLoader
             }
             catch (Exception ex)
             {
-                DebugLog.Log("Pinup", $"Load failed: {ex.Message}");
+                DebugLog.Log(LogLevel.Warning, "Pinup", $"Load failed: {ex.Message}");
                 onLoaded(Array.Empty<string>());
             }
         }, System.Threading.CancellationToken.None,

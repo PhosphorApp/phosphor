@@ -144,7 +144,7 @@ public partial class BackglassWindow
         _ambientPinupCurrentPath = file;
         if (file == null)
         {
-            DebugLog.Log("BgPinup", $"No backglass video for: {canonicalPlayfieldGlob}");
+            DebugLog.Log(LogLevel.Warning, "BgPinup", $"No backglass video for: {canonicalPlayfieldGlob}");
             if (_ambientMode == PlayfieldMode.PinupPlaylist && !_jukeboxVideoActive)
                 StopAmbientVideo();
             return;

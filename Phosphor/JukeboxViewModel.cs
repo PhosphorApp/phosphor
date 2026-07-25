@@ -1498,7 +1498,7 @@ public partial class JukeboxViewModel : ObservableObject
         if (seconds == NetworkTimeoutSeconds) return;
         NetworkTimeoutSeconds = seconds;
         RebuildSearchEngine();
-        DebugLog.Log("Network", $"Timeout set to {seconds}s");
+        DebugLog.Log(LogLevel.Debug, "Network", $"Timeout set to {seconds}s");
     }
 
     /// <summary>
@@ -2070,7 +2070,7 @@ public partial class JukeboxViewModel : ObservableObject
             if (!_preemptiveCacheStarted.Add(videoId)) return;
         }
 
-        DebugLog.Log("PreemptiveCache", $"Starting preemptive cache job for next track {videoId}: {next.Title}");
+        DebugLog.Log(LogLevel.Debug, "PreemptiveCache", $"Starting preemptive cache job for next track {videoId}: {next.Title}");
         _ = SafeFireAndForget(_cache.CacheVideoAsync(
             videoId,
             VideoQuality,

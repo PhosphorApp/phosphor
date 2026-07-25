@@ -53,7 +53,7 @@ public static class SecretProtector
         }
         catch (Exception ex)
         {
-            DebugLog.Log("SecretProtector", $"Protect failed: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "SecretProtector", $"Protect failed: {ex.Message}");
             return plaintext;
         }
     }
@@ -75,7 +75,7 @@ public static class SecretProtector
         }
         catch (Exception ex)
         {
-            DebugLog.Log("SecretProtector", $"Unprotect failed (wrong user/machine?): {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "SecretProtector", $"Unprotect failed (wrong user/machine?): {ex.Message}");
             return null;
         }
     }

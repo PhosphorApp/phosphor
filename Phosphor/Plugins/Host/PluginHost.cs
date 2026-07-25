@@ -65,7 +65,7 @@ public sealed class PluginHost : IPluginHost
         return File.Exists(path) ? path : null;
     }
 
-    public void ReportStatus(string message) => DebugLog.Log($"Plugin:{_instanceId}:status", message);
+    public void ReportStatus(string message) => DebugLog.Log(LogLevel.Info, $"Plugin:{_instanceId}:status", message);
 
     private static string Sanitize(string s)
     {

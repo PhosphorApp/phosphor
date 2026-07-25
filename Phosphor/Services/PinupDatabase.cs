@@ -136,7 +136,7 @@ public static class PinupDatabase
             }
             catch (Exception ex)
             {
-                DebugLog.Log("Pinup", $"Playlist {playlist.PlayListID} query failed: {ex.Message}");
+                DebugLog.Log(LogLevel.Warning, "Pinup", $"Playlist {playlist.PlayListID} query failed: {ex.Message}");
             }
         }
 

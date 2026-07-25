@@ -88,7 +88,7 @@ public class PinupSettings
         }
         catch (Exception ex)
         {
-            DebugLog.Log("PinupSettings", $"Load failed: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "PinupSettings", $"Load failed: {ex.Message}");
         }
 
         var fresh = new PinupSettings();
@@ -113,7 +113,7 @@ public class PinupSettings
             }
             catch (IOException ex)
             {
-                DebugLog.Log("PinupSettings", $"Save failed after retries: {ex.Message}");
+                DebugLog.Log(LogLevel.Warning, "PinupSettings", $"Save failed after retries: {ex.Message}");
             }
         }
     }
