@@ -135,7 +135,22 @@ base-class logging shared by several window subclasses (it names the concrete wi
 
 Newest first. Note the date, what was retagged, and anything discovered.
 
-- **2025 — Misc host sweep (host backlog cleared).** Retagged the remaining scattered host sites
+- **2025 — YouTube Path-B shim (migration effectively complete).** Made the YouTube plug-in's own
+  `DebugLog` shim (`Phosphor.Plugins.YouTube/Engines/DebugLog.cs`) level-aware — added the mirrored
+  `LogLevel` enum, a `MinimumLevel` gate (default Debug), and `Log(LogLevel, message)` /
+  `Log(LogLevel, category, message)` overloads that stamp the real tag instead of `[GENERIC]`, exactly
+  mirroring `PlexDebugLog.cs`. **No contract change** — the contract already has `IPluginHost.Log(LogLevel,
+  string)` for Path-A, but these engines are Path-B (static shim → `Trace.WriteLine`, no `_host` ref), so
+  the consistent minimal move is the in-shim retag Plex set the precedent for. Retagged all 17 sites:
+  **YtDlpVideoEngine** (8) metadata/download/resolve failures → Warning, the two `yt-dlp` command echoes
+  → Trace; **YtDlpUpdater** (4) version-check/update failures → Warning, update-result milestone → Info;
+  **StreamSelector** (3) per-stream dumps → Trace; **SearchEngineFactory** / **VideoEngineFactory** (1
+  each) fallback → Warning. Dropped the unmigrated caller count 19 → **2**, and those two are
+  intentionally level-less (the `PluginHost` routing method forwarding `MapLevel(level)`, and the
+  `JukeboxViewModel` Status classifier forwarding `ClassifyStatusLevel(value)`). **The `[GENERIC]`
+  retag is effectively done.** Caveat (same as Plex): these lines go to `Trace.WriteLine`, not the host
+  log file — the retag is for debugger-output readability + consistency. See the Path-B follow-up below.
+- **2025 — Misc host sweep (host backlog cleared).**
   across 13 files. **Warning:** all the persistence/IO failure sites — `FavoritesIndex`
   (Load/Save/LoadOrder/SaveOrder), `GenreCategoryStore` (load + both save paths), `PinupSettings`
   (Load/Save), `AppSettings` (Save/SaveAsync), `SecretProtector` (Protect/Unprotect), `PinupDatabase`
@@ -276,6 +291,9 @@ $hits | Group-Object Filename | Sort-Object Count -Descending | Select-Object Co
 ```
 
 Snapshots (newest first):
+- **2** after the YouTube Path-B shim — both remaining are intentionally level-less (the `PluginHost`
+  routing method and the `JukeboxViewModel` Status classifier, each forwarding a computed level).
+  **`[GENERIC]` retag effectively complete.**
 - **19** after the misc host sweep — all remaining are the Path-B YouTube shim (`YtDlpVideoEngine` 8,
   `YtDlpUpdater` 4, `StreamSelector` 3, `SearchEngineFactory`/`VideoEngineFactory` 1 each) plus the
   `JukeboxViewModel` Status-classifier line and the `PluginHost` routing method (both intentionally
@@ -338,13 +356,17 @@ file. Retagging the top few reclaims most of the log's readability.
        Do this before picking the next target.
 3. [ ] **ApplySettings** + **RebuildCategories** — settings/category churn (verify still current).
 4. [ ] **Plugin:* runtime logs** — per-source sweep. (Note: extracted plug-ins each have their own
-       `DebugLog` shim → `Trace.WriteLine`, like Plex; retag them there, not in the host.)
+       `DebugLog` shim → `Trace.WriteLine`, like Plex; retag them there, not in the host.) ✅ Plex + YouTube done
 5. [ ] **Visualization** (Matrix, Mandelbrot, ProjectM, PERF.*) — per-frame → Trace, keep PERF stalls Warning. ✅ done
 6. [ ] **Misc high-count files** — BackglassWindow (16), GaplessAudioPlayer (12), PrefetchCache (6),
        PresetBrowser (6), FavoritesIndex (4), etc. Fold into a "misc sweep." ✅ done — host backlog cleared.
 
 ### Done
-- [x] **Misc host sweep** — FavoritesIndex, GenreCategoryStore, PinupSettings, AppSettings,
+- [x] **YouTube Path-B shim** (`Engines/DebugLog.cs` made level-aware + 17 call sites) —
+      YtDlpVideoEngine/YtDlpUpdater failures → Warning, update milestone → Info, yt-dlp echoes +
+      StreamSelector dumps → Trace, factory fallbacks → Warning. Mirrors the Plex shim; no contract
+      change. **`[GENERIC]` retag effectively complete** (only 2 intentionally level-less sites left).
+- [x] **Misc host sweep** —
       SecretProtector, PinupDatabase, PinupPlaylistLoader, Playfield/Topper/Backglass ambient,
       JukeboxViewModel Network/PreemptiveCache, PluginHost.ReportStatus. Persistence/IO failures →
       Warning; blob transitions → Trace; milestones → Debug/Info. **Host backlog cleared.**
@@ -468,6 +490,13 @@ pass rather than done inline.
       default), but the underlying **lack of debounce** on `VolumeChanged` is worth addressing on its own
       (also saves redundant `SetVolume`/VLC calls). Debounce the volume apply + log, or log only on
       drag-end.
+- [ ] **Path-B plug-in logs don't reach the host log file.** The Plex and YouTube shims forward to
+      `Trace.WriteLine` (debugger / trace listeners only), so their now-leveled logs never land in
+      `Phosphor_Debug_*.log` in a normal run, and their `MinimumLevel` isn't synced to the host
+      verbosity setting. Optional future work: route these through `IPluginHost.Log(LogLevel, string)`
+      (contract already supports it) so Path-B participates in host-file logging + verbosity filtering.
+      Requires plumbing a host reference into the currently-static engines/factories — a real refactor,
+      not a retag, hence parked here.
 
 ---
 
