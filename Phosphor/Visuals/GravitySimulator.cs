@@ -69,6 +69,8 @@ public sealed class GravitySimulator : IDisposable
     private readonly Stopwatch _stopwatch = new();
     private long _lastTickTicks;
     private bool _running;
+    private int _consecutiveFrameErrors;
+    private const int MaxConsecutiveFrameErrors = 5;
 
     // --- Diagnostics ---
     private System.Windows.Controls.TextBlock? _diagLabel;
@@ -241,6 +243,78 @@ public sealed class GravitySimulator : IDisposable
     private void OnRendering(object? sender, EventArgs e)
     {
         if (!_running) return;
+        try
+        {
+            RenderFrame();
+            _consecutiveFrameErrors = 0; // a clean frame resets the failure streak
+        }
+        catch (Exception ex)
+        {
+            _consecutiveFrameErrors++;
+            DebugLog.LogException(
+                $"GravitySimulator.RenderFrame (frame error {_consecutiveFrameErrors}/{MaxConsecutiveFrameErrors}, bodies={_blobs.Count})",
+                ex);
+
+            if (_consecutiveFrameErrors >= MaxConsecutiveFrameErrors)
+            {
+                DebugLog.Log(LogLevel.Warning, "GravitySimulator",
+                    "Too many consecutive frame errors — restarting the gravity simulation.");
+                RestartSimulation();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Tears the simulation down and rebuilds a fresh field. Used as a last-resort recovery
+    /// when the render loop hits repeated unrecoverable errors.
+    /// </summary>
+    private void RestartSimulation()
+    {
+        try
+        {
+            _consecutiveFrameErrors = 0;
+
+            // Remove all current bodies from the canvas and clear state.
+            for (int i = _blobs.Count - 1; i >= 0; i--)
+            {
+                if (i < _blobs.Count)
+                {
+                    if (_blobs[i] is Shape sh) sh.Effect = null;
+                    _canvas.Children.Remove(_blobs[i]);
+                }
+            }
+            _blobs.Clear();
+            _states.Clear();
+            _brushes.Clear();
+            _gradBrushes.Clear();
+            _cachedCount = 0;
+            _dustCooldown = 0;
+
+            // Reset the physics caches so stale bounds can't be reused.
+            _posX = [];
+            _posY = [];
+            _radii = [];
+            _masses = [];
+
+            // Reseed a fresh field via the normal dust-injection path.
+            double cw = Math.Max(1, _canvas.ActualWidth);
+            double ch = Math.Max(1, _canvas.ActualHeight);
+            int seed = Math.Max(_minBodies, 12);
+            for (int i = 0; i < seed && _blobs.Count < _maxBodies; i++)
+                InjectDust(cw, ch);
+
+            _lastTickTicks = _stopwatch.ElapsedTicks;
+        }
+        catch (Exception ex)
+        {
+            // If even the restart fails, stop the loop to avoid a crash storm.
+            DebugLog.LogException("GravitySimulator.RestartSimulation (giving up, stopping loop)", ex);
+            _running = false;
+        }
+    }
+
+    private void RenderFrame()
+    {
         long nowTicks = _stopwatch.ElapsedTicks;
         double dt = Math.Min((double)(nowTicks - _lastTickTicks) / Stopwatch.Frequency, MaxDt);
         _lastTickTicks = nowTicks;
@@ -497,7 +571,11 @@ public sealed class GravitySimulator : IDisposable
     /// </summary>
     private void UpdateSpaghettification()
     {
-        int count = Math.Min(_blobs.Count, _states.Count);
+        // Bound to the cached physics arrays (_posX/_radii) — bodies spawned after this
+        // frame's snapshot aren't in those arrays yet and are handled next frame.
+        int count = Math.Min(_cachedCount, Math.Min(_posX.Length,
+            Math.Min(_blobs.Count, _states.Count)));
+        if (count <= 0) return;
 
         // Collect active black holes (usually 0-2). Cheap linear scan.
         Span<int> holes = stackalloc int[Math.Min(count, 8)];
@@ -766,12 +844,20 @@ public sealed class GravitySimulator : IDisposable
 
     private void ProcessCollisions(double cw, double ch)
     {
+        // Bound all iteration and cached-array access to the snapshot taken at the start of
+        // the frame. Merges can spawn new bodies (supernova/black-hole/quasar) mid-loop, which
+        // grows _blobs/_states beyond the cached physics arrays (_posX etc.) — iterating over
+        // the live _blobs.Count would then overrun those arrays. New bodies are handled next frame.
+        int limit = Math.Min(_cachedCount, Math.Min(_posX.Length,
+            Math.Min(_blobs.Count, _states.Count)));
+        if (limit <= 1) return;
+
         // Track which bodies already participated in a collision this frame
         // to prevent chain-merge cascades that cause popping/teleporting.
-        Span<bool> collided = stackalloc bool[_blobs.Count];
+        Span<bool> collided = stackalloc bool[limit];
 
         // Iterate backwards so removals don't invalidate indices
-        for (int i = _blobs.Count - 1; i >= 0 && i < _states.Count; i--)
+        for (int i = limit - 1; i >= 0 && i < _states.Count; i--)
         {
             if (collided[i]) continue;
             for (int j = i - 1; j >= 0 && j < _states.Count; j--)
