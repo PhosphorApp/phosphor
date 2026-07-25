@@ -25,8 +25,8 @@ public sealed class GravityBlobPattern : BlobPatternBase
     /// <summary>Central gravity pull toward canvas center (2–30). Default 6.</summary>
     public static double CentralGravity { get; set; } = 6.0;
 
-    /// <summary>Continuous orbital perturbation strength (0–10). Adds tangential nudges to keep bodies moving. 0 = off, 3 = default.</summary>
-    public static double OrbitalPerturbation { get; set; } = 3.0;
+    /// <summary>Continuous orbital perturbation (-10 to 10). Tangential nudge that keeps bodies swirling; sign sets direction (negative = clockwise), 0 = off. Default -3.</summary>
+    public static double OrbitalPerturbation { get; set; } = -3.0;
 
     /// <summary>Whether camera roam is enabled for this visualization.</summary>
     public static bool CameraRoam { get; set; }

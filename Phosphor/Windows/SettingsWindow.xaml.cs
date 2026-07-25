@@ -1041,7 +1041,7 @@ public partial class SettingsWindow : JukeboxWindow
         SliderGravityCentralGravity.Value = settings.GravityCentralGravity;
         TxtGravityCentralGravity.Text = $"{(int)settings.GravityCentralGravity}";
         SliderGravityOrbitalPerturbation.Value = settings.GravityOrbitalPerturbation;
-        TxtGravityOrbitalPerturbation.Text = $"{settings.GravityOrbitalPerturbation:F1}";
+        TxtGravityOrbitalPerturbation.Text = FormatOrbitalDrift(settings.GravityOrbitalPerturbation);
         CbGravityRestartOnTrackChange.IsChecked = settings.GravityRestartOnTrackChange;
         SliderGravityBlobMultiplier.Value = settings.GravityBlobMultiplier;
         TxtGravityBlobMultiplier.Text = $"{settings.GravityBlobMultiplier:F1}x";
@@ -3290,7 +3290,14 @@ public partial class SettingsWindow : JukeboxWindow
     private void SliderGravityOrbitalPerturbation_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (TxtGravityOrbitalPerturbation != null)
-            TxtGravityOrbitalPerturbation.Text = $"{e.NewValue:F1}";
+            TxtGravityOrbitalPerturbation.Text = FormatOrbitalDrift(e.NewValue);
+    }
+
+    private static string FormatOrbitalDrift(double value)
+    {
+        if (Math.Abs(value) < 0.05) return "Off";
+        string dir = value < 0 ? "CW" : "CCW";
+        return $"{Math.Abs(value):F1} {dir}";
     }
 
     private void CbGravityRestartOnTrackChange_Changed(object sender, RoutedEventArgs e)

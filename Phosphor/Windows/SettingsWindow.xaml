@@ -1212,11 +1212,11 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Orbital Drift:" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" Width="110"/>
-                                    <Slider x:Name="SliderGravityOrbitalPerturbation" Minimum="0" Maximum="10"
+                                    <Slider x:Name="SliderGravityOrbitalPerturbation" Minimum="-10" Maximum="10"
                                             Width="150" VerticalAlignment="Center"
                                             TickFrequency="0.5" IsSnapToTickEnabled="True"
                                             ValueChanged="SliderGravityOrbitalPerturbation_ValueChanged"
-                                            ToolTip="Continuous tangential nudge that keeps bodies swirling. 0 = off, 3 = default, 10 = strong."/>
+                                            ToolTip="Continuous tangential nudge that keeps bodies swirling. Sign sets direction (negative = clockwise, positive = counter-clockwise). 0 = off, -3 = default."/>
                                     <TextBlock x:Name="TxtGravityOrbitalPerturbation" Foreground="{StaticResource TextDimBrush}"
                                                VerticalAlignment="Center" Margin="8,0,0,0"/>
                                 </StackPanel>

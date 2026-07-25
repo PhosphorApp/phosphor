@@ -320,13 +320,14 @@ public sealed class GravitySimulator : IDisposable
 
             // Continuous orbital perturbation: tangential nudge perpendicular to
             // the center vector to keep bodies swirling instead of falling static.
+            // Signed: negative swirls clockwise, positive counter-clockwise.
             double pertStr = GravityBlobPattern.OrbitalPerturbation;
-            if (pertStr > 0 && cdist > 1.0)
+            if (pertStr != 0 && cdist > 1.0)
             {
                 // Tangent direction (perpendicular to center vector)
                 double tx = -cdy / cdist;
                 double ty = cdx / cdist;
-                // Strength scales with distance from center and setting
+                // Strength (and direction, via sign) scales with distance and setting
                 double pertForce = PerturbationBase * pertStr * Math.Min(cdist / (cw * 0.3), 1.0);
                 ax[i] += tx * pertForce;
                 ay[i] += ty * pertForce;

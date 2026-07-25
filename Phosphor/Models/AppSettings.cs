@@ -401,7 +401,7 @@ public class AppSettings
     /// <summary>Central gravity pull toward canvas center (2–30). Default 6.</summary>
     public double GravityCentralGravity { get; set; } = 6.0;
     /// <summary>Continuous orbital perturbation strength (0–10). Keeps bodies swirling after merges. 0 = off, 3 = default.</summary>
-    public double GravityOrbitalPerturbation { get; set; } = 3.0;
+    public double GravityOrbitalPerturbation { get; set; } = -3.0;
     /// <summary>Whether camera roam is enabled for the Gravity visualization.</summary>
     public bool GravityCameraRoam { get; set; } = true;
     /// <summary>Whether to restart the Gravity simulation when a new track starts.</summary>

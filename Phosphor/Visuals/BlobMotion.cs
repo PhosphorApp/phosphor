@@ -647,9 +647,16 @@ public static class BlobMotion
                 double speed = 30 + rng.NextDouble() * 50;
 
                 // Mix of tangential (orbital) + slight outward + random jitter.
-                // tangentialAngle is perpendicular to the radial direction;
-                // randomly CW or CCW for variety.
-                double tangentialAngle = posAngle + (rng.NextDouble() < 0.5 ? Math.PI / 2 : -Math.PI / 2);
+                // tangentialAngle is perpendicular to the radial direction. Bias the
+                // handedness to match the orbital perturbation's sign so the field's
+                // spin is coherent from the very first frame (negative = clockwise).
+                // When perturbation is 0 there's no preferred direction, so pick randomly.
+                // NOTE: in screen space (y down), +90° from the outward angle yields a
+                // clockwise tangential velocity — matching the simulator's perturbation
+                // sign convention (negative perturbation = clockwise).
+                double pert = GravityBlobPattern.OrbitalPerturbation;
+                bool cw = pert != 0 ? pert < 0 : rng.NextDouble() < 0.5;
+                double tangentialAngle = posAngle + (cw ? Math.PI / 2 : -Math.PI / 2);
                 double outwardFraction = 0.15 + rng.NextDouble() * 0.15; // 15-30% outward
                 double jitter = (rng.NextDouble() - 0.5) * 0.4;          // ±20% random twist
 
