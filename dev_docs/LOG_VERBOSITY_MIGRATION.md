@@ -135,6 +135,40 @@ base-class logging shared by several window subclasses (it names the concrete wi
 
 Newest first. Note the date, what was retagged, and anything discovered.
 
+- **2025 — Contract cleanup: `IPluginHost.Log` is now level-only (Option A).** Pre-ship tightening of
+  the public plug-in contract: **removed `IPluginHost.Log(string)`** and made `Log(LogLevel, string)` a
+  **required** interface member (was a default-interface method forwarding to the level-less one). Now
+  every plug-in log call passes a deliberate level — no ambiguous default, one method for third-party
+  authors to learn. Dropped the `Log(string)` impl from `PluginHost` (leveled `Log` + `MapLevel` stay).
+  Retagged **~45 call sites** across all 9 plug-ins by the usual rubric: `catch`/failure/"not found"/
+  "auth failed" → **Warning**; per-action detail and config/milestone summaries → **Debug**. Collapsed
+  the two internal `private void Log(string)` helpers (SiriusXM removed — unused; iHeartRadio converted
+  to leveled + its 4 callers retagged). Converted `YouTubeCategoryStore`'s `Action<string>?` log
+  callback to `Action<LogLevel, string>?`. **Discovery:** ~16 sites passed the `h.Log` method group into
+  plug-in-*internal* seams typed `Action<string>?` (the shared `YtDlpResolver`; `SxmClient`/`SxmProxy`/
+  `SxmCategoryMap`; `IHeartClient`; `DailymotionClient`/`TwitchGqlClient`/`VimeoClient`; Emby/Jellyfin
+  log locals). Those seams are internal implementation detail, **not** the contract, so they keep their
+  `Action<string>?` shape and the call sites adapt with `s => h.Log(LogLevel.Debug, s)` (Debug matches
+  the old level-less mapping). Also caught 2 un-retagged Dailymotion favorites sites → Warning. Build
+  clean; a grep for level-less `_host.Log(...)` callers is now **zero**. Host-internal `DebugLog.Log(
+  string)`/`[GENERIC]` left intact for now (no longer reachable from the contract; deletion can be
+  validated separately).
+- **2025 — Path A completion (Plex + YouTube shims removed).** Converted the two remaining Path-B
+  plug-ins to Path A and **deleted both `DebugLog` shims** (`Phosphor.Plugins.Plex/PlexDebugLog.cs`,
+  `Phosphor.Plugins.YouTube/Engines/DebugLog.cs`) along with their mirrored `LogLevel` enums — the
+  contract enum `Phosphor.Plugin.Abstractions.LogLevel` is now the single source of truth, and these
+  logs finally reach the host `Phosphor_Debug_*.log` and honor the Verbosity dropdown (tagged
+  `[Plugin:{id}]`). **Plex:** `PlexService` gained a `Log` delegate (default no-op) set from
+  `PlexSource.InitializeAsync` to `host.Log(level, $"{category}: {msg}")`; `DiagLog` de-static'd and all
+  20 sites routed through it. **YouTube:** added a `PluginLog` delegate type and threaded it (the doc's
+  **Option 1** — no de-static of the `ProcessGate`) from `YouTubeSource.EngineLog` (which closes over
+  `_host`, so it's a safe no-op during the pre-`InitializeAsync` constructor window) through the
+  factories (`VideoEngineFactory`/`SearchEngineFactory`, now taking a `PluginLog?`), the static
+  `RunYtDlpAsync`/`RunYtDlpStreamingAsync` (optional `PluginLog?` param), and the engines/selectors
+  (`YtDlpVideoEngine`, `YtDlpUpdater`, `YoutubeExplodeVideoEngine`, `YtDlpSearchEngine`, `StreamSelector`).
+  Category is folded into the message since the contract carries only level + message. Build clean; a
+  `DebugLog` grep over both plug-ins is now empty. **This closes the last migration item — the
+  `[GENERIC]` retag and the Path-A follow-up are both done.**
 - **2025 — YouTube Path-B shim (migration effectively complete).** Made the YouTube plug-in's own
   `DebugLog` shim (`Phosphor.Plugins.YouTube/Engines/DebugLog.cs`) level-aware — added the mirrored
   `LogLevel` enum, a `MinimumLevel` gate (default Debug), and `Log(LogLevel, message)` /
@@ -490,13 +524,16 @@ pass rather than done inline.
       default), but the underlying **lack of debounce** on `VolumeChanged` is worth addressing on its own
       (also saves redundant `SetVolume`/VLC calls). Debounce the volume apply + log, or log only on
       drag-end.
-- [ ] **Path-B plug-in logs don't reach the host log file → complete Path A.** The Plex and YouTube
-      shims forward to `Trace.WriteLine` (debugger / trace listeners only), so their now-leveled logs
-      never land in `Phosphor_Debug_*.log` in a normal run, and their `MinimumLevel` isn't synced to the
-      host verbosity setting. The retag made them *consistent and leveled*; it did **not** connect them
-      to the host pipeline. This item captures the "real" fix for when it's worth doing.
+- [x] **Path-B plug-in logs don't reach the host log file → complete Path A.** ✅ **Done.** The Plex
+      and YouTube shims (`PlexDebugLog.cs`, `Engines/DebugLog.cs`) — which forwarded to `Trace.WriteLine`
+      (debugger / trace listeners only) — have been **removed entirely**, along with their mirrored
+      `LogLevel` enums. Both plug-ins now log through the existing contract (`IPluginHost.Log(LogLevel,
+      string)`), so their now-leveled logs land in `Phosphor_Debug_*.log` tagged `[Plugin:{id}]` **and**
+      honor the host verbosity setting — exactly like Emby/SiriusXM. See the Work Log entry "Path A
+      completion" for the mechanics. The design notes below are retained for context on *why* this shape
+      (contract-through-existing-seam, no bespoke logging factory) was chosen.
 
-      **Target design — route Path B through the existing contract (Path A), then delete the shims.**
+      **Delivered design — routed Path B through the existing contract (Path A), then deleted the shims.**
       - The abstraction already exists: `IPluginHost.Log(LogLevel, string)` +
         `Phosphor.Plugin.Abstractions.LogLevel`. `PluginHost.Log` maps the contract level onto the host
         `DebugLog`, so these logs would land in the host file tagged `[Plugin:{id}]` **and** honor the
@@ -551,26 +588,27 @@ Use this section to record anything found during retagging that's worth remember
 logs, dead log lines, categories that should be renamed/merged, hot paths that shouldn't log at all,
 etc.). These aren't part of the level migration but are cheap to capture while we're in the code.
 
-- **Two plug-in logging paths — know which one you're touching.** There is **no per-plug-in log file**;
-  everything ultimately targets the host's single `Phosphor_Debug_yyyyMMdd.log` (in
-  `Phosphor/bin/<config>/net8.0-windows/logs/`) — *if* it reaches the host at all.
-  - **Path A — via `IPluginHost.Log` (reaches the host file).** Most plug-ins (Emby, Jellyfin,
-    SiriusXM, iHeartRadio, …) log through `_host.Log(...)`. `PluginHost.Log` routes to the host
-    `DebugLog` as `DebugLog.Log($"Plugin:{instanceId}", msg)` — hence the `[Plugin:emby]` /
-    `[Plugin:siriusxm]` tags in the log file. **`IPluginHost` now exposes `Log(LogLevel, string)`**
-    (contract enum `Phosphor.Plugin.Abstractions.LogLevel`; `PluginHost` maps it onto the host
-    logger), so these retags happen **at the call site inside the plug-in** by passing a level — no
-    plug-in shim needed. Untagged `Log(string)` calls still default to Debug-equivalent.
-  - **Path B — via an internal `DebugLog` shim → `Trace.WriteLine` (does NOT reach any file).** Only
-    **two** projects do this: `Phosphor.Plugins.Plex/PlexDebugLog.cs` and
-    `Phosphor.Plugins.YouTube/Engines/DebugLog.cs`. These exist because relocated in-box code kept
-    calling a bare `DebugLog.Log(...)`. Their output goes to the **VS Output window / trace listeners**
-    only — it vanishes in a normal run. Retag level support in *that shim*. (Correction to an earlier
-    note: it is NOT true that every extracted plug-in has such a shim — most use Path A.)
-- **Consequence for Plex specifically:** the Plex `DiagLog` lines we retagged go to `Trace.WriteLine`,
-  so they never hit the host log file in a normal run anyway. The retag is still correct for consistency
-  and for debugger-output readability, but don't expect Plex lines in `Phosphor_Debug_*.log` from the
-  current build.
+- **Plug-in logging — one path (Path A).** There is **no per-plug-in log file**; everything targets the
+  host's single `Phosphor_Debug_yyyyMMdd.log` (in `Phosphor/bin/<config>/net8.0-windows/logs/`).
+  **All** plug-ins (Emby, Jellyfin, SiriusXM, iHeartRadio, Plex, YouTube, …) now log through
+  `_host.Log(...)`. `PluginHost.Log` routes to the host `DebugLog` as
+  `DebugLog.Log($"Plugin:{instanceId}", msg)` — hence the `[Plugin:emby]` / `[Plugin:plex]` tags in the
+  log file. As of the contract cleanup, `IPluginHost` exposes **only** `Log(LogLevel, string)` (contract
+  enum `Phosphor.Plugin.Abstractions.LogLevel`; `PluginHost` maps it onto the host logger) — the
+  level-less `Log(string)` overload was **removed**, so leveling is mandatory at every call site. Plug-in
+  authors have exactly one logging method.
+  - **Internal seams keep a plain `Action<string>?`.** Several plug-ins thread a logger into their own
+    internal clients/resolvers (the shared `YtDlpResolver`, `SxmClient`, `IHeartClient`, etc.) typed
+    `Action<string>?`. Those are implementation detail, not the contract; call sites adapt the host with
+    `s => h.Log(LogLevel.Debug, s)`. Convert a seam to a leveled delegate only if it needs to emit more
+    than one level.
+  - **Historical note — the old "Path B" shims are gone.** Plex and YouTube used to log through an
+    internal `DebugLog` shim → `Trace.WriteLine` (debugger / trace listeners only, never a file),
+    because relocated in-box code kept calling a bare `DebugLog.Log(...)`. Those two shims
+    (`PlexDebugLog.cs`, `Engines/DebugLog.cs`) and their mirrored `LogLevel` enums were **removed** when
+    both plug-ins were converted to Path A (see Work Log "Path A completion"). The YouTube engines
+    receive a `PluginLog` delegate threaded from `YouTubeSource` (the static `ProcessGate` run methods
+    take an optional `PluginLog?`); `PlexService` gets a `Log` delegate set in `PlexSource`.
 - **Volume samples can be dominated by historical logging.** The Plex ~75% share came from a prior dev
   cycle when Plex was in-box on the host logger; it's meaningless for current prioritization. Always
   confirm a category's logging still exists in current source (and reaches the host log) before

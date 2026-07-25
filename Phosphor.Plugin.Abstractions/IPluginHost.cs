@@ -7,16 +7,14 @@ namespace Phosphor.Plugin.Abstractions;
 /// </summary>
 public interface IPluginHost
 {
-    /// <summary>Structured logging routed into the host's diagnostics log.</summary>
-    void Log(string message);
-
     /// <summary>
     /// Structured logging at an explicit <see cref="LogLevel"/> so plug-in logs participate in the
-    /// host's verbosity filtering. Entries below the host's minimum level are dropped. The default
-    /// implementation forwards to <see cref="Log(string)"/> (which logs at the host's Debug-equivalent
-    /// level) so existing hosts and call sites keep working unchanged.
+    /// host's verbosity filtering. Entries below the host's minimum level are dropped, and each line
+    /// is routed into the host's diagnostics log tagged <c>[Plugin:{id}]</c>. Every plug-in log call
+    /// passes a deliberate level (there is no level-less overload) so nothing logs at an ambiguous
+    /// default — see dev_docs/LOG_VERBOSITY_MIGRATION.md.
     /// </summary>
-    void Log(LogLevel level, string message) => Log(message);
+    void Log(LogLevel level, string message);
 
     /// <summary>
     /// A shared <see cref="HttpClient"/> for the plug-in to use. Supplied by the host so

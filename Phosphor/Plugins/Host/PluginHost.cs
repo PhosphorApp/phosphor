@@ -32,8 +32,6 @@ public sealed class PluginHost : IPluginHost
 
     public string InstanceCacheDirectory { get; }
 
-    public void Log(string message) => DebugLog.Log($"Plugin:{_instanceId}", message);
-
     public void Log(Phosphor.Plugin.Abstractions.LogLevel level, string message) =>
         DebugLog.Log(MapLevel(level), $"Plugin:{_instanceId}", message);
 
