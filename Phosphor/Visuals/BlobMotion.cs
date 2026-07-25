@@ -75,6 +75,15 @@ public class BlobState
     public System.Windows.Media.Color ColorFadeTo { get; set; }
     /// <summary>Gravity pattern: seconds remaining on a collision pulse (scale bump), 0 = none.</summary>
     public double CollisionPulseRemaining { get; set; }
+    /// <summary>Gravity pattern: authoritative hue (0-360) for slow hue drift. Kept as a double so
+    /// drift never round-trips through quantized RGB (which slowly darkened long-lived blobs).</summary>
+    public double DriftHue { get; set; }
+    /// <summary>Gravity pattern: authoritative saturation (0-1) paired with <see cref="DriftHue"/>.</summary>
+    public double DriftSat { get; set; }
+    /// <summary>Gravity pattern: authoritative value/brightness (0-1) paired with <see cref="DriftHue"/>.</summary>
+    public double DriftVal { get; set; }
+    /// <summary>Gravity pattern: whether the drift HSV fields have been seeded from a real color.</summary>
+    public bool DriftInitialized { get; set; }
 }
 
 /// <summary>

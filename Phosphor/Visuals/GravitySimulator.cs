@@ -468,7 +468,10 @@ public sealed class GravitySimulator : IDisposable
 
     /// <summary>
     /// Rotates each body's own color hue by a tiny amount per frame for a slow,
-    /// barely-perceptible color morph. Preserves each stop's alpha and skips bodies
+    /// barely-perceptible color morph. Uses authoritative HSV stored on the body's state
+    /// (seeded once from its current color) so drift never round-trips through quantized
+    /// RGB — which previously caused a one-way brightness decay that slowly darkened
+    /// long-lived blobs to near-black. Preserves each stop's alpha and skips bodies
     /// with an active color fade so merge/spawn transitions aren't disturbed.
     /// </summary>
     private void UpdateHueDrift(double dt, int count)
@@ -476,16 +479,33 @@ public sealed class GravitySimulator : IDisposable
         if (HueDriftDegreesPerSec <= 0) return;
 
         double deltaHue = HueDriftDegreesPerSec * dt;
-        for (int i = 0; i < count && i < _brushes.Count; i++)
+        for (int i = 0; i < count && i < _brushes.Count && i < _states.Count; i++)
         {
-            // Don't fight an in-progress merge/spawn fade.
-            if (i < _states.Count && _states[i].ColorFadeRemaining > 0) continue;
+            var st = _states[i];
 
-            Color c = _brushes[i].Color;
-            var (h, s, v) = RgbToHsv(c);
-            h = (h + deltaHue) % 360.0;
-            if (h < 0) h += 360.0;
-            RecolorGradient(i, HsvToRgb(h, s, v));
+            // Don't fight an in-progress merge/spawn fade.
+            if (st.ColorFadeRemaining > 0)
+            {
+                // A fade is authoritative; re-seed from its current color when it ends.
+                st.DriftInitialized = false;
+                continue;
+            }
+
+            // Seed authoritative HSV from the current color exactly once.
+            if (!st.DriftInitialized)
+            {
+                var (h0, s0, v0) = RgbToHsv(_brushes[i].Color);
+                st.DriftHue = h0;
+                st.DriftSat = s0;
+                st.DriftVal = v0;
+                st.DriftInitialized = true;
+            }
+
+            st.DriftHue += deltaHue;
+            if (st.DriftHue >= 360.0) st.DriftHue -= 360.0;
+            else if (st.DriftHue < 0) st.DriftHue += 360.0;
+
+            RecolorGradient(i, HsvToRgb(st.DriftHue, st.DriftSat, st.DriftVal));
         }
     }
 
@@ -1198,6 +1218,7 @@ public sealed class GravitySimulator : IDisposable
         if (MergeColorFadeSec <= 0 || dst >= _states.Count)
         {
             RecolorGradient(dst, blended);
+            if (dst < _states.Count) _states[dst].DriftInitialized = false;
             return;
         }
 
