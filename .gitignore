@@ -49,3 +49,8 @@ _spike_*/
 
 # Draft app license — kept local only until finalized
 LICENSE.draft.txt
+
+# Stray empty files the IDE/tooling occasionally recreates at old edit paths
+# (the real sources live at Phosphor/Caching/PrefetchCache.cs and Phosphor/Emoji/EmojiRenderer.cs)
+Phosphor/Services/PrefetchCache.cs
+Phosphor/Visuals/EmojiRenderer.cs
