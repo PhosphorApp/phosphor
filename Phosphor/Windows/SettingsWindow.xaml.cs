@@ -2036,7 +2036,7 @@ public partial class SettingsWindow : JukeboxWindow
         }
         catch (Exception ex)
         {
-            DebugLog.Log("Pinup", $"Failed to load playlists: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "Pinup", $"Failed to load playlists: {ex.Message}");
             PinupPlaylistStatus.Text = $"Could not read playlists: {ex.Message}";
         }
     }
@@ -2061,7 +2061,7 @@ public partial class SettingsWindow : JukeboxWindow
                 if (t.IsFaulted)
                 {
                     var msg = t.Exception?.GetBaseException().Message ?? "unknown error";
-                    DebugLog.Log("Pinup", $"BuildGameList failed: {msg}");
+                    DebugLog.Log(LogLevel.Warning, "Pinup", $"BuildGameList failed: {msg}");
                     PinupPlaylistStatus.Text = $"Could not read games: {msg}";
                     return;
                 }
@@ -3859,7 +3859,7 @@ public partial class SettingsWindow : JukeboxWindow
         }
         catch (Exception ex)
         {
-            DebugLog.Log("Settings", $"Apply_Click failed: {ex}");
+            DebugLog.Log(LogLevel.Warning, "Settings", $"Apply_Click failed: {ex}");
         }
     }
 
@@ -3872,7 +3872,7 @@ public partial class SettingsWindow : JukeboxWindow
         }
         catch (Exception ex)
         {
-            DebugLog.Log("Settings", $"Save_Click ApplySettings failed: {ex}");
+            DebugLog.Log(LogLevel.Warning, "Settings", $"Save_Click ApplySettings failed: {ex}");
         }
 
         try
@@ -3881,7 +3881,7 @@ public partial class SettingsWindow : JukeboxWindow
         }
         catch (Exception ex)
         {
-            DebugLog.Log("Settings", $"Save_Click Close failed: {ex}");
+            DebugLog.Log(LogLevel.Warning, "Settings", $"Save_Click Close failed: {ex}");
         }
     }
 
@@ -4324,7 +4324,7 @@ public partial class SettingsWindow : JukeboxWindow
         }
         catch (Exception ex)
         {
-            DebugLog.Log("Settings", $"SettingsApplied handler failed: {ex}");
+            DebugLog.Log(LogLevel.Warning, "Settings", $"SettingsApplied handler failed: {ex}");
         }
 
         // Update originals so Cancel won't revert applied changes

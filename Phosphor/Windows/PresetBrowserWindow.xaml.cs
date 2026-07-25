@@ -825,16 +825,16 @@ public partial class PresetBrowserWindow : Window
 
     private async void BtnUnfavoriteFolder_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Log("PresetBrowser", $"BtnUnfavoriteFolder_Click fired, sender type={sender?.GetType().Name}");
+        DebugLog.Log(LogLevel.Debug, "PresetBrowser", $"BtnUnfavoriteFolder_Click fired, sender type={sender?.GetType().Name}");
         if (sender is not Button btn || btn.Tag is not string folderPath)
         {
-            DebugLog.Log("PresetBrowser", $"  Early return: sender is not Button or Tag is not string (Tag={((sender as Button)?.Tag)})");
+            DebugLog.Log(LogLevel.Trace, "PresetBrowser", $"  Early return: sender is not Button or Tag is not string (Tag={((sender as Button)?.Tag)})");
             return;
         }
-        DebugLog.Log("PresetBrowser", $"  folderPath={folderPath}");
+        DebugLog.Log(LogLevel.Trace, "PresetBrowser", $"  folderPath={folderPath}");
         if (!Directory.Exists(folderPath))
         {
-            DebugLog.Log("PresetBrowser", $"  Early return: folder does not exist");
+            DebugLog.Log(LogLevel.Trace, "PresetBrowser", $"  Early return: folder does not exist");
             return;
         }
 
@@ -845,12 +845,12 @@ public partial class PresetBrowserWindow : Window
             await Task.Run(() =>
             {
                 var files = Directory.GetFiles(folderPath, "*.milk", SearchOption.AllDirectories);
-                DebugLog.Log("PresetBrowser", $"  Found {files.Length} .milk files to unfavorite");
+                DebugLog.Log(LogLevel.Trace, "PresetBrowser", $"  Found {files.Length} .milk files to unfavorite");
                 foreach (var file in files)
                 {
                     var relativePath = Path.GetRelativePath(_favoritesPath, file);
                     var destPath = Path.Combine(_presetPath, relativePath);
-                    DebugLog.Log("PresetBrowser", $"  Moving: {file} -> {destPath}");
+                    DebugLog.Log(LogLevel.Trace, "PresetBrowser", $"  Moving: {file} -> {destPath}");
                     MoveOrDeleteSource(file, destPath);
                 }
                 CleanEmptyDirectories(_favoritesPath);

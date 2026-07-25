@@ -44,7 +44,7 @@ public class PrefetchCache
             if (_filePath == null || !File.Exists(_filePath)) return null;
 
             var result = new CachedVideo(_filePath, _resolution ?? "");
-            DebugLog.Log("PrefetchCache", $"Consumed: {videoId} ({_resolution})");
+            DebugLog.Log(LogLevel.Trace, "PrefetchCache", $"Consumed: {videoId} ({_resolution})");
 
             _cachedVideoId = null;
             _filePath = null;
@@ -111,7 +111,7 @@ public class PrefetchCache
 
             if (!muxed)
             {
-                DebugLog.Log("PrefetchCache", $"Mux failed for {videoId}");
+                DebugLog.Log(LogLevel.Warning, "PrefetchCache", $"Mux failed for {videoId}");
                 try { File.Delete(muxedFile); } catch { }
                 return;
             }
@@ -125,12 +125,12 @@ public class PrefetchCache
                 _resolution = resolution;
             }
 
-            DebugLog.Log("PrefetchCache", $"Ready: {videoId} ({resolution})");
+            DebugLog.Log(LogLevel.Trace, "PrefetchCache", $"Ready: {videoId} ({resolution})");
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            DebugLog.Log("PrefetchCache", $"Failed for {videoId}: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "PrefetchCache", $"Failed for {videoId}: {ex.Message}");
             CleanFiles(videoId);
         }
     }
@@ -224,7 +224,7 @@ public class PrefetchCache
 
             if (proc.ExitCode != 0)
             {
-                DebugLog.Log("PrefetchCache", $"ffmpeg exited with code {proc.ExitCode}: {stderr[..Math.Min(stderr.Length, 500)]}");
+                DebugLog.Log(LogLevel.Warning, "PrefetchCache", $"ffmpeg exited with code {proc.ExitCode}: {stderr[..Math.Min(stderr.Length, 500)]}");
                 try { File.Delete(outputPath); } catch { }
                 return false;
             }
@@ -233,7 +233,7 @@ public class PrefetchCache
         }
         catch (Exception ex)
         {
-            DebugLog.Log("PrefetchCache", $"ffmpeg mux failed: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "PrefetchCache", $"ffmpeg mux failed: {ex.Message}");
             try { File.Delete(outputPath); } catch { }
             return false;
         }

@@ -135,7 +135,15 @@ base-class logging shared by several window subclasses (it names the concrete wi
 
 Newest first. Note the date, what was retagged, and anything discovered.
 
-- **2025 — GaplessAudioPlayer + DmdWindow pass.** **GaplessAudioPlayer** (`GaplessAudioPlayer.cs`,
+- **2025 — PresetBrowser + SettingsWindow + PrefetchCache pass.** **PresetBrowserWindow** (6 sites):
+  the `BtnUnfavoriteFolder_Click` entry → **Debug**, its indented per-step detail (early returns,
+  folderPath, file count, per-file move) → **Trace**. **SettingsWindow** (6 sites): all failure sites
+  (`Pinup` playlist-load / BuildGameList, `Settings` Apply/Save/Close/SettingsApplied handler
+  failures) → **Warning**. **PrefetchCache** (`Caching/PrefetchCache.cs`, 6 sites): per-item
+  consumed/ready → **Trace**; mux/ffmpeg/failed sites → **Warning**. **Discovery:** there are two
+  `PrefetchCache.cs` files (`Caching/` and `Services/`) — the active one is `Caching/`; `Services/`
+  has no log calls. Dropped the unmigrated caller count ~77 → ~59.
+- **2025 — GaplessAudioPlayer + DmdWindow pass.**
   12 sites, all `GaplessPCM`): per-track lifecycle milestones (Play, primed-next, decoder
   switch/start) → **Debug**; per-callback / per-buffer internals (leading/trailing silence trim,
   `cb#` peak dumps, flush/drain/EndReached queue bookkeeping) → **Trace**. **DmdWindow**
@@ -246,6 +254,7 @@ $hits | Group-Object Filename | Sort-Object Count -Descending | Select-Object Co
 ```
 
 Snapshots (newest first):
+- **~59** after PresetBrowser (6 → 0) + SettingsWindow (6 → 0) + PrefetchCache (6 → 0).
 - **~77** after GaplessAudioPlayer (12 → 0) + DmdWindow (9 → 0).
 - **~98** after BackglassWindow (BackglassWindow.xaml.cs 16 → 0).
 - **113** after VideoCache + window monitor notifications (VideoCache 16 → 0, JukeboxWindow 2 → 0).
@@ -308,7 +317,10 @@ file. Retagging the top few reclaims most of the log's readability.
        PresetBrowser (6), FavoritesIndex (4), etc. Fold into a "misc sweep."
 
 ### Done
-- [x] **GaplessAudioPlayer** (12 sites) + **DmdWindow** (9 sites) — gapless per-track milestones →
+- [x] **PresetBrowser + SettingsWindow + PrefetchCache** (6 sites each) — PresetBrowser click detail →
+      Debug/Trace; SettingsWindow failures → Warning; PrefetchCache per-item → Trace, mux/ffmpeg
+      failures → Warning.
+- [x] **GaplessAudioPlayer** (12 sites) + **DmdWindow** (9 sites) —
       Debug, per-buffer/callback internals → Trace; DmdWindow ScrubBar → Trace, Settings/DOF/Emoji
       failures → Warning.
 - [x] **BackglassWindow** (`BackglassWindow.xaml.cs`, 16 sites) —
