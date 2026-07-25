@@ -490,13 +490,58 @@ pass rather than done inline.
       default), but the underlying **lack of debounce** on `VolumeChanged` is worth addressing on its own
       (also saves redundant `SetVolume`/VLC calls). Debounce the volume apply + log, or log only on
       drag-end.
-- [ ] **Path-B plug-in logs don't reach the host log file.** The Plex and YouTube shims forward to
-      `Trace.WriteLine` (debugger / trace listeners only), so their now-leveled logs never land in
-      `Phosphor_Debug_*.log` in a normal run, and their `MinimumLevel` isn't synced to the host
-      verbosity setting. Optional future work: route these through `IPluginHost.Log(LogLevel, string)`
-      (contract already supports it) so Path-B participates in host-file logging + verbosity filtering.
-      Requires plumbing a host reference into the currently-static engines/factories — a real refactor,
-      not a retag, hence parked here.
+- [ ] **Path-B plug-in logs don't reach the host log file → complete Path A.** The Plex and YouTube
+      shims forward to `Trace.WriteLine` (debugger / trace listeners only), so their now-leveled logs
+      never land in `Phosphor_Debug_*.log` in a normal run, and their `MinimumLevel` isn't synced to the
+      host verbosity setting. The retag made them *consistent and leveled*; it did **not** connect them
+      to the host pipeline. This item captures the "real" fix for when it's worth doing.
+
+      **Target design — route Path B through the existing contract (Path A), then delete the shims.**
+      - The abstraction already exists: `IPluginHost.Log(LogLevel, string)` +
+        `Phosphor.Plugin.Abstractions.LogLevel`. `PluginHost.Log` maps the contract level onto the host
+        `DebugLog`, so these logs would land in the host file tagged `[Plugin:{id}]` **and** honor the
+        verbosity dropdown — exactly like Emby/SiriusXM (Path A) do today.
+      - End state: **remove** `Phosphor.Plugins.YouTube/Engines/DebugLog.cs` and
+        `Phosphor.Plugins.Plex/PlexDebugLog.cs` entirely (and their mirrored `LogLevel` enums). One
+        source of truth for the level type, no cross-boundary duplication that can drift.
+
+      **Why NOT a bespoke logging abstraction (factory / `ILogger` / provider).** Considered and
+      rejected as overkill for Phosphor:
+      - `IPluginHost` **is** the seam already; adding an `ILogger`/`LoggerFactory` layers a second
+        abstraction over a boundary that has one.
+      - A factory/provider earns its keep with *many* sinks or *runtime-selected* sinks. Phosphor has
+        one real sink (host `DebugLog` → file) + a `Trace` fallback — one-and-a-fraction implementations,
+        never runtime-chosen. Litmus test: *how many log implementations, any runtime-selected?* → "one,
+        no" ⇒ interface-through-existing-contract, not a factory.
+      - If structured/multi-sink logging is ever genuinely wanted, adopt `Microsoft.Extensions.Logging`
+        at the host and expose an `ILogger` via `IPluginHost` — don't hand-roll one. Keep any shared
+        type minimal so the **.NET 4.8** DofBridge side stays compatible.
+
+      **The blocker (why it's a refactor, not a retag).** The log-heavy yt-dlp methods
+      (`RunYtDlpAsync` / `RunYtDlpStreamingAsync`) and the engine/search factories are **`static`**
+      (they guard the shared `ProcessGate` singleton), so they have no `IPluginHost` to call. Options,
+      roughly increasing in blast radius:
+      1. Pass a lightweight logging delegate (`Action<LogLevel,string,string>`) down into the static
+         methods from the instance that *does* hold `_host` (`YouTubeSource`). Smallest change; keeps the
+         static process gate intact.
+      2. Capture `_host` in an engine field and de-static the run methods (then re-home the shared gate).
+         Cleaner call sites, larger refactor of the process-gating design.
+      Also mind the **lifecycle window**: engines are built in the `YouTubeSource` *constructor*, before
+      `InitializeAsync(host)` runs — so any Path-A logging must null-guard or defer until the host is set.
+
+      **Performance: neutral-to-favorable — do NOT let perf drive the decision.** Logging cadence here is
+      user-action frequency (per resolve/download/update), not a hot loop. Path A adds only a virtual
+      dispatch + a tiny enum `MapLevel` switch, dwarfed by the call-site string interpolation that runs
+      either way. If anything Path A is *faster* on the calling thread: the host `DebugLog` uses an async
+      enqueue, whereas `Trace.WriteLine` takes a global lock and writes **synchronously** to every
+      attached listener. The only real cost is refactor mechanics (don't capture closures in an inner
+      loop / don't change `ProcessGate` serialization) — a correctness concern, not an inherent Path-A
+      cost. Go/no-go should rest on refactor cost vs. the value of host-file routing, not performance.
+
+      **Suggested trigger.** Do this when (a) someone actually needs YouTube/Plex engine logs in a
+      shipped log file (e.g. diagnosing a tester's yt-dlp failure from their `Phosphor_Debug_*.log`), or
+      (b) a refactor already touches engine construction / the process gate — so the de-static work isn't
+      paid for by logging alone. Until then the leveled shim is a fine resting state.
 
 ---
 
