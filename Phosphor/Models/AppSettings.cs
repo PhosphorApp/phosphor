@@ -412,6 +412,10 @@ public class AppSettings
     public bool GravityShowDiagnostics { get; set; }
     /// <summary>Supernova mass threshold as diameter in pixels (60–400). When a merged body reaches this size it explodes. 0 = disabled. Default 150.</summary>
     public double GravitySupernovaMass { get; set; } = 150.0;
+    /// <summary>Black hole size cap as a multiple of the supernova diameter (1.1–2.0). When a blob hits
+    /// the supernova threshold it has a 50/50 chance to instead collapse into a black hole that grows
+    /// to this multiple before erupting as a quasar. Default 1.6.</summary>
+    public double GravityBlackHoleMaxSizeFactor { get; set; } = 1.6;
     /// <summary>Universe density (0=Low, 1=Medium, 2=High). Controls how aggressively new bodies are injected. Default 1 (Medium).</summary>
     public int GravityDensity { get; set; } = 1;
 

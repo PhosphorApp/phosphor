@@ -960,6 +960,7 @@ public partial class DmdWindow : JukeboxWindow
         GravityBlobPattern.BlobMultiplier = Math.Clamp(settings.GravityBlobMultiplier, 0.5, 10.0);
         GravityBlobPattern.ShowDiagnostics = settings.GravityShowDiagnostics;
         GravityBlobPattern.SupernovaMass = settings.GravitySupernovaMass;
+        GravityBlobPattern.BlackHoleMaxSizeFactor = Math.Clamp(settings.GravityBlackHoleMaxSizeFactor, 1.1, 2.0);
         GravityBlobPattern.Density = Math.Clamp(settings.GravityDensity, 0, 2);
         ClockBlobPattern.ClockMode = settings.ClockMode;
         ClockBlobPattern.Brightness = Math.Clamp(settings.ClockBrightness, 0.05, 1.0);
@@ -2565,6 +2566,7 @@ public partial class DmdWindow : JukeboxWindow
         GravityBlobPattern.BlobMultiplier = Math.Clamp(_appSettings.GravityBlobMultiplier, 0.5, 10.0);
         GravityBlobPattern.ShowDiagnostics = _appSettings.GravityShowDiagnostics;
         GravityBlobPattern.SupernovaMass = _appSettings.GravitySupernovaMass;
+        GravityBlobPattern.BlackHoleMaxSizeFactor = Math.Clamp(_appSettings.GravityBlackHoleMaxSizeFactor, 1.1, 2.0);
         GravityBlobPattern.Density = Math.Clamp(_appSettings.GravityDensity, 0, 2);
         ClockBlobPattern.ClockMode = _appSettings.ClockMode;
         ClockBlobPattern.Brightness = Math.Clamp(_appSettings.ClockBrightness, 0.05, 1.0);

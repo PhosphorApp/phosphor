@@ -39,6 +39,14 @@ public sealed class GravitySimulator : IDisposable
     private const double DiagDriftRadiusY = 20.0;       // vertical drift radius
     private const double DiagDriftPeriodSec = 120.0;    // seconds for one full elliptical loop
 
+    // Black hole lifecycle
+    private const double BlackHoleMinLifeSec = 12.0;    // minimum time before a capped hole enters the quasar phase
+    private const double BlackHoleMaxLifeSec = 30.0;    // hard cap on black-hole lifetime regardless of size
+    private const double QuasarDurationSec = 6.0;       // length of the quasar (polar jet + fade) end-state
+    private const double QuasarJetIntervalSec = 0.25;   // time between jet ejections during the quasar phase
+    private const double SpaghettiRadiusFactor = 3.0;   // lensing/stretch reach as a multiple of black-hole radius
+    private const double SpaghettiMaxStretch = 2.2;     // max radial elongation applied to an infalling blob
+
     private readonly Canvas _canvas;
     private readonly List<FrameworkElement> _blobs;
     private readonly List<BlobState> _states;
@@ -394,8 +402,8 @@ public sealed class GravitySimulator : IDisposable
                     s.GravityImmuneFrom = null;
             }
 
-            // Animated color fade after a merge
-            if (s.ColorFadeRemaining > 0)
+            // Animated color fade after a merge (black holes keep their black gradient)
+            if (s.ColorFadeRemaining > 0 && !s.IsBlackHole)
             {
                 s.ColorFadeRemaining = Math.Max(0, s.ColorFadeRemaining - dt);
                 double t = s.ColorFadeDuration > 0
@@ -427,6 +435,17 @@ public sealed class GravitySimulator : IDisposable
                     pst.ScaleY = scale;
                 }
             }
+
+            // Black hole lifecycle (growth cap, aging, quasar end-state)
+            if (s.IsBlackHole)
+                UpdateBlackHole(i, dt);
+        }
+
+        // --- Process deferred removals (e.g. black holes that finished their quasar) ---
+        for (int i = _states.Count - 1; i >= 0; i--)
+        {
+            if (i < _states.Count && _states[i].PendingRemoval)
+                RemoveBody(i);
         }
 
         // --- Collision detection: merge or split ---
@@ -464,6 +483,81 @@ public sealed class GravitySimulator : IDisposable
 
         // --- Very slow global hue drift (owns color across playfield + backglass) ---
         UpdateHueDrift(dt, count);
+
+        // --- Spaghettification: stretch blobs falling toward any black hole ---
+        UpdateSpaghettification();
+    }
+
+    /// <summary>
+    /// Faux gravitational "spaghettification": blobs within a black hole's lensing radius are
+    /// stretched radially (elongated toward the hole, squeezed perpendicular) with the effect
+    /// ramping up the closer they get. Applied via each blob's RenderTransform; cleared when a
+    /// blob leaves the radius or when no black holes exist. Skips black holes themselves and
+    /// blobs currently running a collision pulse (which owns the RenderTransform).
+    /// </summary>
+    private void UpdateSpaghettification()
+    {
+        int count = Math.Min(_blobs.Count, _states.Count);
+
+        // Collect active black holes (usually 0-2). Cheap linear scan.
+        Span<int> holes = stackalloc int[Math.Min(count, 8)];
+        int holeCount = 0;
+        for (int i = 0; i < count && holeCount < holes.Length; i++)
+        {
+            if (_states[i].IsBlackHole && !_states[i].QuasarActive)
+                holes[holeCount++] = i;
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            var s = _states[i];
+            if (s.IsBlackHole) continue;
+            // Don't fight the brief collision-pulse scale transform.
+            if (s.CollisionPulseRemaining > 0) continue;
+
+            double bestStretch = 1.0;
+            double dirX = 0, dirY = 0;
+
+            for (int h = 0; h < holeCount; h++)
+            {
+                int hi = holes[h];
+                double reach = _radii[hi] * SpaghettiRadiusFactor;
+                double dx = _posX[i] - _posX[hi];
+                double dy = _posY[i] - _posY[hi];
+                double dist = Math.Sqrt(dx * dx + dy * dy);
+                if (dist >= reach || dist < 0.01) continue;
+
+                // Ramp 0 (at reach) → 1 (at the event horizon), eased.
+                double horizon = _radii[hi];
+                double t = 1.0 - Math.Clamp((dist - horizon) / Math.Max(reach - horizon, 1.0), 0.0, 1.0);
+                double stretch = 1.0 + (SpaghettiMaxStretch - 1.0) * (t * t);
+                if (stretch > bestStretch)
+                {
+                    bestStretch = stretch;
+                    dirX = dx / dist;
+                    dirY = dy / dist;
+                }
+            }
+
+            if (bestStretch > 1.001)
+            {
+                // Elongate along the radial (toward hole) axis, squeeze perpendicular to
+                // conserve rough area. Orient the scale using a rotation to the radial angle.
+                double angle = Math.Atan2(dirY, dirX) * 180.0 / Math.PI;
+                double inv = 1.0 / Math.Sqrt(bestStretch);
+                var group = new TransformGroup();
+                group.Children.Add(new ScaleTransform(bestStretch, inv));
+                group.Children.Add(new RotateTransform(angle));
+                _blobs[i].RenderTransform = group;
+                s.IsSpaghettified = true;
+            }
+            else if (s.IsSpaghettified)
+            {
+                // Left the lensing zone — clear the stretch.
+                _blobs[i].RenderTransform = null;
+                s.IsSpaghettified = false;
+            }
+        }
     }
 
     /// <summary>
@@ -490,6 +584,9 @@ public sealed class GravitySimulator : IDisposable
                 st.DriftInitialized = false;
                 continue;
             }
+
+            // Black holes own their (black) appearance — never hue-drift them.
+            if (st.IsBlackHole) continue;
 
             // Seed authoritative HSV from the current color exactly once.
             if (!st.DriftInitialized)
@@ -730,6 +827,21 @@ public sealed class GravitySimulator : IDisposable
                 double mj = MassOf(_blobs[j]);
                 double massRatio = Math.Max(mi, mj) / Math.Max(Math.Min(mi, mj), 0.01);
 
+                // Black holes never split, pierce, or get absorbed — they always merge
+                // and always survive. If the black hole is body i, merge into it (i as
+                // survivor); otherwise j already survives.
+                bool iIsHole = _states[i].IsBlackHole;
+                bool jIsHole = _states[j].IsBlackHole;
+                if (iIsHole || jIsHole)
+                {
+                    collided[i] = true; collided[j] = true;
+                    if (iIsHole)
+                        MergeBodies(j, i); // i survives (the black hole)
+                    else
+                        MergeBodies(i, j); // j survives (the black hole)
+                    break;
+                }
+
                 // Immunity suppresses pierce and split but still allows merge and bounce.
                 // This prevents the feedback loop where pierce → immunity → gravity return → pierce again.
                 bool shouldPierce = !eitherImmune
@@ -765,11 +877,17 @@ public sealed class GravitySimulator : IDisposable
                     if (CollisionPulseScale > 0 && j < _states.Count)
                         _states[j].CollisionPulseRemaining = CollisionPulseSec;
 
-                    // Check if the survivor exceeds the supernova threshold
+                    // Check if the survivor exceeds the supernova threshold. If so, it
+                    // either explodes (supernova) or collapses into a black hole (50/50).
+                    // A body that is already a black hole never re-triggers this.
                     double supernovaThreshold = GravityBlobPattern.SupernovaMass;
-                    if (supernovaThreshold > 0 && j < _blobs.Count && _blobs[j].Width >= supernovaThreshold)
+                    if (supernovaThreshold > 0 && j < _blobs.Count && j < _states.Count
+                        && !_states[j].IsBlackHole && _blobs[j].Width >= supernovaThreshold)
                     {
-                        SupernovaExplode(j, cw, ch);
+                        if (_rng.NextDouble() < 0.5)
+                            BecomeBlackHole(j);
+                        else
+                            SupernovaExplode(j, cw, ch);
                     }
                     break;
                 }
@@ -814,6 +932,9 @@ public sealed class GravitySimulator : IDisposable
         // Area-preserving new radius — animate toward target size instead of snapping
         double newRadius = Math.Sqrt(r1 * r1 + r2 * r2);
         double newSize = newRadius * 2.0;
+        // A black hole grows but never past its size cap (keeps the event horizon bounded).
+        if (_states[j].IsBlackHole && _states[j].BlackHoleMaxSize > 0)
+            newSize = Math.Min(newSize, _states[j].BlackHoleMaxSize);
         _states[j].MergeTargetSize = newSize;
         _states[j].BaseSize = newSize;
 
@@ -1118,6 +1239,183 @@ public sealed class GravitySimulator : IDisposable
     }
 
     /// <summary>
+    /// Converts an oversized body into a black hole in place: an opaque black disc with a
+    /// soft fuzzy edge, a faint accretion glow rim, and a blur. It keeps absorbing bodies
+    /// (always the survivor, immune to split/pierce) and grows until it reaches its size cap
+    /// (supernova diameter × <see cref="GravityBlobPattern.BlackHoleMaxSizeFactor"/>), then
+    /// enters the quasar phase.
+    /// </summary>
+    private void BecomeBlackHole(int idx)
+    {
+        if (idx < 0 || idx >= _blobs.Count || idx >= _states.Count) return;
+
+        var st = _states[idx];
+        st.IsBlackHole = true;
+        st.BlackHoleAgeSec = 0;
+        // Cancel any color fade started by the merge that triggered this collapse —
+        // otherwise the fade tick would keep recoloring the black gradient (making it
+        // show the blended merge color instead of black).
+        st.ColorFadeRemaining = 0;
+        st.ColorFadeDuration = 0;
+        // Cap = supernova diameter × factor (1.1–2.0), never smaller than the current size.
+        double factor = Math.Clamp(GravityBlobPattern.BlackHoleMaxSizeFactor, 1.1, 2.0);
+        double capFromFactor = GravityBlobPattern.SupernovaMass * factor;
+        st.BlackHoleMaxSize = Math.Max(_blobs[idx].Width, capFromFactor);
+        st.QuasarActive = false;
+        st.QuasarRemaining = 0;
+        st.MergeImmunity = 0;
+        st.GravityImmuneFrom = null;
+
+        // A black hole is fully opaque — never let the background show through the core.
+        _blobs[idx].Opacity = 1.0;
+        _blobs[idx].RenderTransform = null; // clear any leftover collision-pulse scale
+
+        ApplyBlackHoleAppearance(idx);
+    }
+
+    /// <summary>Builds the black-hole disc brush: opaque black core, faint accretion glow rim, transparent edge.</summary>
+    private void ApplyBlackHoleAppearance(int idx)
+    {
+        if (idx >= _blobs.Count || idx >= _gradBrushes.Count) return;
+
+        // Accretion glow color — a warm, dim ring just inside the rim.
+        var glow = Color.FromArgb(90, 255, 130, 40);
+        // Faux gravitational-lens ring — a thin, cool bright band just outside the event
+        // horizon that (with the blur) reads as light bending around the hole. Purely cosmetic.
+        var lensBright = Color.FromArgb(70, 180, 205, 255);
+        var lensDark = Color.FromArgb(120, 0, 0, 0);
+
+        var brush = new RadialGradientBrush
+        {
+            GradientOrigin = new Point(0.5, 0.5),
+            Center = new Point(0.5, 0.5),
+            RadiusX = 0.5,
+            RadiusY = 0.5,
+            GradientStops = new GradientStopCollection
+            {
+                new(Color.FromArgb(255, 0, 0, 0), 0.0),    // solid black core
+                new(Color.FromArgb(255, 0, 0, 0), 0.88),   // pure black through nearly the whole disc
+                new(lensDark, 0.905),                       // dark refraction gap at the horizon
+                new(lensBright, 0.925),                     // bright lensing ring (bent light)
+                new(lensDark, 0.94),                        // darken again — the far side of the lens
+                new(glow, 0.965),                           // thin, dim warm accretion glow
+                new(Color.FromArgb(0, 255, 150, 60), 1.0),  // soft fuzzy fade to transparent
+            }
+        };
+        _gradBrushes[idx] = brush;
+
+        if (_blobs[idx] is Shape shape)
+        {
+            shape.Fill = brush;
+            shape.Effect = new System.Windows.Media.Effects.BlurEffect
+            {
+                Radius = 9,
+                RenderingBias = System.Windows.Media.Effects.RenderingBias.Performance,
+            };
+        }
+        // Keep the solid brush black so any color-source reads are consistent.
+        if (idx < _brushes.Count)
+            _brushes[idx].Color = Color.FromArgb(_brushes[idx].Color.A, 0, 0, 0);
+    }
+
+    /// <summary>
+    /// Advances a black hole's lifecycle each frame: it grows (via merges) up to its size
+    /// cap, ages, and once it reaches the cap OR its max lifetime it enters the quasar
+    /// phase — ejecting blob pairs from its poles while fading out, then is removed.
+    /// </summary>
+    private void UpdateBlackHole(int i, double dt)
+    {
+        if (i >= _states.Count || i >= _blobs.Count) return;
+        var s = _states[i];
+        s.BlackHoleAgeSec += dt;
+
+        if (!s.QuasarActive)
+        {
+            double size = _blobs[i].Width;
+            bool reachedCap = size >= s.BlackHoleMaxSize - 0.5 && double.IsNaN(s.MergeTargetSize);
+            bool tooOld = s.BlackHoleAgeSec >= BlackHoleMaxLifeSec;
+            bool oldEnough = s.BlackHoleAgeSec >= BlackHoleMinLifeSec;
+
+            if ((reachedCap && oldEnough) || tooOld)
+            {
+                s.QuasarActive = true;
+                s.QuasarRemaining = QuasarDurationSec;
+                s.QuasarJetCooldown = 0;
+            }
+            return;
+        }
+
+        // --- Quasar phase: eject polar jets and fade the disc out ---
+        s.QuasarRemaining -= dt;
+
+        s.QuasarJetCooldown -= dt;
+        if (s.QuasarRemaining > QuasarDurationSec * 0.25 && s.QuasarJetCooldown <= 0)
+        {
+            EjectQuasarJets(i);
+            s.QuasarJetCooldown = QuasarJetIntervalSec;
+        }
+
+        // Fade the disc out over the quasar duration.
+        double fade = Math.Clamp(s.QuasarRemaining / QuasarDurationSec, 0.0, 1.0);
+        _blobs[i].Opacity = fade;
+
+        if (s.QuasarRemaining <= 0)
+        {
+            if (_blobs[i] is Shape shp) shp.Effect = null;
+            // Defer the actual removal to after the integrate loop to avoid mutating
+            // the body lists mid-iteration (which caused an index-out-of-range crash).
+            s.PendingRemoval = true;
+        }
+    }
+
+    /// <summary>
+    /// Quasar jet ejection: spits a pair of glowing blobs from the black hole's north
+    /// and south poles (straight up/down, since bodies are circular). Ejected blobs get
+    /// merge immunity so they escape the well and resettle naturally into the field.
+    /// </summary>
+    private void EjectQuasarJets(int idx)
+    {
+        if (idx >= _blobs.Count || idx >= _states.Count) return;
+
+        double cx = _posX[idx];
+        double cy = _posY[idx];
+        double r = _radii[idx];
+
+        // Bright, hot jet color (blue-white with slight variation).
+        double hue = 190 + _rng.NextDouble() * 40; // cyan→blue
+
+        // Erupt a burst from each pole per tick to form a dramatic twin-jet eruption.
+        const int perPole = 14;
+        for (int p = 0; p < 2; p++)
+        {
+            double dir = p == 0 ? -1.0 : 1.0;
+            for (int k = 0; k < perPole && _blobs.Count < _maxBodies; k++)
+            {
+                double size = DustSize * (0.8 + _rng.NextDouble() * 1.0);
+                double speed = 240 + _rng.NextDouble() * 260;
+
+                // Narrow cone around the pole: mostly vertical with a small horizontal spread.
+                double spread = (_rng.NextDouble() - 0.5) * 0.5; // ±~0.25 rad from vertical
+                double vx = Math.Sin(spread) * speed;
+                double vy = dir * Math.Cos(spread) * speed;
+
+                // Spawn just outside the event horizon along the pole, with jitter.
+                double jitterX = (_rng.NextDouble() - 0.5) * r * 0.4;
+                double fx = cx + jitterX;
+                double fy = cy + dir * (r + size + _rng.NextDouble() * r * 0.3);
+
+                double jHue = (hue + _rng.Next(-15, 15) + 360) % 360;
+                Color jetColor = HsvToRgb(jHue, 0.4 + _rng.NextDouble() * 0.3, 1.0);
+
+                CreateBody(fx - size * 0.5, fy - size * 0.5, size, vx, vy, jetColor);
+                var js = _states[^1];
+                js.MergeImmunity = 2.0;             // escape the well before it can re-absorb
+                js.GravityImmuneFrom = _blobs[idx]; // ignore the hole's gravity briefly
+            }
+        }
+    }
+
+    /// <summary>
     /// Supernova: a body that exceeds the supernova mass threshold explodes
     /// into a burst of fragments expelled outward from its position.
     /// </summary>
@@ -1208,6 +1506,9 @@ public sealed class GravitySimulator : IDisposable
     /// </summary>
     private void BlendColor(int src, int dst, double mSrc, double mDst, double totalMass)
     {
+        // Black holes stay black — never blend absorbed colors into them.
+        if (dst < _states.Count && _states[dst].IsBlackHole) return;
+
         Color c1 = _brushes[src].Color;
         Color c2 = _brushes[dst].Color;
         byte r = (byte)((c1.R * mSrc + c2.R * mDst) / totalMass);

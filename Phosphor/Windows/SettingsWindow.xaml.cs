@@ -1048,6 +1048,8 @@ public partial class SettingsWindow : JukeboxWindow
         CbGravityShowDiagnostics.IsChecked = settings.GravityShowDiagnostics;
         SliderGravitySupernovaMass.Value = settings.GravitySupernovaMass;
         TxtGravitySupernovaMass.Text = settings.GravitySupernovaMass < 10 ? "Off" : $"{(int)settings.GravitySupernovaMass}px";
+        SliderGravityBlackHoleFactor.Value = Math.Clamp(settings.GravityBlackHoleMaxSizeFactor, 1.1, 2.0) * 10.0;
+        TxtGravityBlackHoleFactor.Text = $"{Math.Clamp(settings.GravityBlackHoleMaxSizeFactor, 1.1, 2.0):F1}×";
         SliderGravityDensity.Value = settings.GravityDensity;
         TxtGravityDensity.Text = settings.GravityDensity switch { 0 => "Low", 2 => "High", _ => "Medium" };
         UpdateGravityTuningVisibility();
@@ -3317,6 +3319,12 @@ public partial class SettingsWindow : JukeboxWindow
             TxtGravitySupernovaMass.Text = e.NewValue < 10 ? "Off" : $"{(int)e.NewValue}px";
     }
 
+    private void SliderGravityBlackHoleFactor_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtGravityBlackHoleFactor != null)
+            TxtGravityBlackHoleFactor.Text = $"{e.NewValue / 10.0:F1}×";
+    }
+
     private void SliderGravityDensity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (TxtGravityDensity != null)
@@ -4275,6 +4283,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.GravityBlobMultiplier = SliderGravityBlobMultiplier.Value;
         _settings.GravityShowDiagnostics = CbGravityShowDiagnostics.IsChecked == true;
         _settings.GravitySupernovaMass = SliderGravitySupernovaMass.Value;
+        _settings.GravityBlackHoleMaxSizeFactor = SliderGravityBlackHoleFactor.Value / 10.0;
         _settings.GravityDensity = (int)SliderGravityDensity.Value;
         _settings.ClockMode = CbClockMode.SelectedIndex >= 0 ? CbClockMode.SelectedIndex : 0;
         _settings.ClockBrightness = SliderClockBrightness.Value / 100.0;

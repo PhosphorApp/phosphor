@@ -84,6 +84,22 @@ public class BlobState
     public double DriftVal { get; set; }
     /// <summary>Gravity pattern: whether the drift HSV fields have been seeded from a real color.</summary>
     public bool DriftInitialized { get; set; }
+    /// <summary>Gravity pattern: whether this body is a black hole (black disc, keeps absorbing, immune to split/pierce/absorb).</summary>
+    public bool IsBlackHole { get; set; }
+    /// <summary>Gravity pattern: seconds this body has existed as a black hole.</summary>
+    public double BlackHoleAgeSec { get; set; }
+    /// <summary>Gravity pattern: size cap at which the black hole ends and enters the quasar phase.</summary>
+    public double BlackHoleMaxSize { get; set; }
+    /// <summary>Gravity pattern: whether the black hole is in its final quasar (polar jet) phase.</summary>
+    public bool QuasarActive { get; set; }
+    /// <summary>Gravity pattern: seconds remaining in the quasar phase before removal.</summary>
+    public double QuasarRemaining { get; set; }
+    /// <summary>Gravity pattern: cooldown until the next quasar jet ejection.</summary>
+    public double QuasarJetCooldown { get; set; }
+    /// <summary>Gravity pattern: marks a body for removal after the integrate loop (deferred to avoid mid-loop list mutation).</summary>
+    public bool PendingRemoval { get; set; }
+    /// <summary>Gravity pattern: whether a spaghettification stretch transform is currently applied (near a black hole).</summary>
+    public bool IsSpaghettified { get; set; }
 }
 
 /// <summary>

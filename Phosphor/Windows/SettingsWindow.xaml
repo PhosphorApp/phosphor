@@ -1236,9 +1236,20 @@
                                                            TickFrequency="10" IsSnapToTickEnabled="True"
                                                            ValueChanged="SliderGravitySupernovaMass_ValueChanged"
                                                            ToolTip="Body diameter at which a supernova explosion occurs. 0 = disabled."/>
-                                                   <TextBlock x:Name="TxtGravitySupernovaMass" Foreground="{StaticResource TextDimBrush}"
-                                                              VerticalAlignment="Center" Margin="8,0,0,0"/>
-                                               </StackPanel>
+                                                        <TextBlock x:Name="TxtGravitySupernovaMass" Foreground="{StaticResource TextDimBrush}"
+                                                                   VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                                    </StackPanel>
+                                                   <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                                        <TextBlock Text="Black Hole Size:" Foreground="{StaticResource TextBrush}"
+                                                                   VerticalAlignment="Center" Width="110"/>
+                                                        <Slider x:Name="SliderGravityBlackHoleFactor" Minimum="11" Maximum="20"
+                                                                Width="150" VerticalAlignment="Center"
+                                                                TickFrequency="1" IsSnapToTickEnabled="True"
+                                                                ValueChanged="SliderGravityBlackHoleFactor_ValueChanged"
+                                                                ToolTip="When a blob hits the supernova threshold it may instead collapse into a black hole (50/50), which grows to this multiple of the supernova size before erupting as a quasar."/>
+                                                        <TextBlock x:Name="TxtGravityBlackHoleFactor" Foreground="{StaticResource TextDimBrush}"
+                                                                   VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                                    </StackPanel>
                                               <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
                                                    <TextBlock Text="Density:" Foreground="{StaticResource TextBrush}"
                                                               VerticalAlignment="Center" Width="110"/>

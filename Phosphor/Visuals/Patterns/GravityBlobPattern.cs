@@ -43,6 +43,12 @@ public sealed class GravityBlobPattern : BlobPatternBase
     /// <summary>Supernova threshold as diameter in pixels (60–400). 0 = disabled.</summary>
     public static double SupernovaMass { get; set; } = 150.0;
 
+    /// <summary>When a body hits the supernova threshold it has a 50/50 chance to instead collapse
+    /// into a black hole, which keeps absorbing until it reaches this multiple of the supernova
+    /// diameter (1.1–2.0), then ends as a quasar. Ensures a black hole is never smaller than a
+    /// supernova. Default 1.6.</summary>
+    public static double BlackHoleMaxSizeFactor { get; set; } = 1.6;
+
     /// <summary>Universe density (0=Low, 1=Medium, 2=High). Controls dust injection threshold.</summary>
     public static int Density { get; set; } = 1;
 
