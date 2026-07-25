@@ -44,7 +44,7 @@ Create a **.NET 8 class library** that references **only** the contract, compile
 	<!-- Reference the contract COMPILE-ONLY. The host ships the single shared runtime copy, so
 		 you must NOT bundle your own — otherwise contract types won't unify across the load
 		 boundary and casts to IPhosphorSourceProvider will fail. -->
-	<PackageReference Include="Phosphor.Plugin.Abstractions" Version="0.13.0">
+	<PackageReference Include="Phosphor.Plugin.Abstractions" Version="0.14.0">
 	  <ExcludeAssets>runtime</ExcludeAssets>
 	</PackageReference>
 	<!-- (In-tree, you can use a ProjectReference with <Private>false</Private>/<ExcludeAssets>runtime</ExcludeAssets>
@@ -109,6 +109,19 @@ public sealed class LocalFolderSourceProvider : IPhosphorSourceProvider
 `PluginApi.MinimumSupported <= your major.minor <= PluginApi.Current`. Setting
 `ApiVersion => PluginApi.Current` keeps you in step with whatever contract you compiled against.
 
+**Optional provider metadata:**
+
+- **`AccountRequirement? Account`** — declare that your source needs an external account or
+  subscription. The host renders an advisory badge and a "Requires … Sign up: `<url>`" line in the
+  Plug-ins tab so users know upfront that setup involves signing up (and whether it costs money). Set
+  `IsPaid: true` for paid services. This is *distinct* from a `Secret` field: `Secret` only says "a
+  credential is stored," while `Account` says "you must go create one." SiriusXM declares
+  `new("an active SiriusXM streaming subscription", "https://www.siriusxm.com/plans", IsPaid: true)`.
+- **`IReadOnlyList<string> RequiredTools`** — logical names of host-bundled native tools you shell out
+  to at runtime (e.g. `"yt-dlp"`, `"ffmpeg"`), resolved via `IPluginHost.GetToolPath`. Declaring them
+  is for load-time validation only: the host warns when a declared tool is missing (a clear startup
+  diagnostic instead of a play-time failure). The host does not acquire tools from this list.
+
 ---
 
 ## 4. The instance — `IPhosphorSource`
@@ -153,7 +166,7 @@ parsing of those strings.
 | `PluginSettingType` | Rendered as | Notes |
 |---|---|---|
 | `Text`      | text box | |
-| `Secret`    | password box (masked) | for tokens/keys |
+| `Secret`    | password box (masked) | for tokens/keys/passwords; stored via the host credential store, not the plain blob (optional at-rest DPAPI encryption, off by default) |
 | `Bool`      | checkbox | parse with `bool.TryParse` |
 | `Number`    | text box | parse yourself |
 | `Enum`      | combo box | set `EnumValues` (names match your parse) |
@@ -174,8 +187,12 @@ _folders = (Get(values, KeyFolders) ?? "")
 	.ToList();
 ```
 
-**Secrets:** mark tokens as `Secret`. (Encryption at rest via a host credential store is a documented
-future addition; today secrets live in the settings blob like the built-ins.)
+**Secrets:** mark tokens/passwords as `Secret`. The host stores these through its credential store,
+not in the plain settings blob you get in `ApplySettings`. At-rest **DPAPI encryption is a
+user-configurable, opt-in host option** — it's **off by default** (secrets are stored as plain text so
+the settings file stays portable), and a user may turn it on to encrypt them (bound to the current
+Windows user/machine). Either way your code is unaffected: read and write secrets through
+`IPluginHost.GetSecret`/`SetSecret` (see §7) rather than treating them like ordinary values.
 
 **Interactive config (Tier-2)** — if setup needs a *live* call (e.g. "browse the server for libraries
 to add"), implement `IConfigurable` instead of/in addition to the schema. That's an advanced path;
@@ -261,9 +278,10 @@ threading behind it.
 
 ```csharp
 void   Log(string message);                     // into the app diagnostics log
+void   Log(LogLevel level, string message);     // same, at an explicit verbosity level
 HttpClient HttpClient { get; }                  // shared, pooled — do NOT dispose it
 string InstanceCacheDirectory { get; }          // a per-instance folder you may write to
-string? GetSecret(string key);                  // credential store (future: encrypted)
+string? GetSecret(string key);                  // credential store (optional DPAPI encryption at rest; off by default)
 void   SetSecret(string key, string? value);
 string? GetToolPath(string toolName);           // bundled tools, e.g. "yt-dlp", "ffmpeg"
 void   ReportStatus(string message);            // user-facing status (host marshals to UI thread)
@@ -309,4 +327,3 @@ Use `HttpClient` for network calls (respecting the host's configured timeout); u
 - **`Phosphor.Plugins.LocalFolder/`** — the full reference plug-in (this guide's running example).
 - **`Phosphor/Plugins/Loader/PluginLoader.cs`** — how the host discovers, version-gates, and isolates
   plug-ins (for understanding, not something you call).
-- **`../dev_docs/PLUGIN_ARCHITECTURE_ANALYSIS.md`** — the design rationale and full changelog.

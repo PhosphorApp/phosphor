@@ -3,8 +3,7 @@ namespace Phosphor.Plugin.Abstractions;
 /// <summary>
 /// Services the host hands to a source at initialization so the plug-in never references
 /// host internals directly. This is the one-way door the plug-in may call back through;
-/// the host owns all threading/marshalling behind these members (see the threading notes
-/// in dev_docs/PLUGIN_ARCHITECTURE_ANALYSIS.md).
+/// the host owns all threading/marshalling behind these members.
 /// </summary>
 public interface IPluginHost
 {
@@ -34,7 +33,11 @@ public interface IPluginHost
     /// <summary>Retrieves a stored secret (e.g. an API token) by key for this instance, or null.</summary>
     string? GetSecret(string key);
 
-    /// <summary>Persists a secret for this instance via the host's credential store (e.g. DPAPI).</summary>
+    /// <summary>
+    /// Persists a secret for this instance via the host's credential store. At-rest DPAPI encryption
+    /// is a user-configurable option that is off by default (secrets stored as plain text); when the
+    /// user enables it, values are encrypted bound to the current Windows user/machine.
+    /// </summary>
     void SetSecret(string key, string? value);
 
     /// <summary>
