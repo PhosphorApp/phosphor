@@ -931,6 +931,7 @@ public partial class BackglassWindow : JukeboxWindow
                     if (DataContext is JukeboxViewModel vmAoTimeout)
                     {
                         vmAoTimeout.StatusText = "Playback failed: server unreachable or stream timed out";
+                        vmAoTimeout.NotifyPlaybackFailed(vmAoTimeout.CurrentlyPlaying);
                         vmAoTimeout.CurrentlyPlaying = null;
                         vmAoTimeout.NotifyPlaybackStarted();
                     }
@@ -962,6 +963,7 @@ public partial class BackglassWindow : JukeboxWindow
                 if (DataContext is JukeboxViewModel vmTimeout)
                 {
                     vmTimeout.StatusText = "Playback failed: server unreachable or stream timed out";
+                    vmTimeout.NotifyPlaybackFailed(vmTimeout.CurrentlyPlaying);
                     vmTimeout.CurrentlyPlaying = null;
                     vmTimeout.NotifyPlaybackStarted();
                 }

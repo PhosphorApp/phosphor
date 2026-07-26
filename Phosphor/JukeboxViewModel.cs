@@ -840,7 +840,58 @@ public partial class JukeboxViewModel : ObservableObject
         PlayTransitioning = false;
         _statusPrefixCts?.Cancel();
         StatusPrefix = "";
+
+        // Self-healing badges: a successful play clears any "unavailable" mark the owning source kept
+        // for this item (e.g. an IPTV channel that was previously geo-blocked/offline). Report it and
+        // clear the live row's badge so the ⊘ disappears immediately.
+        var playing = CurrentlyPlaying;
+        if (playing is { ShowUnavailableBadge: true } && SourceForItem(playing) is Phosphor.Plugin.Abstractions.IPlaybackSuccessReportable ok)
+        {
+            try
+            {
+                if (ok.ReportPlaybackSuccess(playing.VideoId))
+                    playing.ShowUnavailableBadge = false;
+            }
+            catch (Exception ex)
+            {
+                DebugLog.LogException($"ReportPlaybackSuccess '{playing.VideoId}'", ex);
+            }
+        }
     }
+
+    /// <summary>
+    /// Called by the player windows when a live/stream item fails to start (e.g. a timeout waiting for
+    /// the first frame — common for dead or geo-blocked IPTV channels). Reports the failure to the
+    /// owning source (as <see cref="Phosphor.Plugin.Abstractions.PlaybackFailureKind.Transient"/>,
+    /// since a stream timeout is environmental, not proof the item is permanently dead). A source that
+    /// tracks soft failures badges the row via <see cref="VideoItem.ShowUnavailableBadge"/> — the item
+    /// stays playable so the user can retry, and a later success clears it. No-ops for sources that
+    /// don't implement <see cref="Phosphor.Plugin.Abstractions.IPlaybackReportable"/>.
+    /// </summary>
+    public void NotifyPlaybackFailed(VideoItem? item)
+    {
+        if (item is null) return;
+        if (SourceForItem(item) is not Phosphor.Plugin.Abstractions.IPlaybackReportable reportable) return;
+        try
+        {
+            reportable.ReportPlaybackFailure(item.VideoId, Phosphor.Plugin.Abstractions.PlaybackFailureKind.Transient);
+            // The source decides whether to remember it; reflect its badge on the live row. We badge
+            // when the owning source also tracks successes (so it can self-heal the badge on retry).
+            if (ShouldBadgeUnavailable(item))
+                item.ShowUnavailableBadge = true;
+        }
+        catch (Exception ex)
+        {
+            DebugLog.LogException($"NotifyPlaybackFailed '{item.VideoId}'", ex);
+        }
+    }
+
+    // A source that wants the row badged exposes it through a fresh SourceItem; but to avoid a rebuild
+    // round-trip on the hot failure path we simply badge the row when the owning source is one that
+    // tracks soft failures (IPlaybackSuccessReportable ⇒ it can also clear it). This keeps the badge
+    // in lockstep with the source's own persisted set without an extra query.
+    private bool ShouldBadgeUnavailable(VideoItem item)
+        => SourceForItem(item) is Phosphor.Plugin.Abstractions.IPlaybackSuccessReportable;
 
     private VideoItem? _currentlyPlaying;
     public VideoItem? CurrentlyPlaying
@@ -1759,6 +1810,7 @@ public partial class JukeboxViewModel : ObservableObject
             IsAudioOnly = item.IsAudioOnly,
             IsLiveStream = item.IsLiveStream,
             ShowLiveBadge = item.ShowLiveBadge,
+            ShowUnavailableBadge = item.ShowUnavailableBadge,
             IsPlayable = item.IsPlayable,
             HasVideoAlternative = item.HasVideoAlternative,
             VideoSearchQuery = item.VideoSearchQuery,
@@ -3761,6 +3813,7 @@ public partial class JukeboxViewModel : ObservableObject
             else
             {
                 StatusText = $"Can't tune {item.Title} — stream unavailable.";
+                NotifyPlaybackFailed(item);
                 PlayTransitioning = false;
             }
         }
@@ -3768,6 +3821,7 @@ public partial class JukeboxViewModel : ObservableObject
         {
             DebugLog.LogException($"Live resolve '{item.VideoId}'", ex);
             StatusText = $"Can't tune {item.Title}: {ex.Message}";
+            NotifyPlaybackFailed(item);
             PlayTransitioning = false;
         }
     }

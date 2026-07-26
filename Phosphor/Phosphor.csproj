@@ -115,6 +115,11 @@
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <Private>false</Private>
     </ProjectReference>
+    <!-- Build-order-only reference to the IPTV plug-in (same rationale as LocalFolder above). -->
+    <ProjectReference Include="..\Phosphor.Plugins.Iptv\Phosphor.Plugins.Iptv.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <Private>false</Private>
+    </ProjectReference>
   </ItemGroup>
 
   <!--
@@ -164,6 +169,27 @@
     <MakeDir Directories="$(SiriusXmPluginDest)" />
     <Copy SourceFiles="@(SiriusXmPluginFiles)" DestinationFolder="$(SiriusXmPluginDest)" SkipUnchangedFiles="true" />
     <Message Importance="high" Text="Deployed SiriusXM plug-in to $(SiriusXmPluginDest)" />
+  </Target>
+
+  <!--
+    Deploy the IPTV plug-in into the host's plugins/Iptv/ folder (same pattern as the plug-ins above):
+    copy the plug-in assembly + its .deps.json (and pdb), excluding the host-owned shared contract so
+    it's never duplicated across the load boundary.
+  -->
+  <Target Name="DeployIptvPlugin" AfterTargets="Build">
+    <PropertyGroup>
+      <IptvPluginDir>$(MSBuildThisFileDirectory)..\Phosphor.Plugins.Iptv\bin\$(Configuration)\net8.0</IptvPluginDir>
+      <IptvPluginDest>$(OutDir)plugins\Iptv</IptvPluginDest>
+    </PropertyGroup>
+    <ItemGroup>
+      <IptvPluginFiles Include="$(IptvPluginDir)\*.dll"
+                       Exclude="$(IptvPluginDir)\Phosphor.Plugin.Abstractions.dll" />
+      <IptvPluginFiles Include="$(IptvPluginDir)\Phosphor.Plugins.Iptv.pdb" Condition="Exists('$(IptvPluginDir)\Phosphor.Plugins.Iptv.pdb')" />
+      <IptvPluginFiles Include="$(IptvPluginDir)\Phosphor.Plugins.Iptv.deps.json" Condition="Exists('$(IptvPluginDir)\Phosphor.Plugins.Iptv.deps.json')" />
+    </ItemGroup>
+    <MakeDir Directories="$(IptvPluginDest)" />
+    <Copy SourceFiles="@(IptvPluginFiles)" DestinationFolder="$(IptvPluginDest)" SkipUnchangedFiles="true" />
+    <Message Importance="high" Text="Deployed IPTV plug-in to $(IptvPluginDest)" />
   </Target>
 
   <!--

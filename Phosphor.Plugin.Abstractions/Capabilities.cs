@@ -587,3 +587,22 @@ public interface IPlaybackReportable
     /// <returns><c>true</c> if the item is now known-unplayable and the row should render as such.</returns>
     bool ReportPlaybackFailure(string itemId, PlaybackFailureKind kind);
 }
+
+/// <summary>
+/// Capability: the host can report back to a source that one of its items <em>started playing
+/// successfully</em>. The companion to <see cref="IPlaybackReportable"/>: a source that remembers
+/// soft/retryable failures (e.g. an IPTV channel that was geo-blocked or offline, badged with
+/// <see cref="SourceItem.ShowUnavailableBadge"/>) uses this to <em>clear</em> that state once the item
+/// plays again, so the badge is self-healing. Optional and additive — sources whose failures are
+/// permanent (e.g. SoundCloud DRM) need not implement it. The source returns whether the item's
+/// display state changed (e.g. an "unavailable" badge was cleared) so the host can refresh the live row.
+/// </summary>
+public interface IPlaybackSuccessReportable
+{
+    /// <summary>
+    /// Informs the source that <paramref name="itemId"/> (a <see cref="SourceItem.ItemId"/>) played
+    /// successfully. The source clears any remembered soft-failure state for it. Must not throw.
+    /// </summary>
+    /// <returns><c>true</c> if the item's display state changed (e.g. a badge was cleared) and the row should refresh.</returns>
+    bool ReportPlaybackSuccess(string itemId);
+}
