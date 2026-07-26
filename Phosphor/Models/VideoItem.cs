@@ -83,6 +83,20 @@ public class VideoItem : ObservableObject
     /// </summary>
     public bool ShowLiveBadge { get; set; }
 
+    private bool _showUnavailableBadge;
+    /// <summary>
+    /// True when the host should decorate this item's thumbnail with a small ⊘ "unavailable" corner
+    /// badge because a previous play attempt failed. A soft, <em>retryable</em> hint (distinct from
+    /// <see cref="IsPlayable"/> = false, which removes the action buttons): the row stays playable so
+    /// the user can retry, and the badge clears on the next successful play. Observable so a row can
+    /// flip live when a play attempt fails or succeeds.
+    /// </summary>
+    public bool ShowUnavailableBadge
+    {
+        get => _showUnavailableBadge;
+        set => SetProperty(ref _showUnavailableBadge, value);
+    }
+
     /// <summary>
     /// For live-stream leaves, the originating plug-in <c>SourceItem</c> (opaque to the host) kept so
     /// the stream can be resolved <em>lazily at play time</em> rather than eagerly during browse

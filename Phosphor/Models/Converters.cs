@@ -84,8 +84,31 @@ public class FractionToCanvasLeftConverter : IMultiValueConverter
 }
 
 /// <summary>
+/// Multiplies a bound width (double) by a fraction supplied as the ConverterParameter (e.g. "0.5"),
+/// returning a capped pixel value. Used to constrain a result-row thumbnail's MaxWidth to a fraction
+/// of the row width so an unusually wide (banner-shaped) logo can't inflate the Auto-sized thumbnail
+/// column and push the row's controls off-screen. Returns Infinity (no cap) when the width isn't
+/// available yet, so layout is never constrained to zero during the first measure pass.
+/// </summary>
+public class WidthFractionConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is double width && width > 0 &&
+            double.TryParse(parameter as string, NumberStyles.Float, CultureInfo.InvariantCulture, out var fraction) &&
+            fraction > 0)
+        {
+            return width * fraction;
+        }
+        return double.PositiveInfinity;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>
 /// Turns a PascalCase enum value into spaced, human-friendly text (e.g. "RecentlyAdded" -> "Recently Added").
-/// Used to display the Favorites Group/Sort enum lists.
 /// </summary>
 public class EnumLabelConverter : IValueConverter
 {

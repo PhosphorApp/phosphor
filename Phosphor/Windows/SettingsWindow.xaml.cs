@@ -4939,7 +4939,7 @@ public partial class SettingsWindow : JukeboxWindow
                         Foreground = dim, FontSize = 11, VerticalAlignment = VerticalAlignment.Center,
                         Margin = new Thickness(10, 0, 0, 0), TextWrapping = TextWrapping.Wrap,
                     };
-                    hideBtn.Click += (_, _) => ManageHiddenItems(hideInstanceId, hideResult);
+                    hideBtn.Click += async (_, _) => await ManageHiddenItems(hideInstanceId, hideBtn, hideResult);
                     hideRow.Children.Add(hideBtn);
                     hideRow.Children.Add(hideResult);
                     panel.Children.Add(hideRow);
@@ -5917,7 +5917,8 @@ public partial class SettingsWindow : JukeboxWindow
     /// source: two side-by-side Extended-multi-select lists (Visible ⇄ Hidden) with move buttons and a
     /// "Hide sports teams" quick action. Persists via <c>SetHidden</c> and reports a summary.
     /// </summary>
-    private void ManageHiddenItems(string instanceId, System.Windows.Controls.TextBlock result)
+    private async System.Threading.Tasks.Task ManageHiddenItems(
+        string instanceId, System.Windows.Controls.Button button, System.Windows.Controls.TextBlock result)
     {
         HarvestPluginSourcesTab();
         var cfg = _settings.PluginInstances.FirstOrDefault(c => c.InstanceId == instanceId);
@@ -5930,12 +5931,33 @@ public partial class SettingsWindow : JukeboxWindow
             return;
         }
 
+        button.IsEnabled = false;
         try
         {
             if (source is Phosphor.Plugin.Abstractions.IPhosphorSource ps)
-                ps.InitializeAsync(new Phosphor.Plugins.Host.PluginHost(cfg.InstanceId, _pluginHttp)).GetAwaiter().GetResult();
+                await ps.InitializeAsync(new Phosphor.Plugins.Host.PluginHost(cfg.InstanceId, _pluginHttp));
 
             var all = hideable.GetHideableItems();
+
+            // First-run convenience: if nothing is loaded yet and the source can build its catalog
+            // (IRefreshable), fetch it now instead of telling the user to go browse first. This lets
+            // "Manage hidden…" work end-to-end on a freshly configured source (e.g. SiriusXM, IPTV)
+            // without leaving Settings.
+            if (all.Count == 0 && source is Phosphor.Plugin.Abstractions.IRefreshable refreshable && refreshable.CanRefresh)
+            {
+                result.Text = "Loading channel list…";
+                result.Foreground = (System.Windows.Media.Brush)FindResource("TextDimBrush");
+                var r = await refreshable.RefreshAsync();
+                if (r.Success)
+                    all = hideable.GetHideableItems();
+                else
+                {
+                    result.Text = "✗ " + r.Message;
+                    result.Foreground = System.Windows.Media.Brushes.IndianRed;
+                    return;
+                }
+            }
+
             if (all.Count == 0)
             {
                 result.Text = "No channels to manage yet — open the source once to load its lineup.";
@@ -5965,6 +5987,7 @@ public partial class SettingsWindow : JukeboxWindow
         }
         finally
         {
+            button.IsEnabled = true;
             DisposeTransientSource(source);
         }
     }

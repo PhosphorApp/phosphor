@@ -13,6 +13,7 @@
         <local:QueueIndexConverter x:Key="QueueIndexConverter"/>
         <local:IsCurrentQueueItemConverter x:Key="IsCurrentQueueItemConverter"/>
         <local:FractionToCanvasLeftConverter x:Key="FractionToCanvasLeft"/>
+        <local:WidthFractionConverter x:Key="WidthFraction"/>
         <local:EnumLabelConverter x:Key="EnumLabel"/>
 
         <!-- Favorites view axes: enum value lists for the two quick dropdowns. -->
@@ -465,7 +466,7 @@
                                     <DataTemplate>
                         <Border Background="{StaticResource SurfaceBrush}" CornerRadius="4"
                                 Padding="6" Margin="0,1">
-                            <Grid>
+                            <Grid x:Name="ResultRowGrid">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
@@ -473,6 +474,7 @@
                                 <Image Grid.Column="0" local:CachedImage.SourceUrl="{Binding ThumbnailUrl}"
                                        RenderOptions.BitmapScalingMode="LowQuality"
                                        Margin="0,0,8,0" VerticalAlignment="Top"
+                                       MaxWidth="{Binding ActualWidth, ElementName=ResultRowGrid, Converter={StaticResource WidthFraction}, ConverterParameter=0.30}"
                                        Height="{Binding ActualHeight, ElementName=ItemContentPanel}">
                                     <Image.Style>
                                         <Style TargetType="Image">
@@ -498,6 +500,14 @@
                                         VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="0,0,12,4"
                                         Visibility="{Binding ShowLiveBadge, Converter={StaticResource BoolVis}}"
                                         ToolTip="Live now"/>
+                                <!-- Unavailable-but-retryable indicator: a ⊘ corner badge on the thumbnail when a
+                                     previous play attempt failed (e.g. a geo-blocked/offline IPTV channel). The row
+                                     stays fully playable so the user can retry; a successful play clears the badge.
+                                     Driven by VideoItem.ShowUnavailableBadge — distinct from IsPlayable=false. -->
+                                <TextBlock Grid.Column="0" Text="&#x2298;" Foreground="#E0B84A" FontSize="15" FontWeight="Bold"
+                                           VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="2,0,0,3"
+                                           Visibility="{Binding ShowUnavailableBadge, Converter={StaticResource BoolVis}}"
+                                           ToolTip="Last play failed — click Play to try again"/>
                                 <!-- Icon fallback for Hub/Playlist/container items (shown when no thumbnail).
                                      Uses the ResultIconCurrent template so it honors the Icon Style setting. -->
                                 <ContentControl Grid.Column="0" Content="{Binding}"
@@ -943,7 +953,7 @@
                     <!-- Thumbnail -->
                     <Grid DockPanel.Dock="Left" Margin="0,0,10,0" VerticalAlignment="Center" ClipToBounds="True">
                       <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <Image Stretch="Uniform" MaxHeight="{Binding ActualHeight, ElementName=NowPlayingInfoPanel}">
+                        <Image Stretch="Uniform" MaxWidth="160" MaxHeight="{Binding ActualHeight, ElementName=NowPlayingInfoPanel}">
                             <Image.Style>
                                 <Style TargetType="Image">
                                     <Setter Property="local:CachedImage.SourceUrl" Value="{Binding CurrentlyPlaying.ThumbnailUrl}"/>

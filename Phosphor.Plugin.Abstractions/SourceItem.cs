@@ -65,6 +65,17 @@ public sealed class SourceItem
     public bool ShowLiveBadge { get; init; }
 
     /// <summary>
+    /// True when the host should decorate this item's thumbnail with a small "unavailable" indicator
+    /// (a ⊘ corner badge) because a previous play attempt failed. Unlike <see cref="IsPlayable"/> =
+    /// <c>false</c> (which renders the row as permanently unplayable and removes its action buttons),
+    /// this is a soft, <em>retryable</em> hint: the row stays fully playable so the user can try again,
+    /// and the badge is cleared on the next successful play. Ideal for sources whose failures are often
+    /// transient (e.g. IPTV streams that are geo-blocked or temporarily offline). Defaults to
+    /// <c>false</c>. The source owns the decision and its persistence.
+    /// </summary>
+    public bool ShowUnavailableBadge { get; init; }
+
+    /// <summary>
     /// When true, this item is a container the user drills into rather than plays
     /// (e.g. a Plex artist/album). The host calls <see cref="IBrowsable"/> to expand it.
     /// </summary>
