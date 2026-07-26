@@ -36,13 +36,16 @@ public class GenreCategoryEntry
 }
 
 /// <summary>
-/// Loads and saves genre categories from categories.json.
-/// The file is expected to ship with the application.
+/// Loads and saves genre categories. Reads categories.json if present, otherwise seeds from the
+/// shipped default_categories.json (which is never written to). All saves target categories.json.
 /// </summary>
 public static class GenreCategoryStore
 {
     private static readonly string FilePath = Path.Combine(
         AppDomain.CurrentDomain.BaseDirectory, "categories.json");
+
+    private static readonly string DefaultFilePath = Path.Combine(
+        AppDomain.CurrentDomain.BaseDirectory, "default_categories.json");
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -54,18 +57,25 @@ public static class GenreCategoryStore
     private static List<GenreCategoryEntry>? _cachedEntries;
 
     /// <summary>
-    /// Loads categories from categories.json. Returns an empty list if the file is missing or invalid.
+    /// Loads categories from categories.json if it exists, otherwise falls back to the shipped
+    /// default_categories.json. The default file is never written to; all saves target categories.json.
+    /// Returns an empty list if neither file is present or valid.
     /// </summary>
     public static List<GenreCategoryEntry> Load()
     {
         if (_cachedEntries != null)
             return _cachedEntries;
 
+        // Prefer the user's categories.json; fall back to the shipped defaults for first installs.
+        var sourcePath = File.Exists(FilePath) ? FilePath
+            : File.Exists(DefaultFilePath) ? DefaultFilePath
+            : null;
+
         try
         {
-            if (File.Exists(FilePath))
+            if (sourcePath != null)
             {
-                var json = File.ReadAllText(FilePath);
+                var json = File.ReadAllText(sourcePath);
                 var entries = JsonSerializer.Deserialize<List<GenreCategoryEntry>>(json, JsonOptions);
                 if (entries != null && entries.Count > 0)
                 {
@@ -79,7 +89,9 @@ public static class GenreCategoryStore
                             needsSave = true;
                         }
                     }
-                    if (needsSave)
+                    // Persist to categories.json when back-filling, or when seeding from defaults so
+                    // the user gets their own file (default_categories.json is never written).
+                    if (needsSave || sourcePath == DefaultFilePath)
                         Save(entries);
                     _cachedEntries = entries;
                     return entries;
@@ -88,7 +100,7 @@ public static class GenreCategoryStore
         }
         catch (Exception ex)
         {
-            DebugLog.Log(LogLevel.Warning, "GenreCategoryStore", $"Failed to load categories.json: {ex.Message}");
+            DebugLog.Log(LogLevel.Warning, "GenreCategoryStore", $"Failed to load categories: {ex.Message}");
         }
 
         return [];

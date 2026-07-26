@@ -55,7 +55,7 @@
     <None Update="emoji_keywords.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="categories.json">
+    <None Update="default_categories.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="..\dependencies\ffmpeg.exe">
