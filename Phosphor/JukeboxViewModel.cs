@@ -893,14 +893,40 @@ public partial class JukeboxViewModel : ObservableObject
     private bool ShouldBadgeUnavailable(VideoItem item)
         => SourceForItem(item) is Phosphor.Plugin.Abstractions.IPlaybackSuccessReportable;
 
+    /// <summary>
+    /// Tells the outgoing item's source to release any stateful resource it opened for it (e.g. a Plex
+    /// Live TV tuner session). Best-effort and non-blocking: a source implementing
+    /// <see cref="Phosphor.Plugin.Abstractions.IPlaybackStoppable"/> must not throw, but we still guard
+    /// and never let teardown disturb the play/stop flow.
+    /// </summary>
+    private void ReleasePlaybackFor(VideoItem item)
+    {
+        if (SourceForItem(item) is not Phosphor.Plugin.Abstractions.IPlaybackStoppable stoppable) return;
+        try
+        {
+            stoppable.ReleasePlayback(item.VideoId);
+        }
+        catch (Exception ex)
+        {
+            DebugLog.LogException($"ReleasePlayback '{item.VideoId}'", ex);
+        }
+    }
+
     private VideoItem? _currentlyPlaying;
     public VideoItem? CurrentlyPlaying
     {
         get => _currentlyPlaying;
         set
         {
+            var outgoing = _currentlyPlaying;
             if (SetProperty(ref _currentlyPlaying, value))
                 {
+                    // Release any stateful resource the outgoing item's source was holding (e.g. a Plex
+                    // Live TV tuner session). Fire-and-forget, best-effort — the single choke point for
+                    // stop / skip / track-change, so a source never leaks a held tuner/session.
+                    if (outgoing is not null && !ReferenceEquals(outgoing, value))
+                        ReleasePlaybackFor(outgoing);
+
                     IsPaused = false;
                     _lastChapterIndex = -1;
                     CurrentChapterName = "";

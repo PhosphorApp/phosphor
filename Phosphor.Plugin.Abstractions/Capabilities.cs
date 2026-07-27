@@ -606,3 +606,29 @@ public interface IPlaybackSuccessReportable
     /// <returns><c>true</c> if the item's display state changed (e.g. a badge was cleared) and the row should refresh.</returns>
     bool ReportPlaybackSuccess(string itemId);
 }
+
+/// <summary>
+/// Capability: the host tells a source when playback of one of its items <em>stops</em>, so the
+/// source can release any server-side or hardware resources it opened while resolving that item.
+/// Most sources need nothing here — a resolved HTTP URL is stateless and the server frees it when the
+/// client disconnects. But some sources hold a live, stateful resource that must be <em>explicitly</em>
+/// torn down: e.g. Plex Live TV opens a tuner-holding transcode session that keeps a physical tuner
+/// busy until it is stopped. Think of this as an <see cref="System.IDisposable"/> scoped to a single
+/// playing item: the host calls it exactly once when the item stops or is replaced by another.
+/// </summary>
+/// <remarks>
+/// The host invokes <see cref="ReleasePlayback"/> for the <em>outgoing</em> item whenever the
+/// currently-playing item changes (stop, skip, track transition) or the app shuts down. It is
+/// best-effort and fire-and-forget from the host's side; implementations must not throw and should
+/// return quickly (do any slow network teardown without blocking the caller). A source that opens
+/// nothing stateful should not implement this interface.
+/// </remarks>
+public interface IPlaybackStoppable
+{
+    /// <summary>
+    /// Informs the source that playback of <paramref name="itemId"/> (a <see cref="SourceItem.ItemId"/>)
+    /// has stopped and any resources held for it should be released. Called at most once per play, for
+    /// the outgoing item, on stop / skip / track-change / shutdown. Must not throw.
+    /// </summary>
+    void ReleasePlayback(string itemId);
+}
