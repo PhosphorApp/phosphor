@@ -15,8 +15,8 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="7*"/>
-                <RowDefinition Height="8"/>
-                <RowDefinition Height="3*"/>
+                <RowDefinition Height="8" x:Name="SplitterRow"/>
+                <RowDefinition Height="3*" x:Name="GroupRow"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
@@ -59,12 +59,12 @@
                          SelectionMode="Extended" DisplayMemberPath="Label"/>
             </Grid>
 
-            <GridSplitter Grid.Row="2" Height="4" HorizontalAlignment="Stretch"
+            <GridSplitter Grid.Row="2" Height="4" HorizontalAlignment="Stretch" x:Name="GroupSplitter"
                           Background="{StaticResource AccentBrush}" Opacity="0.4"/>
 
             <!-- Category tree: hide/show a whole group or sub-group at once -->
             <Border Grid.Row="3" BorderBrush="{StaticResource TextDimBrush}" BorderThickness="1"
-                    CornerRadius="3" Padding="4" Margin="0,4,0,0">
+                    CornerRadius="3" Padding="4" Margin="0,4,0,0" x:Name="GroupPanel">
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
                         <Button Content="Hide selected group →" Click="BtnHideGroup_Click" Padding="8,3"/>

@@ -50,6 +50,19 @@ public partial class ManageHiddenWindow : Window
 
     private void BuildGroupTree(IReadOnlyList<HideableItem> all)
     {
+        // The group tree only earns its space when the source actually groups its items. Flat sources
+        // (e.g. an HDHomeRun channel lineup) carry no Group/SubGroup, so hide the whole tree section
+        // and reclaim its rows — the Visible ⇄ Hidden lists are all that's needed.
+        bool hasGroups = all.Any(i => !string.IsNullOrWhiteSpace(i.Group) || !string.IsNullOrWhiteSpace(i.SubGroup));
+        if (!hasGroups)
+        {
+            GroupSplitter.Visibility = Visibility.Collapsed;
+            GroupPanel.Visibility = Visibility.Collapsed;
+            SplitterRow.Height = new GridLength(0);
+            GroupRow.Height = new GridLength(0);
+            return;
+        }
+
         // Top level = Group (Music/Talk/Sports/Other); children = SubGroup (category).
         var byGroup = all
             .GroupBy(i => string.IsNullOrWhiteSpace(i.Group) ? "Other" : i.Group!)

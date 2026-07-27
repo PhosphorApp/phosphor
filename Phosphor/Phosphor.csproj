@@ -120,6 +120,11 @@
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <Private>false</Private>
     </ProjectReference>
+    <!-- Build-order-only reference to the HDHomeRun plug-in (same rationale as LocalFolder above). -->
+    <ProjectReference Include="..\Phosphor.Plugins.HdHomeRun\Phosphor.Plugins.HdHomeRun.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <Private>false</Private>
+    </ProjectReference>
   </ItemGroup>
 
   <!--
@@ -190,6 +195,27 @@
     <MakeDir Directories="$(IptvPluginDest)" />
     <Copy SourceFiles="@(IptvPluginFiles)" DestinationFolder="$(IptvPluginDest)" SkipUnchangedFiles="true" />
     <Message Importance="high" Text="Deployed IPTV plug-in to $(IptvPluginDest)" />
+  </Target>
+
+  <!--
+    Deploy the HDHomeRun plug-in into the host's plugins/HdHomeRun/ folder (same pattern as the
+    plug-ins above): copy the plug-in assembly + its .deps.json (and pdb), excluding the host-owned
+    shared contract so it's never duplicated across the load boundary.
+  -->
+  <Target Name="DeployHdHomeRunPlugin" AfterTargets="Build">
+    <PropertyGroup>
+      <HdHomeRunPluginDir>$(MSBuildThisFileDirectory)..\Phosphor.Plugins.HdHomeRun\bin\$(Configuration)\net8.0</HdHomeRunPluginDir>
+      <HdHomeRunPluginDest>$(OutDir)plugins\HdHomeRun</HdHomeRunPluginDest>
+    </PropertyGroup>
+    <ItemGroup>
+      <HdHomeRunPluginFiles Include="$(HdHomeRunPluginDir)\*.dll"
+                            Exclude="$(HdHomeRunPluginDir)\Phosphor.Plugin.Abstractions.dll" />
+      <HdHomeRunPluginFiles Include="$(HdHomeRunPluginDir)\Phosphor.Plugins.HdHomeRun.pdb" Condition="Exists('$(HdHomeRunPluginDir)\Phosphor.Plugins.HdHomeRun.pdb')" />
+      <HdHomeRunPluginFiles Include="$(HdHomeRunPluginDir)\Phosphor.Plugins.HdHomeRun.deps.json" Condition="Exists('$(HdHomeRunPluginDir)\Phosphor.Plugins.HdHomeRun.deps.json')" />
+    </ItemGroup>
+    <MakeDir Directories="$(HdHomeRunPluginDest)" />
+    <Copy SourceFiles="@(HdHomeRunPluginFiles)" DestinationFolder="$(HdHomeRunPluginDest)" SkipUnchangedFiles="true" />
+    <Message Importance="high" Text="Deployed HDHomeRun plug-in to $(HdHomeRunPluginDest)" />
   </Target>
 
   <!--
