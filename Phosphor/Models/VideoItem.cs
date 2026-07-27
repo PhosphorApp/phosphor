@@ -227,6 +227,7 @@ public class VideoItem : ObservableObject
             {
                 OnPropertyChanged(nameof(UploadDateText));
                 OnPropertyChanged(nameof(DetailTextDurationFirst));
+                OnPropertyChanged(nameof(DetailTextDurationThenAuthor));
             }
         }
     }
@@ -254,15 +255,27 @@ public class VideoItem : ObservableObject
                 : $"{Author} \u00B7 {DurationText}";
 
     /// <summary>
-    /// "duration · author" ordering for the compact two-row result layout.
-    /// Falls back gracefully when either part is missing.
+    /// "duration · author" ordering for the compact two-row result layout, with the upload date
+    /// appended when known (e.g. "42:15 · Some Author · 7/24/2026"). The date uses the local system's
+    /// short-date pattern (MM/dd/yyyy vs dd/MM/yyyy). Falls back gracefully when any part is missing.
     /// </summary>
-    public string DetailTextDurationThenAuthor =>
-        string.IsNullOrEmpty(DurationText)
-            ? Author
-            : string.IsNullOrWhiteSpace(Author)
-                ? DurationText
-                : $"{DurationText} \u00B7 {Author}";
+    public string DetailTextDurationThenAuthor
+    {
+        get
+        {
+            var baseText =
+                string.IsNullOrEmpty(DurationText)
+                    ? Author
+                    : string.IsNullOrWhiteSpace(Author)
+                        ? DurationText
+                        : $"{DurationText} \u00B7 {Author}";
+
+            if (UploadDateText.Length == 0)
+                return baseText;
+
+            return baseText.Length == 0 ? UploadDateText : $"{baseText} \u00B7 {UploadDateText}";
+        }
+    }
 
     public string DetailTextDurationFirst
     {

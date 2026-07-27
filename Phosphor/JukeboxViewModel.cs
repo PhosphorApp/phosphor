@@ -1806,6 +1806,7 @@ public partial class JukeboxViewModel : ObservableObject
             ThumbnailUrl = item.ThumbnailUrl ?? "",
             VideoId = item.ItemId,
             Duration = item.Duration,
+            UploadDate = item.PublishedAt,
             SourceInstanceId = item.SourceInstanceId,
             IsAudioOnly = item.IsAudioOnly,
             IsLiveStream = item.IsLiveStream,

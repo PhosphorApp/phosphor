@@ -11,6 +11,7 @@
   <Project Path="Phosphor.Plugins.Dailymotion/Phosphor.Plugins.Dailymotion.csproj" />
   <Project Path="Phosphor.Plugins.SoundCloud/Phosphor.Plugins.SoundCloud.csproj" />
   <Project Path="Phosphor.Plugins.IHeartRadio/Phosphor.Plugins.IHeartRadio.csproj" />
+  <Project Path="Phosphor.Plugins.PodcastIndex/Phosphor.Plugins.PodcastIndex.csproj" />
   <Project Path="Phosphor.Plugins.Twitch/Phosphor.Plugins.Twitch.csproj" />
   <Project Path="Phosphor.Plugins.Iptv/Phosphor.Plugins.Iptv.csproj" />
   <Project Path="Phosphor/Phosphor.csproj" />
