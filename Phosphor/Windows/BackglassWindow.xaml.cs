@@ -403,6 +403,11 @@ public partial class BackglassWindow : JukeboxWindow
 
     public void AttachViewModel(JukeboxViewModel vm)
     {
+        // Bind this window's playback engine to Player 1's command channel (context → player → host).
+        // The engine methods still live on the window for now and subscribe below; this establishes the
+        // intended ownership so a later increment can move the subscriptions onto JukeboxPlayer.
+        JukeboxPlayer.Attach(vm.Player1);
+
         vm.PlayRequested += OnPlayRequested;
         vm.StopRequested += OnStopRequested;
         vm.SeekRequested += OnSeekRequested;

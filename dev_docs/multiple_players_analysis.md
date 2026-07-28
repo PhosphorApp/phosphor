@@ -4,10 +4,54 @@ Exploratory analysis / feasibility + phasing for allowing **two media items to p
 at once** — e.g. the **Backglass** playing a music video while the **Topper** plays a
 second item (music-only, video, or ambience).
 
-> **STATUS (analysis / not started).** This document is a design and phasing plan.
-> No code has been written yet. The intent is to do the hard, non-user-visible
-> refactor first (**Phase 0**) so the later feature work is a wiring exercise rather
-> than a rewrite.
+> **STATUS (Phase 0 plumbing in progress on branch `multiplayer`).** The seam and
+> command-channel extraction are done with zero user-visible change; the full playback
+> *engine* relocation into `JukeboxPlayer` is intentionally deferred (see the Phase 0
+> progress note below). The intent is still to do the hard, non-user-visible refactor
+> first so the later feature work is a wiring exercise rather than a rewrite.
+
+---
+
+## 🚧 Phase 0 progress (branch `multiplayer`)
+
+Done so far (each step builds clean; VM public binding/event surface unchanged):
+
+- **`Phosphor/Playback/IPlaybackHost.cs`** — the window-side seam (`EnterMediaMode`,
+  `ReturnToIdle`, `DetachVideoView`, `ReportPlaybackFailed`).
+- **`BackglassWindow.PlaybackHost.cs`** — `BackglassWindow` implements `IPlaybackHost`
+  by forwarding to its existing `HideIdleForJukeboxVideo` / `ShowIdleBackground` /
+  `DetachVideoView`; also hosts a lazily-created `JukeboxPlayer`.
+- **`Phosphor/Playback/JukeboxPlayer.cs`** — engine component skeleton holding the
+  `IPlaybackHost` seam and a `PlayerContext` (via `Attach`).
+- **`Phosphor/Playback/PlayerContext.cs`** — the per-player command channel (play / stop /
+  pause / resume / seek / volume). The VM now owns a single `Player1` and **re-exposes the
+  existing `PlayRequested`/`StopRequested`/`PauseRequested`/`ResumeRequested`/
+  `SeekRequested`/`VolumeChanged` events as pass-throughs to `Player1`** — all XAML
+  bindings and the Backglass's `AttachViewModel` subscriptions keep working unchanged.
+- **`DmdWindow.ApplyReactiveBlobs`** — documented the Backglass-drives-reactive
+  convention at the single reactive-wiring choke point.
+
+**Deferred (was Step 2/4 in the plan):** moving the ~2700-line playback *engine*
+(fields `_playCts`, `_gaplessPlayer`, `_nextMediaPlayer`, seek-verify, position timer,
+live clock, prefetch, `OnPlayRequested`/`OnSeekRequested`) out of `BackglassWindow` and
+into `JukeboxPlayer`. That logic is tightly coupled to window internals (`_colorTimer`,
+`EnsureVlcInitialized`/`_mediaPlayer`, `RootGrid`/`_videoView`, dispatcher, `DataContext`),
+so a wholesale lift risks the zero-change guarantee. It is best done as its own
+incremental increment (route methods through `JukeboxPlayer`/`IPlaybackHost` one at a
+time) once the command-channel plumbing above is validated.
+
+### Manual validation matrix (run on the Backglass only; expect identical behavior)
+
+- YouTube stream (search → play)
+- Cached / prefetched playback
+- Gapless audio transition (track → track)
+- Seek forward / back + seek-verify recovery
+- Live stream (SiriusXM) elapsed clock + non-seekable
+- Chapters (tick marks, Skip / PreviousTrack chapter jumps)
+- Pause / resume
+- Volume slider
+- `audio-only` toggle
+- Pinup / ambient handoff (stop returns to idle/ambient)
 
 ---
 

@@ -1949,6 +1949,11 @@ public partial class DmdWindow : JukeboxWindow
 
     private void ApplyReactiveBlobs(bool playfield, bool backglass, bool topper, bool dmd)
     {
+        // Audio-reactive convention (single choke point): the reactive driver is a system-wide WASAPI
+        // loopback capture (AudioReactiveService), not bound to any one player's stream. By convention
+        // the Backglass (Player 1) is the reactive driver; a future second player (Player 2) never
+        // becomes the driver. This is the one place reactive audio is wired to each screen, so the
+        // convention is enforced here — Player 2 wiring must not route a distinct reactive source.
         if (_appSettings == null) return;
         bool anyEnabled = playfield || backglass || topper || dmd;
         bool needAudio = anyEnabled || _appSettings.ReactiveProjectM;

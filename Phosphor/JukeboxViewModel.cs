@@ -1395,11 +1395,38 @@ public partial class JukeboxViewModel : ObservableObject
     public ObservableCollection<string> SearchSuggestions { get; } = new();
     public IReadOnlyList<string> AllSearchHistory => _searchHistory.Searches;
 
-    public event Action<string>? PlayRequested;
-    public event Action? StopRequested;
-    public event Action? PauseRequested;
-    public event Action? ResumeRequested;
-    public event Action<long>? SeekRequested;
+    /// <summary>
+    /// Player 1's command channel (Backglass = primary). Phase 0 plumbing: the VM's command events
+    /// are re-exposed as pass-throughs to this context so existing subscribers (the Backglass's
+    /// <c>AttachViewModel</c>) keep working unchanged while a second player's channel can now exist.
+    /// </summary>
+    public Phosphor.Playback.PlayerContext Player1 { get; } = new();
+
+    public event Action<string>? PlayRequested
+    {
+        add => Player1.AddPlayRequested(value!);
+        remove => Player1.RemovePlayRequested(value!);
+    }
+    public event Action? StopRequested
+    {
+        add => Player1.AddStopRequested(value!);
+        remove => Player1.RemoveStopRequested(value!);
+    }
+    public event Action? PauseRequested
+    {
+        add => Player1.AddPauseRequested(value!);
+        remove => Player1.RemovePauseRequested(value!);
+    }
+    public event Action? ResumeRequested
+    {
+        add => Player1.AddResumeRequested(value!);
+        remove => Player1.RemoveResumeRequested(value!);
+    }
+    public event Action<long>? SeekRequested
+    {
+        add => Player1.AddSeekRequested(value!);
+        remove => Player1.RemoveSeekRequested(value!);
+    }
 
     private double _playbackPosition;
     public double PlaybackPosition
@@ -1439,11 +1466,15 @@ public partial class JukeboxViewModel : ObservableObject
         set
         {
             if (SetProperty(ref _volume, Math.Clamp(value, 0, 100)))
-                VolumeChanged?.Invoke(_volume);
+                Player1.RaiseVolumeChanged(_volume);
         }
     }
 
-    public event Action<int>? VolumeChanged;
+    public event Action<int>? VolumeChanged
+    {
+        add => Player1.AddVolumeChanged(value!);
+        remove => Player1.RemoveVolumeChanged(value!);
+    }
 
     public string PlaybackTimeText
     {
@@ -1471,21 +1502,21 @@ public partial class JukeboxViewModel : ObservableObject
     public void SeekTo(long timeMs)
     {
         if (IsLiveStream) return; // live streams are not seekable
-        SeekRequested?.Invoke(timeMs);
+        Player1.RaiseSeekRequested(timeMs);
     }
 
     [RelayCommand]
     private void SeekForward()
     {
         if (IsLiveStream) return;
-        SeekRequested?.Invoke((long)PlaybackPosition + 15000);
+        Player1.RaiseSeekRequested((long)PlaybackPosition + 15000);
     }
 
     [RelayCommand]
     private void SeekBack()
     {
         if (IsLiveStream) return;
-        SeekRequested?.Invoke(Math.Max(0, (long)PlaybackPosition - 15000));
+        Player1.RaiseSeekRequested(Math.Max(0, (long)PlaybackPosition - 15000));
     }
 
     // ── Video cache ──
@@ -3747,7 +3778,7 @@ public partial class JukeboxViewModel : ObservableObject
             (item.StreamUrl == null &&
              (item.PendingLiveSourceItem != null || item.PendingResolveSourceItem != null)))
         {
-            StopRequested?.Invoke();
+            Player1.RaiseStopRequested();
         }
 
         // Live streams (e.g. Twitch, SiriusXM) resolve lazily at play time — resolve a fresh URL now,
@@ -3767,7 +3798,7 @@ public partial class JukeboxViewModel : ObservableObject
             return;
         }
 
-        PlayRequested?.Invoke(item.VideoId);
+        Player1.RaisePlayRequested(item.VideoId);
 
         // Fetch duration/chapters from the item's own source (source-agnostic). Fire-and-forget so
         // playback starts immediately; results apply to the now-playing item when they arrive.
@@ -3837,7 +3868,7 @@ public partial class JukeboxViewModel : ObservableObject
                 // re-resolvable for the next play (and the persisted StreamUrl is dropped on save).
                 // Guard against the user having moved on while we were tuning.
                 if (ReferenceEquals(CurrentlyPlaying, item))
-                    PlayRequested?.Invoke(item.VideoId);
+                    Player1.RaisePlayRequested(item.VideoId);
             }
             else
             {
@@ -3913,7 +3944,7 @@ public partial class JukeboxViewModel : ObservableObject
                 item.PendingResolveSourceItem = null; // resolved
                 // Guard against the user having moved on while we were resolving.
                 if (ReferenceEquals(CurrentlyPlaying, item))
-                    PlayRequested?.Invoke(item.VideoId);
+                    Player1.RaisePlayRequested(item.VideoId);
             }
             else
             {
@@ -4097,7 +4128,7 @@ public partial class JukeboxViewModel : ObservableObject
     [RelayCommand]
     private void StopPlayback()
     {
-        StopRequested?.Invoke();
+        Player1.RaiseStopRequested();
         PlayTransitioning = false;
         _statusPrefixCts?.Cancel();
         StatusPrefix = "";
@@ -4152,7 +4183,7 @@ public partial class JukeboxViewModel : ObservableObject
             ResumePlayback();
             return;
         }
-        PauseRequested?.Invoke();
+        Player1.RaisePauseRequested();
         IsPaused = true;
         StatusText = "Paused";
     }
@@ -4161,7 +4192,7 @@ public partial class JukeboxViewModel : ObservableObject
     private void ResumePlayback()
     {
         if (!IsPlaying || !IsPaused) return;
-        ResumeRequested?.Invoke();
+        Player1.RaiseResumeRequested();
         IsPaused = false;
         StatusText = $"Playing: {CurrentlyPlaying?.Title}{CurrentlyPlaying?.AudioTag}";
     }
@@ -4194,7 +4225,7 @@ public partial class JukeboxViewModel : ObservableObject
         if (_playTransitioning) return;
 
         if (IsPlaying)
-            StopRequested?.Invoke();
+            Player1.RaiseStopRequested();
 
         QueueIndex = index;
         PlayNow(Queue[index]);
@@ -4239,14 +4270,14 @@ public partial class JukeboxViewModel : ObservableObject
                 // Seek to next chapter
                 var nextStart = (long)chapters[currentChapter + 1].StartTime.TotalMilliseconds;
                 PlayTransitioning = true;
-                SeekRequested?.Invoke(nextStart);
+                Player1.RaiseSeekRequested(nextStart);
                 return;
             }
         }
 
         // Last chapter or no chapters — skip to next queue item
         if (IsPlaying)
-            StopRequested?.Invoke();
+            Player1.RaiseStopRequested();
         PlayNext();
     }
 
@@ -4281,14 +4312,14 @@ public partial class JukeboxViewModel : ObservableObject
             {
                 // Restart current chapter
                 PlayTransitioning = true;
-                SeekRequested?.Invoke((long)chapterStartMs);
+                Player1.RaiseSeekRequested((long)chapterStartMs);
                 return;
             }
             else if (currentChapter > 0)
             {
                 // Jump to previous chapter
                 PlayTransitioning = true;
-                SeekRequested?.Invoke((long)chapters[currentChapter - 1].StartTime.TotalMilliseconds);
+                Player1.RaiseSeekRequested((long)chapters[currentChapter - 1].StartTime.TotalMilliseconds);
                 return;
             }
             // First chapter and near start — fall through to previous queue item logic
@@ -4302,7 +4333,7 @@ public partial class JukeboxViewModel : ObservableObject
 
         if (isBeyond10Seconds || isFirstItem)
         {
-            SeekRequested?.Invoke(0);
+            Player1.RaiseSeekRequested(0);
         }
         else
         {
