@@ -69,6 +69,49 @@ wiring — even before the engine bodies relocate.
 state (`_playCts`, `_gaplessPlayer`, `_nextMediaPlayer`, seek-verify, position timer, live
 clock, prefetch), reached via the `IPlaybackHost` forwarders.
 
+---
+
+## ✅ MILESTONE — Phase 0.6/0.7: engine + orchestration fully relocated (validated)
+
+**Tag: `phase-0.7-orchestration-relocated`.** The playback engine AND its orchestration
+now live entirely outside `BackglassWindow`. The window is a **pure `IPlaybackHost`** —
+video surface + idle/logo visuals + engine-host callbacks — holding ZERO playback logic.
+
+Final architecture (validated end-to-end on the Backglass: YouTube, cached/prefetched,
+gapless PCM, audio-only, track→track transition, live stream, first-frame timeout):
+
+```
+VM → Player1 (PlayerContext) → JukeboxPlayer.Play/Stop/Seek
+      ├─ MediaEngine        (VLC MediaPlayer + gapless + seek-verify + last-stream ctx + live clock)
+      └─ IPlaybackHost      (window: video surface, idle/blob visuals, timers, DMD notify)
+```
+
+Engine extraction (Phase 0.6):
+- **`MediaEngine` (`7e8dad4`)** — VLC lifecycle (shared-VLC adoption, init handshake,
+  EnsureInitialized), last-stream context, live clock, player-swap.
+- **`f6bc1cd`** — gapless engine state + `StopGaplessPlayer`/`DisposeGaplessNext`.
+- `MediaEngine` ownership moved into `JukeboxPlayer`; the window references it via `_engine`.
+
+Orchestration relocation (Phase 0.7):
+- **Stop (`4eb86dc`)** — pilot: `JukeboxPlayer.Stop()`.
+- **Seek (`2e60fb0`)** — `JukeboxPlayer.Seek` + `SwitchToCachedFileAndSeek`; adopted
+  **Option X** (the player holds the VM as its `Model` for now-playing state + shared
+  services; Phase 2 later moves per-player state into `PlayerContext`).
+- **Play (`ebff678`)** — the ~430-line `OnPlayRequested` → `JukeboxPlayer.Play`.
+- `IPlaybackHost` seam grew: host-thread marshalling (`CheckHostAccess`/`BeginInvokeOnHost`/
+  `InvokeOnHostAsync`), view callbacks (color-cycle / position-timer / info-timer /
+  transition-overlay / idle / video-surface / DMD-notify), and `CreateGaplessPlayer`.
+
+**Significance:** `JukeboxPlayer` is now a **window-agnostic playback controller**. Phase 1
+(a real second player on the Topper) is now the "wiring exercise" the plan promised — the
+Topper gets its own `JukeboxPlayer` + `MediaEngine` + `IPlaybackHost`, driven by a
+`Player2` context, with NO duplicated logic and NO calling back into the Backglass.
+
+**Remaining minor cleanup (optional):** the view-coupled gapless helpers
+`CreateGaplessPlayer` / `PrepareGaplessNext` still live in the window and are reached via
+the `CreateGaplessPlayer` host callback — they work correctly there; relocating them is
+low-value polish, not a blocker for Phase 1.
+
 ### Manual validation matrix (run on the Backglass only; expect identical behavior)
 
 - YouTube stream (search → play)
