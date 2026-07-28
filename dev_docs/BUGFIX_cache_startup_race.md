@@ -142,6 +142,24 @@ while a resolve/download is mid-flight.
 - `Phosphor.Plugins.YouTube/Engines/YtDlpVideoEngine.cs`
 - `Phosphor.Plugins.YouTube/Engines/YtDlpUpdater.cs`
 
+### Tradeoff — the gate split slightly widens concurrent yt-dlp requests
+
+The single gate used to fully serialize yt-dlp **resolve** and **download**, so two yt-dlp
+processes never hit YouTube at once. After the split, a download (`DownloadGate`) and a
+resolve (`ProcessGate`) CAN run simultaneously — e.g. skipping to a new track (resolve)
+while the previous track's cache download is still running. That is a modest increase in
+the concurrent-request surface YouTube's anti-abuse heuristics watch, so it can *marginally*
+raise 403 likelihood.
+
+Context: this is secondary. The dominant 403 driver is the LibVLC **stream** + yt-dlp
+**download** of the same item running concurrently — and that is **unchanged** by the split
+(VLC streaming is not gated by yt-dlp at all, and never was). Resolves are brief and
+infrequent (one per track change) vs. the heavy, sustained download. The split was a
+deliberate tradeoff for responsiveness (BUG 2b: skip-to-next no longer hangs behind a long
+download). Mitigation (1) below (`--limit-rate` / `--sleep-interval` on the download path)
+directly offsets this by making downloads gentler.
+
+
 ### Note — yt-dlp search vs. the gates (expected, benign)
 
 Relevant when the user selects **yt-dlp** as the search engine (default is
