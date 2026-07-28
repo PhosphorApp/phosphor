@@ -48,6 +48,10 @@ public sealed class MediaEngine
     public Phosphor.Audio.GaplessAudioPlayer? GaplessPlayer { get; set; }
     public bool UsingGaplessPlayer { get; set; }
 
+    // ── Cancellation for in-flight play + seek-verify (shared so relocated + window code coordinate) ──
+    public CancellationTokenSource? PlayCts { get; set; }
+    public CancellationTokenSource? SeekVerifyCts { get; set; }
+
     /// <summary>Raised on the VLC <see cref="MediaPlayer.EndReached"/> event (wired on the dispatcher).</summary>
     public event EventHandler? EndReached;
 

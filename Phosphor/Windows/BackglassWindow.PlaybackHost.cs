@@ -58,7 +58,29 @@ public partial class BackglassWindow : IPlaybackHost
     // bodies relocate in a later increment.
     void IPlaybackHost.Play(string videoId) => OnPlayRequested(videoId);
 
-    void IPlaybackHost.Stop() => OnStopRequested();
+    // Stop is now relocated into JukeboxPlayer (pilot slice); the window no longer implements the body.
+    void IPlaybackHost.Stop() => JukeboxPlayer.Stop();
 
     void IPlaybackHost.Seek(long timeMs) => OnSeekRequested(timeMs);
+
+    bool IPlaybackHost.CheckHostAccess() => Dispatcher.CheckAccess();
+
+    void IPlaybackHost.BeginInvokeOnHost(Action action) => Dispatcher.BeginInvoke(action);
+
+    // ── View-transition callbacks (forward to existing window members) ──
+    void IPlaybackHost.StartColorCycle() => _colorTimer.Start();
+    void IPlaybackHost.StopColorCycle() => _colorTimer.Stop();
+    void IPlaybackHost.StartPositionTimer() => _positionTimer?.Start();
+    void IPlaybackHost.StopPositionTimer() => _positionTimer?.Stop();
+    void IPlaybackHost.StopInfoTimer() => _infoTimer?.Stop();
+
+    void IPlaybackHost.CancelTransitionOverlay()
+    {
+        _transitionOverlayTimer?.Stop();
+        _transitionOverlayTimer = null;
+    }
+
+    void IPlaybackHost.ClearVideoInfo() => VideoInfoChanged?.Invoke("");
+
+    void IPlaybackHost.ResetLogoDimIdle() => ResetLogoDimIdle();
 }

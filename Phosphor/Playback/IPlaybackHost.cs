@@ -53,4 +53,44 @@ public interface IPlaybackHost
 
     /// <summary>Seeks the current media to the given position (ms).</summary>
     void Seek(long timeMs);
+
+    // ── Host-thread marshalling ──
+    // The playback orchestration runs on the host window's STA/dispatcher thread. JukeboxPlayer is
+    // thread-agnostic, so it marshals onto the host thread through these members instead of holding a
+    // Dispatcher directly.
+
+    /// <summary>True when the caller is already on the host's dispatcher thread.</summary>
+    bool CheckHostAccess();
+
+    /// <summary>Queues <paramref name="action"/> to run asynchronously on the host's dispatcher thread.</summary>
+    void BeginInvokeOnHost(Action action);
+
+    // ── View-transition callbacks used by the playback orchestration ──
+    // The orchestration (stop / seek / play) drives these window-owned visuals/timers. They are grouped
+    // here so JukeboxPlayer can run the flow without knowing which window it lives in. All are invoked
+    // on the host thread (the orchestration marshals via BeginInvokeOnHost).
+
+    /// <summary>Starts the idle blob color-cycle timer (idle animation resumes).</summary>
+    void StartColorCycle();
+
+    /// <summary>Stops the idle blob color-cycle timer (no point cycling under a video).</summary>
+    void StopColorCycle();
+
+    /// <summary>Starts the playback position/duration write-back timer.</summary>
+    void StartPositionTimer();
+
+    /// <summary>Stops the playback position/duration write-back timer.</summary>
+    void StopPositionTimer();
+
+    /// <summary>Stops the video-info polling timer.</summary>
+    void StopInfoTimer();
+
+    /// <summary>Cancels/clears any pending delayed idle-overlay reveal from a transition.</summary>
+    void CancelTransitionOverlay();
+
+    /// <summary>Clears the video-info readout (e.g. resolution text) on stop.</summary>
+    void ClearVideoInfo();
+
+    /// <summary>Resets the logo-dim state back to its idle appearance.</summary>
+    void ResetLogoDimIdle();
 }

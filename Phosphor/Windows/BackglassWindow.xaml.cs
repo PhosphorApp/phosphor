@@ -14,9 +14,10 @@ namespace Phosphor;
 public partial class BackglassWindow : JukeboxWindow
 {
     // The raw LibVLC engine for this window's player (VLC lifecycle, last-stream context, live clock).
-    // Phase 0.6 slice 1: state lives here; the field-named properties below delegate to it so the
-    // window's existing engine/orchestration code keeps compiling unchanged while ownership moves.
-    private readonly Phosphor.Playback.MediaEngine _engine = new();
+    // Owned by JukeboxPlayer (so a second player gets an independent engine); the window references the
+    // same instance here so its not-yet-relocated orchestration and the player's relocated code share
+    // one engine during the migration.
+    private Phosphor.Playback.MediaEngine _engine => JukeboxPlayer.Engine;
 
     private LibVLC? _libVLC { get => _engine.LibVLC; set => _engine.SetSharedVlc(value); }
     private MediaPlayer? _mediaPlayer => _engine.MediaPlayer;
@@ -60,7 +61,7 @@ public partial class BackglassWindow : JukeboxWindow
     private readonly DispatcherTimer _logoDimTimer = new();
     private bool _logoMorphEnabled;
     private bool _audioOnly;
-    private CancellationTokenSource? _playCts;
+    private CancellationTokenSource? _playCts { get => _engine.PlayCts; set => _engine.PlayCts = value; }
     private readonly DispatcherTimer _morphTimer = new();
     private Task? _vlcInitTask { get => _engine.InitTask; set => _engine.InitTask = value; }
     private readonly DispatcherTimer _expandButtonHideTimer = new() { Interval = TimeSpan.FromSeconds(3) };
@@ -88,7 +89,7 @@ public partial class BackglassWindow : JukeboxWindow
     // ── Seek verification cancellation ──
     // A new seek request cancels any in-flight verification from the previous seek so
     // that the older verification can't "restore" a position over the new target.
-    private CancellationTokenSource? _seekVerifyCts;
+    private CancellationTokenSource? _seekVerifyCts { get => _engine.SeekVerifyCts; set => _engine.SeekVerifyCts = value; }
 
     // ── Transition idle-overlay reveal timer ──
     // During a track-to-track transition we delay showing the idle (logo/blob) overlay
@@ -371,10 +372,9 @@ public partial class BackglassWindow : JukeboxWindow
     public void AttachViewModel(JukeboxViewModel vm)
     {
         // Bind this window's playback engine to Player 1's command channel (context → player → host).
-        // JukeboxPlayer now owns the play / stop / seek / pause / resume / volume handlers (it
-        // subscribes them in Attach and forwards to this window via IPlaybackHost). The play/stop/seek
-        // engine bodies still live in this window (OnPlayRequested/OnStopRequested/OnSeekRequested) and
-        // relocate into JukeboxPlayer in a later increment.
+        // JukeboxPlayer owns all six command handlers. Stop orchestration is fully relocated into
+        // JukeboxPlayer; play/seek bodies (OnPlayRequested/OnSeekRequested) still live in this window
+        // behind IPlaybackHost.Play/Seek and relocate in later increments.
         JukeboxPlayer.Attach(vm.Player1);
 
         _positionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
@@ -1235,43 +1235,6 @@ public partial class BackglassWindow : JukeboxWindow
         {
             DebugLog.LogException("Seek/CacheSwitch", ex);
         }
-    }
-
-    private void OnStopRequested()
-    {
-        // Cancel any in-flight play operation so it doesn't resume after stop
-        _playCts?.Cancel();
-        // Cancel any pending seek verification / re-open
-        _seekVerifyCts?.Cancel();
-
-        Dispatcher.BeginInvoke(async () =>
-        {
-            _positionTimer?.Stop();
-            _infoTimer?.Stop();
-            // Cancel any pending delayed-overlay reveal from a transition
-            _transitionOverlayTimer?.Stop();
-            _transitionOverlayTimer = null;
-            VideoInfoChanged?.Invoke("");
-
-            // Stop PCM gapless player if active
-            StopGaplessPlayer();
-
-            // Detach the VideoView BEFORE stopping so the WinForms HWND is
-            // removed from the visual tree first — this prevents VLC's video
-            // output thread from waiting on UI-thread window messages while
-            // Stop() blocks, which would cause a deadlock.
-            DetachVideoView();
-            DisposeGaplessNext();
-
-            // Stop on a background thread to avoid blocking the dispatcher
-            // (same pattern used in OnPlayRequested and other call sites).
-            if (_mediaPlayer != null)
-                await Task.Run(() => _mediaPlayer.Stop());
-
-            ShowIdleBackground();
-            _colorTimer.Start();
-            ResetLogoDimIdle();
-        });
     }
 
     private void OnMediaBuffering(object? sender, LibVLCSharp.Shared.MediaPlayerBufferingEventArgs e)
