@@ -180,8 +180,21 @@ public sealed class TopperProxy : IPinupFollower
     public void ShowCursor() =>
         _dispatcher.BeginInvoke(() => System.Windows.Input.Mouse.OverrideCursor = null);
 
-    // ── Diagnostics ────────────────────────────────────────────────────
+    // ── Jukebox player (Player 2) ────────────────────────────────────────
 
+    /// <summary>Passes the app's shared LibVLC task to the Topper's jukebox engine.</summary>
+    public void SetSharedVlcTask(Task<LibVLCSharp.Shared.LibVLC?>? task) =>
+        _dispatcher.BeginInvoke(() => _window.SetSharedVlcTask(task));
+
+    /// <summary>Binds the Topper's jukebox player to the view-model's Player 2 channel.</summary>
+    public void AttachViewModel(JukeboxViewModel vm) =>
+        _dispatcher.BeginInvoke(() => _window.AttachJukeboxViewModel(vm));
+
+    /// <summary>Sets whether the Topper's jukebox player treats tracks as audio-only.</summary>
+    public void SetAudioOnly(bool audioOnly) =>
+        _dispatcher.BeginInvoke(() => _window.SetJukeboxAudioOnly(audioOnly));
+
+    // ── Diagnostics ────────────────────────────────────────────────────
     /// <summary>
     /// Synchronously retrieves window info for diagnostics (HWND, size, visibility).
     /// </summary>
