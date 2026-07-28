@@ -53,13 +53,20 @@ public sealed class JukeboxPlayer
     /// Binds this player to a view-model: stores it as the model and subscribes the command handlers
     /// this player owns (play / stop / seek / pause / resume / volume) on the VM's player context.
     /// </summary>
-    public void Attach(JukeboxViewModel vm)
+    public void Attach(JukeboxViewModel vm) => Attach(vm, vm.Player1);
+
+    /// <summary>
+    /// Binds this player to a view-model and a specific command channel. The Backglass binds to
+    /// <see cref="JukeboxViewModel.Player1"/>; the Topper (Player 2) binds to
+    /// <see cref="JukeboxViewModel.Player2"/> so both drive independent engines from one VM.
+    /// </summary>
+    public void Attach(JukeboxViewModel vm, PlayerContext context)
     {
         if (Context != null)
             Detach();
 
         Model = vm;
-        Context = vm.Player1;
+        Context = context;
         Context.AddPlayRequested(OnPlayRequested);
         Context.AddStopRequested(OnStopRequested);
         Context.AddSeekRequested(OnSeekRequested);
