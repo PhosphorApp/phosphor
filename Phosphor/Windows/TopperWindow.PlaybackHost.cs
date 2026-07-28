@@ -53,6 +53,48 @@ public partial class TopperWindow : IPlaybackHost
     public void SetJukeboxAudioOnly(bool audioOnly) => _jukeboxAudioOnly = audioOnly;
     private bool _jukeboxAudioOnly;
 
+    // Player 2's own position write-back timer (mirrors the Backglass's) — writes THIS player's context.
+    private System.Windows.Threading.DispatcherTimer? _jukeboxPositionTimer;
+
+    private void EnsureJukeboxPositionTimer()
+    {
+        if (_jukeboxPositionTimer != null) return;
+        _jukeboxPositionTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(250)
+        };
+        _jukeboxPositionTimer.Tick += (_, _) =>
+        {
+            var state = JukeboxPlayer.Context;
+            if (state == null || state.IsSeeking) return;
+
+            if (JukeboxEngine.UsingGaplessPlayer && JukeboxEngine.GaplessPlayer is { } gp)
+            {
+                state.PlaybackDuration = Math.Max(1, gp.DurationMs);
+                state.PlaybackPosition = Math.Max(0, gp.PositionMs);
+                return;
+            }
+
+            var mp = JukeboxEngine.MediaPlayer;
+            if (mp == null) return;
+
+            if (state.CurrentlyPlaying?.IsLiveStream == true)
+            {
+                if (JukeboxEngine.LiveStartUtc == null) JukeboxEngine.LiveStartUtc = DateTime.UtcNow;
+                state.PlaybackDuration = 1;
+                state.PlaybackPosition = Math.Max(0, (DateTime.UtcNow - JukeboxEngine.LiveStartUtc.Value).TotalMilliseconds);
+                return;
+            }
+            JukeboxEngine.LiveStartUtc = null;
+
+            long lengthMs = mp.Length;
+            if (lengthMs <= 0 && state.CurrentlyPlaying?.Duration is { } known && known > TimeSpan.Zero)
+                lengthMs = (long)known.TotalMilliseconds;
+            state.PlaybackDuration = Math.Max(1, lengthMs);
+            state.PlaybackPosition = Math.Max(0, mp.Time);
+        };
+    }
+
     // ── Jukebox video surface (dedicated; mirrors BackglassWindow.EnsureVideoView / DetachVideoView) ──
 
     private LibVLCSharp.WPF.VideoView EnsureJukeboxVideoView()
@@ -136,8 +178,8 @@ public partial class TopperWindow : IPlaybackHost
 
     void IPlaybackHost.StartColorCycle() { }
     void IPlaybackHost.StopColorCycle() { }
-    void IPlaybackHost.StartPositionTimer() { }
-    void IPlaybackHost.StopPositionTimer() { }
+    void IPlaybackHost.StartPositionTimer() { EnsureJukeboxPositionTimer(); _jukeboxPositionTimer!.Start(); }
+    void IPlaybackHost.StopPositionTimer() => _jukeboxPositionTimer?.Stop();
     void IPlaybackHost.StopInfoTimer() { }
     void IPlaybackHost.CancelTransitionOverlay() { }
     void IPlaybackHost.ClearVideoInfo() { }
