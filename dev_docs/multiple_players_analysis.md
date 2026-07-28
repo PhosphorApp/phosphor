@@ -40,6 +40,35 @@ so a wholesale lift risks the zero-change guarantee. It is best done as its own
 incremental increment (route methods through `JukeboxPlayer`/`IPlaybackHost` one at a
 time) once the command-channel plumbing above is validated.
 
+---
+
+## ✅ MILESTONE — Phase 0.5: command routing fully player-agnostic (validated)
+
+**Tag: `phase-0.5-command-routing`.** Tested well on the Backglass (play / stop / seek /
+pause / resume / volume all behave identically). Command routing is now completely
+decoupled from the window:
+
+```
+VM → Player1 (PlayerContext) → JukeboxPlayer → IPlaybackHost → BackglassWindow
+```
+
+- **Slice 1 (`8a73696`)** — pause / resume / volume: both subscription AND body migrated
+  into `JukeboxPlayer` (they were thin forwarders).
+- **Slice 2 (`41074ab`)** — play / stop / seek: subscription ownership migrated onto
+  `JukeboxPlayer`; the engine bodies (`OnPlayRequested`/`OnStopRequested`/`OnSeekRequested`)
+  stay in the window behind `IPlaybackHost.Play`/`Stop`/`Seek` forwarders.
+- `IPlaybackHost` expanded with `Pause` / `Resume` / `SetVolume` / `Play` / `Stop` / `Seek`.
+- **`BackglassWindow.AttachViewModel` now subscribes to ZERO VM command events** — all six
+  are owned by `JukeboxPlayer`.
+
+**Significance:** a second player (Topper) could now receive commands from a `Player2`
+context through its own `JukeboxPlayer` + `IPlaybackHost`, with no Backglass-specific
+wiring — even before the engine bodies relocate.
+
+**Still in the window (next increment):** the play/stop/seek engine bodies + VLC/gapless
+state (`_playCts`, `_gaplessPlayer`, `_nextMediaPlayer`, seek-verify, position timer, live
+clock, prefetch), reached via the `IPlaybackHost` forwarders.
+
 ### Manual validation matrix (run on the Backglass only; expect identical behavior)
 
 - YouTube stream (search → play)
