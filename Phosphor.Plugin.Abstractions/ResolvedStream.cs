@@ -65,7 +65,17 @@ public sealed record ResolvedStream(
     public bool IsLiveStream { get; init; }
 
     /// <summary>
-    /// Optional short, human-readable audio-selection tag for the status bar (e.g. " (Stereo)",
+    /// Optional startup budget hint for the host's first-frame watchdog: how long to wait for the
+    /// first video frame / audio to begin before declaring the stream unreachable. <c>null</c> (the
+    /// default) keeps the host's standard finite-media timeout. Slow-starting live sources (e.g. Plex
+    /// or Jellyfin Live TV, where the server must tune a tuner and spin up a transcode before the first
+    /// HLS segment appears) set a longer budget so they aren't killed prematurely. Ignored for ordinary
+    /// finite media, which keeps the standard timeout.
+    /// </summary>
+    public TimeSpan? StartupTimeout { get; init; }
+
+    /// <summary>
+    /// Optional short, human-readable audio-selection tag for the status bar
     /// " (Surround)"), reflecting the audio stream the source chose while resolving. <c>null</c>/empty
     /// when there is nothing noteworthy to show. Lets a source surface its stereo/surround decision
     /// without the host knowing source specifics.

@@ -102,22 +102,36 @@ issue.
 - **Tuner acquisition** — the backing device (e.g. HDHomeRun) may take time to lock the
   channel, especially if a tuner must first be freed.
 
-**Possible fixes (to vet — pick one or combine):**
-- **Live-aware timeout (automatic):** have live streams advertise a longer first-frame
-  budget so the host watchdog is more patient for `IsLiveStream` items specifically (e.g. a
-  ResolvedStream hint like `StartupTimeout`/`SlowStarting`), leaving finite-media timeouts
-  unchanged. Preferred if a single generous value covers real-world servers.
-- **User-configurable timeout (setting):** a "Live TV startup timeout (seconds)" setting
-  (global, or per-source instance) for users on slow/remote servers to raise the window
-  explicitly. More flexible but adds a knob.
-- **Warm-up / readiness probe:** before handing the URL to the player, the plug-in polls the
-  child HLS playlist until the first segment exists (or a cap elapses), so the host only
-  starts playback once media is actually flowing. Hides latency from the watchdog entirely
-  but adds plug-in complexity and its own cap.
+**Status: fixed (automatic live-aware timeout).** Implemented Option 1 — an automatic,
+per-stream startup budget that the host watchdog honors for slow-starting live streams,
+leaving finite-media timeouts unchanged.
 
-**Recommendation to evaluate:** an automatic live-aware timeout as the baseline (covers most
-cases with no user friction), with a user-configurable override for pathological
-(remote/underpowered) servers. Needs a decision on where the timeout hint lives in the
-plug-in contract (`ResolvedStream`) and how the host watchdog consumes it.
+**Implementation:**
+- `Phosphor.Plugin.Abstractions/ResolvedStream.cs` — added an optional
+  `TimeSpan? StartupTimeout` hint (init prop, default `null`). Null keeps the host's standard
+  finite-media timeout; a non-null value is a slow-start budget the watchdog should wait.
+- `Phosphor.Plugins.Plex/PlexSource.cs` and `Phosphor.Plugins.Jellyfin/JellyfinSource.cs` —
+  the live-resolve paths now set `StartupTimeout = TimeSpan.FromSeconds(30)` on their live
+  `ResolvedStream` (alongside `IsLiveStream = true`). 30s comfortably clears the measured ~11s
+  spin-up on a modest server.
+- `Phosphor/Models/VideoItem.cs` — added `TimeSpan? StartupTimeout` so the hint can ride with
+  the now-playing item.
+- `Phosphor/JukeboxViewModel.cs` — propagates `ResolvedStream.StartupTimeout` onto
+  `VideoItem.StartupTimeout` in both the browse-time mapping and the play-time live-resolve
+  path (`ResolveAndPlayLiveAsync`).
+- `Phosphor/Windows/BackglassWindow.xaml.cs` — replaced the two hardcoded `Task.Delay(10000)`
+  waits (audio-only start and first video frame) with `Task.Delay(FirstFrameTimeoutMs(vm))`,
+  a helper that returns the item's `StartupTimeout` when present, else the
+  `DefaultFirstFrameTimeoutMs` (10s). Note: `PlayfieldWindow` has no streaming first-frame
+  watchdog (it only drives local/folder ambient video), so only Backglass needed the change.
+
+**Not (yet) done — possible follow-ups:**
+- **User-configurable timeout (setting):** *[FLAG — future]* surface a "Live TV startup
+  timeout (seconds)" setting (global, or per-source instance) so users on slow/remote servers
+  can tweak the budget without a rebuild. The fixed 30s default covers the tested servers, so
+  this is deferred; add the knob if a real-world server needs a different value.
+- **Warm-up / readiness probe:** as a fallback if the fixed budget proves insufficient — have
+  the plug-in poll the child HLS playlist until the first segment exists before handing off the
+  URL, hiding latency from the watchdog entirely (at the cost of plug-in complexity).
 
 

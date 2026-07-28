@@ -94,6 +94,24 @@ public partial class BackglassWindow : JukeboxWindow
     private DispatcherTimer? _transitionOverlayTimer;
     private const int TransitionOverlayDelayMs = 600;
 
+    // Default budget for the first-frame / audio-start watchdog. Finite media (YouTube, Plex/Jellyfin
+    // on-demand) uses this; slow-starting live streams (Plex/Jellyfin Live TV) request a longer budget
+    // via ResolvedStream.StartupTimeout → VideoItem.StartupTimeout so they aren't killed before their
+    // first HLS segment (tuner + transcode spin-up) appears.
+    private const int DefaultFirstFrameTimeoutMs = 10000;
+
+    /// <summary>
+    /// The first-frame watchdog budget (ms) for the item now starting: the source-supplied
+    /// <see cref="VideoItem.StartupTimeout"/> hint when present (slow-starting live streams), otherwise
+    /// the standard <see cref="DefaultFirstFrameTimeoutMs"/> for finite media.
+    /// </summary>
+    private static int FirstFrameTimeoutMs(JukeboxViewModel? vm)
+    {
+        if (vm?.CurrentlyPlaying?.StartupTimeout is { } budget && budget > TimeSpan.Zero)
+            return (int)Math.Min(budget.TotalMilliseconds, int.MaxValue);
+        return DefaultFirstFrameTimeoutMs;
+    }
+
     public MediaPlayer MediaPlayer => EnsureVlcInitialized();
 
     /// <summary>
@@ -916,7 +934,7 @@ public partial class BackglassWindow : JukeboxWindow
                 }
                 _mediaPlayer.Playing += OnPlaying;
 
-                var audioCompleted = await Task.WhenAny(playingTcs.Task, Task.Delay(10000));
+                var audioCompleted = await Task.WhenAny(playingTcs.Task, Task.Delay(FirstFrameTimeoutMs(vm)));
                 _mediaPlayer.Playing -= OnPlaying;
 
                 if (ct.IsCancellationRequested) return;
@@ -948,7 +966,7 @@ public partial class BackglassWindow : JukeboxWindow
             }
 
             // Wait up to 10s for first video frame
-            var completed = await Task.WhenAny(voutTcs.Task, Task.Delay(10000));
+            var completed = await Task.WhenAny(voutTcs.Task, Task.Delay(FirstFrameTimeoutMs(vm)));
             _mediaPlayer.Vout -= OnVout;
 
             if (ct.IsCancellationRequested) return;

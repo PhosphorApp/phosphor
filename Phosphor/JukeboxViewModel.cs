@@ -583,6 +583,7 @@ public partial class JukeboxViewModel : ObservableObject
                     vi.AudioStreamUrl = stream.Layout == Phosphor.Plugin.Abstractions.StreamLayout.SeparateVideoAudio
                         ? stream.AudioSlaveUri : null;
                     if (stream.IsLiveStream) vi.IsLiveStream = true;
+                    if (stream.StartupTimeout is { } sto) vi.StartupTimeout = sto;
                     if (!string.IsNullOrEmpty(stream.AudioTag)) vi.AudioTag = stream.AudioTag!;
                 }
             }
@@ -3831,6 +3832,7 @@ public partial class JukeboxViewModel : ObservableObject
             if (stream?.PrimaryUri is { Length: > 0 } url)
             {
                 item.StreamUrl = url;
+                item.StartupTimeout = stream.StartupTimeout;
                 // NB: do NOT clear PendingLiveSourceItem — live URLs expire, so the item must stay
                 // re-resolvable for the next play (and the persisted StreamUrl is dropped on save).
                 // Guard against the user having moved on while we were tuning.

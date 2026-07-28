@@ -76,6 +76,14 @@ public class VideoItem : ObservableObject
     public bool IsLiveStream { get; set; }
 
     /// <summary>
+    /// Optional startup budget hint for the player's first-frame watchdog, surfaced by the source when
+    /// it resolved the stream (see <c>ResolvedStream.StartupTimeout</c>). <c>null</c> keeps the player's
+    /// standard finite-media timeout; slow-starting live sources (Plex/Jellyfin Live TV) set a longer
+    /// budget so a channel that's slow to tune/transcode isn't killed before its first frame arrives.
+    /// </summary>
+    public TimeSpan? StartupTimeout { get; set; }
+
+    /// <summary>
     /// True when the host should decorate this item's thumbnail with a small red "live" corner dot to
     /// highlight a <em>currently-broadcasting</em> feed among finite items (e.g. a Twitch channel's
     /// live stream shown atop its VODs). A pure display hint, distinct from <see cref="IsLiveStream"/>:
