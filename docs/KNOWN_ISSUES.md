@@ -77,3 +77,47 @@ first); if it still times out, it is pre-existing contention rather than the plu
 and the fix is likely to defer live streaming when a same-video cache download is already in
 flight.
 
+## Live TV (Plex/Jellyfin) can exceed the first-frame timeout on slow-starting streams
+
+**Where:** `Phosphor.Plugins.Plex/PlexLiveTvService.cs`,
+`Phosphor.Plugins.Jellyfin/JellyfinClient.cs` (live open/resolve), and the host's
+first-frame startup watchdog that raises "server unreachable or stream timed out".
+
+**Context:** Live TV playback is not a ready-to-serve file — the server must **tune a
+physical tuner and start a transcode/remux** (the tuner feed is MPEG-2/UDP and cannot
+direct-play), so the first HLS segment only appears after ffmpeg spins up. Measured spin-up
+on a modest server (Synology VM) was **~11 seconds**, which races the host's ~10s first-frame
+watchdog. When the watchdog wins, playback is reported as failed even though the stream would
+have started a moment later. Observed as intermittent success (~1 in 3–4) on the
+underpowered VM; reliable on adequately-provisioned servers and on the hardware
+(Plex + HDHomeRun) path. The plug-in's own open and teardown are clean in every case
+(verified HTTP 200/204 on stop — no tuner/session leaks); only the startup *window* is at
+issue.
+
+**Contributing factors (can compound):**
+- **Transcode/remux start latency** — ffmpeg process start + first-keyframe/segment
+  generation; scales inversely with server CPU. This is the dominant factor on weak servers.
+- **Network latency to the server** — a remote or high-latency server adds round-trips for
+  PlaybackInfo/tune + the initial segment fetch on top of the transcode delay.
+- **Tuner acquisition** — the backing device (e.g. HDHomeRun) may take time to lock the
+  channel, especially if a tuner must first be freed.
+
+**Possible fixes (to vet — pick one or combine):**
+- **Live-aware timeout (automatic):** have live streams advertise a longer first-frame
+  budget so the host watchdog is more patient for `IsLiveStream` items specifically (e.g. a
+  ResolvedStream hint like `StartupTimeout`/`SlowStarting`), leaving finite-media timeouts
+  unchanged. Preferred if a single generous value covers real-world servers.
+- **User-configurable timeout (setting):** a "Live TV startup timeout (seconds)" setting
+  (global, or per-source instance) for users on slow/remote servers to raise the window
+  explicitly. More flexible but adds a knob.
+- **Warm-up / readiness probe:** before handing the URL to the player, the plug-in polls the
+  child HLS playlist until the first segment exists (or a cap elapses), so the host only
+  starts playback once media is actually flowing. Hides latency from the watchdog entirely
+  but adds plug-in complexity and its own cap.
+
+**Recommendation to evaluate:** an automatic live-aware timeout as the baseline (covers most
+cases with no user friction), with a user-configurable override for pathological
+(remote/underpowered) servers. Needs a decision on where the timeout hint lives in the
+plug-in contract (`ResolvedStream`) and how the host watchdog consumes it.
+
+
