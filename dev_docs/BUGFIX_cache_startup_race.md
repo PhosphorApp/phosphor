@@ -109,3 +109,37 @@ is not cached. This keeps the second fetch off the play path entirely, so first-
 startup no longer contends with the download. (Preemptive next-track caching already runs
 after the current track is playing, so it was unaffected.)
 
+## BUG 2b — yt-dlp download holds the single process gate, blocking later resolves
+
+**Status: FIXED (separate download gate).**
+
+Discovered while fixing BUG 2. `YtDlpVideoEngine` serialized **all** yt-dlp invocations
+(resolve / download / metadata / self-update) through **one** `SemaphoreSlim`
+(`ProcessGate`, count 1). Crucially, `RunYtDlpAsync` holds the gate for the entire
+process lifetime, and a cache/prefetch **download** (`DownloadStreamsAsync` →
+`DownloadOneAsync` ×2 + `GetResolutionAsync`) can run for **minutes** on a long video.
+So even after BUG 2's deferral, a subsequent action that needs yt-dlp — e.g. **skipping
+to the next track** (its `ResolveStreamsAsync`) or a chapters/metadata fetch — would
+queue behind the in-flight download and trip the first-frame watchdog on that later play.
+
+The gate's original purpose is narrow: stop the self-updater from swapping `yt-dlp.exe`
+while a resolve/download is mid-flight.
+
+**Fix applied:** split the single gate into two:
+
+- `ProcessGate` — interactive invocations (resolve / metadata / version / update). Short-lived.
+- `DownloadGate` — background cache/prefetch downloads only (`DownloadOneAsync`,
+  the download-path `GetResolutionAsync`). Downloads stay serialized **among themselves**
+  (one at a time, to avoid doubling network/CPU) but **no longer block interactive
+  resolves**.
+- The **updater acquires BOTH gates** for the `--update-to` step, preserving the original
+  exe-swap protection against an in-flight download. No lock-order inversion: the download
+  path never takes `ProcessGate`, and interactive callers never take `DownloadGate`; only
+  the (rare) updater holds both, always `DownloadGate` outside `ProcessGate`.
+
+**Files touched (BUG 2b):**
+
+- `Phosphor.Plugins.YouTube/Engines/YtDlpVideoEngine.cs`
+- `Phosphor.Plugins.YouTube/Engines/YtDlpUpdater.cs`
+
+
