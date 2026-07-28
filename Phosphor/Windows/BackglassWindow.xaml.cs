@@ -13,8 +13,13 @@ namespace Phosphor;
 
 public partial class BackglassWindow : JukeboxWindow
 {
-    private LibVLC? _libVLC;
-    private MediaPlayer? _mediaPlayer;
+    // The raw LibVLC engine for this window's player (VLC lifecycle, last-stream context, live clock).
+    // Phase 0.6 slice 1: state lives here; the field-named properties below delegate to it so the
+    // window's existing engine/orchestration code keeps compiling unchanged while ownership moves.
+    private readonly Phosphor.Playback.MediaEngine _engine = new();
+
+    private LibVLC? _libVLC { get => _engine.LibVLC; set => _engine.SetSharedVlc(value); }
+    private MediaPlayer? _mediaPlayer => _engine.MediaPlayer;
     private readonly Random _rng = new();
     private readonly DispatcherTimer _colorTimer;
     // Debounces IdleCanvas resize so the blob pattern is rebuilt (re-centered) only
@@ -23,7 +28,7 @@ public partial class BackglassWindow : JukeboxWindow
     private DispatcherTimer? _positionTimer;
     // Wall-clock start of the current live stream, used to show elapsed time (LibVLC's Time reflects
     // the live DVR window, not elapsed-since-start). Null when not playing a live stream.
-    private DateTime? _liveStartUtc;
+    private DateTime? _liveStartUtc { get => _engine.LiveStartUtc; set => _engine.LiveStartUtc = value; }
     private double _hueOffset;
     private bool _idleAnimStarted;
     private bool _showVideoInfo;
@@ -57,8 +62,7 @@ public partial class BackglassWindow : JukeboxWindow
     private bool _audioOnly;
     private CancellationTokenSource? _playCts;
     private readonly DispatcherTimer _morphTimer = new();
-    private Task? _vlcInitTask;
-    private Task<LibVLC?>? _sharedVlcTask;
+    private Task? _vlcInitTask { get => _engine.InitTask; set => _engine.InitTask = value; }
     private readonly DispatcherTimer _expandButtonHideTimer = new() { Interval = TimeSpan.FromSeconds(3) };
 
     // ── Gapless playback ──
@@ -74,12 +78,12 @@ public partial class BackglassWindow : JukeboxWindow
     // These are populated whenever we kick off playback so that OnSeekRequested can
     // rebuild a Media with ":start-time=<seconds>" without re-querying the manifest.
     // _lastLocalFilePath is set for cached/prefetched playback (re-open uses Time/Position
-    // since seeking always works on local files).
-    private string? _lastPlayingVideoId;
-    private string? _lastVideoStreamUrl;
-    private string? _lastAudioStreamUrl;
-    private string? _lastMuxedStreamUrl;
-    private string? _lastLocalFilePath;
+    // since seeking always works on local files). Backed by the MediaEngine (slice 1).
+    private string? _lastPlayingVideoId { get => _engine.LastPlayingVideoId; set => _engine.LastPlayingVideoId = value; }
+    private string? _lastVideoStreamUrl { get => _engine.LastVideoStreamUrl; set => _engine.LastVideoStreamUrl = value; }
+    private string? _lastAudioStreamUrl { get => _engine.LastAudioStreamUrl; set => _engine.LastAudioStreamUrl = value; }
+    private string? _lastMuxedStreamUrl { get => _engine.LastMuxedStreamUrl; set => _engine.LastMuxedStreamUrl = value; }
+    private string? _lastLocalFilePath { get => _engine.LastLocalFilePath; set => _engine.LastLocalFilePath = value; }
 
     // ── Seek verification cancellation ──
     // A new seek request cancels any in-flight verification from the previous seek so
@@ -121,23 +125,7 @@ public partial class BackglassWindow : JukeboxWindow
     /// </summary>
     private MediaPlayer EnsureVlcInitialized()
     {
-        if (_mediaPlayer != null)
-            return _mediaPlayer;
-
-        // Background init may still be running � wait for it
-        if (_vlcInitTask != null && !_vlcInitTask.IsCompleted)
-        {
-            // Pump dispatcher messages so the window doesn't freeze
-            var frame = new DispatcherFrame();
-            _vlcInitTask.ContinueWith(_ => frame.Continue = false);
-            Dispatcher.PushFrame(frame);
-        }
-
-        // If background init didn't run (shouldn't happen), init synchronously
-        if (_mediaPlayer == null)
-            InitializeVlcCore();
-
-        return _mediaPlayer!;
+        return _engine.EnsureInitialized(Dispatcher);
     }
 
     /// <summary>
@@ -147,8 +135,7 @@ public partial class BackglassWindow : JukeboxWindow
     /// </summary>
     public void SetSharedVlc(LibVLC? vlc)
     {
-        if (vlc != null)
-            _libVLC = vlc;
+        _engine.SetSharedVlc(vlc);
     }
 
     /// <summary>
@@ -158,7 +145,7 @@ public partial class BackglassWindow : JukeboxWindow
     /// </summary>
     public void SetSharedVlcTask(Task<LibVLC?>? task)
     {
-        _sharedVlcTask = task;
+        _engine.SetSharedVlcTask(task);
     }
 
     /// <summary>
@@ -168,18 +155,7 @@ public partial class BackglassWindow : JukeboxWindow
     /// </summary>
     private void InitializeVlcCore()
     {
-        var vlc = _libVLC ?? new LibVLC("--no-video-title-show", "--network-caching=3000", "--http-reconnect");
-        var mp = new MediaPlayer(vlc);
-        // Stop VLC from grabbing mouse/keyboard on its video HWND so events pass
-        // through to the hosting WinForms panel (enables our drag/resize hooks).
-        mp.EnableMouseInput = false;
-        mp.EnableKeyInput = false;
-        // Wire EndReached on our dispatcher so the handler can touch UI
-        Dispatcher.Invoke(() => mp.EndReached += OnMediaEnded);
-        // Clear chapter-seek spinner once VLC finishes buffering
-        mp.Buffering += OnMediaBuffering;
-        _libVLC = vlc;
-        _mediaPlayer = mp;
+        _engine.InitializeCore(Dispatcher);
     }
 
     /// <summary>
@@ -239,6 +215,11 @@ public partial class BackglassWindow : JukeboxWindow
         _colorTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         _colorTimer.Tick += ColorCycleBlobs;
 
+        // The MediaEngine owns the VLC player and raises EndReached/Buffering; keep the window's
+        // existing handlers by subscribing them here (they still touch view/VM state on the window).
+        _engine.EndReached += OnMediaEnded;
+        _engine.Buffering += OnMediaBuffering;
+
         _resizeDebounceTimer.Tick += OnResizeDebounceTick;
 
         _logoDimTimer.Tick += LogoDimTimer_Tick;
@@ -297,22 +278,8 @@ public partial class BackglassWindow : JukeboxWindow
             // appears immediately without the ~17% startup cost.
             // If the user hits play before this completes,
             // EnsureVlcInitialized will wait with dispatcher pumping.
-            _vlcInitTask = Task.Run(() =>
-            {
-                // If app provided a shared-VLC task, wait for it here (off-thread)
-                // and reuse the result instead of spinning up a second LibVLC.
-                if (_sharedVlcTask != null && _libVLC == null)
-                {
-                    try
-                    {
-                        var shared = _sharedVlcTask.GetAwaiter().GetResult();
-                        if (shared != null)
-                            _libVLC = shared;
-                    }
-                    catch { }
-                }
-                InitializeVlcCore();
-            });
+            // The engine's InitializeCore adopts the shared-VLC task result internally.
+            _engine.InitTask = Task.Run(() => _engine.InitializeCore(Dispatcher));
         };
     }
 
@@ -1351,12 +1318,10 @@ public partial class BackglassWindow : JukeboxWindow
                 if (_nextMediaPlayer != null && _gaplessPrimed)
                 {
                     DebugLog.Log(LogLevel.Debug, "Gapless", "Swapping to primed next player");
-                    var oldPlayer = _mediaPlayer;
 
-                    // Swap the player reference and resume the pre-loaded track
-                    _mediaPlayer = _nextMediaPlayer;
-                    _mediaPlayer.EndReached += OnMediaEnded;
-                    _mediaPlayer.SetPause(false);
+                    // Swap the player reference (engine rewires EndReached) and resume the pre-loaded track.
+                    var oldPlayer = _engine.SwapMediaPlayer(_nextMediaPlayer);
+                    _mediaPlayer!.SetPause(false);
 
                     _nextMediaPlayer = null;
                     _gaplessPrimed = false;
@@ -1365,7 +1330,6 @@ public partial class BackglassWindow : JukeboxWindow
                     // Stop and dispose the old player in the background
                     if (oldPlayer != null)
                     {
-                        oldPlayer.EndReached -= OnMediaEnded;
                         Task.Run(() => { try { oldPlayer.Stop(); oldPlayer.Dispose(); } catch { } });
                     }
 
