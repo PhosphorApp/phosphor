@@ -1440,6 +1440,26 @@ public partial class JukeboxViewModel : ObservableObject
     /// </summary>
     public Phosphor.Playback.PlayerContext Player1 { get; } = new();
 
+    /// <summary>
+    /// Player 2's command channel (Topper = secondary). Phase 1: a second, independent player. It has
+    /// its own <see cref="Phosphor.Playback.JukeboxPlayer"/>/engine/host on the Topper. The queue,
+    /// chapters, and audio-reactive driving all stay on <see cref="Player1"/> for this pass.
+    /// </summary>
+    public Phosphor.Playback.PlayerContext Player2 { get; } = new();
+
+    private Phosphor.Playback.PlayerContext _activePlayer;
+    /// <summary>
+    /// The command channel that a newly-played item targets. Defaults to <see cref="Player1"/> so
+    /// behavior is unchanged until the user marks the Topper (Player 2) active. Stop / seek / pause /
+    /// resume / volume and the queue stay bound to <see cref="Player1"/> for this pass; only the
+    /// "play this item" command follows the active player.
+    /// </summary>
+    public Phosphor.Playback.PlayerContext ActivePlayer
+    {
+        get => _activePlayer;
+        set => SetProperty(ref _activePlayer, value);
+    }
+
     public event Action<string>? PlayRequested
     {
         add => Player1.AddPlayRequested(value!);
@@ -2351,6 +2371,7 @@ public partial class JukeboxViewModel : ObservableObject
 
     public JukeboxViewModel()
     {
+        _activePlayer = Player1;
         _history = PlayHistory.Load();
         _playlists = new PlaylistManager();
         _searchHistory = SearchHistory.Load();
@@ -3877,7 +3898,7 @@ public partial class JukeboxViewModel : ObservableObject
             return;
         }
 
-        Player1.RaisePlayRequested(item.VideoId);
+        ActivePlayer.RaisePlayRequested(item.VideoId);
 
         // Fetch duration/chapters from the item's own source (source-agnostic). Fire-and-forget so
         // playback starts immediately; results apply to the now-playing item when they arrive.
@@ -3960,7 +3981,7 @@ public partial class JukeboxViewModel : ObservableObject
                 // re-resolvable for the next play (and the persisted StreamUrl is dropped on save).
                 // Guard against the user having moved on while we were tuning.
                 if (ReferenceEquals(CurrentlyPlaying, item))
-                    Player1.RaisePlayRequested(item.VideoId);
+                    ActivePlayer.RaisePlayRequested(item.VideoId);
             }
             else
             {
@@ -4036,7 +4057,7 @@ public partial class JukeboxViewModel : ObservableObject
                 item.PendingResolveSourceItem = null; // resolved
                 // Guard against the user having moved on while we were resolving.
                 if (ReferenceEquals(CurrentlyPlaying, item))
-                    Player1.RaisePlayRequested(item.VideoId);
+                    ActivePlayer.RaisePlayRequested(item.VideoId);
             }
             else
             {
