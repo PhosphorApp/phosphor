@@ -112,6 +112,14 @@ public partial class App : Application
             // Wire up video playback
             _backglassProxy.AttachViewModel(viewModel);
 
+            // Second media player (Player 2) on the Topper — gated by settings. Shares the app's
+            // LibVLC (own MediaPlayer) and binds to the VM's Player2 command channel.
+            if (_settings.EnableSecondPlayer)
+            {
+                _topperProxy.SetSharedVlcTask(_sharedVlcTask);
+                _topperProxy.AttachViewModel(viewModel);
+            }
+
             // Give all windows access to settings for exit key handling
             _backglassProxy.SetAppSettings(_settings);
             _playfieldProxy.SetAppSettings(_settings);

@@ -164,6 +164,12 @@ public class AppSettings
     public bool ShowPlayfield { get; set; } = true;
     public bool ShowTopper { get; set; }
     public WindowLayout Topper { get; set; } = new() { Left = 0, Top = 0, Width = 800, Height = 300 };
+
+    /// <summary>
+    /// Enables the second media player on the Topper (Player 2), independent of the Backglass
+    /// (Player 1). Phase 1: gates whether the Topper's jukebox player is attached/driven.
+    /// </summary>
+    public bool EnableSecondPlayer { get; set; }
     public WindowLayout? SettingsWindowLayout { get; set; }
     public bool ResizableWindows { get; set; } = true;
     public bool SetCursorOnLaunch { get; set; }
