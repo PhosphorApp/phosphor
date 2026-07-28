@@ -1460,6 +1460,32 @@ public partial class JukeboxViewModel : ObservableObject
         set => SetProperty(ref _activePlayer, value);
     }
 
+    private bool _secondPlayerEnabled;
+    /// <summary>
+    /// True when the second media player (Topper = Player 2) is enabled in settings. Gates the DMD
+    /// active-target selector UI. Set once at startup from <see cref="AppSettings.EnableSecondPlayer"/>.
+    /// </summary>
+    public bool SecondPlayerEnabled
+    {
+        get => _secondPlayerEnabled;
+        set => SetProperty(ref _secondPlayerEnabled, value);
+    }
+
+    /// <summary>
+    /// Bindable active-target selector for the DMD: false = Backglass (Player 1), true = Topper
+    /// (Player 2). Setting it repoints <see cref="ActivePlayer"/> so newly-played items target the
+    /// chosen player. Queue/transport stay on Player 1 for this pass.
+    /// </summary>
+    public bool TargetTopperPlayer
+    {
+        get => ReferenceEquals(_activePlayer, Player2);
+        set
+        {
+            ActivePlayer = value ? Player2 : Player1;
+            OnPropertyChanged();
+        }
+    }
+
     public event Action<string>? PlayRequested
     {
         add => Player1.AddPlayRequested(value!);

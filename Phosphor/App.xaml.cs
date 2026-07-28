@@ -77,7 +77,7 @@ public partial class App : Application
         viewModel.Volume = _settings.Volume;
         viewModel.RepeatEnabled = _settings.RepeatEnabled;
         viewModel.AutoDjEnabled = _settings.AutoDjEnabled;
-        viewModel.SetNetworkTimeout(_settings.NetworkTimeoutSeconds);
+        viewModel.SecondPlayerEnabled = _settings.EnableSecondPlayer;
         // Configure Plex + its category tiles from the plug-in instance configs.
         viewModel.ConfigurePlexFromSettings(_settings);
 

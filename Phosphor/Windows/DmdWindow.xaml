@@ -1040,6 +1040,12 @@
                             <TextBlock Text="{Binding NowPlayingSourceText}" Foreground="{StaticResource TextDimBrush}"
                                        FontSize="{DynamicResource NowPlayingLabelFontSize}" VerticalAlignment="Center"
                                        Margin="6,0,0,0" Opacity="0.8"/>
+                            <!-- Active-target selector (Player 1 = Backglass, Player 2 = Topper). Minimal Phase 1 UI. -->
+                            <ToggleButton Content="&#x25B6; Topper" ToolTip="Target the Topper (Player 2) for newly-played items"
+                                          IsChecked="{Binding TargetTopperPlayer}"
+                                          Visibility="{Binding SecondPlayerEnabled, Converter={StaticResource BoolVis}}"
+                                          FontSize="{DynamicResource NowPlayingLabelFontSize}" Padding="6,1" Margin="10,0,0,0"
+                                          VerticalAlignment="Center"/>
                         </StackPanel>
                         <TextBlock Text="{Binding NowPlayingTitle, FallbackValue='Nothing playing'}"
                                    Foreground="{StaticResource Accent2Brush}" FontWeight="SemiBold"
