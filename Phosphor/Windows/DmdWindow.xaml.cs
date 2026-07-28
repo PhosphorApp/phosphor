@@ -2501,6 +2501,8 @@ public partial class DmdWindow : JukeboxWindow
         _topperProxy?.SetScreenScaling(_appSettings.TopperScreenScaling);
         _backglassProxy?.SetLogoDim(_appSettings.BackglassLogoDimEnabled, _appSettings.BackglassLogoDimOpacity, _appSettings.BackglassLogoDimTimeoutSeconds);
         _backglassProxy?.SetAudioOnly(_appSettings.BackglassAudioOnly);
+        if (DataContext is JukeboxViewModel vmAudioOnly)
+            vmAudioOnly.Player2AudioOnly = _appSettings.TopperAudioOnly;
         LogStep("BackglassDim/AudioOnly/OLED");
 
         if (settingsWindow.BackglassBlobsChanged)

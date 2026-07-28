@@ -1361,6 +1361,73 @@ public partial class JukeboxViewModel : ObservableObject
     [RelayCommand]
     private void ActivatePlayer2() => ActivePlayer = Player2;
 
+    // ── Player 2 (Topper) transport — each bar's buttons drive only its own player ──
+    // Queue integration for Player 2 is deferred; skip/previous/shuffle/repeat/autodj are stubs so the
+    // bar's layout matches Player 1 but only affect the Topper. Wired in a later queue-management pass.
+
+    private bool Player2IsPlaying => Player2.IsPlaying;
+
+    [RelayCommand]
+    private void Player2Stop()
+    {
+        Player2.RaiseStopRequested();
+        Player2.CurrentlyPlaying = null;
+        Player2.IsPaused = false;
+        Player2.PlaybackPosition = 0;
+        Player2.PlaybackDuration = 1;
+    }
+
+    [RelayCommand]
+    private void Player2Play()
+    {
+        if (Player2.IsPaused) Player2Resume();
+    }
+
+    [RelayCommand]
+    private void Player2Pause()
+    {
+        if (!Player2.IsPlaying || Player2.IsPaused) return;
+        Player2.RaisePauseRequested();
+        Player2.IsPaused = true;
+    }
+
+    [RelayCommand]
+    private void Player2Resume()
+    {
+        if (!Player2.IsPlaying || !Player2.IsPaused) return;
+        Player2.RaiseResumeRequested();
+        Player2.IsPaused = false;
+    }
+
+    [RelayCommand]
+    private void Player2SeekForward()
+    {
+        if (Player2.IsLiveStream) return;
+        Player2.RaiseSeekRequested((long)Player2.PlaybackPosition + 15000);
+    }
+
+    [RelayCommand]
+    private void Player2SeekBack()
+    {
+        if (Player2.IsLiveStream) return;
+        Player2.RaiseSeekRequested(Math.Max(0, (long)Player2.PlaybackPosition - 15000));
+    }
+
+    /// <summary>Player 2 previous — queue not wired yet; stub kept for layout parity with Player 1.</summary>
+    [RelayCommand]
+    private void Player2Previous() { }
+
+    /// <summary>Player 2 skip — queue not wired yet; stub kept for layout parity with Player 1.</summary>
+    [RelayCommand]
+    private void Player2Skip() { }
+
+    /// <summary>
+    /// The "NOW PLAYING" label prefix for a bar. When the second player is enabled the bars are
+    /// qualified "[BACKGLASS]" / "[TOPPER]"; otherwise (single bar) no qualifier is shown.
+    /// </summary>
+    public string Player1NowPlayingLabel => SecondPlayerEnabled ? "[BACKGLASS] NOW PLAYING" : "NOW PLAYING";
+    public string Player2NowPlayingLabel => "[TOPPER] NOW PLAYING";
+
     private bool _secondPlayerEnabled;
     /// <summary>
     /// True when the second media player (Topper = Player 2) is enabled in settings. Gates the DMD
@@ -1369,7 +1436,11 @@ public partial class JukeboxViewModel : ObservableObject
     public bool SecondPlayerEnabled
     {
         get => _secondPlayerEnabled;
-        set => SetProperty(ref _secondPlayerEnabled, value);
+        set
+        {
+            if (SetProperty(ref _secondPlayerEnabled, value))
+                OnPropertyChanged(nameof(Player1NowPlayingLabel));
+        }
     }
 
     /// <summary>
@@ -1555,21 +1626,21 @@ public partial class JukeboxViewModel : ObservableObject
     public void SeekTo(long timeMs)
     {
         if (IsLiveStream) return; // live streams are not seekable
-        ActivePlayer.RaiseSeekRequested(timeMs);
+        Player1.RaiseSeekRequested(timeMs);
     }
 
     [RelayCommand]
     private void SeekForward()
     {
-        if (ActivePlayer.IsLiveStream) return;
-        ActivePlayer.RaiseSeekRequested((long)ActivePlayer.PlaybackPosition + 15000);
+        if (Player1.IsLiveStream) return;
+        Player1.RaiseSeekRequested((long)Player1.PlaybackPosition + 15000);
     }
 
     [RelayCommand]
     private void SeekBack()
     {
-        if (ActivePlayer.IsLiveStream) return;
-        ActivePlayer.RaiseSeekRequested(Math.Max(0, (long)ActivePlayer.PlaybackPosition - 15000));
+        if (Player1.IsLiveStream) return;
+        Player1.RaiseSeekRequested(Math.Max(0, (long)Player1.PlaybackPosition - 15000));
     }
 
     // ── Video cache ──
@@ -4238,16 +4309,15 @@ public partial class JukeboxViewModel : ObservableObject
     [RelayCommand]
     private void StopPlayback()
     {
-        ActivePlayer.RaiseStopRequested();
+        Player1.RaiseStopRequested();
         PlayTransitioning = false;
         _statusPrefixCts?.Cancel();
         StatusPrefix = "";
-        ActivePlayer.CurrentlyPlaying = null;
-        if (ReferenceEquals(ActivePlayer, Player1))
-            QueueIndex = -1;
-        ActivePlayer.IsPaused = false;
-        ActivePlayer.PlaybackPosition = 0;
-        ActivePlayer.PlaybackDuration = 1;
+        Player1.CurrentlyPlaying = null;
+        QueueIndex = -1;
+        Player1.IsPaused = false;
+        Player1.PlaybackPosition = 0;
+        Player1.PlaybackDuration = 1;
         StatusText = "Playback stopped";
     }
 
@@ -4288,24 +4358,24 @@ public partial class JukeboxViewModel : ObservableObject
     [RelayCommand]
     private void PausePlayback()
     {
-        if (!ActivePlayer.IsPlaying) return;
-        if (ActivePlayer.IsPaused)
+        if (!IsPlaying) return;
+        if (IsPaused)
         {
             ResumePlayback();
             return;
         }
-        ActivePlayer.RaisePauseRequested();
-        ActivePlayer.IsPaused = true;
+        Player1.RaisePauseRequested();
+        IsPaused = true;
         StatusText = "Paused";
     }
 
     [RelayCommand]
     private void ResumePlayback()
     {
-        if (!ActivePlayer.IsPlaying || !ActivePlayer.IsPaused) return;
-        ActivePlayer.RaiseResumeRequested();
-        ActivePlayer.IsPaused = false;
-        StatusText = $"Playing: {ActivePlayer.CurrentlyPlaying?.Title}{ActivePlayer.CurrentlyPlaying?.AudioTag}";
+        if (!IsPlaying || !IsPaused) return;
+        Player1.RaiseResumeRequested();
+        IsPaused = false;
+        StatusText = $"Playing: {CurrentlyPlaying?.Title}{CurrentlyPlaying?.AudioTag}";
     }
 
     [RelayCommand]

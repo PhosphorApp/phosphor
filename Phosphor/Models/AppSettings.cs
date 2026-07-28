@@ -247,6 +247,7 @@ public class AppSettings
     public int TopperLogoRingsBrightness { get; set; } = 25;
     public int TopperLogoBrightness { get; set; } = 100;
     public LogoColorMode TopperLogoColorMode { get; set; }
+    public bool TopperAudioOnly { get; set; }
     public bool ShowStatusText { get; set; } = true;
     public int HideCursorTimeoutSeconds { get; set; } = 15;
     public int OledSleepDefeatSeconds { get; set; }

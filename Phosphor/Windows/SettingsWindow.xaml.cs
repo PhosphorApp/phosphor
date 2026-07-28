@@ -818,6 +818,7 @@ public partial class SettingsWindow : JukeboxWindow
             case LogoColorMode.Reactive: RbTopperLogoColorReactive.IsChecked = true; break;
             default: RbTopperLogoColorOff.IsChecked = true; break;
         }
+        CbTopperAudioOnly.IsChecked = settings.TopperAudioOnly;
 
         // Blob pattern per screen (alphabetized)
         var blobPatterns = Enum.GetValues<BlobPattern>()
@@ -4314,6 +4315,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.TopperLogoColorMode = RbTopperLogoColorReactive.IsChecked == true ? LogoColorMode.Reactive
             : RbTopperLogoColorMorph.IsChecked == true ? LogoColorMode.SlowMorph
             : LogoColorMode.Off;
+        _settings.TopperAudioOnly = CbTopperAudioOnly.IsChecked == true;
         _settings.NetworkCachingMs = (int)SliderNetworkCaching.Value;
         _settings.LiveCachingMs = (int)SliderLiveCaching.Value;
         _settings.FileCachingMs = (int)SliderFileCaching.Value;

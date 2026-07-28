@@ -78,6 +78,7 @@ public partial class App : Application
         viewModel.RepeatEnabled = _settings.RepeatEnabled;
         viewModel.AutoDjEnabled = _settings.AutoDjEnabled;
         viewModel.SecondPlayerEnabled = _settings.EnableSecondPlayer;
+        viewModel.Player2AudioOnly = _settings.TopperAudioOnly;
         // Configure Plex + its category tiles from the plug-in instance configs.
         viewModel.ConfigurePlexFromSettings(_settings);
 
