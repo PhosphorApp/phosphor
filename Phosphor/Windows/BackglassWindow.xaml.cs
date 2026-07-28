@@ -65,14 +65,14 @@ public partial class BackglassWindow : JukeboxWindow
     private Task? _vlcInitTask { get => _engine.InitTask; set => _engine.InitTask = value; }
     private readonly DispatcherTimer _expandButtonHideTimer = new() { Interval = TimeSpan.FromSeconds(3) };
 
-    // ── Gapless playback ──
-    private MediaPlayer? _nextMediaPlayer;
-    private string? _nextGaplessVideoId;
-    private bool _gaplessPrimed;
+    // ── Gapless playback (state lives in MediaEngine; delegated here so existing code compiles) ──
+    private MediaPlayer? _nextMediaPlayer { get => _engine.NextMediaPlayer; set => _engine.NextMediaPlayer = value; }
+    private string? _nextGaplessVideoId { get => _engine.NextGaplessVideoId; set => _engine.NextGaplessVideoId = value; }
+    private bool _gaplessPrimed { get => _engine.GaplessPrimed; set => _engine.GaplessPrimed = value; }
 
     // ── PCM gapless playback ──
-    private GaplessAudioPlayer? _gaplessPlayer;
-    private bool _usingGaplessPlayer;
+    private GaplessAudioPlayer? _gaplessPlayer { get => _engine.GaplessPlayer; set => _engine.GaplessPlayer = value; }
+    private bool _usingGaplessPlayer { get => _engine.UsingGaplessPlayer; set => _engine.UsingGaplessPlayer = value; }
 
     // ── Last YouTube/HTTP stream context (used for re-opening on failed seek) ──
     // These are populated whenever we kick off playback so that OnSeekRequested can
@@ -481,12 +481,7 @@ public partial class BackglassWindow : JukeboxWindow
     /// </summary>
     private void DisposeGaplessNext()
     {
-        _gaplessPrimed = false;
-        _nextGaplessVideoId = null;
-        var mp = _nextMediaPlayer;
-        _nextMediaPlayer = null;
-        if (mp != null)
-            Task.Run(() => { try { mp.Stop(); mp.Dispose(); } catch { } });
+        _engine.DisposeGaplessNext();
     }
 
     /// <summary>
@@ -541,8 +536,7 @@ public partial class BackglassWindow : JukeboxWindow
     /// </summary>
     private void StopGaplessPlayer()
     {
-        _usingGaplessPlayer = false;
-        _gaplessPlayer?.Stop();
+        _engine.StopGaplessPlayer();
     }
 
     private static void ApplyNetworkOptions(Media media, JukeboxViewModel? vm)

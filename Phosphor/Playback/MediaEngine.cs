@@ -39,6 +39,15 @@ public sealed class MediaEngine
     /// <summary>Wall-clock start of the current live stream (for elapsed-since-start), or null.</summary>
     public DateTime? LiveStartUtc { get; set; }
 
+    // ── Gapless playback state ──
+    // Legacy dual-MediaPlayer prime (video/muxed): a second MediaPlayer buffered + paused ahead of the
+    // transition so the swap is instant. PCM gapless (audio-only) uses GaplessAudioPlayer instead.
+    public MediaPlayer? NextMediaPlayer { get; set; }
+    public string? NextGaplessVideoId { get; set; }
+    public bool GaplessPrimed { get; set; }
+    public Phosphor.Audio.GaplessAudioPlayer? GaplessPlayer { get; set; }
+    public bool UsingGaplessPlayer { get; set; }
+
     /// <summary>Raised on the VLC <see cref="MediaPlayer.EndReached"/> event (wired on the dispatcher).</summary>
     public event EventHandler? EndReached;
 
@@ -126,5 +135,26 @@ public sealed class MediaEngine
         next.EndReached += (s, e) => EndReached?.Invoke(s, e);
         _mediaPlayer = next;
         return old;
+    }
+
+    /// <summary>Stops the PCM gapless player if active.</summary>
+    public void StopGaplessPlayer()
+    {
+        UsingGaplessPlayer = false;
+        GaplessPlayer?.Stop();
+    }
+
+    /// <summary>
+    /// Resets gapless state (e.g. when playback is stopped or a non-gapless transition occurs),
+    /// disposing any primed legacy next-player in the background.
+    /// </summary>
+    public void DisposeGaplessNext()
+    {
+        GaplessPrimed = false;
+        NextGaplessVideoId = null;
+        var mp = NextMediaPlayer;
+        NextMediaPlayer = null;
+        if (mp != null)
+            Task.Run(() => { try { mp.Stop(); mp.Dispose(); } catch { } });
     }
 }
