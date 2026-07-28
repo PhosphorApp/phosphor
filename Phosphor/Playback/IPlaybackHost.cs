@@ -99,4 +99,37 @@ public interface IPlaybackHost
 
     /// <summary>Starts the video-info polling for a cached (local-file) source at the given resolution.</summary>
     void StartVideoInfoPollingCached(string resolution);
+
+    // ── Video-surface callbacks (the video view stays window-owned under Option A) ──
+
+    /// <summary>
+    /// Prepares the surface for a new play at the top of the flow: stops the blob color-cycle, cancels
+    /// any pending transition-overlay reveal, and — if a previous track's video view is still attached —
+    /// detaches it and schedules the delayed idle-overlay reveal for a slow transition.
+    /// </summary>
+    void BeginPlayTransition();
+
+    /// <summary>Creates the video surface (if needed) and leaves it hidden until the first frame.</summary>
+    void EnsureVideoSurfaceHidden();
+
+    /// <summary>Hides the video surface without detaching it (audio-only / gapless: no video on screen).</summary>
+    void HideVideoSurface();
+
+    /// <summary>
+    /// Runs the window's first-video-frame view work: cancels the pending overlay reveal, reveals the
+    /// video surface + drag hooks, hides the idle overlay, and stops the blob color-cycle.
+    /// </summary>
+    void OnFirstVideoFrame();
+
+    /// <summary>Starts the video-info polling for a streaming (non-cached) source at the given resolution.</summary>
+    void StartVideoInfoPolling(string resolution);
+
+    /// <summary>Notifies listeners (e.g. the DMD window) that playback has started, so it can reclaim focus.</summary>
+    void NotifyDmdPlaybackStarted();
+
+    /// <summary>
+    /// Creates the PCM gapless audio player, wiring its track-advance / finished callbacks to the
+    /// host's view + view-model (window-owned because those callbacks touch idle visuals and the VM).
+    /// </summary>
+    Phosphor.Audio.GaplessAudioPlayer CreateGaplessPlayer();
 }

@@ -161,4 +161,43 @@ public sealed class MediaEngine
         if (mp != null)
             Task.Run(() => { try { mp.Stop(); mp.Dispose(); } catch { } });
     }
+
+    // ── Play helpers (shared by the window during migration and by JukeboxPlayer.Play) ──
+
+    /// <summary>
+    /// Default budget for the first-frame / audio-start watchdog. Finite media (YouTube, Plex/Jellyfin
+    /// on-demand) uses this; slow-starting live streams request a longer budget via StartupTimeout.
+    /// </summary>
+    public const int DefaultFirstFrameTimeoutMs = 10000;
+
+    /// <summary>
+    /// The first-frame watchdog budget (ms) for the item now starting: the source-supplied
+    /// StartupTimeout hint when present (slow-starting live streams), otherwise the default.
+    /// </summary>
+    public static int FirstFrameTimeoutMs(JukeboxViewModel? vm)
+    {
+        if (vm?.CurrentlyPlaying?.StartupTimeout is { } budget && budget > TimeSpan.Zero)
+            return (int)Math.Min(budget.TotalMilliseconds, int.MaxValue);
+        return DefaultFirstFrameTimeoutMs;
+    }
+
+    /// <summary>Applies the VM's network/caching options to a streaming <see cref="Media"/>.</summary>
+    public static void ApplyNetworkOptions(Media media, JukeboxViewModel? vm)
+    {
+        int networkCache = vm?.NetworkCachingMs ?? 2000;
+        int liveCache = vm?.LiveCachingMs ?? 1000;
+        int fileCache = vm?.FileCachingMs ?? 300;
+        bool reconnect = vm?.HttpReconnect ?? true;
+
+        media.AddOption($":network-caching={networkCache}");
+        media.AddOption($":live-caching={liveCache}");
+        media.AddOption($":file-caching={fileCache}");
+        if (reconnect)
+            media.AddOption(":http-reconnect");
+
+        // NOTE: We intentionally do NOT set :input-fast-seek — it "may cause errors when seeking
+        // forward in a stream because the demuxer may not be at a keyframe." For long YouTube videos
+        // that manifests as the decoder freezing on a non-keyframe after a forward scrub. The slower
+        // default fails more cleanly and our verification can detect and recover.
+    }
 }

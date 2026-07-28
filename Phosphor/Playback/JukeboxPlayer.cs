@@ -82,8 +82,332 @@ public sealed class JukeboxPlayer
         Model = null;
     }
 
-    private void OnPlayRequested(string videoId) => _host.Play(videoId);
+    private void OnPlayRequested(string videoId) => Play(videoId);
     private void OnStopRequested() => Stop();
+    /// <summary>
+    /// Starts playback of <paramref name="videoId"/>. Relocated from BackglassWindow: runs on the host
+    /// thread, drives the shared <see cref="MediaEngine"/>, reads/writes the VM via <see cref="Model"/>
+    /// (Option X), and performs all view/video-surface transitions through <see cref="IPlaybackHost"/>.
+    /// </summary>
+    public async void Play(string videoId)
+    {
+        // Command events fire on the main UI thread — marshal to the host thread.
+        if (!_host.CheckHostAccess())
+        {
+            _host.BeginInvokeOnHost(() => Play(videoId));
+            return;
+        }
+
+        // Cancel any in-flight play operation.
+        Engine.PlayCts?.Cancel();
+        Engine.StopGaplessPlayer();
+        Engine.DisposeGaplessNext();
+        var cts = Engine.PlayCts = new CancellationTokenSource();
+        var ct = cts.Token;
+
+        // Any in-flight seek verification from the previous track is now stale.
+        Engine.SeekVerifyCts?.Cancel();
+
+        // Reset re-open context — populated below for the source we actually use.
+        Engine.LastPlayingVideoId = videoId;
+        Engine.LastVideoStreamUrl = null;
+        Engine.LastAudioStreamUrl = null;
+        Engine.LastMuxedStreamUrl = null;
+        Engine.LastLocalFilePath = null;
+        // Fresh live-stream elapsed clock (restamped on the first position tick).
+        Engine.LiveStartUtc = null;
+
+        // Wait for background LibVLC initialization to complete if it's still in flight.
+        if (Engine.MediaPlayer == null && Engine.InitTask != null)
+        {
+            try { await Engine.InitTask.WaitAsync(ct); }
+            catch (OperationCanceledException) { return; }
+            catch { /* fall through to null check below */ }
+        }
+
+        var libVLC = Engine.LibVLC;
+        var mediaPlayer = Engine.MediaPlayer;
+        if (libVLC == null || mediaPlayer == null) return;
+
+        try
+        {
+            _host.BeginPlayTransition();
+
+            // Ensure the media player is fully stopped before starting new playback (EndReached leaves
+            // it in Ended state; calling Play without Stop first can silently fail).
+            if (mediaPlayer.State != VLCState.Stopped)
+                await Task.Run(() => mediaPlayer.Stop());
+
+            if (ct.IsCancellationRequested) return;
+
+            // Non-null once a streaming (non-cached) source starts (the "WxH" resolution; "" audio-only).
+            string? streamingResolution = null;
+            string? cachedResolution = null;
+
+            // Wait for first video output before revealing the video surface.
+            var voutTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnVout(object? s, MediaPlayerVoutEventArgs a)
+            {
+                mediaPlayer.Vout -= OnVout;
+                _host.BeginInvokeOnHost(() => _host.OnFirstVideoFrame());
+                voutTcs.TrySetResult();
+            }
+            mediaPlayer.Vout += OnVout;
+
+            // Create a fresh video surface, hidden until VLC has a frame ready.
+            _host.EnsureVideoSurfaceHidden();
+
+            var vm = Model;
+
+            // Apply the VM's volume once VLC actually starts playing (libVLC ignores volume set before
+            // a track is playing). One-shot per play.
+            if (vm != null)
+            {
+                void OnPlayingApplyVolume(object? s, EventArgs a)
+                {
+                    mediaPlayer.Playing -= OnPlayingApplyVolume;
+                    try { mediaPlayer.Volume = VolumeTaper.VlcVolume(vm.Volume); } catch { /* tearing down */ }
+                }
+                mediaPlayer.Playing += OnPlayingApplyVolume;
+
+                // Reset scrubber and duration for the transition; leave volume untouched.
+                vm.PlaybackPosition = 0;
+                vm.PlaybackDuration = 1;
+            }
+
+            // Check if this item is audio-only (e.g. Plex music track).
+            bool isAudioOnly = vm?.CurrentlyPlaying?.IsAudioOnly == true;
+
+            // ── PCM gapless path (sources that can supply a stable pre-loadable audio stream) ──
+            if (isAudioOnly && vm?.GaplessPlayback == true
+                && vm.CurrentlyPlaying is { } gaplessItem
+                && vm.TryGetGaplessStreamUrl(gaplessItem) is { } gaplessUrl)
+            {
+                mediaPlayer.Vout -= OnVout;
+                _host.HideVideoSurface();
+
+                // Lazily create the gapless player (window owns creation — it wires view/VM callbacks).
+                Engine.GaplessPlayer ??= _host.CreateGaplessPlayer();
+                Engine.UsingGaplessPlayer = true;
+                Engine.GaplessPrimed = false;
+                Engine.NextGaplessVideoId = null;
+
+                int vol = vm.Volume;
+                var gp = Engine.GaplessPlayer;
+                await Task.Run(() => gp.Play(new Uri(gaplessUrl), vol));
+
+                if (ct.IsCancellationRequested) { gp.Stop(); Engine.UsingGaplessPlayer = false; return; }
+
+                _host.ReturnToIdle();
+                _host.StartColorCycle();
+                _host.StartPositionTimer();
+                _host.NotifyDmdPlaybackStarted();
+                vm.NotifyPlaybackStarted();
+                DebugLog.Log(LogLevel.Debug, "GaplessPCM", $"Playing via PCM queue: {vm.CurrentlyPlaying.Title}");
+                return;
+            }
+
+            // Plex or other direct-stream source.
+            if (vm?.CurrentlyPlaying?.StreamUrl is { } streamUrl)
+            {
+                var media = new Media(libVLC, new Uri(streamUrl));
+
+                // Separate video+audio (yt-dlp SeparateVideoAudio): attach the audio-slave URL.
+                if (vm.CurrentlyPlaying.AudioStreamUrl is { Length: > 0 } audioSlaveUrl)
+                    media.AddSlave(MediaSlaveType.Audio, 4, new Uri(audioSlaveUrl));
+
+                // HLS transcode streams need extra buffering for reliable cold-start.
+                if (streamUrl.Contains("transcode", StringComparison.OrdinalIgnoreCase))
+                {
+                    media.AddOption(":network-caching=5000");
+                    media.AddOption(":live-caching=5000");
+                    media.AddOption(":adaptive-logic=lowest");
+                    media.AddOption(":clock-jitter=0");
+                    media.AddOption(":clock-synchro=0");
+                    media.AddOption(":http-reconnect");
+                    media.AddOption(":sout-mux-caching=5000");
+                }
+
+                Engine.LastMuxedStreamUrl = streamUrl;
+                mediaPlayer.Play(media);
+            }
+            // Check local cache first (main cache, then prefetch cache).
+            else
+            {
+                var cached = !isAudioOnly
+                    ? (vm?.Cache?.TryGet(videoId) ?? vm?.Prefetch?.TryConsume(videoId))
+                    : null;
+
+                if (cached != null)
+                {
+                    // Play from local muxed file — instant, no buffering, seekable.
+                    vm?.SetStatusPrefix("Cached");
+                    vm?.SetCurrentFromCache(true);
+                    DebugLog.Log(LogLevel.Debug, "Play", $"Cached playback: {cached.FilePath}");
+                    var media = new Media(libVLC, new Uri(cached.FilePath));
+                    Engine.LastLocalFilePath = cached.FilePath;
+                    mediaPlayer.Play(media);
+                    cachedResolution = cached.Resolution;
+
+                    if (cached.Chapters is { Count: > 0 } && vm?.CurrentlyPlaying is { } cp && cp.Chapters == null)
+                    {
+                        cp.Chapters = cached.Chapters;
+                        DebugLog.Log(LogLevel.Trace, "Chapters", $"Restored {cached.Chapters.Count} chapters from cache");
+                        vm.NotifyCachedChaptersRestored();
+                    }
+                }
+                else
+                {
+                    var quality = vm?.VideoQuality ?? VideoQualityPreference.High;
+                    var stereo = vm?.StereoAudio ?? false;
+
+                    var streams = vm != null
+                        ? await vm.ResolveStreamsViaPluginOrLegacy(videoId, quality, stereo, isAudioOnly, ct)
+                        : null;
+                    if (ct.IsCancellationRequested) { mediaPlayer.Vout -= OnVout; return; }
+
+                    if (streams == null)
+                    {
+                        mediaPlayer.Vout -= OnVout;
+                        Model?.NotifyPlaybackStarted();
+                        return;
+                    }
+
+                    switch (streams.Kind)
+                    {
+                        case Phosphor.Video.VideoStreamKind.AudioOnly:
+                        {
+                            var media = new Media(libVLC, new Uri(streams.PrimaryUrl));
+                            MediaEngine.ApplyNetworkOptions(media, vm);
+                            Engine.LastAudioStreamUrl = streams.PrimaryUrl;
+                            mediaPlayer.Play(media);
+                            break;
+                        }
+                        case Phosphor.Video.VideoStreamKind.SeparateVideoAudio:
+                        {
+                            var media = new Media(libVLC, new Uri(streams.PrimaryUrl));
+                            media.AddSlave(MediaSlaveType.Audio, 4, new Uri(streams.AudioSlaveUrl!));
+                            MediaEngine.ApplyNetworkOptions(media, vm);
+                            Engine.LastVideoStreamUrl = streams.PrimaryUrl;
+                            Engine.LastAudioStreamUrl = streams.AudioSlaveUrl;
+                            mediaPlayer.Play(media);
+                            streamingResolution = streams.Resolution;
+                            break;
+                        }
+                        default: // Muxed
+                        {
+                            var media = new Media(libVLC, new Uri(streams.PrimaryUrl));
+                            MediaEngine.ApplyNetworkOptions(media, vm);
+                            Engine.LastMuxedStreamUrl = streams.PrimaryUrl;
+                            mediaPlayer.Play(media);
+                            streamingResolution = streams.Resolution;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (isAudioOnly)
+            {
+                // Audio-only: keep idle screen visible, skip waiting for a video frame.
+                mediaPlayer.Vout -= OnVout;
+                _host.HideVideoSurface();
+
+                var playingTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                void OnPlaying(object? s, EventArgs a)
+                {
+                    mediaPlayer.Playing -= OnPlaying;
+                    playingTcs.TrySetResult();
+                }
+                mediaPlayer.Playing += OnPlaying;
+
+                var audioCompleted = await Task.WhenAny(playingTcs.Task, Task.Delay(MediaEngine.FirstFrameTimeoutMs(vm)));
+                mediaPlayer.Playing -= OnPlaying;
+
+                if (ct.IsCancellationRequested) return;
+
+                if (audioCompleted != playingTcs.Task)
+                {
+                    // Timed out — server likely unreachable.
+                    await Task.Run(() => mediaPlayer.Stop());
+                    _host.DetachVideoView();
+                    _host.ReturnToIdle();
+                    _host.StartColorCycle();
+                    if (Model is { } vmAoTimeout)
+                    {
+                        vmAoTimeout.StatusText = "Playback failed: server unreachable or stream timed out";
+                        vmAoTimeout.NotifyPlaybackFailed(vmAoTimeout.CurrentlyPlaying);
+                        vmAoTimeout.CurrentlyPlaying = null;
+                        vmAoTimeout.NotifyPlaybackStarted();
+                    }
+                    return;
+                }
+
+                _host.ReturnToIdle();
+                _host.StartColorCycle();
+                _host.StartPositionTimer();
+                _host.NotifyDmdPlaybackStarted();
+                Model?.NotifyPlaybackStarted();
+                return;
+            }
+
+            // Wait for the first video frame.
+            var completed = await Task.WhenAny(voutTcs.Task, Task.Delay(MediaEngine.FirstFrameTimeoutMs(vm)));
+            mediaPlayer.Vout -= OnVout;
+
+            if (ct.IsCancellationRequested) return;
+
+            if (completed != voutTcs.Task)
+            {
+                // Timed out waiting for video — server likely unreachable.
+                await Task.Run(() => mediaPlayer.Stop());
+                _host.DetachVideoView();
+                _host.ReturnToIdle();
+                _host.StartColorCycle();
+                if (Model is { } vmTimeout)
+                {
+                    vmTimeout.StatusText = "Playback failed: server unreachable or stream timed out";
+                    vmTimeout.NotifyPlaybackFailed(vmTimeout.CurrentlyPlaying);
+                    vmTimeout.CurrentlyPlaying = null;
+                    vmTimeout.NotifyPlaybackStarted();
+                }
+                return;
+            }
+
+            _host.EnterMediaMode();
+
+            if (streamingResolution != null)
+                _host.StartVideoInfoPolling(streamingResolution);
+            else if (cachedResolution != null)
+                _host.StartVideoInfoPollingCached(cachedResolution);
+            _host.StartPositionTimer();
+
+            // Log seekability diagnostics for streaming (non-cached) playback.
+            if (streamingResolution != null)
+            {
+                var seekable = mediaPlayer.IsSeekable;
+                var length = mediaPlayer.Length;
+                DebugLog.Log(LogLevel.Debug, "Play", $"Streaming playback started | Seekable={seekable} Length={length}ms | Note: seeking may be unreliable for progressive YouTube streams (no seek index until fully downloaded)");
+            }
+
+            // Notify so the DMD window can reclaim focus.
+            _host.NotifyDmdPlaybackStarted();
+            Model?.NotifyPlaybackStarted();
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Play was cancelled by stop or a new play request — silently bail out.
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Playback error: {ex.Message}");
+            _host.DetachVideoView();
+            _host.ReturnToIdle();
+            _host.StartColorCycle();
+            Model?.NotifyPlaybackStarted();
+        }
+    }
+
     private void OnSeekRequested(long timeMs) => Seek(timeMs);
     private void OnPauseRequested() => _host.Pause();
     private void OnResumeRequested() => _host.Resume();

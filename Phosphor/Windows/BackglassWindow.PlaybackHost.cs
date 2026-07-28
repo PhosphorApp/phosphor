@@ -1,3 +1,5 @@
+using System.Windows;
+using System.Windows.Threading;
 using Phosphor.Playback;
 
 namespace Phosphor;
@@ -56,7 +58,8 @@ public partial class BackglassWindow : IPlaybackHost
     // Play / Stop / Seek forward to the engine methods that still live in the window (they are the
     // VLC/gapless engine itself, not thin forwarders). JukeboxPlayer owns the SUBSCRIPTION; the engine
     // bodies relocate in a later increment.
-    void IPlaybackHost.Play(string videoId) => OnPlayRequested(videoId);
+    // Play/Stop/Seek are all relocated into JukeboxPlayer; the window no longer implements the bodies.
+    void IPlaybackHost.Play(string videoId) => JukeboxPlayer.Play(videoId);
 
     // Stop is now relocated into JukeboxPlayer (pilot slice); the window no longer implements the body.
     void IPlaybackHost.Stop() => JukeboxPlayer.Stop();
@@ -88,4 +91,77 @@ public partial class BackglassWindow : IPlaybackHost
     void IPlaybackHost.ResetLogoDimIdle() => ResetLogoDimIdle();
 
     void IPlaybackHost.StartVideoInfoPollingCached(string resolution) => StartVideoInfoPollingCached(resolution);
+
+    // ── Video-surface callbacks (view stays window-owned) ──
+
+    void IPlaybackHost.BeginPlayTransition()
+    {
+        _colorTimer.Stop();
+
+        // Cancel any pending delayed-overlay reveal from a previous transition.
+        _transitionOverlayTimer?.Stop();
+        _transitionOverlayTimer = null;
+
+        // During transitions (video view still attached from previous track), detach the old video view
+        // BEFORE stopping so VLC's surface clear isn't visible — the black Grid shows through instead of
+        // a white flash. Then schedule a delayed idle-overlay reveal: fast (cached/prefetched) transitions
+        // Vout within 100-300ms and OnVout cancels this timer for a clean black-to-video swap; only slower
+        // buffering transitions (>600ms) reach the tick and reveal the overlay.
+        bool isTransition = _videoView != null;
+        if (isTransition)
+        {
+            DetachVideoView();
+
+            _transitionOverlayTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(TransitionOverlayDelayMs)
+            };
+            _transitionOverlayTimer.Tick += (_, _) =>
+            {
+                _transitionOverlayTimer?.Stop();
+                _transitionOverlayTimer = null;
+                if (_videoView == null || _videoView.Visibility != Visibility.Visible)
+                {
+                    ShowIdleBackground();
+                    _colorTimer.Start();
+                }
+            };
+            _transitionOverlayTimer.Start();
+        }
+    }
+
+    void IPlaybackHost.EnsureVideoSurfaceHidden()
+    {
+        var videoView = EnsureVideoView();
+        videoView.Visibility = Visibility.Hidden;
+    }
+
+    void IPlaybackHost.HideVideoSurface()
+    {
+        if (_videoView != null)
+            _videoView.Visibility = Visibility.Hidden;
+    }
+
+    void IPlaybackHost.OnFirstVideoFrame()
+    {
+        // Cancel the pending overlay reveal — video is ready, no need to flash blobs.
+        _transitionOverlayTimer?.Stop();
+        _transitionOverlayTimer = null;
+
+        if (_videoView != null)
+        {
+            _videoView.Visibility = Visibility.Visible;
+            HookVideoViewForDrag();
+        }
+        // Hide idle overlay once video is rendering (in case it was briefly shown during a slow transition).
+        HideIdleForJukeboxVideo();
+        // Stop the blob color cycle now that the overlay is hidden.
+        _colorTimer.Stop();
+    }
+
+    void IPlaybackHost.StartVideoInfoPolling(string resolution) => StartVideoInfoPolling(resolution);
+
+    void IPlaybackHost.NotifyDmdPlaybackStarted() => PlaybackStarted?.Invoke();
+
+    Phosphor.Audio.GaplessAudioPlayer IPlaybackHost.CreateGaplessPlayer() => CreateGaplessPlayer();
 }
