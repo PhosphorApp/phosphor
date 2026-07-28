@@ -22,6 +22,13 @@ public partial class JukeboxViewModel : ObservableObject
     // ── Plug-in sources (the source path — YouTube and Plex run through the registry) ──
     private Phosphor.Plugins.SourceRegistry? _sourceRegistry;
     private bool _pluginsDiscovered;
+
+    // Tracks the in-flight registry build so callers that depend on registry-derived wiring (e.g. the
+    // cache's DownloadOverride, which is set inside BuildSourceRegistryAsync) can await it instead of
+    // racing it at startup. Completed by default so awaiting is a no-op once the registry is built.
+    // BuildSourceRegistryAsync is fire-and-forget from App startup, so the first cacheable play can
+    // otherwise arrive before DownloadOverride is wired and be silently dropped.
+    private Task _sourceRegistryReady = Task.CompletedTask;
     // Pre-fetched root-category tiles for generic IBrowsable plug-in sources (local-folder, future
     // Jellyfin, …), keyed by instance id. Built after each registry build; read by RebuildCategories.
     private readonly List<Category> _pluginBrowseTiles = new();
@@ -114,6 +121,13 @@ public partial class JukeboxViewModel : ObservableObject
     /// </summary>
     public async Task BuildSourceRegistryAsync(AppSettings settings)
     {
+        // Publish a fresh "registry ready" gate so cache/play paths that depend on registry-derived
+        // wiring (DownloadOverride) can await THIS build rather than racing it. Completed in the
+        // finally below regardless of success/failure so awaiters never hang.
+        var readyTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _sourceRegistryReady = readyTcs.Task;
+        try
+        {
         // Discover third-party plug-ins from the plugins/ folder once per app run (built-in type ids
         // are reserved so a plug-in can't shadow YouTube/Plex). Cheap to guard; the scan touches disk.
         if (!_pluginsDiscovered)
@@ -163,6 +177,11 @@ public partial class JukeboxViewModel : ObservableObject
 
         try { SourceRegistryRebuilt?.Invoke(); }
         catch (Exception ex) { DebugLog.LogException("SourceRegistryRebuilt handlers", ex); }
+        }
+        finally
+        {
+            readyTcs.TrySetResult();
+        }
     }
 
     /// <summary>
@@ -1624,6 +1643,21 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Caches an item after the source registry has finished building, so the cache's
+    /// <c>DownloadOverride</c> is guaranteed wired (it is set inside <see cref="BuildSourceRegistryAsync"/>).
+    /// Closes a startup race where an early play reached the cache trigger before the fire-and-forget
+    /// registry build wired the override, causing a silent no-op. A no-op once the registry is ready.
+    /// </summary>
+    private async Task CacheAfterRegistryReadyAsync(VideoItem item)
+    {
+        try { await _sourceRegistryReady; }
+        catch { /* registry build failures are logged in BuildSourceRegistryAsync */ }
+
+        if (_cache is not { Enabled: true }) return;
+        await _cache.CacheVideoAsync(item.VideoId, VideoQuality, StereoAudio, item.Duration, item.Chapters, item.Title);
+    }
+
+    /// <summary>
     /// Resolves the plug-in source a playing <see cref="VideoItem"/> belongs to via its recorded
     /// <see cref="VideoItem.SourceInstanceId"/>; falls back to YouTube for legacy items or the
     /// built-in engine path. Returns null if the registry is unavailable.
@@ -2135,7 +2169,13 @@ public partial class JukeboxViewModel : ObservableObject
         if (nextIdx < 0 || nextIdx >= Queue.Count) return;
 
         var next = Queue[nextIdx];
-        if (!IsItemCacheable(next) || next.IsAudioOnly) return;
+        if (!IsItemCacheable(next) || next.IsAudioOnly)
+        {
+            if (DebugLog.Enabled)
+                DebugLog.Log(LogLevel.Debug, "PreemptiveCache",
+                    $"Skip next '{next.VideoId}': cacheable={IsItemCacheable(next)}, audioOnly={next.IsAudioOnly}");
+            return;
+        }
 
         var videoId = next.VideoId;
         if (string.IsNullOrEmpty(videoId)) return;
@@ -2151,13 +2191,10 @@ public partial class JukeboxViewModel : ObservableObject
         }
 
         DebugLog.Log(LogLevel.Debug, "PreemptiveCache", $"Starting preemptive cache job for next track {videoId}: {next.Title}");
-        _ = SafeFireAndForget(_cache.CacheVideoAsync(
-            videoId,
-            VideoQuality,
-            StereoAudio,
-            next.Duration,
-            next.Chapters,
-            next.Title));
+        // Route through the registry-ready gate: at startup the fire-and-forget registry build may not
+        // have wired the cache's DownloadOverride yet, so an early preemptive kickoff would silently
+        // no-op (same race as the current-item cache). Awaiting closes that race.
+        _ = SafeFireAndForget(CacheAfterRegistryReadyAsync(next));
     }
 
     public void SetupPrefetch(bool enabled)
@@ -2202,7 +2239,24 @@ public partial class JukeboxViewModel : ObservableObject
 
         _prefetchingVideoId = nextId;
         SetStatusPrefix("Prefetching");
-        _ = SafeFireAndForget(_prefetch.PrefetchAsync(nextId, VideoQuality, StereoAudio));
+        // Route through the registry-ready gate so an early prefetch doesn't lose the startup race for
+        // the shared DownloadOverride (same fix as the current-item / preemptive caches).
+        var prefetchItem = Queue[nextIdx];
+        _ = SafeFireAndForget(PrefetchAfterRegistryReadyAsync(prefetchItem));
+    }
+
+    /// <summary>
+    /// Prefetches an item after the source registry has finished building, so the prefetch cache's
+    /// <c>DownloadOverride</c> is guaranteed wired. Closes the same startup race as
+    /// <see cref="CacheAfterRegistryReadyAsync"/>. A no-op once the registry is ready.
+    /// </summary>
+    private async Task PrefetchAfterRegistryReadyAsync(VideoItem item)
+    {
+        try { await _sourceRegistryReady; }
+        catch { /* registry build failures are logged in BuildSourceRegistryAsync */ }
+
+        if (_prefetch == null) return;
+        await _prefetch.PrefetchAsync(item.VideoId, VideoQuality, StereoAudio);
     }
 
     // ── Duration filter ──
@@ -3775,9 +3829,20 @@ public partial class JukeboxViewModel : ObservableObject
             _ = SafeFireAndForget(FetchChaptersViaSourceAsync(item));
 
         // Cache the item on playback when caching is enabled (cacheable sources only). The
-        // max-clip-length filter inside CacheVideoAsync still applies.
+        // max-clip-length filter inside CacheVideoAsync still applies. Await the registry-ready gate
+        // first: at startup BuildSourceRegistryAsync is fire-and-forget, so an early play could reach
+        // here before the cache's DownloadOverride is wired (and be silently dropped). Waiting closes
+        // that race without blocking playback (this is a fire-and-forget continuation).
         if (_cache is { Enabled: true } && IsItemCacheable(item))
-            _ = SafeFireAndForget(_cache.CacheVideoAsync(item.VideoId, VideoQuality, StereoAudio, item.Duration, item.Chapters, item.Title));
+        {
+            var cacheItem = item;
+            _ = SafeFireAndForget(CacheAfterRegistryReadyAsync(cacheItem));
+        }
+        else if (DebugLog.Enabled)
+        {
+            DebugLog.Log(LogLevel.Debug, "VideoCache",
+                $"Not caching '{item.VideoId}': cacheEnabled={_cache?.Enabled == true}, cacheable={IsItemCacheable(item)}");
+        }
 
         // Preemptively cache the *next* queue item as soon as this one starts —
         // gives the download a full track-length head start so the next transition

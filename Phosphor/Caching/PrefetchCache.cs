@@ -77,7 +77,10 @@ public class PrefetchCache
         // never be downloaded, so skip it instead of letting the engine throw "Invalid YouTube
         // video ID". Callers normally gate this via IsItemCacheable; this is a safety net.
         if (string.IsNullOrEmpty(videoId) || videoId.Contains(':'))
+        {
+            DebugLog.Log(LogLevel.Debug, "PrefetchCache", $"Skip '{videoId}': empty or non-YouTube (scheme-prefixed) id");
             return;
+        }
 
         // Already have this one?
         lock (_lock)
@@ -93,9 +96,18 @@ public class PrefetchCache
         try
         {
             // No downloadable source configured � nothing to prefetch.
-            if (DownloadOverride == null) return;
+            if (DownloadOverride == null)
+            {
+                DebugLog.Log(LogLevel.Warning, "PrefetchCache", $"Skip {videoId}: no DownloadOverride wired (YouTube source not IDownloadable / registry not built)");
+                return;
+            }
+            DebugLog.Log(LogLevel.Debug, "PrefetchCache", $"Prefetching {videoId} (quality={quality}, stereo={preferStereo})");
             var download = await DownloadOverride(videoId, quality, preferStereo, PrefetchDir, cts.Token);
-            if (download == null) return;
+            if (download == null)
+            {
+                DebugLog.Log(LogLevel.Warning, "PrefetchCache", $"Skip {videoId}: download returned null");
+                return;
+            }
 
             var videoFile = download.VideoFilePath;
             var audioFile = download.AudioFilePath;
