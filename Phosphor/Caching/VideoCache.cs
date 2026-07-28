@@ -102,29 +102,44 @@ public class VideoCache
 
     public async Task CacheVideoAsync(string videoId, VideoQualityPreference quality = VideoQualityPreference.High, bool preferStereo = false, TimeSpan? duration = null, List<ChapterMarker>? chapters = null, string? title = null, CancellationToken ct = default)
     {
-        if (!_enabled) return;
-        if (!IsWithinClipLengthLimit(duration)) return;
+        if (!_enabled) { DebugLog.Log(LogLevel.Debug, "VideoCache", $"Skip {videoId}: cache disabled"); return; }
+        if (!IsWithinClipLengthLimit(duration)) { DebugLog.Log(LogLevel.Debug, "VideoCache", $"Skip {videoId}: over max clip length ({duration})"); return; }
 
         // Only YouTube-style ids are downloadable here — the cache resolves via the YouTube engine.
         // A "scheme:" prefix (e.g. "plex:") is a non-YouTube source that streams directly and can
         // never be downloaded/muxed, so skip it instead of letting the engine throw "Invalid
         // YouTube video ID". Callers normally gate this via IsItemCacheable; this is a safety net.
         if (string.IsNullOrEmpty(videoId) || videoId.Contains(':'))
+        {
+            DebugLog.Log(LogLevel.Debug, "VideoCache", $"Skip '{videoId}': empty or non-YouTube (scheme-prefixed) id");
             return;
+        }
 
         // Already cached?
         lock (_lock)
         {
             if (_entries.Any(e => e.VideoId == videoId))
+            {
+                DebugLog.Log(LogLevel.Debug, "VideoCache", $"Skip {videoId}: already cached");
                 return;
+            }
         }
 
         try
         {
             // No downloadable source configured — the cache cannot populate.
-            if (DownloadOverride == null) return;
+            if (DownloadOverride == null)
+            {
+                DebugLog.Log(LogLevel.Warning, "VideoCache", $"Skip {videoId}: no DownloadOverride wired (YouTube source not IDownloadable / registry not built)");
+                return;
+            }
+            DebugLog.Log(LogLevel.Debug, "VideoCache", $"Caching {videoId} (quality={quality}, stereo={preferStereo})");
             var download = await DownloadOverride(videoId, quality, preferStereo, CacheDir, ct);
-            if (download == null) return;
+            if (download == null)
+            {
+                DebugLog.Log(LogLevel.Warning, "VideoCache", $"Skip {videoId}: download returned null");
+                return;
+            }
 
             var videoPath = download.VideoFilePath;
             var audioPath = download.AudioFilePath;
