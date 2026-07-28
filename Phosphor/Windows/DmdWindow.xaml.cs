@@ -2717,6 +2717,10 @@ public partial class DmdWindow : JukeboxWindow
             vm.SetSearchEngine(ytPlayback.Search);
             // Rebuild the plug-in source registry so Plex/engine changes take effect without a restart.
             _ = vm.BuildSourceRegistryAsync(_appSettings);
+            // Re-apply the main video cache so enabling/disabling it (and size / max-clip-length)
+            // takes effect immediately, not only after a restart. Updates in place so already-cached
+            // entries survive the save.
+            vm.SetupCache(_appSettings.CacheEnabled, _appSettings.CacheMaxSizeGb, _appSettings.CacheMaxClipLengthMinutes);
             vm.SetupPrefetch(_appSettings.PrefetchEnabled);
             vm.SetupThumbnailCache(_appSettings.ThumbnailCacheEnabled, _appSettings.ThumbnailCacheMaxSizeMb);
             vm.SetupResultCache(_appSettings.ResultCacheEnabled, _appSettings.ResultCacheMaxAgeHours);

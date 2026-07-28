@@ -49,3 +49,63 @@ the intermittency and the "relaunch fixed it" behavior.
 - `Phosphor/JukeboxViewModel.cs`
 - `Phosphor/Caching/VideoCache.cs`
 - `Phosphor/Caching/PrefetchCache.cs`
+
+---
+
+# Follow-up bugs
+
+## BUG 1 — Main video-cache enable/disable does not apply until restart
+
+**Status: FIXED.**
+
+Toggling the **"cache enabled"** checkbox (and cache size / max clip length) in Settings
+has **no effect until the app is restarted**. The settings-apply path in
+`DmdWindow.xaml.cs` (runs on Settings save, ~line 2725) re-applies prefetch, thumbnail
+cache, result cache, engine, quality, preemptive, and network settings — but **never
+re-runs `SetupCache(...)`** for the main `VideoCache`. So the cache keeps whatever
+enabled/size/clip-length it was given at launch (`App.xaml.cs` line 67).
+
+Observed: enabling caching then playing without restart failed to reflect the new state;
+disabling caching then playing still logged `cacheEnabled=<launch value>`; a restart made
+it correct.
+
+**Fix applied:** `DmdWindow`'s settings-apply block now calls
+`vm.SetupCache(_appSettings.CacheEnabled, _appSettings.CacheMaxSizeGb, _appSettings.CacheMaxClipLengthMinutes)`
+alongside `SetupPrefetch`/`SetupThumbnailCache`. `JukeboxViewModel.SetupCache` was changed
+to call `VideoCache.UpdateSettings` in place when a cache already exists (create only on
+first call), so the loaded index/entries survive a settings save.
+
+## BUG 2 — Long yt-dlp videos time out while streaming + caching concurrently
+
+**Status: FIXED (mitigation: defer background cache until first frame).**
+
+With caching **enabled** and the **yt-dlp** engine, long videos (e.g. full-length
+concerts) intermittently hit `Playback failed: server unreachable or stream timed out`.
+The commonality: yt-dlp engine, item not yet cached, long duration. YouTubeExplode-style
+playback streams to the window immediately while the cache download runs in the
+background; on large videos the concurrent background download appears to starve/stall
+the streaming path, tripping the first-frame/startup watchdog
+(`DefaultFirstFrameTimeoutMs`, 10s — see the log gap 23:17:51 → 23:18:01 above).
+
+Evidence (first run, caching on):
+```
+[23:17:47] Playing: Rush ** FULL SHOW ** ...
+[23:17:47] [VideoCache] Caching mN4xDgLN3k0 (quality=High, stereo=True)
+[23:17:51] Stream resolution routed through plug-in YouTube source
+[23:18:01] Playback failed: server unreachable or stream timed out   (~10s watchdog)
+```
+After restart with cache disabled the same item played fine
+(`Not caching ... cacheEnabled=False`).
+
+**Root cause:** the current-item cache download (a second yt-dlp/HTTP fetch) was kicked
+off in `PlayNow` immediately, concurrent with stream resolution. On long videos that
+second fetch starved the streaming path and tripped the 10s first-frame watchdog.
+
+**Fix applied:** the current-item background cache download is now **deferred until
+playback is confirmed**. `PlayNow` records the item in `_pendingCacheItem`; the download
+is kicked off from `NotifyPlaybackStarted` (fired on first video output). The failure/
+timeout path clears `_pendingCacheItem` (via `NotifyPlaybackFailed`) so a timed-out item
+is not cached. This keeps the second fetch off the play path entirely, so first-frame
+startup no longer contends with the download. (Preemptive next-track caching already runs
+after the current track is playing, so it was unaffected.)
+

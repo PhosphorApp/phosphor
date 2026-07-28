@@ -852,6 +852,13 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
+    /// The current item awaiting a background cache download, deferred until playback is confirmed
+    /// (see <see cref="NotifyPlaybackStarted"/>). Deferring avoids the background download contending
+    /// with stream resolution and tripping the first-frame watchdog on long videos.
+    /// </summary>
+    private VideoItem? _pendingCacheItem;
+
+    /// <summary>
     /// Call from the player host once playback has actually started (video output received)
     /// to allow the next play request to proceed.
     /// </summary>
@@ -860,6 +867,14 @@ public partial class JukeboxViewModel : ObservableObject
         PlayTransitioning = false;
         _statusPrefixCts?.Cancel();
         StatusPrefix = "";
+
+        // Now that playback is confirmed, kick off the deferred background cache download for the
+        // current item (see _pendingCacheItem). Starting it here — rather than at play dispatch —
+        // keeps the second yt-dlp/HTTP fetch from starving the first-frame path on long videos.
+        var toCache = _pendingCacheItem;
+        _pendingCacheItem = null;
+        if (toCache != null && _cache is { Enabled: true } && IsItemCacheable(toCache))
+            _ = SafeFireAndForget(CacheAfterRegistryReadyAsync(toCache));
 
         // Self-healing badges: a successful play clears any "unavailable" mark the owning source kept
         // for this item (e.g. an IPTV channel that was previously geo-blocked/offline). Report it and
@@ -891,6 +906,10 @@ public partial class JukeboxViewModel : ObservableObject
     public void NotifyPlaybackFailed(VideoItem? item)
     {
         if (item is null) return;
+        // A failed start should not trigger the deferred background cache (the failure path calls this
+        // then NotifyPlaybackStarted). Clear the pending item so we don't cache something that didn't play.
+        if (ReferenceEquals(_pendingCacheItem, item))
+            _pendingCacheItem = null;
         if (SourceForItem(item) is not Phosphor.Plugin.Abstractions.IPlaybackReportable reportable) return;
         try
         {
@@ -2130,7 +2149,13 @@ public partial class JukeboxViewModel : ObservableObject
 
     public void SetupCache(bool enabled, double maxSizeGb, int maxClipLengthMinutes = 0)
     {
-        _cache = new VideoCache(enabled, maxSizeGb, maxClipLengthMinutes);
+        // Update in place when a cache already exists so its loaded index/entries survive a settings
+        // save (create only on first call). Re-newing here would discard the in-memory index and
+        // effectively hide already-cached files until restart.
+        if (_cache != null)
+            _cache.UpdateSettings(enabled, maxSizeGb, maxClipLengthMinutes);
+        else
+            _cache = new VideoCache(enabled, maxSizeGb, maxClipLengthMinutes);
         WireCacheDownloadOverride();
     }
 
@@ -3828,20 +3853,22 @@ public partial class JukeboxViewModel : ObservableObject
         if (item.Chapters == null)
             _ = SafeFireAndForget(FetchChaptersViaSourceAsync(item));
 
-        // Cache the item on playback when caching is enabled (cacheable sources only). The
-        // max-clip-length filter inside CacheVideoAsync still applies. Await the registry-ready gate
-        // first: at startup BuildSourceRegistryAsync is fire-and-forget, so an early play could reach
-        // here before the cache's DownloadOverride is wired (and be silently dropped). Waiting closes
-        // that race without blocking playback (this is a fire-and-forget continuation).
+        // Cache the item on playback when caching is enabled (cacheable sources only). DEFERRED until
+        // playback is confirmed (NotifyPlaybackStarted): the background cache download runs a second
+        // yt-dlp/HTTP fetch that, if started concurrently with stream resolution, can starve the
+        // streaming path and trip the first-frame watchdog on long videos (full concerts). Recording it
+        // here and kicking it off after first frame keeps startup contention off the play path. The
+        // registry-ready gate + max-clip-length filter still apply inside the deferred kickoff.
         if (_cache is { Enabled: true } && IsItemCacheable(item))
         {
-            var cacheItem = item;
-            _ = SafeFireAndForget(CacheAfterRegistryReadyAsync(cacheItem));
+            _pendingCacheItem = item;
         }
-        else if (DebugLog.Enabled)
+        else
         {
-            DebugLog.Log(LogLevel.Debug, "VideoCache",
-                $"Not caching '{item.VideoId}': cacheEnabled={_cache?.Enabled == true}, cacheable={IsItemCacheable(item)}");
+            _pendingCacheItem = null;
+            if (DebugLog.Enabled)
+                DebugLog.Log(LogLevel.Debug, "VideoCache",
+                    $"Not caching '{item.VideoId}': cacheEnabled={_cache?.Enabled == true}, cacheable={IsItemCacheable(item)}");
         }
 
         // Preemptively cache the *next* queue item as soon as this one starts —
