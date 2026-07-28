@@ -214,23 +214,57 @@ never said which engine it used, which made this confusing to attribute.
 
 ## Mitigation options (not yet implemented — for follow-up)
 
-1. **yt-dlp built-in rate/throttle controls on the DOWNLOAD path** (cheapest, keeps
-   downloads polite):
+1. **yt-dlp built-in rate/throttle controls on the DOWNLOAD path** — **IMPLEMENTED**
+   (cheapest, keeps downloads polite):
    - `--limit-rate 500K` — cap download speed so the pull isn't a burst.
    - `--throttled-rate 100K` — re-extract if speed drops below threshold (bypasses some
      ISP/site throttling).
    - `--sleep-interval 10 --max-sleep-interval 35` — random sleeps between downloads to
      avoid tripping anti-bot bans.
-   These would be added to `DownloadOneAsync`'s arg list (download-only; never on resolve).
+   Added to `DownloadOneAsync`'s arg list (download-only; never on resolve).
 2. **"Play from cache only" setting** — when caching is on, download first and play the
    cached file, rather than streaming and downloading concurrently. Trades startup lag for
    a much lower throttling risk (only one yt-dlp pull instead of stream + download).
-3. **403 back-off** — on repeated 403s for an item, stop re-attempting the download for a
-   cooldown so we don't worsen the throttle, and surface a clear "YouTube throttled" status
-   instead of a generic failure.
+   *(Not implemented — deferred; revisit if (1)+(3) prove insufficient.)*
+3. **403 back-off** — **IMPLEMENTED**. On repeated 403s for an item, downloads for that
+   item are put on a cooldown so we don't worsen the throttle, and a clear "YouTube
+   throttled (403 back-off)" warning is logged instead of a generic failure.
 
 Recommended order: (1) is low-risk and likely sufficient for most cases; (2) is the
 strongest guarantee but changes UX (startup lag); (3) is good hygiene regardless.
+
+## Fix applied — mitigation (1) + (3)
+
+Both live in `Phosphor.Plugins.YouTube/Engines/YtDlpVideoEngine.cs`, download-path only:
+
+- **(1) Throttle args.** `AddThrottleArgs` appends `--limit-rate` / `--throttled-rate` /
+  `--sleep-interval` / `--max-sleep-interval` to each `DownloadOneAsync` invocation (never
+  to the resolve path). The values are **tunable without recompiling** via the bundled
+  `download_throttle.json` (sits next to the plug-in DLL, loaded once at startup by
+  `DownloadThrottleConfig` — same pattern as `default_categories.json`). Missing/invalid
+  file falls back to the engine's built-in defaults. A **"Throttle downloads"** on/off
+  checkbox in the YouTube plug-in Settings is the master switch (`ThrottleDownloads`,
+  default on); the detailed knobs are intentionally NOT surfaced in the UI.
+- **(3) 403 back-off.** `DownloadOneAsync` detects 403 stderr (`LooksLikeHttp403`) and
+  records it per `videoId`. After `Http403BackoffThreshold` (default 2) consecutive 403s,
+  the item's download is put on cooldown for `Http403BackoffCooldown` (default 10m).
+  `DownloadStreamsAsync` checks the cooldown up front (`IsInHttp403Cooldown`) and skips —
+  logging a "YouTube throttled" warning — rather than re-hammering. A successful download
+  clears the item's 403 state (`ClearHttp403`). State is static so it survives the engine
+  rebuild that a settings change triggers. Threshold/cooldown are also configurable in
+  `download_throttle.json`.
+
+**Files touched:** `Phosphor.Plugins.YouTube/Engines/YtDlpVideoEngine.cs`,
+`Phosphor.Plugins.YouTube/Engines/DownloadThrottleConfig.cs` (new),
+`Phosphor.Plugins.YouTube/download_throttle.json` (new),
+`Phosphor.Plugins.YouTube/YouTubeSourceProvider.cs` (toggle schema),
+`Phosphor.Plugins.YouTube/YouTubeSource.cs` (toggle apply),
+`Phosphor.Plugins.YouTube/Phosphor.Plugins.YouTube.csproj` (bundle + self-deploy the JSON).
+
+### Cherry-pick note (multiplayer → master)
+
+Implemented on `multiplayer`. This change is self-contained to `YtDlpVideoEngine.cs` and
+is unrelated to the multiplayer refactor, so it cherry-picks cleanly onto `master`.
 
 
 
