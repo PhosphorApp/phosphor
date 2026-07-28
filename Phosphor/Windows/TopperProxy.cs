@@ -186,6 +186,13 @@ public sealed class TopperProxy : IPinupFollower
     public void SetSharedVlcTask(Task<LibVLCSharp.Shared.LibVLC?>? task) =>
         _dispatcher.BeginInvoke(() => _window.SetSharedVlcTask(task));
 
+    /// <summary>
+    /// Marks the Topper's jukebox engine to own an audio-isolated LibVLC (DirectSound) so its volume is
+    /// independent of the Backglass. Must be called before AttachViewModel.
+    /// </summary>
+    public void UseIsolatedAudio() =>
+        _dispatcher.BeginInvoke(() => _window.UseIsolatedAudio());
+
     /// <summary>Binds the Topper's jukebox player to the view-model's Player 2 channel.</summary>
     public void AttachViewModel(JukeboxViewModel vm) =>
         _dispatcher.BeginInvoke(() => _window.AttachJukeboxViewModel(vm));

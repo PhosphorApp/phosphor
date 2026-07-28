@@ -71,6 +71,20 @@ public sealed class MediaEngine
     /// <summary>Accepts a task that will produce the shared LibVLC instance (awaited by the window's init).</summary>
     public void SetSharedVlcTask(Task<LibVLC?>? task) => _sharedVlcTask = task;
 
+    // When set, this engine creates its OWN LibVLC using the DirectSound audio output instead of
+    // adopting the app's shared instance. DirectSound applies Volume/Mute as a per-stream software gain
+    // on this instance's own secondary buffer, rather than the default mmdevice backend which writes to
+    // the shared process-wide Windows mixer session — so a second simultaneous player (the Topper) has
+    // audio truly independent from the Backglass. Mirrors the ambient engine's approach.
+    private bool _isolatedAudioInstance;
+
+    /// <summary>
+    /// Marks this engine to own an independent, audio-isolated LibVLC (DirectSound aout) instead of the
+    /// app's shared instance. Required for a second simultaneous player so per-window volume is real.
+    /// Must be called before <see cref="InitializeCore"/>.
+    /// </summary>
+    public void UseIsolatedAudioInstance() => _isolatedAudioInstance = true;
+
     /// <summary>
     /// Core LibVLC + MediaPlayer creation. Thread-safe; called once from either the background init
     /// task or synchronously as a fallback. Reuses a shared LibVLC if one was provided. Wires
@@ -78,9 +92,15 @@ public sealed class MediaEngine
     /// </summary>
     public void InitializeCore(Dispatcher dispatcher)
     {
+        // An audio-isolated engine (second player) always spins up its own DirectSound LibVLC so its
+        // volume is a per-stream gain, independent of the shared-instance players.
+        if (_isolatedAudioInstance && _libVLC == null)
+        {
+            _libVLC = new LibVLC("--no-video-title-show", "--network-caching=3000", "--http-reconnect", "--aout=directsound");
+        }
         // If the app provided a shared-VLC task, adopt its result instead of spinning up a second
         // LibVLC (the window awaits this off-thread before calling us).
-        if (_sharedVlcTask != null && _libVLC == null)
+        else if (_sharedVlcTask != null && _libVLC == null)
         {
             try
             {

@@ -116,7 +116,11 @@ public partial class App : Application
             // LibVLC (own MediaPlayer) and binds to the VM's Player2 command channel.
             if (_settings.EnableSecondPlayer)
             {
-                _topperProxy.SetSharedVlcTask(_sharedVlcTask);
+                // Give the Topper its OWN audio-isolated LibVLC (DirectSound aout) rather than sharing the
+                // app instance — otherwise both players route to one process-wide mixer session and their
+                // volume sliders affect each other. This trades the shared plugin-scan cost for real
+                // per-window audio.
+                _topperProxy.UseIsolatedAudio();
                 _topperProxy.AttachViewModel(viewModel);
                 // Per-player audio-only for the Topper (reuses the SetAudioOnly path).
                 viewModel.Player2.AudioOnlyChanged += audioOnly => _topperProxy.SetAudioOnly(audioOnly);

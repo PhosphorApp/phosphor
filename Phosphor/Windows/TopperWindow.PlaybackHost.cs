@@ -40,6 +40,14 @@ public partial class TopperWindow : IPlaybackHost
     public void SetSharedVlcTask(Task<LibVLC?>? task) => JukeboxEngine.SetSharedVlcTask(task);
 
     /// <summary>
+    /// Marks the Topper's jukebox engine to own an independent, audio-isolated LibVLC (DirectSound aout)
+    /// so its volume is a per-stream gain — independent of the Backglass's audio. Must be called before
+    /// the engine initializes. (The shared LibVLC's default mmdevice backend routes every player to one
+    /// process-wide mixer session, which would make the two players' volume sliders affect each other.)
+    /// </summary>
+    public void UseIsolatedAudio() => JukeboxEngine.UseIsolatedAudioInstance();
+
+    /// <summary>
     /// Binds the Topper's jukebox player to <see cref="JukeboxViewModel.Player2"/> and kicks off
     /// background LibVLC init (mirrors the Backglass's <c>AttachViewModel</c> + Loaded init).
     /// </summary>
