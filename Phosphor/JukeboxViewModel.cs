@@ -4316,9 +4316,10 @@ public partial class JukeboxViewModel : ObservableObject
         if (index < 0 || index >= Queue.Count) return;
         if (_playTransitioning) return;
 
-        if (IsPlaying)
-            Player1.RaiseStopRequested();
-
+        // Do NOT pre-emptively stop here: PlayNow → Play() handles the transition from the current
+        // track (and PlayNow issues its own stop for live/deferred items that resolve first). A
+        // pre-emptive StopRequested races the new Play on the Backglass thread and briefly flashes the
+        // idle blob overlay between tracks; the natural-end path never stops first and is clean.
         QueueIndex = index;
         PlayNow(Queue[index]);
 
@@ -4367,9 +4368,12 @@ public partial class JukeboxViewModel : ObservableObject
             }
         }
 
-        // Last chapter or no chapters — skip to next queue item
-        if (IsPlaying)
-            Player1.RaiseStopRequested();
+        // Last chapter or no chapters — skip to next queue item. Do NOT pre-emptively stop here: a
+        // track *change* is a transition, not a stop-to-idle. PlayNext → PlayNow → Play() already
+        // handles stopping the old media as part of the transition (and PlayNow issues its own stop for
+        // live/deferred items that resolve before playing). A pre-emptive StopRequested races the new
+        // Play on the Backglass thread and briefly flashes the idle blob overlay between tracks — the
+        // natural-end path (which never stops first) is clean, so mirror it.
         PlayNext();
     }
 
