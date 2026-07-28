@@ -864,9 +864,28 @@
         </Border>
         </Grid>
 
-        <!-- Now playing bar -->
-        <Border Grid.Row="3" Background="{StaticResource SurfaceBrush}" CornerRadius="6"
-                Padding="12,10" Margin="0,6,0,4">
+        <!-- Now playing bar(s). When the second player is disabled this is exactly the single bar as
+             before (the Player 2 bar is collapsed and the StackPanel adds no spacing). -->
+        <StackPanel Grid.Row="3">
+        <Border x:Name="Player1NowPlayingBar" Background="{StaticResource SurfaceBrush}" CornerRadius="6"
+                Padding="12,10" Margin="0,6,0,4" MouseDown="Player1Bar_MouseDown">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="BorderThickness" Value="0"/>
+                    <Setter Property="BorderBrush" Value="Transparent"/>
+                    <Style.Triggers>
+                        <!-- Highlight the active bar only when the second player is enabled. -->
+                        <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                                <Condition Binding="{Binding SecondPlayerEnabled}" Value="True"/>
+                                <Condition Binding="{Binding IsPlayer1Active}" Value="True"/>
+                            </MultiDataTrigger.Conditions>
+                            <Setter Property="BorderThickness" Value="2"/>
+                            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                        </MultiDataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
             <DockPanel>
                 <!-- Hidden for now; may revisit later -->
                 <Button Content="&#x1F4CB; Add to Playlist" ToolTip="Add playing to playlist" DockPanel.Dock="Right" Padding="16,8" FontSize="15"
@@ -1040,28 +1059,28 @@
                             <TextBlock Text="{Binding NowPlayingSourceText}" Foreground="{StaticResource TextDimBrush}"
                                        FontSize="{DynamicResource NowPlayingLabelFontSize}" VerticalAlignment="Center"
                                        Margin="6,0,0,0" Opacity="0.8"/>
-                            <!-- Active-target selector (Player 1 = Backglass, Player 2 = Topper). Minimal Phase 1 UI. -->
-                            <ToggleButton Content="&#x25B6; Topper" ToolTip="Target the Topper (Player 2) for newly-played items"
-                                          IsChecked="{Binding TargetTopperPlayer}"
-                                          Visibility="{Binding SecondPlayerEnabled, Converter={StaticResource BoolVis}}"
-                                          FontSize="{DynamicResource NowPlayingLabelFontSize}" Padding="6,1" Margin="10,0,0,0"
-                                          VerticalAlignment="Center"/>
-                            <!-- Per-player (Topper) volume + audio-only. Minimal Phase 1 UI. -->
-                            <CheckBox Content="Topper audio-only" ToolTip="Play Player 2 (Topper) as audio-only (no video surface)"
-                                      IsChecked="{Binding Player2AudioOnly}"
-                                      Visibility="{Binding SecondPlayerEnabled, Converter={StaticResource BoolVis}}"
-                                      Foreground="{StaticResource TextDimBrush}" FontSize="{DynamicResource NowPlayingLabelFontSize}"
-                                      VerticalAlignment="Center" Margin="10,0,0,0"/>
-                            <TextBlock Text="&#x1F50A;2" ToolTip="Topper (Player 2) volume"
-                                       Visibility="{Binding SecondPlayerEnabled, Converter={StaticResource BoolVis}}"
-                                       Foreground="{StaticResource TextDimBrush}" FontSize="{DynamicResource NowPlayingSpeakerFontSize}"
-                                       VerticalAlignment="Center" Margin="10,0,2,0"/>
-                            <Slider Minimum="0" Maximum="100" Value="{Binding Player2Volume}"
-                                    Visibility="{Binding SecondPlayerEnabled, Converter={StaticResource BoolVis}}"
-                                    Width="{DynamicResource NowPlayingVolumeWidth}"
-                                    Style="{StaticResource NowPlayingSliderStyle}"
-                                    VerticalAlignment="Center" IsMoveToPointEnabled="True"/>
+                            <!-- ACTIVE badge shown on the active bar when the second player is enabled. -->
+                            <Border Background="{StaticResource AccentBrush}" CornerRadius="3" Padding="5,0" Margin="10,0,0,0"
+                                    VerticalAlignment="Center">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding SecondPlayerEnabled}" Value="True"/>
+                                                    <Condition Binding="{Binding IsPlayer1Active}" Value="True"/>
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </MultiDataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <TextBlock Text="ACTIVE" Foreground="White" FontWeight="Bold"
+                                           FontSize="{DynamicResource NowPlayingSpeakerFontSize}"/>
+                            </Border>
                         </StackPanel>
+
                         <TextBlock Text="{Binding NowPlayingTitle, FallbackValue='Nothing playing'}"
                                    Foreground="{StaticResource Accent2Brush}" FontWeight="SemiBold"
                                    FontSize="{DynamicResource NowPlayingTitleFontSize}" TextTrimming="CharacterEllipsis"/>
@@ -1126,6 +1145,66 @@
                 </DockPanel>
             </DockPanel>
         </Border>
+
+        <!-- Player 2 (Topper) now-playing bar — shown only when the second player is enabled. Binds
+             directly to the Player2 context, so it uses the per-player state property names. -->
+        <Border x:Name="Player2NowPlayingBar" Background="{StaticResource SurfaceBrush}" CornerRadius="6"
+                Padding="12,8" Margin="0,0,0,4" DataContext="{Binding Player2}"
+                MouseDown="Player2Bar_MouseDown"
+                Visibility="{Binding DataContext.SecondPlayerEnabled, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolVis}}">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="BorderThickness" Value="0"/>
+                    <Setter Property="BorderBrush" Value="Transparent"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding DataContext.IsPlayer2Active, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                            <Setter Property="BorderThickness" Value="2"/>
+                            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <DockPanel>
+                <!-- Player 2 volume -->
+                <TextBlock Text="&#x1F50A;" DockPanel.Dock="Right" Foreground="{StaticResource TextDimBrush}"
+                           FontSize="{DynamicResource NowPlayingSpeakerFontSize}" VerticalAlignment="Center" Margin="8,0,2,0"/>
+                <Slider DockPanel.Dock="Right" Minimum="0" Maximum="100" Value="{Binding Volume}"
+                        Width="{DynamicResource NowPlayingVolumeWidth}" Style="{StaticResource NowPlayingSliderStyle}"
+                        VerticalAlignment="Center" IsMoveToPointEnabled="True"/>
+                <!-- Audio-only toggle -->
+                <CheckBox DockPanel.Dock="Right" Content="Audio only" ToolTip="Play the Topper as audio-only (no video surface)"
+                          IsChecked="{Binding AudioOnly}" Foreground="{StaticResource TextDimBrush}"
+                          FontSize="{DynamicResource NowPlayingLabelFontSize}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                <StackPanel VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="TOPPER" Foreground="{StaticResource TextDimBrush}"
+                                   FontSize="{DynamicResource NowPlayingLabelFontSize}" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding NowPlayingSourceText}" Foreground="{StaticResource TextDimBrush}"
+                                   FontSize="{DynamicResource NowPlayingLabelFontSize}" VerticalAlignment="Center"
+                                   Margin="6,0,0,0" Opacity="0.8"/>
+                        <Border Background="{StaticResource AccentBrush}" CornerRadius="3" Padding="5,0" Margin="10,0,0,0"
+                                VerticalAlignment="Center"
+                                Visibility="{Binding DataContext.IsPlayer2Active, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolVis}}">
+                            <TextBlock Text="ACTIVE" Foreground="White" FontWeight="Bold"
+                                       FontSize="{DynamicResource NowPlayingSpeakerFontSize}"/>
+                        </Border>
+                    </StackPanel>
+                    <TextBlock Text="{Binding NowPlayingTitle, FallbackValue='Nothing playing'}"
+                               Foreground="{StaticResource Accent2Brush}" FontWeight="SemiBold"
+                               FontSize="{DynamicResource NowPlayingTitleFontSize}" TextTrimming="CharacterEllipsis"/>
+                    <DockPanel Margin="0,4,0,0">
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding PlaybackTimeText}"
+                                   Foreground="{StaticResource TextDimBrush}" FontSize="{DynamicResource NowPlayingTimeFontSize}"
+                                   VerticalAlignment="Center" Margin="8,0,0,0"/>
+                        <Slider Minimum="0" Maximum="{Binding PlaybackDuration}" Value="{Binding PlaybackPosition}"
+                                Style="{StaticResource NowPlayingSliderStyle}" VerticalAlignment="Center"
+                                IsMoveToPointEnabled="True" IsEnabled="{Binding IsPlaying}"
+                                Visibility="{Binding IsLiveStream, Converter={StaticResource BoolVis}, ConverterParameter=Invert}"/>
+                    </DockPanel>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+        </StackPanel>
 
 
         <!-- StatusBarText moved to title bar -->

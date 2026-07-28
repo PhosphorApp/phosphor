@@ -354,6 +354,19 @@ public partial class DmdWindow : JukeboxWindow
     private bool _scrubDragging;
     private System.Windows.Controls.ToolTip? _scrubToolTip;
 
+    // Click-to-activate: clicking a now-playing bar makes that player the active target for new plays.
+    private void Player1Bar_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (DataContext is JukeboxViewModel vm)
+            vm.ActivatePlayer1Command.Execute(null);
+    }
+
+    private void Player2Bar_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (DataContext is JukeboxViewModel vm)
+            vm.ActivatePlayer2Command.Execute(null);
+    }
+
     private void WireScrubBar()
     {
         ScrubBar.AddHandler(System.Windows.Controls.Primitives.Thumb.DragStartedEvent,

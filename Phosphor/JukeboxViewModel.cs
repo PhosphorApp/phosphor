@@ -1336,8 +1336,30 @@ public partial class JukeboxViewModel : ObservableObject
     public Phosphor.Playback.PlayerContext ActivePlayer
     {
         get => _activePlayer;
-        set => SetProperty(ref _activePlayer, value);
+        set
+        {
+            if (SetProperty(ref _activePlayer, value))
+            {
+                OnPropertyChanged(nameof(IsPlayer1Active));
+                OnPropertyChanged(nameof(IsPlayer2Active));
+                OnPropertyChanged(nameof(TargetTopperPlayer));
+            }
+        }
     }
+
+    /// <summary>True when Player 1 (Backglass) is the active target for newly-played items.</summary>
+    public bool IsPlayer1Active => ReferenceEquals(_activePlayer, Player1);
+
+    /// <summary>True when Player 2 (Topper) is the active target for newly-played items.</summary>
+    public bool IsPlayer2Active => ReferenceEquals(_activePlayer, Player2);
+
+    /// <summary>Makes Player 1 (Backglass) the active target (click-to-activate on its now-playing bar).</summary>
+    [RelayCommand]
+    private void ActivatePlayer1() => ActivePlayer = Player1;
+
+    /// <summary>Makes Player 2 (Topper) the active target (click-to-activate on its now-playing bar).</summary>
+    [RelayCommand]
+    private void ActivatePlayer2() => ActivePlayer = Player2;
 
     private bool _secondPlayerEnabled;
     /// <summary>
