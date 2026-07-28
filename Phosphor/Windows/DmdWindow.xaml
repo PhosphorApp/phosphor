@@ -1046,6 +1046,21 @@
                                           Visibility="{Binding SecondPlayerEnabled, Converter={StaticResource BoolVis}}"
                                           FontSize="{DynamicResource NowPlayingLabelFontSize}" Padding="6,1" Margin="10,0,0,0"
                                           VerticalAlignment="Center"/>
+                            <!-- Per-player (Topper) volume + audio-only. Minimal Phase 1 UI. -->
+                            <CheckBox Content="Topper audio-only" ToolTip="Play Player 2 (Topper) as audio-only (no video surface)"
+                                      IsChecked="{Binding Player2AudioOnly}"
+                                      Visibility="{Binding SecondPlayerEnabled, Converter={StaticResource BoolVis}}"
+                                      Foreground="{StaticResource TextDimBrush}" FontSize="{DynamicResource NowPlayingLabelFontSize}"
+                                      VerticalAlignment="Center" Margin="10,0,0,0"/>
+                            <TextBlock Text="&#x1F50A;2" ToolTip="Topper (Player 2) volume"
+                                       Visibility="{Binding SecondPlayerEnabled, Converter={StaticResource BoolVis}}"
+                                       Foreground="{StaticResource TextDimBrush}" FontSize="{DynamicResource NowPlayingSpeakerFontSize}"
+                                       VerticalAlignment="Center" Margin="10,0,2,0"/>
+                            <Slider Minimum="0" Maximum="100" Value="{Binding Player2Volume}"
+                                    Visibility="{Binding SecondPlayerEnabled, Converter={StaticResource BoolVis}}"
+                                    Width="{DynamicResource NowPlayingVolumeWidth}"
+                                    Style="{StaticResource NowPlayingSliderStyle}"
+                                    VerticalAlignment="Center" IsMoveToPointEnabled="True"/>
                         </StackPanel>
                         <TextBlock Text="{Binding NowPlayingTitle, FallbackValue='Nothing playing'}"
                                    Foreground="{StaticResource Accent2Brush}" FontWeight="SemiBold"

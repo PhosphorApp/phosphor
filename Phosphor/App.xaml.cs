@@ -118,6 +118,9 @@ public partial class App : Application
             {
                 _topperProxy.SetSharedVlcTask(_sharedVlcTask);
                 _topperProxy.AttachViewModel(viewModel);
+                // Per-player audio-only for the Topper (reuses the SetAudioOnly path).
+                viewModel.Player2AudioOnlyChanged += audioOnly => _topperProxy.SetAudioOnly(audioOnly);
+                _topperProxy.SetAudioOnly(viewModel.Player2AudioOnly);
             }
 
             // Give all windows access to settings for exit key handling

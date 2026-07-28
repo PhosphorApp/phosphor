@@ -1554,6 +1554,39 @@ public partial class JukeboxViewModel : ObservableObject
         }
     }
 
+    private int _player2Volume = 100;
+    /// <summary>
+    /// Per-player volume for the Topper (Player 2). Routes to <see cref="Player2"/>'s command channel
+    /// so the user can balance the mix between the two simultaneous players.
+    /// </summary>
+    public int Player2Volume
+    {
+        get => _player2Volume;
+        set
+        {
+            if (SetProperty(ref _player2Volume, Math.Clamp(value, 0, 100)))
+                Player2.RaiseVolumeChanged(_player2Volume);
+        }
+    }
+
+    private bool _player2AudioOnly;
+    /// <summary>
+    /// Per-player audio-only toggle for the Topper (Player 2). When on, the Topper plays audio with no
+    /// video surface (video stays on another screen). Raised to the host via <see cref="Player2AudioOnlyChanged"/>.
+    /// </summary>
+    public bool Player2AudioOnly
+    {
+        get => _player2AudioOnly;
+        set
+        {
+            if (SetProperty(ref _player2AudioOnly, value))
+                Player2AudioOnlyChanged?.Invoke(value);
+        }
+    }
+
+    /// <summary>Raised when <see cref="Player2AudioOnly"/> changes so the Topper host can apply it.</summary>
+    public event Action<bool>? Player2AudioOnlyChanged;
+
     public event Action<int>? VolumeChanged
     {
         add => Player1.AddVolumeChanged(value!);
