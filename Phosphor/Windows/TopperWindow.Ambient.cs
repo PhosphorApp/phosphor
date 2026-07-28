@@ -139,8 +139,41 @@ public partial class TopperWindow
         }
     }
 
+    // ── Jukebox media-mode takeover / yield (Player 2) ──
+    // When the Topper's jukebox player (Player 2) plays a video track it must take over the whole
+    // window from ambient content, then yield back when playback stops or an audio-only track plays.
+    // These hooks are the Topper's IPlaybackHost EnterMediaMode/ReturnToIdle mapping — they suspend
+    // the ambient pipeline (blob overlay, ambient VLC video) and later restore the configured mode.
+
+    private bool _jukeboxMediaActive;
+
+    /// <summary>
+    /// A jukebox (Player 2) video track is now on screen: hide the blob overlay and stop ambient
+    /// video so the jukebox video surface is the only visible layer.
+    /// </summary>
+    internal void EnterJukeboxMediaMode()
+    {
+        _jukeboxMediaActive = true;
+        ShowOverlay(false);
+        StaticImage.Visibility = Visibility.Collapsed;
+        if (_videoMode)
+            StopVideoPlayback();
+    }
+
+    /// <summary>
+    /// Jukebox (Player 2) playback stopped or went audio-only: restore the configured ambient mode
+    /// (blob screensaver / image / video / folders / pinup) that was active before takeover.
+    /// </summary>
+    internal void ReturnToAmbientMode()
+    {
+        if (!_jukeboxMediaActive)
+            return;
+        _jukeboxMediaActive = false;
+        // Re-apply the configured content mode to restore ambient visuals.
+        SetMode(_contentMode);
+    }
+
     /// <summary>Shows or hides the blob/logo overlay (the DistortionContainer). When hidden
-    /// the blob screensaver is paused so self-rendering patterns (Game of Life, ProjectM)
     /// don't keep consuming CPU/GPU behind the media; it resumes when shown again.</summary>
     private void ShowOverlay(bool show)
     {
