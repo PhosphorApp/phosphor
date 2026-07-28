@@ -1366,6 +1366,16 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Returns the player context currently hosting <paramref name="item"/> as its now-playing item,
+    /// or null if neither player is on it (the user moved on). Used by async resolve paths to start the
+    /// right player after a slow tune/resolve.
+    /// </summary>
+    private Phosphor.Playback.PlayerContext? PlayerHosting(VideoItem item) =>
+        ReferenceEquals(Player2.CurrentlyPlaying, item) ? Player2
+        : ReferenceEquals(Player1.CurrentlyPlaying, item) ? Player1
+        : null;
+
+    /// <summary>
     /// Wires a per-player context to the VM: injects the shared source-text resolver and, for Player 1,
     /// forwards its state PropertyChanged onto the VM's delegating now-playing properties so existing
     /// single-bar XAML bindings refresh. Also runs the source release side effect on track change.
@@ -3830,7 +3840,7 @@ public partial class JukeboxViewModel : ObservableObject
 
         PlayTransitioning = true;
         SetStatusPrefix("Transitioning");
-        CurrentlyPlaying = item;
+        ActivePlayer.CurrentlyPlaying = item;
         StatusText = $"Playing: {item.Title}{item.AudioTag}";
         _history.Add(item);
 
@@ -3843,7 +3853,7 @@ public partial class JukeboxViewModel : ObservableObject
             (item.StreamUrl == null &&
              (item.PendingLiveSourceItem != null || item.PendingResolveSourceItem != null)))
         {
-            Player1.RaiseStopRequested();
+            ActivePlayer.RaiseStopRequested();
         }
 
         // Live streams (e.g. Twitch, SiriusXM) resolve lazily at play time — resolve a fresh URL now,
@@ -3945,8 +3955,8 @@ public partial class JukeboxViewModel : ObservableObject
                 // NB: do NOT clear PendingLiveSourceItem — live URLs expire, so the item must stay
                 // re-resolvable for the next play (and the persisted StreamUrl is dropped on save).
                 // Guard against the user having moved on while we were tuning.
-                if (ReferenceEquals(CurrentlyPlaying, item))
-                    ActivePlayer.RaisePlayRequested(item.VideoId);
+                if (PlayerHosting(item) is { } tuned)
+                    tuned.RaisePlayRequested(item.VideoId);
             }
             else
             {
@@ -4021,8 +4031,8 @@ public partial class JukeboxViewModel : ObservableObject
                 item.IsAudioOnly = sourceItem.IsAudioOnly;
                 item.PendingResolveSourceItem = null; // resolved
                 // Guard against the user having moved on while we were resolving.
-                if (ReferenceEquals(CurrentlyPlaying, item))
-                    ActivePlayer.RaisePlayRequested(item.VideoId);
+                if (PlayerHosting(item) is { } resolved)
+                    resolved.RaisePlayRequested(item.VideoId);
             }
             else
             {
@@ -4206,15 +4216,16 @@ public partial class JukeboxViewModel : ObservableObject
     [RelayCommand]
     private void StopPlayback()
     {
-        Player1.RaiseStopRequested();
+        ActivePlayer.RaiseStopRequested();
         PlayTransitioning = false;
         _statusPrefixCts?.Cancel();
         StatusPrefix = "";
-        CurrentlyPlaying = null;
-        QueueIndex = -1;
-        IsPaused = false;
-        PlaybackPosition = 0;
-        PlaybackDuration = 1;
+        ActivePlayer.CurrentlyPlaying = null;
+        if (ReferenceEquals(ActivePlayer, Player1))
+            QueueIndex = -1;
+        ActivePlayer.IsPaused = false;
+        ActivePlayer.PlaybackPosition = 0;
+        ActivePlayer.PlaybackDuration = 1;
         StatusText = "Playback stopped";
     }
 
@@ -4255,24 +4266,24 @@ public partial class JukeboxViewModel : ObservableObject
     [RelayCommand]
     private void PausePlayback()
     {
-        if (!IsPlaying) return;
-        if (IsPaused)
+        if (!ActivePlayer.IsPlaying) return;
+        if (ActivePlayer.IsPaused)
         {
             ResumePlayback();
             return;
         }
-        Player1.RaisePauseRequested();
-        IsPaused = true;
+        ActivePlayer.RaisePauseRequested();
+        ActivePlayer.IsPaused = true;
         StatusText = "Paused";
     }
 
     [RelayCommand]
     private void ResumePlayback()
     {
-        if (!IsPlaying || !IsPaused) return;
-        Player1.RaiseResumeRequested();
-        IsPaused = false;
-        StatusText = $"Playing: {CurrentlyPlaying?.Title}{CurrentlyPlaying?.AudioTag}";
+        if (!ActivePlayer.IsPlaying || !ActivePlayer.IsPaused) return;
+        ActivePlayer.RaiseResumeRequested();
+        ActivePlayer.IsPaused = false;
+        StatusText = $"Playing: {ActivePlayer.CurrentlyPlaying?.Title}{ActivePlayer.CurrentlyPlaying?.AudioTag}";
     }
 
     [RelayCommand]
