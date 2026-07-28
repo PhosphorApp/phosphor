@@ -622,6 +622,7 @@ public partial class SettingsWindow : JukeboxWindow
         CbShowBackglass.IsChecked = settings.ShowBackglass;
         CbShowPlayfield.IsChecked = settings.ShowPlayfield;
         CbShowTopper.IsChecked = settings.ShowTopper;
+        CbEnableSecondPlayer.IsChecked = settings.EnableSecondPlayer;
         CbAutoPlayQueue.IsChecked = settings.AutoPlayQueueOnStart;
         // Populate startup ditti list (migrate legacy single path if present)
         _startupDittiPaths.Clear();
@@ -3957,6 +3958,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.ShowBackglass = CbShowBackglass.IsChecked == true;
         _settings.ShowPlayfield = CbShowPlayfield.IsChecked == true;
         _settings.ShowTopper = CbShowTopper.IsChecked == true;
+        _settings.EnableSecondPlayer = CbEnableSecondPlayer.IsChecked == true;
         _settings.AutoPlayQueueOnStart = CbAutoPlayQueue.IsChecked == true;
         _settings.StartupDittiPaths = new List<string>(_startupDittiPaths);
         _settings.StartupDittiPath = ""; // legacy field cleared; data lives in StartupDittiPaths
