@@ -35,4 +35,13 @@ public interface IPlaybackHost
     /// Reports a playback failure to the host so it can surface status/recover as appropriate.
     /// </summary>
     void ReportPlaybackFailed(string message);
+
+    /// <summary>Pauses the currently-playing media (gapless or VLC). Marshals to the host thread.</summary>
+    void Pause();
+
+    /// <summary>Resumes paused media (gapless or VLC). Marshals to the host thread.</summary>
+    void Resume();
+
+    /// <summary>Sets playback volume (0–100). Applies to gapless and VLC. Marshals to the host thread.</summary>
+    void SetVolume(int volume);
 }

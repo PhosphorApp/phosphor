@@ -28,4 +28,28 @@ public partial class BackglassWindow : IPlaybackHost
         if (DataContext is JukeboxViewModel vm)
             vm.StatusText = message;
     }
+
+    void IPlaybackHost.Pause() => Dispatcher.BeginInvoke(() =>
+    {
+        if (_usingGaplessPlayer && _gaplessPlayer != null)
+            _gaplessPlayer.Pause();
+        else
+            EnsureVlcInitialized().SetPause(true);
+    });
+
+    void IPlaybackHost.Resume() => Dispatcher.BeginInvoke(() =>
+    {
+        if (_usingGaplessPlayer && _gaplessPlayer != null)
+            _gaplessPlayer.Resume();
+        else
+            EnsureVlcInitialized().SetPause(false);
+    });
+
+    void IPlaybackHost.SetVolume(int volume) => Dispatcher.BeginInvoke(() =>
+    {
+        if (_usingGaplessPlayer && _gaplessPlayer != null)
+            _gaplessPlayer.SetVolume(volume);
+        EnsureVlcInitialized().Volume = VolumeTaper.VlcVolume(volume);
+        DebugLog.Log(LogLevel.Trace, "Volume", $"Volume set to {volume}");
+    });
 }

@@ -30,7 +30,34 @@ public sealed class JukeboxPlayer
     /// </summary>
     public PlayerContext? Context { get; private set; }
 
-    /// <summary>Binds this player to the command channel it will drive.</summary>
-    public void Attach(PlayerContext context) => Context = context;
+    /// <summary>
+    /// Binds this player to the command channel it will drive. Subscribes the command handlers this
+    /// player now owns (pause / resume / volume) and forwards them to the host. Further handlers
+    /// (play / stop / seek) migrate here in later increments.
+    /// </summary>
+    public void Attach(PlayerContext context)
+    {
+        if (Context != null)
+            Detach();
+
+        Context = context;
+        context.AddPauseRequested(OnPauseRequested);
+        context.AddResumeRequested(OnResumeRequested);
+        context.AddVolumeChanged(OnVolumeChanged);
+    }
+
+    /// <summary>Unsubscribes this player's owned handlers from the current context.</summary>
+    public void Detach()
+    {
+        if (Context == null) return;
+        Context.RemovePauseRequested(OnPauseRequested);
+        Context.RemoveResumeRequested(OnResumeRequested);
+        Context.RemoveVolumeChanged(OnVolumeChanged);
+        Context = null;
+    }
+
+    private void OnPauseRequested() => _host.Pause();
+    private void OnResumeRequested() => _host.Resume();
+    private void OnVolumeChanged(int volume) => _host.SetVolume(volume);
 }
 

@@ -404,34 +404,14 @@ public partial class BackglassWindow : JukeboxWindow
     public void AttachViewModel(JukeboxViewModel vm)
     {
         // Bind this window's playback engine to Player 1's command channel (context → player → host).
-        // The engine methods still live on the window for now and subscribe below; this establishes the
-        // intended ownership so a later increment can move the subscriptions onto JukeboxPlayer.
+        // JukeboxPlayer now owns the pause / resume / volume handlers (it subscribes them in Attach and
+        // forwards to this window via IPlaybackHost). Play / stop / seek still subscribe below until
+        // they are migrated in a later increment.
         JukeboxPlayer.Attach(vm.Player1);
 
         vm.PlayRequested += OnPlayRequested;
         vm.StopRequested += OnStopRequested;
         vm.SeekRequested += OnSeekRequested;
-        vm.PauseRequested += () => Dispatcher.BeginInvoke(() =>
-        {
-            if (_usingGaplessPlayer && _gaplessPlayer != null)
-                _gaplessPlayer.Pause();
-            else
-                EnsureVlcInitialized().SetPause(true);
-        });
-        vm.ResumeRequested += () => Dispatcher.BeginInvoke(() =>
-        {
-            if (_usingGaplessPlayer && _gaplessPlayer != null)
-                _gaplessPlayer.Resume();
-            else
-                EnsureVlcInitialized().SetPause(false);
-        });
-        vm.VolumeChanged += v => Dispatcher.BeginInvoke(() =>
-        {
-            if (_usingGaplessPlayer && _gaplessPlayer != null)
-                _gaplessPlayer.SetVolume(v);
-            EnsureVlcInitialized().Volume = VolumeTaper.VlcVolume(v);
-            DebugLog.Log(LogLevel.Trace, "Volume", $"Volume set to {v}");
-        });
 
         _positionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _positionTimer.Tick += (_, _) =>
