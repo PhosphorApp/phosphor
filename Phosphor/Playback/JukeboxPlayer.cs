@@ -41,6 +41,9 @@ public sealed class JukeboxPlayer
             Detach();
 
         Context = context;
+        context.AddPlayRequested(OnPlayRequested);
+        context.AddStopRequested(OnStopRequested);
+        context.AddSeekRequested(OnSeekRequested);
         context.AddPauseRequested(OnPauseRequested);
         context.AddResumeRequested(OnResumeRequested);
         context.AddVolumeChanged(OnVolumeChanged);
@@ -50,12 +53,18 @@ public sealed class JukeboxPlayer
     public void Detach()
     {
         if (Context == null) return;
+        Context.RemovePlayRequested(OnPlayRequested);
+        Context.RemoveStopRequested(OnStopRequested);
+        Context.RemoveSeekRequested(OnSeekRequested);
         Context.RemovePauseRequested(OnPauseRequested);
         Context.RemoveResumeRequested(OnResumeRequested);
         Context.RemoveVolumeChanged(OnVolumeChanged);
         Context = null;
     }
 
+    private void OnPlayRequested(string videoId) => _host.Play(videoId);
+    private void OnStopRequested() => _host.Stop();
+    private void OnSeekRequested(long timeMs) => _host.Seek(timeMs);
     private void OnPauseRequested() => _host.Pause();
     private void OnResumeRequested() => _host.Resume();
     private void OnVolumeChanged(int volume) => _host.SetVolume(volume);

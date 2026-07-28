@@ -404,14 +404,11 @@ public partial class BackglassWindow : JukeboxWindow
     public void AttachViewModel(JukeboxViewModel vm)
     {
         // Bind this window's playback engine to Player 1's command channel (context → player → host).
-        // JukeboxPlayer now owns the pause / resume / volume handlers (it subscribes them in Attach and
-        // forwards to this window via IPlaybackHost). Play / stop / seek still subscribe below until
-        // they are migrated in a later increment.
+        // JukeboxPlayer now owns the play / stop / seek / pause / resume / volume handlers (it
+        // subscribes them in Attach and forwards to this window via IPlaybackHost). The play/stop/seek
+        // engine bodies still live in this window (OnPlayRequested/OnStopRequested/OnSeekRequested) and
+        // relocate into JukeboxPlayer in a later increment.
         JukeboxPlayer.Attach(vm.Player1);
-
-        vm.PlayRequested += OnPlayRequested;
-        vm.StopRequested += OnStopRequested;
-        vm.SeekRequested += OnSeekRequested;
 
         _positionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _positionTimer.Tick += (_, _) =>

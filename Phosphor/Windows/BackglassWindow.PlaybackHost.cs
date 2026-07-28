@@ -52,4 +52,13 @@ public partial class BackglassWindow : IPlaybackHost
         EnsureVlcInitialized().Volume = VolumeTaper.VlcVolume(volume);
         DebugLog.Log(LogLevel.Trace, "Volume", $"Volume set to {volume}");
     });
+
+    // Play / Stop / Seek forward to the engine methods that still live in the window (they are the
+    // VLC/gapless engine itself, not thin forwarders). JukeboxPlayer owns the SUBSCRIPTION; the engine
+    // bodies relocate in a later increment.
+    void IPlaybackHost.Play(string videoId) => OnPlayRequested(videoId);
+
+    void IPlaybackHost.Stop() => OnStopRequested();
+
+    void IPlaybackHost.Seek(long timeMs) => OnSeekRequested(timeMs);
 }

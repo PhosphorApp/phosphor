@@ -44,4 +44,13 @@ public interface IPlaybackHost
 
     /// <summary>Sets playback volume (0–100). Applies to gapless and VLC. Marshals to the host thread.</summary>
     void SetVolume(int volume);
+
+    /// <summary>Starts playback of the item with the given id (the engine resolves/streams it).</summary>
+    void Play(string videoId);
+
+    /// <summary>Stops playback and returns the surface to idle.</summary>
+    void Stop();
+
+    /// <summary>Seeks the current media to the given position (ms).</summary>
+    void Seek(long timeMs);
 }
