@@ -65,6 +65,9 @@ public interface IPlaybackHost
     /// <summary>Queues <paramref name="action"/> to run asynchronously on the host's dispatcher thread.</summary>
     void BeginInvokeOnHost(Action action);
 
+    /// <summary>Runs <paramref name="action"/> on the host's dispatcher thread and awaits completion.</summary>
+    Task InvokeOnHostAsync(Action action);
+
     // ── View-transition callbacks used by the playback orchestration ──
     // The orchestration (stop / seek / play) drives these window-owned visuals/timers. They are grouped
     // here so JukeboxPlayer can run the flow without knowing which window it lives in. All are invoked
@@ -93,4 +96,7 @@ public interface IPlaybackHost
 
     /// <summary>Resets the logo-dim state back to its idle appearance.</summary>
     void ResetLogoDimIdle();
+
+    /// <summary>Starts the video-info polling for a cached (local-file) source at the given resolution.</summary>
+    void StartVideoInfoPollingCached(string resolution);
 }
