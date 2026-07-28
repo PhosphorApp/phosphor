@@ -4,11 +4,71 @@ Exploratory analysis / feasibility + phasing for allowing **two media items to p
 at once** — e.g. the **Backglass** playing a music video while the **Topper** plays a
 second item (music-only, video, or ambience).
 
-> **STATUS (Phase 0 plumbing in progress on branch `multiplayer`).** The seam and
-> command-channel extraction are done with zero user-visible change; the full playback
-> *engine* relocation into `JukeboxPlayer` is intentionally deferred (see the Phase 0
-> progress note below). The intent is still to do the hard, non-user-visible refactor
-> first so the later feature work is a wiring exercise rather than a rewrite.
+> **STATUS (Phase 0 complete on branch `multiplayer`; Phase 1 not started).** The full
+> non-user-visible refactor is done and validated: the playback engine **and** its
+> orchestration now live in `JukeboxPlayer`/`MediaEngine`, and `BackglassWindow` is a pure
+> `IPlaybackHost`. See the milestone sections below (tags `phase-0.5-command-routing`,
+> `phase-0.7-orchestration-relocated`). The next chapter is **Phase 1 — the real second
+> player**, which is now a wiring exercise. **Start a new session from the "Phase 1
+> kickoff" section below.**
+
+---
+
+## 🚀 Phase 1 kickoff — self-contained handoff (start here)
+
+> This section is written so a fresh session needs no other context. Read the milestone
+> sections + "How playback works today" + "Later phases → Phase 1" below for detail.
+
+**Where things stand:** `JukeboxPlayer` is a window-agnostic playback controller. Command
+flow is:
+```
+VM → Player1 (PlayerContext) → JukeboxPlayer.Play/Stop/Seek
+      ├─ MediaEngine     (VLC MediaPlayer + gapless + seek-verify + last-stream ctx + live clock)
+      └─ IPlaybackHost   (the host window: video surface, idle visuals, timers, DMD notify)
+```
+`BackglassWindow` implements `IPlaybackHost` and owns one `JukeboxPlayer` (bound to
+`vm.Player1` in `AttachViewModel`). The `MediaEngine` is owned by the `JukeboxPlayer`.
+Everything is validated end-to-end on the Backglass and committed.
+
+**Phase 1 goal:** a real second player on the **Topper** — one player plays a music video,
+the other music-only/ambience. No duplicated playback logic; the Topper gets its own
+`JukeboxPlayer` + `MediaEngine` + `IPlaybackHost`, driven by a second `PlayerContext`.
+
+**Key files:** `Phosphor/Playback/{IPlaybackHost,JukeboxPlayer,PlayerContext,MediaEngine}.cs`,
+`Phosphor/JukeboxViewModel.cs` (owns `Player1`), `Phosphor/Windows/BackglassWindow*.cs`
+(reference `IPlaybackHost` implementation), `Phosphor/Windows/TopperWindow*.cs` +
+`TopperWindow.Ambient.cs` (has its own STA thread + dedicated ambient VLC engine; needs a
+jukebox `IPlaybackHost` implementation), `Phosphor/App.xaml.cs` (wires windows/VM).
+
+**Locked conventions (do not revisit):**
+- Backglass = **Player 1** = primary, and ALWAYS the audio-reactive driver (enforced in
+  `DmdWindow.ApplyReactiveBlobs`). A second player never becomes the reactive driver.
+- Audio mixing is the user's job via **per-player volume**.
+- **Audio-only per player** (reuse the existing `SetAudioOnly` path for "Topper as audio,
+  video on Pinup/popper").
+- Queue stays bound to **Player 1** for the first pass (tabbed dual queues are Phase 2).
+- **Option X** is the player↔model relationship: `JukeboxPlayer.Attach(vm)` stores the VM
+  as `Model` for now-playing state + shared services. Phase 2 later moves per-player state
+  into `PlayerContext`.
+
+**Suggested Phase 1 steps (plan fresh in the new session):**
+1. VM: add `Player2` (a second `PlayerContext`) + an `ActivePlayer` pointer; "play item"
+   routes to the active context. Keep `Player1`'s public event surface unchanged.
+2. `TopperWindow`: implement `IPlaybackHost` (its ambient engine already exists — this is
+   the jukebox surface alongside it) and give it a `JukeboxPlayer` driven by `Player2`.
+   Its `IPlaybackHost` maps EnterMediaMode/ReturnToIdle to "take over from / yield back to"
+   its ambient mode (Pinup/folder/image/video), NOT the Backglass blob/logo visuals.
+3. Settings: **"Enable second media player"** checkbox in the Topper section gates it.
+4. UI: duplicate the DMD now-playing bar — one bound to `Player1`, one to `Player2`, with
+   an active-target selector. Queue stays bound to `Player1`.
+5. Per-player **audio-only** toggle (reuse `SetAudioOnly`).
+6. Validate: Backglass + Topper playing two different items simultaneously; per-player
+   volume balances the mix; Backglass still drives audio-reactive.
+
+**Watch-outs:** two LibVLC pipelines double CPU/GPU/network; the Topper's Pinup playlist
+mode is externally driven by `PinupSyncCoordinator` and jukebox playback must cleanly take
+over / yield back; the `MediaEngine` currently adopts the app's shared `LibVLC` (both
+players can share one `LibVLC` but MUST own separate `MediaPlayer`s — already the case).
 
 ---
 
