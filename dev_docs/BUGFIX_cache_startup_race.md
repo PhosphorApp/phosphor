@@ -163,5 +163,57 @@ in flight, it waits a couple seconds for the resolve to finish. This is expected
 benign (both are short, interactive operations); it is **not** the long-download starvation
 that BUG 2/2b fixed.
 
+---
+
+# KNOWN ISSUE — YouTube 403 throttling on concurrent stream + download
+
+**Status: open / partially mitigated. Environmental (YouTube-side), not a Phosphor bug.**
+
+## Symptom
+
+With `videoEngine = YtDlp` and caching **on**, playing an uncached YouTube item can:
+- time out at the ~10s first-frame watchdog (resolve/stream path throttled), and/or
+- start playing but the background cache download fails with
+  `HTTP Error 403: Forbidden` (`unable to download video data`), leaving nothing cached.
+
+Observed with repeated attempts on the same item (Journey / Rush). A partial file appears
+in `cache/` then is deleted (the video stream downloaded but the audio stream 403'd, so
+the muxer's cleanup removes the orphan).
+
+## Why
+
+`videoEngine` and `searchEngine` are configured **independently**. When `videoEngine =
+YtDlp`, BOTH the playback **resolve** (`yt-dlp -g`) and the cache **download**
+(`yt-dlp` full media pull) go through yt-dlp. YouTube rate-limits/403s **downloads** far
+more aggressively than the lightweight resolve. Streaming the item AND downloading it for
+cache at nearly the same time is a red flag to YouTube's anti-abuse heuristics — the
+concurrent full-media pull can get the IP throttled, which then bleeds onto the resolve
+path (explaining the occasional first-frame timeout even when only *streaming*).
+
+Engine attribution is now logged (`YouTubeSource: resolve via <engine>` /
+`download via <engine>`) so this is diagnosable at a glance — previously the play path
+never said which engine it used, which made this confusing to attribute.
+
+## Mitigation options (not yet implemented — for follow-up)
+
+1. **yt-dlp built-in rate/throttle controls on the DOWNLOAD path** (cheapest, keeps
+   downloads polite):
+   - `--limit-rate 500K` — cap download speed so the pull isn't a burst.
+   - `--throttled-rate 100K` — re-extract if speed drops below threshold (bypasses some
+     ISP/site throttling).
+   - `--sleep-interval 10 --max-sleep-interval 35` — random sleeps between downloads to
+     avoid tripping anti-bot bans.
+   These would be added to `DownloadOneAsync`'s arg list (download-only; never on resolve).
+2. **"Play from cache only" setting** — when caching is on, download first and play the
+   cached file, rather than streaming and downloading concurrently. Trades startup lag for
+   a much lower throttling risk (only one yt-dlp pull instead of stream + download).
+3. **403 back-off** — on repeated 403s for an item, stop re-attempting the download for a
+   cooldown so we don't worsen the throttle, and surface a clear "YouTube throttled" status
+   instead of a generic failure.
+
+Recommended order: (1) is low-risk and likely sufficient for most cases; (2) is the
+strongest guarantee but changes UX (startup lag); (3) is good hygiene regardless.
+
+
 
 
