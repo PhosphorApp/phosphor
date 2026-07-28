@@ -142,4 +142,26 @@ while a resolve/download is mid-flight.
 - `Phosphor.Plugins.YouTube/Engines/YtDlpVideoEngine.cs`
 - `Phosphor.Plugins.YouTube/Engines/YtDlpUpdater.cs`
 
+### Note — yt-dlp search vs. the gates (expected, benign)
+
+Relevant when the user selects **yt-dlp** as the search engine (default is
+YouTubeExplode). Search does **not** get starved by playback or downloads:
+
+- Main search / playlist / channel enumeration (`YtDlpSearchEngine.EnumerateAsync`) uses
+  `RunYtDlpStreamingAsync`, which holds `ProcessGate` only long enough to **launch** the
+  process, then releases it — so search results stream freely even while other yt-dlp work
+  runs.
+- Cache/prefetch downloads are on the separate `DownloadGate`, so they never block search
+  at all.
+- `ResolvePlaylistIdAsync` (resolve a playlist *by name*) does hold `ProcessGate` for its
+  (short, single-item) duration, but it is an interactive action, correctly on the
+  interactive gate.
+
+The only shared-gate interaction that remains is **play-resolve vs. search**, both on the
+interactive `ProcessGate`. If a search is launched at the exact moment a stream resolve is
+in flight, it waits a couple seconds for the resolve to finish. This is expected and
+benign (both are short, interactive operations); it is **not** the long-download starvation
+that BUG 2/2b fixed.
+
+
 
