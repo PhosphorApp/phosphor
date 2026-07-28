@@ -362,13 +362,17 @@ public partial class BackglassWindow : JukeboxWindow
         _positionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _positionTimer.Tick += (_, _) =>
         {
-            if (DataContext is not JukeboxViewModel v || v.IsSeeking) return;
+            if (DataContext is not JukeboxViewModel v) return;
+            // Write back to THIS player's own context (Backglass = Player 1) so a second player never
+            // clobbers it. Reads (IsSeeking / CurrentlyPlaying) also come from this player's state.
+            var state = JukeboxPlayer.Context;
+            if (state == null || state.IsSeeking) return;
 
             // PCM gapless mode
             if (_usingGaplessPlayer && _gaplessPlayer != null)
             {
-                v.PlaybackDuration = Math.Max(1, _gaplessPlayer.DurationMs);
-                v.PlaybackPosition = Math.Max(0, _gaplessPlayer.PositionMs);
+                state.PlaybackDuration = Math.Max(1, _gaplessPlayer.DurationMs);
+                state.PlaybackPosition = Math.Max(0, _gaplessPlayer.PositionMs);
 
                 // Prime next track ~10 seconds before end
                 var remaining = _gaplessPlayer.DurationMs - _gaplessPlayer.PositionMs;
@@ -382,11 +386,11 @@ public partial class BackglassWindow : JukeboxWindow
             // Live streams (e.g. SiriusXM): LibVLC's Time is the position within the live DVR window
             // (SXM buffers ~2 min), which makes elapsed jump to ~2:20 at start. Instead, count elapsed
             // from a wall-clock stamp taken when playback began, and report no fixed duration.
-            if (v.CurrentlyPlaying?.IsLiveStream == true)
+            if (state.CurrentlyPlaying?.IsLiveStream == true)
             {
                 if (_liveStartUtc == null) _liveStartUtc = DateTime.UtcNow;
-                v.PlaybackDuration = 1; // no seekable duration
-                v.PlaybackPosition = Math.Max(0, (DateTime.UtcNow - _liveStartUtc.Value).TotalMilliseconds);
+                state.PlaybackDuration = 1; // no seekable duration
+                state.PlaybackPosition = Math.Max(0, (DateTime.UtcNow - _liveStartUtc.Value).TotalMilliseconds);
                 return;
             }
             _liveStartUtc = null;
@@ -395,11 +399,11 @@ public partial class BackglassWindow : JukeboxWindow
             // HLS transcode), which would pin the scrub bar "at the end". Fall back to the item's
             // known duration (Jellyfin RunTimeTicks, Plex duration, …) so time/seek still work.
             long lengthMs = _mediaPlayer.Length;
-            if (lengthMs <= 0 && v.CurrentlyPlaying?.Duration is { } known && known > TimeSpan.Zero)
+            if (lengthMs <= 0 && state.CurrentlyPlaying?.Duration is { } known && known > TimeSpan.Zero)
                 lengthMs = (long)known.TotalMilliseconds;
 
-            v.PlaybackDuration = Math.Max(1, lengthMs);
-            v.PlaybackPosition = Math.Max(0, _mediaPlayer.Time);
+            state.PlaybackDuration = Math.Max(1, lengthMs);
+            state.PlaybackPosition = Math.Max(0, _mediaPlayer.Time);
 
             // Prefetch next track when within 30 seconds of the end
             var remaining2 = lengthMs - _mediaPlayer.Time;
