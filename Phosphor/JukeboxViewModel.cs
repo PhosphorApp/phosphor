@@ -850,7 +850,6 @@ public partial class JukeboxViewModel : ObservableObject
         get => _playTransitioning;
         internal set => SetProperty(ref _playTransitioning, value);
     }
-
     /// <summary>
     /// The current item awaiting a background cache download, deferred until playback is confirmed
     /// (see <see cref="NotifyPlaybackStarted"/>). Deferring avoids the background download contending
@@ -951,194 +950,74 @@ public partial class JukeboxViewModel : ObservableObject
         }
     }
 
-    private VideoItem? _currentlyPlaying;
+    /// <summary>
+    /// The now-playing item for Player 1 (Backglass). Phase 2: delegates to <see cref="Player1"/>'s
+    /// per-player state so the existing single now-playing bar keeps working; Player 2 (Topper) binds
+    /// to its own <see cref="Player2"/> context directly.
+    /// </summary>
     public VideoItem? CurrentlyPlaying
     {
-        get => _currentlyPlaying;
-        set
-        {
-            var outgoing = _currentlyPlaying;
-            if (SetProperty(ref _currentlyPlaying, value))
-                {
-                    // Release any stateful resource the outgoing item's source was holding (e.g. a Plex
-                    // Live TV tuner session). Fire-and-forget, best-effort — the single choke point for
-                    // stop / skip / track-change, so a source never leaks a held tuner/session.
-                    if (outgoing is not null && !ReferenceEquals(outgoing, value))
-                        ReleasePlaybackFor(outgoing);
-
-                    IsPaused = false;
-                    _lastChapterIndex = -1;
-                    CurrentChapterName = "";
-                    ChapterTickPositions = [];
-                    _isCurrentFromCache = false;
-                    OnPropertyChanged(nameof(IsPlaying));
-                    OnPropertyChanged(nameof(CanStartOrStop));
-                    OnPropertyChanged(nameof(ShouldSnapToChapters));
-                    OnPropertyChanged(nameof(NowPlayingTitle));
-                    OnPropertyChanged(nameof(NowPlayingSourceText));
-                    OnPropertyChanged(nameof(IsLiveStream));
-                    OnPropertyChanged(nameof(PlaybackTimeText));
-                }
-        }
+        get => Player1.CurrentlyPlaying;
+        set => Player1.CurrentlyPlaying = value;
     }
 
     /// <summary>
     /// Fractional positions (0.0–1.0) of chapter markers relative to total duration,
-    /// used to render tick marks on the scrub bar.
+    /// used to render tick marks on the scrub bar. Delegates to Player 1.
     /// </summary>
-    private List<double> _chapterTickPositions = [];
-    public List<double> ChapterTickPositions
-    {
-        get => _chapterTickPositions;
-        private set => SetProperty(ref _chapterTickPositions, value);
-    }
-
-    private void UpdateChapterTickPositions()
-    {
-        var chapters = _currentlyPlaying?.Chapters;
-        var duration = _playbackDuration;
-        DebugLog.Log(LogLevel.Trace, "Chapters", $"UpdateChapterTickPositions: chapters={chapters?.Count ?? 0} duration={duration}");
-        if (chapters == null || chapters.Count == 0 || duration <= 1)
-        {
-            ChapterTickPositions = [];
-            return;
-        }
-        var ticks = chapters
-            .Select(c => c.StartTime.TotalMilliseconds / duration)
-            .Where(p => p > 0 && p < 1)
-            .ToList();
-        DebugLog.Log(LogLevel.Trace, "Chapters", $"Tick positions: [{string.Join(", ", ticks.Select(t => t.ToString("F3")))}]");
-        ChapterTickPositions = ticks;
-    }
+    public List<double> ChapterTickPositions => Player1.ChapterTickPositions;
 
     /// <summary>
-    /// Called when chapters are restored from cache on a currently playing item.
+    /// Called when chapters are restored from cache on a currently playing item (Player 1).
     /// </summary>
-    public void NotifyCachedChaptersRestored()
-    {
-        UpdateChapterTickPositions();
-        OnPropertyChanged(nameof(ShouldSnapToChapters));
-        UpdateCurrentChapter();
-    }
+    public void NotifyCachedChaptersRestored() => Player1.NotifyCachedChaptersRestored();
+
+    /// <summary>Name of the chapter currently playing on Player 1, or empty if no chapters.</summary>
+    public string CurrentChapterName => Player1.CurrentChapterName;
+
+    /// <summary>Display title for the (Player 1) now-playing area.</summary>
+    public string NowPlayingTitle => Player1.NowPlayingTitle;
 
     /// <summary>
-    /// Name of the chapter currently playing, or empty if no chapters.
-    /// </summary>
-    private string _currentChapterName = "";
-    public string CurrentChapterName
-    {
-        get => _currentChapterName;
-        private set
-        {
-            if (SetProperty(ref _currentChapterName, value))
-                OnPropertyChanged(nameof(NowPlayingTitle));
-        }
-    }
-
-    /// <summary>
-    /// Display title for the now-playing area. Appends the chapter name when available,
-    /// and the upload date (in parentheses) when known.
-    /// </summary>
-    public string NowPlayingTitle
-    {
-        get
-        {
-            var title = _currentlyPlaying?.Title ?? "Nothing playing";
-            if (!string.IsNullOrEmpty(_currentChapterName))
-                title = $"{title} \u2014 {_currentChapterName}";
-
-            var dateText = _currentlyPlaying?.UploadDateText;
-            if (!string.IsNullOrEmpty(dateText))
-                title = $"{title} ({dateText})";
-
-            return title;
-        }
-    }
-
-    /// <summary>
-    /// Tracks whether the currently-playing item was served from the local cache.
-    /// Set by the player window when it begins playback; reset whenever
-    /// <see cref="CurrentlyPlaying"/> changes.
-    /// </summary>
-    private bool _isCurrentFromCache;
-
-    /// <summary>
-    /// Called by the player window to indicate whether the current item is playing
+    /// Called by the player host to indicate whether the current (Player 1) item is playing
     /// from the local cache, so the now-playing area can reflect the source.
     /// </summary>
-    public void SetCurrentFromCache(bool fromCache)
+    public void SetCurrentFromCache(bool fromCache) => Player1.SetCurrentFromCache(fromCache);
+
+    /// <summary>Short source annotation for the (Player 1) now-playing label, e.g. "(from YouTube)".</summary>
+    public string NowPlayingSourceText => Player1.NowPlayingSourceText;
+
+    /// <summary>
+    /// Builds the short source annotation (e.g. "(from YouTube - Cached)") for an item. Shared by both
+    /// players via <see cref="PlayerContext.SourceTextResolver"/> — needs the source registry.
+    /// </summary>
+    private string ResolveNowPlayingSourceText(VideoItem? item, bool fromCache)
     {
-        if (_isCurrentFromCache == fromCache) return;
-        _isCurrentFromCache = fromCache;
-        OnPropertyChanged(nameof(NowPlayingSourceText));
+        if (item == null) return "";
+        string? source = null;
+        if (item.SourceInstanceId is { Length: > 0 } id)
+            source = _sourceRegistry?.ByInstance(id)?.DisplayName;
+        source ??= item switch
+        {
+            { IsYouTube: true } => "YouTube",
+            _ => null
+        };
+        if (source == null) return "";
+        return fromCache ? $"(from {source} - Cached)" : $"(from {source})";
     }
 
     /// <summary>
-    /// Short source annotation for the now-playing label, e.g. "(from YouTube)",
-    /// "(from Plex)", or "(from YouTube - Cached)". Empty when nothing is playing or
-    /// the source is not a known streaming source (e.g. the local startup ditti).
+    /// True when the current (Player 1) item has enough chapters (3+) that the scrub bar should snap.
     /// </summary>
-    public string NowPlayingSourceText
-    {
-        get
-        {
-            if (_currentlyPlaying == null) return "";
+    public bool ShouldSnapToChapters => Player1.ShouldSnapToChapters;
 
-            // Prefer the owning plug-in source's display name (source-agnostic), falling back to the
-            // legacy YouTube id-shape heuristic for items without a source link.
-            string? source = null;
-            if (_currentlyPlaying.SourceInstanceId is { Length: > 0 } id)
-                source = _sourceRegistry?.ByInstance(id)?.DisplayName;
-            source ??= _currentlyPlaying switch
-            {
-                { IsYouTube: true } => "YouTube",
-                _ => null
-            };
-            if (source == null)
-                return "";
+    public bool IsPlaying => Player1.IsPlaying;
 
-            return _isCurrentFromCache ? $"(from {source} - Cached)" : $"(from {source})";
-        }
-    }
-
-    private int _lastChapterIndex = -1;
-
-    /// <summary>
-    /// Updates CurrentChapterName based on playback position. Called from PlaybackPosition setter.
-    /// </summary>
-    private void UpdateCurrentChapter()
-    {
-        var chapters = _currentlyPlaying?.Chapters;
-        if (chapters == null || chapters.Count == 0 || _playbackDuration <= 1)
-        {
-            if (_lastChapterIndex != -1)
-            {
-                _lastChapterIndex = -1;
-                CurrentChapterName = "";
-            }
-            return;
-        }
-
-        int idx = GetCurrentChapterIndex(chapters);
-        if (idx != _lastChapterIndex)
-        {
-            _lastChapterIndex = idx;
-            CurrentChapterName = chapters[idx].Title;
-        }
-    }
-
-    /// <summary>
-    /// True when the current item has enough chapters (3+) that the scrub bar should snap to chapter boundaries.
-    /// </summary>
-    public bool ShouldSnapToChapters => (_currentlyPlaying?.Chapters?.Count ?? 0) >= 3 && _playbackDuration > 1;
-
-    public bool IsPlaying => CurrentlyPlaying != null;
-
-    private bool _isPaused;
+    /// <summary>Paused state for Player 1 (delegates to its context).</summary>
     public bool IsPaused
     {
-        get => _isPaused;
-        set => SetProperty(ref _isPaused, value);
+        get => Player1.IsPaused;
+        set => Player1.IsPaused = value;
     }
 
     /// <summary>
@@ -1486,6 +1365,75 @@ public partial class JukeboxViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Wires a per-player context to the VM: injects the shared source-text resolver and, for Player 1,
+    /// forwards its state PropertyChanged onto the VM's delegating now-playing properties so existing
+    /// single-bar XAML bindings refresh. Also runs the source release side effect on track change.
+    /// </summary>
+    private void WirePlayerContext(Phosphor.Playback.PlayerContext ctx)
+    {
+        ctx.SourceTextResolver = ResolveNowPlayingSourceText;
+
+        // Release any stateful resource the outgoing item's source held (e.g. a Plex Live TV tuner).
+        ctx.CurrentlyPlayingChanged += (outgoing, incoming) =>
+        {
+            if (outgoing is not null && !ReferenceEquals(outgoing, incoming))
+                ReleasePlaybackFor(outgoing);
+        };
+
+        // Player 1 drives the VM's own (delegating) now-playing surface for the existing single bar.
+        if (ReferenceEquals(ctx, Player1))
+        {
+            ctx.PropertyChanged += (_, e) =>
+            {
+                switch (e.PropertyName)
+                {
+                    case nameof(Phosphor.Playback.PlayerContext.CurrentlyPlaying):
+                        OnPropertyChanged(nameof(CurrentlyPlaying));
+                        OnPropertyChanged(nameof(IsPlaying));
+                        OnPropertyChanged(nameof(CanStartOrStop));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.IsPaused):
+                        OnPropertyChanged(nameof(IsPaused));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.Volume):
+                        OnPropertyChanged(nameof(Volume));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.IsSeeking):
+                        OnPropertyChanged(nameof(IsSeeking));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.PlaybackPosition):
+                        OnPropertyChanged(nameof(PlaybackPosition));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.PlaybackDuration):
+                        OnPropertyChanged(nameof(PlaybackDuration));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.PlaybackTimeText):
+                        OnPropertyChanged(nameof(PlaybackTimeText));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.NowPlayingTitle):
+                        OnPropertyChanged(nameof(NowPlayingTitle));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.NowPlayingSourceText):
+                        OnPropertyChanged(nameof(NowPlayingSourceText));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.CurrentChapterName):
+                        OnPropertyChanged(nameof(CurrentChapterName));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.ChapterTickPositions):
+                        OnPropertyChanged(nameof(ChapterTickPositions));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.ShouldSnapToChapters):
+                        OnPropertyChanged(nameof(ShouldSnapToChapters));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.IsLiveStream):
+                        OnPropertyChanged(nameof(IsLiveStream));
+                        break;
+                }
+            };
+        }
+    }
+
     public event Action<string>? PlayRequested
     {
         add => Player1.AddPlayRequested(value!);
@@ -1512,80 +1460,53 @@ public partial class JukeboxViewModel : ObservableObject
         remove => Player1.RemoveSeekRequested(value!);
     }
 
-    private double _playbackPosition;
+    /// <summary>Playback scrubber position (ms) for Player 1. Delegates to its per-player context.</summary>
     public double PlaybackPosition
     {
-        get => _playbackPosition;
-        set
-        {
-            if (SetProperty(ref _playbackPosition, value))
-            {
-                OnPropertyChanged(nameof(PlaybackTimeText));
-                UpdateCurrentChapter();
-            }
-        }
+        get => Player1.PlaybackPosition;
+        set => Player1.PlaybackPosition = value;
     }
 
-    private double _playbackDuration = 1;
+    /// <summary>Playback duration (ms) for Player 1. Delegates to its per-player context.</summary>
     public double PlaybackDuration
     {
-        get => _playbackDuration;
-        set
-        {
-            if (SetProperty(ref _playbackDuration, value))
-            {
-                OnPropertyChanged(nameof(PlaybackTimeText));
-                UpdateChapterTickPositions();
-            }
-        }
+        get => Player1.PlaybackDuration;
+        set => Player1.PlaybackDuration = value;
     }
 
-    private bool _isSeeking;
-    public bool IsSeeking { get => _isSeeking; set => SetProperty(ref _isSeeking, value); }
+    /// <summary>Scrubbing flag for Player 1. Delegates to its per-player context.</summary>
+    public bool IsSeeking
+    {
+        get => Player1.IsSeeking;
+        set => Player1.IsSeeking = value;
+    }
 
-    private int _volume = 100;
+    /// <summary>Playback volume (0–100) for Player 1. Delegates to its per-player context.</summary>
     public int Volume
     {
-        get => _volume;
-        set
-        {
-            if (SetProperty(ref _volume, Math.Clamp(value, 0, 100)))
-                Player1.RaiseVolumeChanged(_volume);
-        }
+        get => Player1.Volume;
+        set => Player1.Volume = value;
     }
 
-    private int _player2Volume = 100;
     /// <summary>
-    /// Per-player volume for the Topper (Player 2). Routes to <see cref="Player2"/>'s command channel
-    /// so the user can balance the mix between the two simultaneous players.
+    /// Per-player volume for the Topper (Player 2). Delegates to <see cref="Player2"/>'s context so the
+    /// user can balance the mix between the two simultaneous players.
     /// </summary>
     public int Player2Volume
     {
-        get => _player2Volume;
-        set
-        {
-            if (SetProperty(ref _player2Volume, Math.Clamp(value, 0, 100)))
-                Player2.RaiseVolumeChanged(_player2Volume);
-        }
+        get => Player2.Volume;
+        set => Player2.Volume = value;
     }
 
-    private bool _player2AudioOnly;
     /// <summary>
-    /// Per-player audio-only toggle for the Topper (Player 2). When on, the Topper plays audio with no
-    /// video surface (video stays on another screen). Raised to the host via <see cref="Player2AudioOnlyChanged"/>.
+    /// Per-player audio-only toggle for the Topper (Player 2). Delegates to <see cref="Player2"/>'s
+    /// context (its AudioOnlyChanged event drives the Topper host).
     /// </summary>
     public bool Player2AudioOnly
     {
-        get => _player2AudioOnly;
-        set
-        {
-            if (SetProperty(ref _player2AudioOnly, value))
-                Player2AudioOnlyChanged?.Invoke(value);
-        }
+        get => Player2.AudioOnly;
+        set => Player2.AudioOnly = value;
     }
-
-    /// <summary>Raised when <see cref="Player2AudioOnly"/> changes so the Topper host can apply it.</summary>
-    public event Action<bool>? Player2AudioOnlyChanged;
 
     public event Action<int>? VolumeChanged
     {
@@ -1593,47 +1514,30 @@ public partial class JukeboxViewModel : ObservableObject
         remove => Player1.RemoveVolumeChanged(value!);
     }
 
-    public string PlaybackTimeText
-    {
-        get
-        {
-            // Live streams have no fixed duration — show elapsed-since-start against "*".
-            if (_currentlyPlaying?.IsLiveStream == true)
-            {
-                var elapsed = TimeSpan.FromMilliseconds(Math.Max(0, PlaybackPosition));
-                var lfmt = elapsed.TotalHours >= 1 ? @"h\:mm\:ss" : @"m\:ss";
-                return $"{elapsed.ToString(lfmt)} / *";
-            }
-            if (PlaybackDuration <= 1) return "0:00 / 0:00";
-            var pos = TimeSpan.FromMilliseconds(PlaybackPosition);
-            var dur = TimeSpan.FromMilliseconds(PlaybackDuration);
-            var fmt = dur.TotalHours >= 1 ? @"h\:mm\:ss" : @"m\:ss";
-            return $"{pos.ToString(fmt)} / {dur.ToString(fmt)}";
-        }
-    }
+    public string PlaybackTimeText => Player1.PlaybackTimeText;
 
     /// <summary>True when the currently-playing item is a continuous live stream (e.g. SiriusXM).
     /// The UI hides the scrub bar/duration and seek is a no-op; playback shows elapsed "M:SS / *".</summary>
-    public bool IsLiveStream => _currentlyPlaying?.IsLiveStream == true;
+    public bool IsLiveStream => Player1.IsLiveStream;
 
     public void SeekTo(long timeMs)
     {
         if (IsLiveStream) return; // live streams are not seekable
-        Player1.RaiseSeekRequested(timeMs);
+        ActivePlayer.RaiseSeekRequested(timeMs);
     }
 
     [RelayCommand]
     private void SeekForward()
     {
-        if (IsLiveStream) return;
-        Player1.RaiseSeekRequested((long)PlaybackPosition + 15000);
+        if (ActivePlayer.IsLiveStream) return;
+        ActivePlayer.RaiseSeekRequested((long)ActivePlayer.PlaybackPosition + 15000);
     }
 
     [RelayCommand]
     private void SeekBack()
     {
-        if (IsLiveStream) return;
-        Player1.RaiseSeekRequested(Math.Max(0, (long)PlaybackPosition - 15000));
+        if (ActivePlayer.IsLiveStream) return;
+        ActivePlayer.RaiseSeekRequested(Math.Max(0, (long)ActivePlayer.PlaybackPosition - 15000));
     }
 
     // ── Video cache ──
@@ -2431,6 +2335,8 @@ public partial class JukeboxViewModel : ObservableObject
     public JukeboxViewModel()
     {
         _activePlayer = Player1;
+        WirePlayerContext(Player1);
+        WirePlayerContext(Player2);
         _history = PlayHistory.Load();
         _playlists = new PlaylistManager();
         _searchHistory = SearchHistory.Load();
@@ -4434,8 +4340,8 @@ public partial class JukeboxViewModel : ObservableObject
     [RelayCommand]
     private void Skip()
     {
-        var chapters = _currentlyPlaying?.Chapters;
-        if (chapters != null && chapters.Count > 0 && _playbackDuration > 1)
+        var chapters = Player1.CurrentlyPlaying?.Chapters;
+        if (chapters != null && chapters.Count > 0 && Player1.PlaybackDuration > 1)
         {
             int currentChapter = GetCurrentChapterIndex(chapters);
             if (currentChapter < chapters.Count - 1)
@@ -4463,7 +4369,7 @@ public partial class JukeboxViewModel : ObservableObject
     /// </summary>
     private int GetCurrentChapterIndex(List<ChapterMarker> chapters)
     {
-        var posMs = PlaybackPosition;
+        var posMs = Player1.PlaybackPosition;
         for (int i = chapters.Count - 1; i >= 0; i--)
         {
             if (posMs >= chapters[i].StartTime.TotalMilliseconds)
@@ -4477,8 +4383,8 @@ public partial class JukeboxViewModel : ObservableObject
     {
         if (!IsPlaying) return;
 
-        var chapters = _currentlyPlaying?.Chapters;
-        if (chapters != null && chapters.Count > 0 && _playbackDuration > 1)
+        var chapters = Player1.CurrentlyPlaying?.Chapters;
+        if (chapters != null && chapters.Count > 0 && Player1.PlaybackDuration > 1)
         {
             int currentChapter = GetCurrentChapterIndex(chapters);
             var chapterStartMs = chapters[currentChapter].StartTime.TotalMilliseconds;
@@ -5095,7 +5001,7 @@ public partial class JukeboxViewModel : ObservableObject
                 if (meta.UploadDate.HasValue)
                 {
                     item.UploadDate = meta.UploadDate;
-                    if (ReferenceEquals(item, _currentlyPlaying))
+                    if (ReferenceEquals(item, Player1.CurrentlyPlaying) || ReferenceEquals(item, Player2.CurrentlyPlaying))
                         OnPropertyChanged(nameof(NowPlayingTitle));
                 }
 
@@ -5103,11 +5009,12 @@ public partial class JukeboxViewModel : ObservableObject
                 {
                     item.Chapters = chapters;
                     DebugLog.Log(LogLevel.Debug, "Chapters", $"Chapters ({chapterSource}): {chapters.Count}");
-                    if (ReferenceEquals(item, _currentlyPlaying))
+                    var owner = ReferenceEquals(item, Player2.CurrentlyPlaying) ? Player2
+                              : ReferenceEquals(item, Player1.CurrentlyPlaying) ? Player1 : null;
+                    if (owner != null)
                     {
-                        UpdateChapterTickPositions();
-                        OnPropertyChanged(nameof(ShouldSnapToChapters));
-                        UpdateCurrentChapter();
+                        owner.UpdateChapterTickPositions();
+                        owner.NotifyCachedChaptersRestored();
                     }
 
                     // Persist chapters to video cache if the item is cached.

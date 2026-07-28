@@ -165,29 +165,31 @@ public sealed class JukeboxPlayer
             _host.EnsureVideoSurfaceHidden();
 
             var vm = Model;
+            var state = Context;
 
-            // Apply the VM's volume once VLC actually starts playing (libVLC ignores volume set before
-            // a track is playing). One-shot per play.
-            if (vm != null)
+            // Apply THIS PLAYER's volume once VLC actually starts playing (libVLC ignores volume set
+            // before a track is playing). One-shot per play. Using the per-player context volume (not the
+            // shared VM volume) is what makes per-window audio balance work.
+            if (state != null)
             {
                 void OnPlayingApplyVolume(object? s, EventArgs a)
                 {
                     mediaPlayer.Playing -= OnPlayingApplyVolume;
-                    try { mediaPlayer.Volume = VolumeTaper.VlcVolume(vm.Volume); } catch { /* tearing down */ }
+                    try { mediaPlayer.Volume = VolumeTaper.VlcVolume(state.Volume); } catch { /* tearing down */ }
                 }
                 mediaPlayer.Playing += OnPlayingApplyVolume;
 
                 // Reset scrubber and duration for the transition; leave volume untouched.
-                vm.PlaybackPosition = 0;
-                vm.PlaybackDuration = 1;
+                state.PlaybackPosition = 0;
+                state.PlaybackDuration = 1;
             }
 
             // Check if this item is audio-only (e.g. Plex music track).
-            bool isAudioOnly = vm?.CurrentlyPlaying?.IsAudioOnly == true;
+            bool isAudioOnly = state?.CurrentlyPlaying?.IsAudioOnly == true;
 
             // ── PCM gapless path (sources that can supply a stable pre-loadable audio stream) ──
             if (isAudioOnly && vm?.GaplessPlayback == true
-                && vm.CurrentlyPlaying is { } gaplessItem
+                && state?.CurrentlyPlaying is { } gaplessItem
                 && vm.TryGetGaplessStreamUrl(gaplessItem) is { } gaplessUrl)
             {
                 mediaPlayer.Vout -= OnVout;
@@ -199,7 +201,7 @@ public sealed class JukeboxPlayer
                 Engine.GaplessPrimed = false;
                 Engine.NextGaplessVideoId = null;
 
-                int vol = vm.Volume;
+                int vol = state.Volume;
                 var gp = Engine.GaplessPlayer;
                 await Task.Run(() => gp.Play(new Uri(gaplessUrl), vol));
 
@@ -210,17 +212,17 @@ public sealed class JukeboxPlayer
                 _host.StartPositionTimer();
                 _host.NotifyDmdPlaybackStarted();
                 vm.NotifyPlaybackStarted();
-                DebugLog.Log(LogLevel.Debug, "GaplessPCM", $"Playing via PCM queue: {vm.CurrentlyPlaying.Title}");
+                DebugLog.Log(LogLevel.Debug, "GaplessPCM", $"Playing via PCM queue: {state.CurrentlyPlaying.Title}");
                 return;
             }
 
             // Plex or other direct-stream source.
-            if (vm?.CurrentlyPlaying?.StreamUrl is { } streamUrl)
+            if (state?.CurrentlyPlaying?.StreamUrl is { } streamUrl)
             {
                 var media = new Media(libVLC, new Uri(streamUrl));
 
                 // Separate video+audio (yt-dlp SeparateVideoAudio): attach the audio-slave URL.
-                if (vm.CurrentlyPlaying.AudioStreamUrl is { Length: > 0 } audioSlaveUrl)
+                if (state.CurrentlyPlaying.AudioStreamUrl is { Length: > 0 } audioSlaveUrl)
                     media.AddSlave(MediaSlaveType.Audio, 4, new Uri(audioSlaveUrl));
 
                 // HLS transcode streams need extra buffering for reliable cold-start.
@@ -249,18 +251,18 @@ public sealed class JukeboxPlayer
                 {
                     // Play from local muxed file — instant, no buffering, seekable.
                     vm?.SetStatusPrefix("Cached");
-                    vm?.SetCurrentFromCache(true);
+                    state?.SetCurrentFromCache(true);
                     DebugLog.Log(LogLevel.Debug, "Play", $"Cached playback: {cached.FilePath}");
                     var media = new Media(libVLC, new Uri(cached.FilePath));
                     Engine.LastLocalFilePath = cached.FilePath;
                     mediaPlayer.Play(media);
                     cachedResolution = cached.Resolution;
 
-                    if (cached.Chapters is { Count: > 0 } && vm?.CurrentlyPlaying is { } cp && cp.Chapters == null)
+                    if (cached.Chapters is { Count: > 0 } && state?.CurrentlyPlaying is { } cp && cp.Chapters == null)
                     {
                         cp.Chapters = cached.Chapters;
                         DebugLog.Log(LogLevel.Trace, "Chapters", $"Restored {cached.Chapters.Count} chapters from cache");
-                        vm.NotifyCachedChaptersRestored();
+                        state.NotifyCachedChaptersRestored();
                     }
                 }
                 else
@@ -343,8 +345,8 @@ public sealed class JukeboxPlayer
                     if (Model is { } vmAoTimeout)
                     {
                         vmAoTimeout.StatusText = "Playback failed: server unreachable or stream timed out";
-                        vmAoTimeout.NotifyPlaybackFailed(vmAoTimeout.CurrentlyPlaying);
-                        vmAoTimeout.CurrentlyPlaying = null;
+                        vmAoTimeout.NotifyPlaybackFailed(state?.CurrentlyPlaying);
+                        if (state != null) state.CurrentlyPlaying = null;
                         vmAoTimeout.NotifyPlaybackStarted();
                     }
                     return;
@@ -374,8 +376,8 @@ public sealed class JukeboxPlayer
                 if (Model is { } vmTimeout)
                 {
                     vmTimeout.StatusText = "Playback failed: server unreachable or stream timed out";
-                    vmTimeout.NotifyPlaybackFailed(vmTimeout.CurrentlyPlaying);
-                    vmTimeout.CurrentlyPlaying = null;
+                    vmTimeout.NotifyPlaybackFailed(state?.CurrentlyPlaying);
+                    if (state != null) state.CurrentlyPlaying = null;
                     vmTimeout.NotifyPlaybackStarted();
                 }
                 return;
@@ -508,7 +510,7 @@ public sealed class JukeboxPlayer
             if (!isLocalSource)
             {
                 var vmForCache = Model;
-                bool isAudioOnly = vmForCache?.CurrentlyPlaying?.IsAudioOnly == true;
+                bool isAudioOnly = Context?.CurrentlyPlaying?.IsAudioOnly == true;
                 var cached = !isAudioOnly && !string.IsNullOrEmpty(Engine.LastPlayingVideoId)
                     ? vmForCache?.Cache?.TryGet(Engine.LastPlayingVideoId!)
                     : null;
@@ -540,7 +542,7 @@ public sealed class JukeboxPlayer
                 if (vm != null && !string.IsNullOrEmpty(videoIdToRestart))
                 {
                     vm.SetStatusPrefix("Seek failed — restarted");
-                    vm.PlaybackPosition = 0;
+                    if (Context != null) Context.PlaybackPosition = 0;
                     _host.Play(videoIdToRestart);
                 }
                 return;
@@ -604,7 +606,7 @@ public sealed class JukeboxPlayer
                         if (vm == null || string.IsNullOrEmpty(videoIdToRestart)) return;
 
                         vm.SetStatusPrefix("Seek failed — restarted");
-                        vm.PlaybackPosition = 0;
+                        if (Context != null) Context.PlaybackPosition = 0;
                         _host.Play(videoIdToRestart);
                     });
                 }
@@ -644,7 +646,7 @@ public sealed class JukeboxPlayer
         // A cache switch supersedes any in-flight seek verification from the live stream.
         Engine.SeekVerifyCts?.Cancel();
 
-        var vm = Model;
+        var state = Context;
 
         try
         {
@@ -654,7 +656,7 @@ public sealed class JukeboxPlayer
             media.AddOption($":start-time={startSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)}");
 
             // Preserve a paused scrub: re-apply pause once VLC reaches the playing state.
-            bool wasPaused = vm?.IsPaused == true;
+            bool wasPaused = state?.IsPaused == true;
             if (wasPaused)
             {
                 void OnPlayingReapplyPause(object? s, EventArgs a)
@@ -673,15 +675,15 @@ public sealed class JukeboxPlayer
             Engine.LastAudioStreamUrl = null;
             Engine.LastMuxedStreamUrl = null;
 
-            vm?.SetCurrentFromCache(true);
+            state?.SetCurrentFromCache(true);
 
-            if (vm != null)
-                vm.PlaybackPosition = targetMs;
+            if (state != null)
+                state.PlaybackPosition = targetMs;
 
-            if (cached.Chapters is { Count: > 0 } && vm?.CurrentlyPlaying is { } cp && cp.Chapters == null)
+            if (cached.Chapters is { Count: > 0 } && state?.CurrentlyPlaying is { } cp && cp.Chapters == null)
             {
                 cp.Chapters = cached.Chapters;
-                vm.NotifyCachedChaptersRestored();
+                state.NotifyCachedChaptersRestored();
             }
 
             _host.StartVideoInfoPollingCached(cached.Resolution);
