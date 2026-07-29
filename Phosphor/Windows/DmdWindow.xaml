@@ -751,14 +751,14 @@
                     <Button x:Name="QueueClearButton" Content="✕ Clear" DockPanel.Dock="Right" Padding="4,1" FontSize="11"
                             Background="Transparent" Foreground="{StaticResource TextDimBrush}"
                             BorderThickness="0" Cursor="Hand" VerticalAlignment="Center"
-                            Command="{Binding ClearQueueCommand}"
-                            Visibility="{Binding HasQueueItems, Converter={StaticResource BoolVis}}"/>
+                            Command="{Binding ClearActiveQueueCommand}"
+                            Visibility="{Binding HasActiveQueueItems, Converter={StaticResource BoolVis}}"/>
                     <Button x:Name="QueuePlaylistButton" Content="&#x1F4CB; Playlist" DockPanel.Dock="Right" Padding="4,1" FontSize="11"
                             Background="Transparent" Foreground="{StaticResource TextDimBrush}"
                             BorderThickness="0" Cursor="Hand" VerticalAlignment="Center"
                             Click="MakePlaylistFromQueue_Click"
-                            IsEnabled="{Binding HasQueueItems}"
-                            Visibility="{Binding HasQueueItems, Converter={StaticResource BoolVis}}"/>
+                            IsEnabled="{Binding HasActiveQueueItems}"
+                            Visibility="{Binding HasActiveQueueItems, Converter={StaticResource BoolVis}}"/>
                     <Button x:Name="QueueHeaderLabel" DockPanel.Dock="Left"
                             Foreground="{StaticResource TextDimBrush}" Cursor="Hand"
                             FontSize="{DynamicResource QueueHeaderFontSize}" FontWeight="Bold"
@@ -772,11 +772,11 @@
                             </ControlTemplate>
                         </Button.Template>
                         <TextBlock>
-                            <Run Text="QUEUE"/><Run Text=" "/><Run Text="{Binding QueueCountText, Mode=OneWay}"/>
+                            <Run Text="QUEUE"/><Run Text=" "/><Run Text="{Binding ActiveQueueCountText, Mode=OneWay}"/>
                         </TextBlock>
                     </Button>
                 </DockPanel>
-                <ListBox x:Name="QueueList" ItemsSource="{Binding Queue}" Background="Transparent"
+                <ListBox x:Name="QueueList" ItemsSource="{Binding ActiveQueue}" Background="Transparent"
                          AllowDrop="True"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          PreviewMouseLeftButtonDown="QueueList_PreviewMouseLeftButtonDown"
@@ -792,7 +792,7 @@
                                     <DataTrigger.Binding>
                                         <MultiBinding Converter="{StaticResource IsCurrentQueueItemConverter}">
                                             <Binding/>
-                                            <Binding Path="DataContext.CurrentQueueItem" RelativeSource="{RelativeSource AncestorType=ListBox}"/>
+                                            <Binding Path="DataContext.ActiveCurrentQueueItem" RelativeSource="{RelativeSource AncestorType=ListBox}"/>
                                         </MultiBinding>
                                     </DataTrigger.Binding>
                                     <Setter Property="Background" Value="#FF2A2A2A"/>
@@ -809,7 +809,7 @@
                                     <Button x:Name="QueueDeleteBtn" Content="&#x2715;" FontSize="14" FontWeight="Bold"
                                             Background="#AA000000" Foreground="White" BorderThickness="0"
                                             HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                                            Command="{Binding DataContext.RemoveFromQueueCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                            Command="{Binding DataContext.RemoveFromActiveQueueCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                             CommandParameter="{Binding}">
                                         <Button.Style>
                                             <Style TargetType="Button">
@@ -845,7 +845,7 @@
                                             <TextBlock.Text>
                                                 <MultiBinding Converter="{StaticResource QueueIndexConverter}">
                                                     <Binding RelativeSource="{RelativeSource AncestorType=ListBoxItem}"/>
-                                                    <Binding Path="DataContext.Queue.Count" RelativeSource="{RelativeSource AncestorType=ListBox}"/>
+                                                    <Binding Path="DataContext.ActiveQueue.Count" RelativeSource="{RelativeSource AncestorType=ListBox}"/>
                                                     <Binding Path="Title"/>
                                                 </MultiBinding>
                                             </TextBlock.Text>
@@ -930,12 +930,12 @@
                                 IsEnabled="{Binding IsPlaying}"/>
                         <Button x:Name="DjButton" ToolTip="Toggle AutoDJ"
                                 Width="{DynamicResource SmallButtonSize}" Height="{DynamicResource SmallButtonSize}" FontSize="{DynamicResource SmallButtonFontSize}" Padding="0" Margin="3,0"
-                                Command="{Binding ToggleAutoDjCommand}">
+                                Command="{Binding ToggleActiveAutoDjCommand}">
                             <Button.Style>
                                 <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                                     <Setter Property="Content" Value="&#x1F3B5;"/>
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding AutoDjEnabled}" Value="True">
+                                        <DataTrigger Binding="{Binding ActiveAutoDjEnabled}" Value="True">
                                             <Setter Property="Content" Value="&#x1F3B5;"/>
                                             <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
                                         </DataTrigger>
@@ -945,12 +945,12 @@
                         </Button>
                         <Button x:Name="RepeatButton" ToolTip="Toggle Repeat"
                                 Width="{DynamicResource SmallButtonSize}" Height="{DynamicResource SmallButtonSize}" FontSize="{DynamicResource SmallButtonFontSize}" Padding="0" Margin="3,0"
-                                Command="{Binding ToggleRepeatCommand}">
+                                Command="{Binding ToggleActiveRepeatCommand}">
                             <Button.Style>
                                 <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                                     <Setter Property="Content" Value="&#x1F501;"/>
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding RepeatEnabled}" Value="True">
+                                        <DataTrigger Binding="{Binding ActiveRepeatEnabled}" Value="True">
                                             <Setter Property="Content" Value="&#x1F501;"/>
                                             <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
                                         </DataTrigger>
@@ -960,7 +960,7 @@
                         </Button>
                         <Button x:Name="ShuffleButton" Content="&#x1F500;" ToolTip="Shuffle Queue"
                                 Width="{DynamicResource SmallButtonSize}" Height="{DynamicResource SmallButtonSize}" FontSize="{DynamicResource SmallButtonFontSize}" Padding="0" Margin="3,0"
-                                Command="{Binding ShuffleQueueCommand}"/>
+                                Command="{Binding ShuffleActiveQueueCommand}"/>
                         <Button x:Name="SeekForwardMinorButton" Content="+15s" ToolTip="Skip Forward 15s"
                                 Width="{DynamicResource SmallButtonSize}" Height="{DynamicResource SmallButtonSize}" FontSize="11" Padding="0" Margin="3,0"
                                 Command="{Binding SeekForwardCommand}" VerticalAlignment="Center"
