@@ -1190,8 +1190,6 @@ public partial class JukeboxViewModel : ObservableObject
         set => Player1.Queue.AutoDjEnabled = value;
     }
 
-    private bool _isAutoDjFilling;
-
     // ── Favorites view (aggregated tile): two independent axes, persisted in AppSettings and mirrored
     //    by the quick dropdowns on the Favorites view + the Settings → DMD → Favorites section. ──
     private FavoritesGrouping _favoritesGrouping = FavoritesGrouping.None;
@@ -3606,10 +3604,13 @@ public partial class JukeboxViewModel : ObservableObject
     // ── Queue & Playback ──
 
     [RelayCommand]
-    private void ClearQueue()
+    private void ClearQueue() => ClearQueueOn(Player1);
+
+    /// <summary>Clears <paramref name="player"/>'s queue and resets its cursor.</summary>
+    public void ClearQueueOn(Phosphor.Playback.PlayerContext player)
     {
-        Queue.Clear();
-        QueueIndex = -1;
+        player.Queue.Queue.Clear();
+        player.Queue.QueueIndex = -1;
         StatusText = "Queue cleared";
     }
 
@@ -4519,31 +4520,35 @@ public partial class JukeboxViewModel : ObservableObject
         PlayNowOn(player, queue.Queue[index]);
 
         if (queue.AutoDjEnabled)
-            _ = SafeFireAndForget(AutoDjFillQueue());
+            _ = SafeFireAndForget(AutoDjFillQueueOn(player));
     }
 
     [RelayCommand]
-    private void RemoveFromQueue(VideoItem? item)
+    private void RemoveFromQueue(VideoItem? item) => RemoveFromQueueOn(Player1, item);
+
+    /// <summary>Removes <paramref name="item"/> from <paramref name="player"/>'s queue, adjusting its cursor.</summary>
+    public void RemoveFromQueueOn(Phosphor.Playback.PlayerContext player, VideoItem? item)
     {
         if (item == null) return;
-        int idx = Queue.IndexOf(item);
+        var pq = player.Queue;
+        int idx = pq.Queue.IndexOf(item);
         if (idx < 0) return;
 
         // Adjust QueueIndex if removing an item at or before current position
-        if (idx < QueueIndex)
-            QueueIndex--;
-        else if (idx == QueueIndex)
+        if (idx < pq.QueueIndex)
+            pq.QueueIndex--;
+        else if (idx == pq.QueueIndex)
         {
             // Removing the currently playing item — stop or advance
-            Queue.Remove(item);
-            if (QueueIndex >= Queue.Count)
-                QueueIndex = Queue.Count > 0 ? Queue.Count - 1 : -1;
-            OnPropertyChanged(nameof(CurrentQueueItem));
+            pq.Queue.Remove(item);
+            if (pq.QueueIndex >= pq.Queue.Count)
+                pq.QueueIndex = pq.Queue.Count > 0 ? pq.Queue.Count - 1 : -1;
+            pq.NotifyQueueContentsChanged();
             return;
         }
 
-        Queue.Remove(item);
-        OnPropertyChanged(nameof(CurrentQueueItem));
+        pq.Queue.Remove(item);
+        pq.NotifyQueueContentsChanged();
     }
 
     [RelayCommand]
@@ -4680,7 +4685,7 @@ public partial class JukeboxViewModel : ObservableObject
                 StatusText = "Queue finished";
                 // Keep QueueIndex pointing at the last item (stays highlighted)
                 if (queue.AutoDjEnabled)
-                    _ = SafeFireAndForget(AutoDjFillQueue());
+                    _ = SafeFireAndForget(AutoDjFillQueueOn(player));
                 return;
             }
         }
@@ -4691,7 +4696,7 @@ public partial class JukeboxViewModel : ObservableObject
         PlayNowOn(player, queue.Queue[nextIndex]);
 
         if (queue.AutoDjEnabled)
-            _ = SafeFireAndForget(AutoDjFillQueue());
+            _ = SafeFireAndForget(AutoDjFillQueueOn(player));
     }
 
     /// <summary>
@@ -4907,15 +4912,19 @@ public partial class JukeboxViewModel : ObservableObject
     /// Randomize the order of the queue.
     /// </summary>
     [RelayCommand]
-    private void ShuffleQueue()
+    private void ShuffleQueue() => ShuffleQueueOn(Player1);
+
+    /// <summary>Randomizes the order of <paramref name="player"/>'s queue, keeping its current item's cursor.</summary>
+    public void ShuffleQueueOn(Phosphor.Playback.PlayerContext player)
     {
-        if (Queue.Count < 2) return;
+        var pq = player.Queue;
+        if (pq.Queue.Count < 2) return;
 
         // Remember the currently playing item
-        var currentItem = CurrentQueueItem;
+        var currentItem = pq.CurrentQueueItem;
 
-        var items = Queue.ToList();
-        Queue.Clear();
+        var items = pq.Queue.ToList();
+        pq.Queue.Clear();
 
         // Fisher-Yates shuffle
         for (int i = items.Count - 1; i > 0; i--)
@@ -4925,13 +4934,13 @@ public partial class JukeboxViewModel : ObservableObject
         }
 
         foreach (var item in items)
-            Queue.Add(item);
+            pq.Queue.Add(item);
 
         // Restore QueueIndex to point at the same item
         if (currentItem != null)
-            QueueIndex = Queue.IndexOf(currentItem);
+            pq.QueueIndex = pq.Queue.IndexOf(currentItem);
 
-        StatusText = $"Shuffled {Queue.Count} items in queue";
+        StatusText = $"Shuffled {pq.Queue.Count} items in queue";
     }
 
     // ── AutoDJ ──
@@ -4941,16 +4950,20 @@ public partial class JukeboxViewModel : ObservableObject
     private readonly HashSet<string> _autoDjUsedIds = new();
     private readonly Random _autoDjRng = new();
 
-    private async Task AutoDjFillQueue()
+    private async Task AutoDjFillQueue() => await AutoDjFillQueueOn(Player1);
+
+    /// <summary>Refills <paramref name="player"/>'s queue via AutoDJ when it is running low.</summary>
+    private async Task AutoDjFillQueueOn(Phosphor.Playback.PlayerContext player)
     {
-        if (_isAutoDjFilling || !AutoDjEnabled) return;
+        var pq = player.Queue;
+        if (pq.IsAutoDjFilling || !pq.AutoDjEnabled) return;
 
         // Only refill when fewer than 5 items remain ahead of the current position
-        int remaining = Queue.Count - Math.Max(QueueIndex, 0);
-        if (remaining >= AutoDjRefillThreshold && Queue.Count > 0) return;
+        int remaining = pq.Queue.Count - Math.Max(pq.QueueIndex, 0);
+        if (remaining >= AutoDjRefillThreshold && pq.Queue.Count > 0) return;
 
-        _isAutoDjFilling = true;
-        int targetSize = Queue.Count + AutoDjBatchSize;
+        pq.IsAutoDjFilling = true;
+        int targetSize = pq.Queue.Count + AutoDjBatchSize;
 
         try
         {
@@ -4961,22 +4974,23 @@ public partial class JukeboxViewModel : ObservableObject
             if (genreEntry != null)
             {
                 var genreCat = new Category { Name = genreEntry.Name, Icon = genreEntry.Icon, SearchTerm = genreEntry.SearchTerm };
-                await AutoDjFromGenre(genreCat, targetSize);
+                await AutoDjFromGenre(player, genreCat, targetSize);
             }
             else
-                await AutoDjFromVideo(targetSize);
+                await AutoDjFromVideo(player, targetSize);
 
-            if (AutoDjEnabled && Queue.Count > 0)
-                StatusText = $"AutoDJ active — {Queue.Count} in queue";
+            if (pq.AutoDjEnabled && pq.Queue.Count > 0)
+                StatusText = $"AutoDJ active — {pq.Queue.Count} in queue";
         }
         finally
         {
-            _isAutoDjFilling = false;
+            pq.IsAutoDjFilling = false;
         }
     }
 
-    private async Task AutoDjFromGenre(Category genre, int targetSize)
+    private async Task AutoDjFromGenre(Phosphor.Playback.PlayerContext player, Category genre, int targetSize)
     {
+        var pq = player.Queue;
         StatusText = $"AutoDJ: browsing {genre.Name}...";
 
         try
@@ -5006,18 +5020,18 @@ public partial class JukeboxViewModel : ObservableObject
             {
                 foreach (var item in shuffled)
                 {
-                    if (Queue.Count >= targetSize) break;
+                    if (pq.Queue.Count >= targetSize) break;
                     var videoId = item.VideoId;
                     if (_autoDjUsedIds.Contains(videoId)) continue;
-                    if (Queue.Any(q => q.VideoId == videoId)) continue;
-                    if (CurrentlyPlaying?.VideoId == videoId) continue;
+                    if (pq.Queue.Any(q => q.VideoId == videoId)) continue;
+                    if (player.CurrentlyPlaying?.VideoId == videoId) continue;
 
-                    Queue.Add(item);
+                    pq.Queue.Add(item);
                     _autoDjUsedIds.Add(videoId);
                     StatusText = $"AutoDJ queued: {item.Title}";
 
-                    if (CurrentlyPlaying == null)
-                        PlayNext();
+                    if (player.CurrentlyPlaying == null)
+                        PlayNextOn(player);
                 }
             });
         }
@@ -5027,11 +5041,12 @@ public partial class JukeboxViewModel : ObservableObject
         }
     }
 
-    private async Task AutoDjFromVideo(int targetSize)
+    private async Task AutoDjFromVideo(Phosphor.Playback.PlayerContext player, int targetSize)
     {
+        var pq = player.Queue;
         // Use the title of the currently playing (or most recent) track to find similar content,
         // since the channel/author name often doesn't reflect the actual music.
-        string? query = CurrentlyPlaying?.Title;
+        string? query = player.CurrentlyPlaying?.Title;
 
         if (string.IsNullOrWhiteSpace(query))
         {
@@ -5074,18 +5089,18 @@ public partial class JukeboxViewModel : ObservableObject
             {
                 foreach (var item in shuffled)
                 {
-                    if (Queue.Count >= targetSize) break;
+                    if (pq.Queue.Count >= targetSize) break;
                     var videoId = item.VideoId;
                     if (_autoDjUsedIds.Contains(videoId)) continue;
-                    if (Queue.Any(q => q.VideoId == videoId)) continue;
-                    if (CurrentlyPlaying?.VideoId == videoId) continue;
+                    if (pq.Queue.Any(q => q.VideoId == videoId)) continue;
+                    if (player.CurrentlyPlaying?.VideoId == videoId) continue;
 
-                    Queue.Add(item);
+                    pq.Queue.Add(item);
                     _autoDjUsedIds.Add(videoId);
                     StatusText = $"AutoDJ queued: {item.Title}";
 
-                    if (CurrentlyPlaying == null)
-                        PlayNext();
+                    if (player.CurrentlyPlaying == null)
+                        PlayNextOn(player);
                 }
             });
         }

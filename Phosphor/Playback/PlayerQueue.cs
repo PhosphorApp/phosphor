@@ -112,6 +112,9 @@ public sealed class PlayerQueue : INotifyPropertyChanged
 
     public event Action<bool>? AutoDjEnabledChanged;
 
+    /// <summary>True while an AutoDJ refill is in flight for this queue (guards re-entrancy per player).</summary>
+    public bool IsAutoDjFilling { get; set; }
+
     /// <summary>
     /// Returns true if there is a next track available to play (considering repeat and AutoDJ). Used
     /// by the host to decide whether to show the idle screen between tracks.
