@@ -18,6 +18,21 @@ second item (music-only, video, or ambience).
 > Written so a fresh session needs no other context. Skim the Phase 1 & 2 kickoff sections and
 > the milestone sections for architecture; this section is the Phase 3 brief.
 
+> **STATUS (Phase 3 Stage A complete on branch `multiplayer`).** Per-player queue *state* landed:
+> a new `Phosphor/Playback/PlayerQueue.cs` holds `Queue`/`QueueIndex`/`LastKnownQueueIndex`/
+> `CurrentQueueItem`/`RepeatEnabled`/`AutoDjEnabled`/`HasNextTrack`/`HasQueueItems` + `OwnerName` +
+> per-queue persistence. `Player1` (Backglass → `queue.json`) and `Player2` (Topper →
+> `queue_topper.json`) each own a `PlayerQueue`. The VM's queue members delegate to `Player1.Queue`
+> (PropertyChanged forwarded via `WirePlayerQueue`), so the single-queue UI + persistence are
+> byte-for-byte unchanged when the 2nd player is off. Navigation is player-parameterized
+> (`PlayNowOn`/`PlayNextOn`/`PlayFromQueueIndexOn`) so a queue advance targets its **owning** player's
+> context/engine; `Player2Skip`/`Player2Previous` now drive the Topper's own queue. The queue title
+> shows the owner name ("(Backglass)"/"(Topper)") instead of the item count when the 2nd player is on.
+> **Deferred to Stage B:** Player 2 Repeat/AutoDJ/Shuffle wiring; relocating AutoDJ-fill/prefetch/
+> preemptive-cache bodies into `PlayerQueue`; Player 2 natural-end (PCM-callback) gapless advance;
+> making `PlayTransitioning` per-player (currently a shared VM flag). **Stage B** is next: the DMD
+> queue panel follows `ActivePlayer` (swap `ItemsSource` + commands) + "focus active queue" affordance.
+
 **Where things stand (end of Phase 2 + tweaks):**
 - `PlayerContext` (`Phosphor/Playback/PlayerContext.cs`) is the **per-player state holder**
   (`INotifyPropertyChanged`): `CurrentlyPlaying`, `PlaybackPosition/Duration`, `Volume`,
