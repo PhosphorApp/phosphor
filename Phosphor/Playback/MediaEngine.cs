@@ -1,0 +1,223 @@
+using System.Windows.Threading;
+using LibVLCSharp.Shared;
+
+namespace Phosphor.Playback;
+
+/// <summary>
+/// Owns the raw LibVLC engine for one player: the shared <see cref="LibVLC"/> instance, this player's
+/// dedicated <see cref="MediaPlayer"/>, the background-init handshake, the last-resolved stream context
+/// (used to re-open on a failed seek), and the live-stream elapsed clock.
+///
+/// Phase 0.6 slice 1: this is a cohesion extraction — <see cref="BackglassWindow"/> still creates and
+/// drives it, and the higher-level play/seek orchestration stays in the window for now (reaching VLC
+/// via <see cref="MediaPlayer"/>). Later slices peel that orchestration across the seam so a second
+/// player (Topper) can own an independent engine. The window subscribes to <see cref="EndReached"/> /
+/// <see cref="Buffering"/> so its view/VM handlers stay where they are.
+/// </summary>
+public sealed class MediaEngine
+{
+    private LibVLC? _libVLC;
+    private MediaPlayer? _mediaPlayer;
+    private Task<LibVLC?>? _sharedVlcTask;
+
+    /// <summary>The shared LibVLC instance (may be app-provided). Null until initialized.</summary>
+    public LibVLC? LibVLC => _libVLC;
+
+    /// <summary>This player's dedicated MediaPlayer. Null until initialized.</summary>
+    public MediaPlayer? MediaPlayer => _mediaPlayer;
+
+    /// <summary>The background LibVLC init task (started by the window in Loaded), or null.</summary>
+    public Task? InitTask { get; set; }
+
+    // ── Last stream context (populated on play; used to re-open at :start-time on a failed seek) ──
+    public string? LastPlayingVideoId { get; set; }
+    public string? LastVideoStreamUrl { get; set; }
+    public string? LastAudioStreamUrl { get; set; }
+    public string? LastMuxedStreamUrl { get; set; }
+    public string? LastLocalFilePath { get; set; }
+
+    /// <summary>Wall-clock start of the current live stream (for elapsed-since-start), or null.</summary>
+    public DateTime? LiveStartUtc { get; set; }
+
+    // ── Gapless playback state ──
+    // Legacy dual-MediaPlayer prime (video/muxed): a second MediaPlayer buffered + paused ahead of the
+    // transition so the swap is instant. PCM gapless (audio-only) uses GaplessAudioPlayer instead.
+    public MediaPlayer? NextMediaPlayer { get; set; }
+    public string? NextGaplessVideoId { get; set; }
+    public bool GaplessPrimed { get; set; }
+    public Phosphor.Audio.GaplessAudioPlayer? GaplessPlayer { get; set; }
+    public bool UsingGaplessPlayer { get; set; }
+
+    // ── Cancellation for in-flight play + seek-verify (shared so relocated + window code coordinate) ──
+    public CancellationTokenSource? PlayCts { get; set; }
+    public CancellationTokenSource? SeekVerifyCts { get; set; }
+
+    /// <summary>Raised on the VLC <see cref="MediaPlayer.EndReached"/> event (wired on the dispatcher).</summary>
+    public event EventHandler? EndReached;
+
+    /// <summary>Raised on the VLC <see cref="MediaPlayer.Buffering"/> event.</summary>
+    public event EventHandler<MediaPlayerBufferingEventArgs>? Buffering;
+
+    /// <summary>
+    /// Accepts a shared LibVLC instance from the application so all consumers reuse a single
+    /// plugin-scan cost. Must be called before <see cref="InitializeCore"/>.
+    /// </summary>
+    public void SetSharedVlc(LibVLC? vlc)
+    {
+        if (vlc != null)
+            _libVLC = vlc;
+    }
+
+    /// <summary>Accepts a task that will produce the shared LibVLC instance (awaited by the window's init).</summary>
+    public void SetSharedVlcTask(Task<LibVLC?>? task) => _sharedVlcTask = task;
+
+    // When set, this engine creates its OWN LibVLC using the DirectSound audio output instead of
+    // adopting the app's shared instance. DirectSound applies Volume/Mute as a per-stream software gain
+    // on this instance's own secondary buffer, rather than the default mmdevice backend which writes to
+    // the shared process-wide Windows mixer session — so a second simultaneous player (the Topper) has
+    // audio truly independent from the Backglass. Mirrors the ambient engine's approach.
+    private bool _isolatedAudioInstance;
+
+    /// <summary>
+    /// Marks this engine to own an independent, audio-isolated LibVLC (DirectSound aout) instead of the
+    /// app's shared instance. Required for a second simultaneous player so per-window volume is real.
+    /// Must be called before <see cref="InitializeCore"/>.
+    /// </summary>
+    public void UseIsolatedAudioInstance() => _isolatedAudioInstance = true;
+
+    /// <summary>
+    /// Core LibVLC + MediaPlayer creation. Thread-safe; called once from either the background init
+    /// task or synchronously as a fallback. Reuses a shared LibVLC if one was provided. Wires
+    /// EndReached on the supplied <paramref name="dispatcher"/> so its handler can touch UI.
+    /// </summary>
+    public void InitializeCore(Dispatcher dispatcher)
+    {
+        // An audio-isolated engine (second player) always spins up its own DirectSound LibVLC so its
+        // volume is a per-stream gain, independent of the shared-instance players.
+        if (_isolatedAudioInstance && _libVLC == null)
+        {
+            _libVLC = new LibVLC("--no-video-title-show", "--network-caching=3000", "--http-reconnect", "--aout=directsound");
+        }
+        // If the app provided a shared-VLC task, adopt its result instead of spinning up a second
+        // LibVLC (the window awaits this off-thread before calling us).
+        else if (_sharedVlcTask != null && _libVLC == null)
+        {
+            try
+            {
+                var shared = _sharedVlcTask.GetAwaiter().GetResult();
+                if (shared != null)
+                    _libVLC = shared;
+            }
+            catch { /* fall through to fresh instance */ }
+        }
+
+        var vlc = _libVLC ?? new LibVLC("--no-video-title-show", "--network-caching=3000", "--http-reconnect");
+        var mp = new MediaPlayer(vlc);
+        // Stop VLC from grabbing mouse/keyboard on its video HWND so events pass through to the
+        // hosting WinForms panel (enables the window's drag/resize hooks).
+        mp.EnableMouseInput = false;
+        mp.EnableKeyInput = false;
+        // Wire EndReached on the window's dispatcher so the handler can touch UI.
+        dispatcher.Invoke(() => mp.EndReached += (s, e) => EndReached?.Invoke(s, e));
+        // Clear chapter-seek spinner once VLC finishes buffering.
+        mp.Buffering += (s, e) => Buffering?.Invoke(s, e);
+        _libVLC = vlc;
+        _mediaPlayer = mp;
+    }
+
+    /// <summary>
+    /// Returns the MediaPlayer, waiting for background initialization if needed. Called from the
+    /// window's dispatcher thread; pumps messages while waiting so the UI stays responsive.
+    /// </summary>
+    public MediaPlayer EnsureInitialized(Dispatcher dispatcher)
+    {
+        if (_mediaPlayer != null)
+            return _mediaPlayer;
+
+        // Background init may still be running — wait for it, pumping dispatcher messages.
+        if (InitTask != null && !InitTask.IsCompleted)
+        {
+            var frame = new DispatcherFrame();
+            InitTask.ContinueWith(_ => frame.Continue = false);
+            Dispatcher.PushFrame(frame);
+        }
+
+        // If background init didn't run (shouldn't happen), init synchronously.
+        if (_mediaPlayer == null)
+            InitializeCore(dispatcher);
+
+        return _mediaPlayer!;
+    }
+
+    /// <summary>
+    /// Swaps in a pre-primed <see cref="MediaPlayer"/> (gapless transition), rewiring the engine's
+    /// EndReached forwarding to the new player. Returns the old player so the caller can dispose it.
+    /// </summary>
+    public MediaPlayer? SwapMediaPlayer(MediaPlayer next)
+    {
+        var old = _mediaPlayer;
+        next.EndReached += (s, e) => EndReached?.Invoke(s, e);
+        _mediaPlayer = next;
+        return old;
+    }
+
+    /// <summary>Stops the PCM gapless player if active.</summary>
+    public void StopGaplessPlayer()
+    {
+        UsingGaplessPlayer = false;
+        GaplessPlayer?.Stop();
+    }
+
+    /// <summary>
+    /// Resets gapless state (e.g. when playback is stopped or a non-gapless transition occurs),
+    /// disposing any primed legacy next-player in the background.
+    /// </summary>
+    public void DisposeGaplessNext()
+    {
+        GaplessPrimed = false;
+        NextGaplessVideoId = null;
+        var mp = NextMediaPlayer;
+        NextMediaPlayer = null;
+        if (mp != null)
+            Task.Run(() => { try { mp.Stop(); mp.Dispose(); } catch { } });
+    }
+
+    // ── Play helpers (shared by the window during migration and by JukeboxPlayer.Play) ──
+
+    /// <summary>
+    /// Default budget for the first-frame / audio-start watchdog. Finite media (YouTube, Plex/Jellyfin
+    /// on-demand) uses this; slow-starting live streams request a longer budget via StartupTimeout.
+    /// </summary>
+    public const int DefaultFirstFrameTimeoutMs = 10000;
+
+    /// <summary>
+    /// The first-frame watchdog budget (ms) for the item now starting: the source-supplied
+    /// StartupTimeout hint when present (slow-starting live streams), otherwise the default.
+    /// </summary>
+    public static int FirstFrameTimeoutMs(JukeboxViewModel? vm)
+    {
+        if (vm?.CurrentlyPlaying?.StartupTimeout is { } budget && budget > TimeSpan.Zero)
+            return (int)Math.Min(budget.TotalMilliseconds, int.MaxValue);
+        return DefaultFirstFrameTimeoutMs;
+    }
+
+    /// <summary>Applies the VM's network/caching options to a streaming <see cref="Media"/>.</summary>
+    public static void ApplyNetworkOptions(Media media, JukeboxViewModel? vm)
+    {
+        int networkCache = vm?.NetworkCachingMs ?? 2000;
+        int liveCache = vm?.LiveCachingMs ?? 1000;
+        int fileCache = vm?.FileCachingMs ?? 300;
+        bool reconnect = vm?.HttpReconnect ?? true;
+
+        media.AddOption($":network-caching={networkCache}");
+        media.AddOption($":live-caching={liveCache}");
+        media.AddOption($":file-caching={fileCache}");
+        if (reconnect)
+            media.AddOption(":http-reconnect");
+
+        // NOTE: We intentionally do NOT set :input-fast-seek — it "may cause errors when seeking
+        // forward in a stream because the demuxer may not be at a keyframe." For long YouTube videos
+        // that manifests as the decoder freezing on a non-keyframe after a forward scrub. The slower
+        // default fails more cleanly and our verification can detect and recover.
+    }
+}

@@ -185,7 +185,11 @@ that BUG 2/2b fixed.
 
 # KNOWN ISSUE — YouTube 403 throttling on concurrent stream + download
 
-**Status: open / partially mitigated. Environmental (YouTube-side), not a Phosphor bug.**
+**Status: HIGH PRIORITY / OPEN — major blocker.** Environmental (YouTube-side) trigger,
+but the app must mitigate it. Seen with **significantly increasing frequency**; with
+`videoEngine = YtDlp` + caching on, downloads (and sometimes playback) fail often enough
+to block normal use. Implement mitigation (1) first (see below); escalate to (2)/(3) if
+insufficient.
 
 ## Symptom
 
@@ -212,7 +216,11 @@ Engine attribution is now logged (`YouTubeSource: resolve via <engine>` /
 `download via <engine>`) so this is diagnosable at a glance — previously the play path
 never said which engine it used, which made this confusing to attribute.
 
-## Mitigation options (not yet implemented — for follow-up)
+## Mitigation options (priority — implement in order)
+
+**Elevated to high priority: this is now a major blocker (403s seen with significantly
+increasing frequency).** Implement (1) first as the immediate mitigation; add (3) as
+hygiene; consider (2) if (1)+(3) prove insufficient.
 
 1. **yt-dlp built-in rate/throttle controls on the DOWNLOAD path** — **IMPLEMENTED**
    (cheapest, keeps downloads polite):

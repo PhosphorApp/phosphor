@@ -20,6 +20,28 @@ public partial class App : Application
     private LibVLC? _sharedVlc;
     private Task<LibVLC?>? _sharedVlcTask;
     private System.Windows.Media.MediaPlayer? _dittiPlayer;
+    private JukeboxViewModel? _viewModel;
+
+    /// <summary>
+    /// Enables or disables the Topper's second media player at runtime (from the settings dialog's
+    /// apply), so the "Enable second media player" toggle takes effect without a relaunch. Attaches or
+    /// detaches the Topper's jukebox player and updates the VM's UI gate.
+    /// </summary>
+    public void SetSecondPlayerEnabled(bool enabled)
+    {
+        if (_viewModel == null || _topperProxy == null) return;
+        _viewModel.SecondPlayerEnabled = enabled;
+        if (enabled)
+        {
+            _topperProxy.AttachViewModel(_viewModel);
+        }
+        else
+        {
+            // If the Topper was the active target, hand control back to Player 1 before detaching.
+            _viewModel.ActivePlayer = _viewModel.Player1;
+            _topperProxy.DetachViewModel();
+        }
+    }
 
     private void Application_Startup(object sender, StartupEventArgs e)
     {
@@ -57,6 +79,7 @@ public partial class App : Application
             }
         });
         var viewModel = new JukeboxViewModel();
+        _viewModel = viewModel;
         // Engine/quality/stereo come from the YouTube plug-in config (single source of truth). Seed
         // the instance list first so a fresh install still has YouTube defaults to read.
         if (_settings.PluginInstances.Count == 0)
@@ -77,7 +100,8 @@ public partial class App : Application
         viewModel.Volume = _settings.Volume;
         viewModel.RepeatEnabled = _settings.RepeatEnabled;
         viewModel.AutoDjEnabled = _settings.AutoDjEnabled;
-        viewModel.SetNetworkTimeout(_settings.NetworkTimeoutSeconds);
+        viewModel.SecondPlayerEnabled = _settings.EnableSecondPlayer;
+        viewModel.Player2AudioOnly = _settings.TopperAudioOnly;
         // Configure Plex + its category tiles from the plug-in instance configs.
         viewModel.ConfigurePlexFromSettings(_settings);
 
@@ -111,6 +135,17 @@ public partial class App : Application
 
             // Wire up video playback
             _backglassProxy.AttachViewModel(viewModel);
+
+            // Second media player (Player 2) on the Topper. The Topper window/proxy always exist; only
+            // the jukebox wiring is gated by the setting, and it can be toggled at runtime (see
+            // SetSecondPlayerEnabled). Always give the Topper its OWN audio-isolated LibVLC (DirectSound
+            // aout) so the two players never share one process-wide mixer session, and always keep the
+            // per-player audio-only subscription live (harmless when detached).
+            _topperProxy.UseIsolatedAudio();
+            viewModel.Player2.AudioOnlyChanged += audioOnly => _topperProxy.SetAudioOnly(audioOnly);
+            _topperProxy.SetAudioOnly(viewModel.Player2AudioOnly);
+            if (_settings.EnableSecondPlayer)
+                _topperProxy.AttachViewModel(viewModel);
 
             // Give all windows access to settings for exit key handling
             _backglassProxy.SetAppSettings(_settings);

@@ -748,17 +748,23 @@
             </Button>
             <DockPanel x:Name="QueueExpandedPanel">
                 <DockPanel x:Name="QueueHeaderPanel" DockPanel.Dock="Top" Margin="0,0,0,4">
+                    <Button x:Name="QueueSwitchButton" Content="&#x21C4;" DockPanel.Dock="Right" Padding="4,1" FontSize="12"
+                            Background="Transparent" Foreground="{StaticResource AccentBrush}"
+                            BorderThickness="0" Cursor="Hand" VerticalAlignment="Center"
+                            ToolTip="Switch which player's queue is shown (Backglass / Topper)"
+                            Command="{Binding ToggleActiveQueueFocusCommand}"
+                            Visibility="{Binding SecondPlayerEnabled, Converter={StaticResource BoolVis}}"/>
                     <Button x:Name="QueueClearButton" Content="✕ Clear" DockPanel.Dock="Right" Padding="4,1" FontSize="11"
                             Background="Transparent" Foreground="{StaticResource TextDimBrush}"
                             BorderThickness="0" Cursor="Hand" VerticalAlignment="Center"
-                            Command="{Binding ClearQueueCommand}"
-                            Visibility="{Binding HasQueueItems, Converter={StaticResource BoolVis}}"/>
+                            Command="{Binding ClearActiveQueueCommand}"
+                            Visibility="{Binding HasActiveQueueItems, Converter={StaticResource BoolVis}}"/>
                     <Button x:Name="QueuePlaylistButton" Content="&#x1F4CB; Playlist" DockPanel.Dock="Right" Padding="4,1" FontSize="11"
                             Background="Transparent" Foreground="{StaticResource TextDimBrush}"
                             BorderThickness="0" Cursor="Hand" VerticalAlignment="Center"
                             Click="MakePlaylistFromQueue_Click"
-                            IsEnabled="{Binding HasQueueItems}"
-                            Visibility="{Binding HasQueueItems, Converter={StaticResource BoolVis}}"/>
+                            IsEnabled="{Binding HasActiveQueueItems}"
+                            Visibility="{Binding HasActiveQueueItems, Converter={StaticResource BoolVis}}"/>
                     <Button x:Name="QueueHeaderLabel" DockPanel.Dock="Left"
                             Foreground="{StaticResource TextDimBrush}" Cursor="Hand"
                             FontSize="{DynamicResource QueueHeaderFontSize}" FontWeight="Bold"
@@ -772,11 +778,11 @@
                             </ControlTemplate>
                         </Button.Template>
                         <TextBlock>
-                            <Run Text="QUEUE"/><Run Text=" "/><Run Text="{Binding QueueCountText, Mode=OneWay}"/>
+                            <Run Text="QUEUE"/><Run Text=" "/><Run Text="{Binding ActiveQueueCountText, Mode=OneWay}"/>
                         </TextBlock>
                     </Button>
                 </DockPanel>
-                <ListBox x:Name="QueueList" ItemsSource="{Binding Queue}" Background="Transparent"
+                <ListBox x:Name="QueueList" ItemsSource="{Binding ActiveQueue}" Background="Transparent"
                          AllowDrop="True"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          PreviewMouseLeftButtonDown="QueueList_PreviewMouseLeftButtonDown"
@@ -792,7 +798,7 @@
                                     <DataTrigger.Binding>
                                         <MultiBinding Converter="{StaticResource IsCurrentQueueItemConverter}">
                                             <Binding/>
-                                            <Binding Path="DataContext.CurrentQueueItem" RelativeSource="{RelativeSource AncestorType=ListBox}"/>
+                                            <Binding Path="DataContext.ActiveCurrentQueueItem" RelativeSource="{RelativeSource AncestorType=ListBox}"/>
                                         </MultiBinding>
                                     </DataTrigger.Binding>
                                     <Setter Property="Background" Value="#FF2A2A2A"/>
@@ -809,7 +815,7 @@
                                     <Button x:Name="QueueDeleteBtn" Content="&#x2715;" FontSize="14" FontWeight="Bold"
                                             Background="#AA000000" Foreground="White" BorderThickness="0"
                                             HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                                            Command="{Binding DataContext.RemoveFromQueueCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                            Command="{Binding DataContext.RemoveFromActiveQueueCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                             CommandParameter="{Binding}">
                                         <Button.Style>
                                             <Style TargetType="Button">
@@ -845,7 +851,7 @@
                                             <TextBlock.Text>
                                                 <MultiBinding Converter="{StaticResource QueueIndexConverter}">
                                                     <Binding RelativeSource="{RelativeSource AncestorType=ListBoxItem}"/>
-                                                    <Binding Path="DataContext.Queue.Count" RelativeSource="{RelativeSource AncestorType=ListBox}"/>
+                                                    <Binding Path="DataContext.ActiveQueue.Count" RelativeSource="{RelativeSource AncestorType=ListBox}"/>
                                                     <Binding Path="Title"/>
                                                 </MultiBinding>
                                             </TextBlock.Text>
@@ -864,9 +870,28 @@
         </Border>
         </Grid>
 
-        <!-- Now playing bar -->
-        <Border Grid.Row="3" Background="{StaticResource SurfaceBrush}" CornerRadius="6"
-                Padding="12,10" Margin="0,6,0,4">
+        <!-- Now playing bar(s). When the second player is disabled this is exactly the single bar as
+             before (the Player 2 bar is collapsed and the StackPanel adds no spacing). -->
+        <StackPanel Grid.Row="3">
+        <Border x:Name="Player1NowPlayingBar" Background="{StaticResource SurfaceBrush}" CornerRadius="6"
+                Padding="12,10" Margin="0,6,0,4" MouseDown="Player1Bar_MouseDown">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="BorderThickness" Value="0"/>
+                    <Setter Property="BorderBrush" Value="Transparent"/>
+                    <Style.Triggers>
+                        <!-- Highlight the active bar only when the second player is enabled. -->
+                        <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                                <Condition Binding="{Binding SecondPlayerEnabled}" Value="True"/>
+                                <Condition Binding="{Binding IsPlayer1Active}" Value="True"/>
+                            </MultiDataTrigger.Conditions>
+                            <Setter Property="BorderThickness" Value="2"/>
+                            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                        </MultiDataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
             <DockPanel>
                 <!-- Hidden for now; may revisit later -->
                 <Button Content="&#x1F4CB; Add to Playlist" ToolTip="Add playing to playlist" DockPanel.Dock="Right" Padding="16,8" FontSize="15"
@@ -911,12 +936,12 @@
                                 IsEnabled="{Binding IsPlaying}"/>
                         <Button x:Name="DjButton" ToolTip="Toggle AutoDJ"
                                 Width="{DynamicResource SmallButtonSize}" Height="{DynamicResource SmallButtonSize}" FontSize="{DynamicResource SmallButtonFontSize}" Padding="0" Margin="3,0"
-                                Command="{Binding ToggleAutoDjCommand}">
+                                Command="{Binding ToggleActiveAutoDjCommand}">
                             <Button.Style>
                                 <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                                     <Setter Property="Content" Value="&#x1F3B5;"/>
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding AutoDjEnabled}" Value="True">
+                                        <DataTrigger Binding="{Binding ActiveAutoDjEnabled}" Value="True">
                                             <Setter Property="Content" Value="&#x1F3B5;"/>
                                             <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
                                         </DataTrigger>
@@ -926,12 +951,12 @@
                         </Button>
                         <Button x:Name="RepeatButton" ToolTip="Toggle Repeat"
                                 Width="{DynamicResource SmallButtonSize}" Height="{DynamicResource SmallButtonSize}" FontSize="{DynamicResource SmallButtonFontSize}" Padding="0" Margin="3,0"
-                                Command="{Binding ToggleRepeatCommand}">
+                                Command="{Binding ToggleActiveRepeatCommand}">
                             <Button.Style>
                                 <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                                     <Setter Property="Content" Value="&#x1F501;"/>
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding RepeatEnabled}" Value="True">
+                                        <DataTrigger Binding="{Binding ActiveRepeatEnabled}" Value="True">
                                             <Setter Property="Content" Value="&#x1F501;"/>
                                             <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
                                         </DataTrigger>
@@ -941,7 +966,7 @@
                         </Button>
                         <Button x:Name="ShuffleButton" Content="&#x1F500;" ToolTip="Shuffle Queue"
                                 Width="{DynamicResource SmallButtonSize}" Height="{DynamicResource SmallButtonSize}" FontSize="{DynamicResource SmallButtonFontSize}" Padding="0" Margin="3,0"
-                                Command="{Binding ShuffleQueueCommand}"/>
+                                Command="{Binding ShuffleActiveQueueCommand}"/>
                         <Button x:Name="SeekForwardMinorButton" Content="+15s" ToolTip="Skip Forward 15s"
                                 Width="{DynamicResource SmallButtonSize}" Height="{DynamicResource SmallButtonSize}" FontSize="11" Padding="0" Margin="3,0"
                                 Command="{Binding SeekForwardCommand}" VerticalAlignment="Center"
@@ -1035,12 +1060,33 @@
                     </Grid>
                     <StackPanel x:Name="NowPlayingInfoPanel" VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
-                            <TextBlock Text="NOW PLAYING" Foreground="{StaticResource TextDimBrush}"
+                            <TextBlock Text="{Binding Player1NowPlayingLabel}" Foreground="{StaticResource TextDimBrush}"
                                        FontSize="{DynamicResource NowPlayingLabelFontSize}" FontWeight="Bold"/>
                             <TextBlock Text="{Binding NowPlayingSourceText}" Foreground="{StaticResource TextDimBrush}"
                                        FontSize="{DynamicResource NowPlayingLabelFontSize}" VerticalAlignment="Center"
                                        Margin="6,0,0,0" Opacity="0.8"/>
+                            <!-- ACTIVE badge shown on the active bar when the second player is enabled. -->
+                            <Border Background="{StaticResource AccentBrush}" CornerRadius="3" Padding="5,0" Margin="10,0,0,0"
+                                    VerticalAlignment="Center">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding SecondPlayerEnabled}" Value="True"/>
+                                                    <Condition Binding="{Binding IsPlayer1Active}" Value="True"/>
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </MultiDataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <TextBlock Text="ACTIVE" Foreground="White" FontWeight="Bold"
+                                           FontSize="{DynamicResource NowPlayingSpeakerFontSize}"/>
+                            </Border>
                         </StackPanel>
+
                         <TextBlock Text="{Binding NowPlayingTitle, FallbackValue='Nothing playing'}"
                                    Foreground="{StaticResource Accent2Brush}" FontWeight="SemiBold"
                                    FontSize="{DynamicResource NowPlayingTitleFontSize}" TextTrimming="CharacterEllipsis"/>
@@ -1105,6 +1151,217 @@
                 </DockPanel>
             </DockPanel>
         </Border>
+
+        <!-- Player 2 (Topper) now-playing bar — shown only when the second player is enabled. Binds
+             directly to the Player2 context (state props), with transport bound to the VM's Player2*
+             commands so each bar's buttons only affect its own player. Mirrors the Player 1 layout. -->
+        <Border x:Name="Player2NowPlayingBar" Background="{StaticResource SurfaceBrush}" CornerRadius="6"
+                Padding="12,10" Margin="0,0,0,4" DataContext="{Binding Player2}"
+                MouseDown="Player2Bar_MouseDown"
+                Visibility="{Binding DataContext.SecondPlayerEnabled, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolVis}}">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="BorderThickness" Value="0"/>
+                    <Setter Property="BorderBrush" Value="Transparent"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding DataContext.IsPlayer2Active, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                            <Setter Property="BorderThickness" Value="2"/>
+                            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <DockPanel>
+                <!-- Transport buttons: two rows, right-docked. Bound to the VM's Player2* commands. -->
+                <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center" Margin="6,0,0,0">
+                    <!-- Row 1: Previous, Play, Pause, Stop, Skip -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="&#x23EE;" ToolTip="Previous"
+                                Width="{DynamicResource PlayButtonSize}" Height="{DynamicResource PlayButtonSize}"
+                                FontSize="{DynamicResource PlayButtonFontSize}" Padding="0" Margin="3,0"
+                                Command="{Binding DataContext.Player2PreviousCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                IsEnabled="{Binding IsPlaying}"/>
+                        <Button Content="&#x25B6;" ToolTip="Play"
+                                Width="{DynamicResource PlayButtonSize}" Height="{DynamicResource PlayButtonSize}"
+                                FontSize="{DynamicResource PlayButtonFontSize}" Padding="0" Margin="3,0"
+                                Command="{Binding DataContext.Player2PlayCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                        <Button Content="&#x23F8;" ToolTip="Pause"
+                                Width="{DynamicResource PlayButtonSize}" Height="{DynamicResource PlayButtonSize}"
+                                FontSize="{DynamicResource PlayButtonFontSize}" Padding="0" Margin="3,0"
+                                Command="{Binding DataContext.Player2PauseCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                IsEnabled="{Binding IsPlaying}"/>
+                        <Button Content="&#x23F9;" ToolTip="Stop"
+                                Width="{DynamicResource PlayButtonSize}" Height="{DynamicResource PlayButtonSize}"
+                                FontSize="{DynamicResource PlayButtonFontSize}" Padding="0" Margin="3,0"
+                                Command="{Binding DataContext.Player2StopCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                IsEnabled="{Binding IsPlaying}"/>
+                        <Button Content="&#x23ED;" ToolTip="Skip"
+                                Width="{DynamicResource PlayButtonSize}" Height="{DynamicResource PlayButtonSize}"
+                                FontSize="{DynamicResource PlayButtonFontSize}" Padding="0" Margin="3,0"
+                                Command="{Binding DataContext.Player2SkipCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                IsEnabled="{Binding IsPlaying}"/>
+                    </StackPanel>
+                    <!-- (The -15s/AutoDJ/Repeat/Shuffle/+15s row was removed: those controls now live in
+                         the Queue window. Seek is available on the scrub bar. -->
+                </StackPanel>
+
+                <DockPanel>
+                    <!-- Thumbnail -->
+                    <Grid DockPanel.Dock="Left" Margin="0,0,10,0" VerticalAlignment="Center" ClipToBounds="True">
+                      <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Image Stretch="Uniform" MaxWidth="160" MaxHeight="{Binding ActualHeight, ElementName=NowPlayingInfoPanel2}">
+                            <Image.Style>
+                                <Style TargetType="Image">
+                                    <Setter Property="local:CachedImage.SourceUrl" Value="{Binding CurrentlyPlaying.ThumbnailUrl}"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding CurrentlyPlaying}" Value="{x:Null}">
+                                            <Setter Property="Source" Value="/default_thumb.png"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding CurrentlyPlaying.ThumbnailUrl}" Value="">
+                                            <Setter Property="Source" Value="/default_thumb.png"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Image.Style>
+                        </Image>
+                        <!-- Loading spinner overlay during playback transition -->
+                        <Border Background="#9D000000" CornerRadius="4"
+                                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Opacity" Value="0"/>
+                                    <Setter Property="IsHitTestVisible" Value="False"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding PlayTransitioning}" Value="True">
+                                            <DataTrigger.EnterActions>
+                                                <BeginStoryboard x:Name="ShowSpinnerOverlay2">
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                         To="1" Duration="0:0:0.15"/>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </DataTrigger.EnterActions>
+                                            <DataTrigger.ExitActions>
+                                                <StopStoryboard BeginStoryboardName="ShowSpinnerOverlay2"/>
+                                                <BeginStoryboard>
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                         To="0" Duration="0:0:0.5"/>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </DataTrigger.ExitActions>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <Canvas Width="28" Height="28" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    RenderTransformOrigin="0.5,0.5">
+                                <Canvas.RenderTransform>
+                                    <RotateTransform Angle="0"/>
+                                </Canvas.RenderTransform>
+                                <Ellipse Width="28" Height="28" Stroke="{StaticResource AccentBrush}"
+                                         StrokeThickness="3" Fill="Transparent"/>
+                                <Ellipse Width="7" Height="7" Fill="{StaticResource AccentBrush}"
+                                         Canvas.Left="10.5" Canvas.Top="-2"/>
+                                <Canvas.Style>
+                                    <Style TargetType="Canvas">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding PlayTransitioning}" Value="True">
+                                                <DataTrigger.EnterActions>
+                                                    <BeginStoryboard x:Name="NowPlayingSpinStoryboard2">
+                                                        <Storyboard>
+                                                            <DoubleAnimation
+                                                                Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                                                                From="0" To="360"
+                                                                Duration="0:0:1"
+                                                                RepeatBehavior="Forever"/>
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </DataTrigger.EnterActions>
+                                                <DataTrigger.ExitActions>
+                                                    <StopStoryboard BeginStoryboardName="NowPlayingSpinStoryboard2"/>
+                                                </DataTrigger.ExitActions>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Canvas.Style>
+                            </Canvas>
+                        </Border>
+                      </Grid>
+                    </Grid>
+                    <StackPanel x:Name="NowPlayingInfoPanel2" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                            <TextBlock Text="[TOPPER] NOW PLAYING" Foreground="{StaticResource TextDimBrush}"
+                                       FontSize="{DynamicResource NowPlayingLabelFontSize}" FontWeight="Bold"/>
+                            <TextBlock Text="{Binding NowPlayingSourceText}" Foreground="{StaticResource TextDimBrush}"
+                                       FontSize="{DynamicResource NowPlayingLabelFontSize}" VerticalAlignment="Center"
+                                       Margin="6,0,0,0" Opacity="0.8"/>
+                            <!-- ACTIVE badge -->
+                            <Border Background="{StaticResource AccentBrush}" CornerRadius="3" Padding="5,0" Margin="10,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding DataContext.IsPlayer2Active, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolVis}}">
+                                <TextBlock Text="ACTIVE" Foreground="White" FontWeight="Bold"
+                                           FontSize="{DynamicResource NowPlayingSpeakerFontSize}"/>
+                            </Border>
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding NowPlayingTitle, FallbackValue='Nothing playing'}"
+                                   Foreground="{StaticResource Accent2Brush}" FontWeight="SemiBold"
+                                   FontSize="{DynamicResource NowPlayingTitleFontSize}" TextTrimming="CharacterEllipsis"/>
+                        <!-- Progress bar row -->
+                        <DockPanel Margin="0,4,0,0">
+                            <DockPanel.Style>
+                                <Style TargetType="DockPanel">
+                                    <Setter Property="Opacity" Value="1.0"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsPlaying}" Value="False">
+                                            <Setter Property="Opacity" Value="0.35"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DockPanel.Style>
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding PlaybackTimeText}"
+                                       Foreground="{StaticResource TextDimBrush}" FontSize="{DynamicResource NowPlayingTimeFontSize}"
+                                       VerticalAlignment="Center" Margin="8,0,0,0"/>
+                            <Slider DockPanel.Dock="Right" Minimum="0" Maximum="100"
+                                    Value="{Binding Volume}" Width="{DynamicResource NowPlayingVolumeWidth}"
+                                    Style="{StaticResource NowPlayingSliderStyle}"
+                                    VerticalAlignment="Center" IsMoveToPointEnabled="True"/>
+                            <TextBlock Text="&#x1F50A;" DockPanel.Dock="Right" Foreground="{StaticResource TextDimBrush}" FontSize="{DynamicResource NowPlayingSpeakerFontSize}"
+                                       VerticalAlignment="Center" Margin="8,0,2,0"/>
+                            <Grid>
+                                <Slider Minimum="0" Maximum="{Binding PlaybackDuration}"
+                                     Value="{Binding PlaybackPosition}"
+                                     Style="{StaticResource NowPlayingSliderStyle}"
+                                     VerticalAlignment="Center" IsMoveToPointEnabled="True"
+                                     IsEnabled="{Binding IsPlaying}"
+                                     Visibility="{Binding IsLiveStream, Converter={StaticResource BoolVis}, ConverterParameter=Invert}"/>
+                                <TextBlock Text="● LIVE" Foreground="{StaticResource AccentBrush}"
+                                           FontWeight="Bold" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                           Margin="8,0,0,0"
+                                           Visibility="{Binding IsLiveStream, Converter={StaticResource BoolVis}}"/>
+                                <ItemsControl ItemsSource="{Binding ChapterTickPositions}" IsHitTestVisible="False"
+                                              VerticalAlignment="Center" Margin="8,0">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <Canvas Height="{DynamicResource ChapterTickHeight}" ClipToBounds="False"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Rectangle Width="2" Fill="{StaticResource TextDimBrush}" Opacity="0.6"
+                                                       Height="{DynamicResource ChapterTickHeight}"
+                                                       IsHitTestVisible="False"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Grid>
+                        </DockPanel>
+                    </StackPanel>
+                </DockPanel>
+            </DockPanel>
+        </Border>
+        </StackPanel>
 
 
         <!-- StatusBarText moved to title bar -->

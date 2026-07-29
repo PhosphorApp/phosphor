@@ -844,13 +844,11 @@ public partial class JukeboxViewModel : ObservableObject
     /// Guards against rapid successive play requests (e.g. double-click race).
     /// Set before dispatching a play request, cleared once the player signals playback started.
     /// </summary>
-    private bool _playTransitioning;
     public bool PlayTransitioning
     {
-        get => _playTransitioning;
-        internal set => SetProperty(ref _playTransitioning, value);
+        get => Player1.PlayTransitioning;
+        internal set => Player1.PlayTransitioning = value;
     }
-
     /// <summary>
     /// The current item awaiting a background cache download, deferred until playback is confirmed
     /// (see <see cref="NotifyPlaybackStarted"/>). Deferring avoids the background download contending
@@ -860,11 +858,13 @@ public partial class JukeboxViewModel : ObservableObject
 
     /// <summary>
     /// Call from the player host once playback has actually started (video output received)
-    /// to allow the next play request to proceed.
+    /// to allow the next play request to proceed. The <paramref name="context"/> identifies which
+    /// player started (so its transition spinner clears on the right now-playing bar); defaults to
+    /// <see cref="Player1"/> for the single-player call sites.
     /// </summary>
-    public void NotifyPlaybackStarted()
+    public void NotifyPlaybackStarted(Phosphor.Playback.PlayerContext? context = null)
     {
-        PlayTransitioning = false;
+        (context ?? Player1).PlayTransitioning = false;
         _statusPrefixCts?.Cancel();
         StatusPrefix = "";
 
@@ -879,7 +879,7 @@ public partial class JukeboxViewModel : ObservableObject
         // Self-healing badges: a successful play clears any "unavailable" mark the owning source kept
         // for this item (e.g. an IPTV channel that was previously geo-blocked/offline). Report it and
         // clear the live row's badge so the ⊘ disappears immediately.
-        var playing = CurrentlyPlaying;
+        var playing = (context ?? Player1).CurrentlyPlaying;
         if (playing is { ShowUnavailableBadge: true } && SourceForItem(playing) is Phosphor.Plugin.Abstractions.IPlaybackSuccessReportable ok)
         {
             try
@@ -951,194 +951,74 @@ public partial class JukeboxViewModel : ObservableObject
         }
     }
 
-    private VideoItem? _currentlyPlaying;
+    /// <summary>
+    /// The now-playing item for Player 1 (Backglass). Phase 2: delegates to <see cref="Player1"/>'s
+    /// per-player state so the existing single now-playing bar keeps working; Player 2 (Topper) binds
+    /// to its own <see cref="Player2"/> context directly.
+    /// </summary>
     public VideoItem? CurrentlyPlaying
     {
-        get => _currentlyPlaying;
-        set
-        {
-            var outgoing = _currentlyPlaying;
-            if (SetProperty(ref _currentlyPlaying, value))
-                {
-                    // Release any stateful resource the outgoing item's source was holding (e.g. a Plex
-                    // Live TV tuner session). Fire-and-forget, best-effort — the single choke point for
-                    // stop / skip / track-change, so a source never leaks a held tuner/session.
-                    if (outgoing is not null && !ReferenceEquals(outgoing, value))
-                        ReleasePlaybackFor(outgoing);
-
-                    IsPaused = false;
-                    _lastChapterIndex = -1;
-                    CurrentChapterName = "";
-                    ChapterTickPositions = [];
-                    _isCurrentFromCache = false;
-                    OnPropertyChanged(nameof(IsPlaying));
-                    OnPropertyChanged(nameof(CanStartOrStop));
-                    OnPropertyChanged(nameof(ShouldSnapToChapters));
-                    OnPropertyChanged(nameof(NowPlayingTitle));
-                    OnPropertyChanged(nameof(NowPlayingSourceText));
-                    OnPropertyChanged(nameof(IsLiveStream));
-                    OnPropertyChanged(nameof(PlaybackTimeText));
-                }
-        }
+        get => Player1.CurrentlyPlaying;
+        set => Player1.CurrentlyPlaying = value;
     }
 
     /// <summary>
     /// Fractional positions (0.0–1.0) of chapter markers relative to total duration,
-    /// used to render tick marks on the scrub bar.
+    /// used to render tick marks on the scrub bar. Delegates to Player 1.
     /// </summary>
-    private List<double> _chapterTickPositions = [];
-    public List<double> ChapterTickPositions
-    {
-        get => _chapterTickPositions;
-        private set => SetProperty(ref _chapterTickPositions, value);
-    }
-
-    private void UpdateChapterTickPositions()
-    {
-        var chapters = _currentlyPlaying?.Chapters;
-        var duration = _playbackDuration;
-        DebugLog.Log(LogLevel.Trace, "Chapters", $"UpdateChapterTickPositions: chapters={chapters?.Count ?? 0} duration={duration}");
-        if (chapters == null || chapters.Count == 0 || duration <= 1)
-        {
-            ChapterTickPositions = [];
-            return;
-        }
-        var ticks = chapters
-            .Select(c => c.StartTime.TotalMilliseconds / duration)
-            .Where(p => p > 0 && p < 1)
-            .ToList();
-        DebugLog.Log(LogLevel.Trace, "Chapters", $"Tick positions: [{string.Join(", ", ticks.Select(t => t.ToString("F3")))}]");
-        ChapterTickPositions = ticks;
-    }
+    public List<double> ChapterTickPositions => Player1.ChapterTickPositions;
 
     /// <summary>
-    /// Called when chapters are restored from cache on a currently playing item.
+    /// Called when chapters are restored from cache on a currently playing item (Player 1).
     /// </summary>
-    public void NotifyCachedChaptersRestored()
-    {
-        UpdateChapterTickPositions();
-        OnPropertyChanged(nameof(ShouldSnapToChapters));
-        UpdateCurrentChapter();
-    }
+    public void NotifyCachedChaptersRestored() => Player1.NotifyCachedChaptersRestored();
+
+    /// <summary>Name of the chapter currently playing on Player 1, or empty if no chapters.</summary>
+    public string CurrentChapterName => Player1.CurrentChapterName;
+
+    /// <summary>Display title for the (Player 1) now-playing area.</summary>
+    public string NowPlayingTitle => Player1.NowPlayingTitle;
 
     /// <summary>
-    /// Name of the chapter currently playing, or empty if no chapters.
-    /// </summary>
-    private string _currentChapterName = "";
-    public string CurrentChapterName
-    {
-        get => _currentChapterName;
-        private set
-        {
-            if (SetProperty(ref _currentChapterName, value))
-                OnPropertyChanged(nameof(NowPlayingTitle));
-        }
-    }
-
-    /// <summary>
-    /// Display title for the now-playing area. Appends the chapter name when available,
-    /// and the upload date (in parentheses) when known.
-    /// </summary>
-    public string NowPlayingTitle
-    {
-        get
-        {
-            var title = _currentlyPlaying?.Title ?? "Nothing playing";
-            if (!string.IsNullOrEmpty(_currentChapterName))
-                title = $"{title} \u2014 {_currentChapterName}";
-
-            var dateText = _currentlyPlaying?.UploadDateText;
-            if (!string.IsNullOrEmpty(dateText))
-                title = $"{title} ({dateText})";
-
-            return title;
-        }
-    }
-
-    /// <summary>
-    /// Tracks whether the currently-playing item was served from the local cache.
-    /// Set by the player window when it begins playback; reset whenever
-    /// <see cref="CurrentlyPlaying"/> changes.
-    /// </summary>
-    private bool _isCurrentFromCache;
-
-    /// <summary>
-    /// Called by the player window to indicate whether the current item is playing
+    /// Called by the player host to indicate whether the current (Player 1) item is playing
     /// from the local cache, so the now-playing area can reflect the source.
     /// </summary>
-    public void SetCurrentFromCache(bool fromCache)
+    public void SetCurrentFromCache(bool fromCache) => Player1.SetCurrentFromCache(fromCache);
+
+    /// <summary>Short source annotation for the (Player 1) now-playing label, e.g. "(from YouTube)".</summary>
+    public string NowPlayingSourceText => Player1.NowPlayingSourceText;
+
+    /// <summary>
+    /// Builds the short source annotation (e.g. "(from YouTube - Cached)") for an item. Shared by both
+    /// players via <see cref="PlayerContext.SourceTextResolver"/> — needs the source registry.
+    /// </summary>
+    private string ResolveNowPlayingSourceText(VideoItem? item, bool fromCache)
     {
-        if (_isCurrentFromCache == fromCache) return;
-        _isCurrentFromCache = fromCache;
-        OnPropertyChanged(nameof(NowPlayingSourceText));
+        if (item == null) return "";
+        string? source = null;
+        if (item.SourceInstanceId is { Length: > 0 } id)
+            source = _sourceRegistry?.ByInstance(id)?.DisplayName;
+        source ??= item switch
+        {
+            { IsYouTube: true } => "YouTube",
+            _ => null
+        };
+        if (source == null) return "";
+        return fromCache ? $"(from {source} - Cached)" : $"(from {source})";
     }
 
     /// <summary>
-    /// Short source annotation for the now-playing label, e.g. "(from YouTube)",
-    /// "(from Plex)", or "(from YouTube - Cached)". Empty when nothing is playing or
-    /// the source is not a known streaming source (e.g. the local startup ditti).
+    /// True when the current (Player 1) item has enough chapters (3+) that the scrub bar should snap.
     /// </summary>
-    public string NowPlayingSourceText
-    {
-        get
-        {
-            if (_currentlyPlaying == null) return "";
+    public bool ShouldSnapToChapters => Player1.ShouldSnapToChapters;
 
-            // Prefer the owning plug-in source's display name (source-agnostic), falling back to the
-            // legacy YouTube id-shape heuristic for items without a source link.
-            string? source = null;
-            if (_currentlyPlaying.SourceInstanceId is { Length: > 0 } id)
-                source = _sourceRegistry?.ByInstance(id)?.DisplayName;
-            source ??= _currentlyPlaying switch
-            {
-                { IsYouTube: true } => "YouTube",
-                _ => null
-            };
-            if (source == null)
-                return "";
+    public bool IsPlaying => Player1.IsPlaying;
 
-            return _isCurrentFromCache ? $"(from {source} - Cached)" : $"(from {source})";
-        }
-    }
-
-    private int _lastChapterIndex = -1;
-
-    /// <summary>
-    /// Updates CurrentChapterName based on playback position. Called from PlaybackPosition setter.
-    /// </summary>
-    private void UpdateCurrentChapter()
-    {
-        var chapters = _currentlyPlaying?.Chapters;
-        if (chapters == null || chapters.Count == 0 || _playbackDuration <= 1)
-        {
-            if (_lastChapterIndex != -1)
-            {
-                _lastChapterIndex = -1;
-                CurrentChapterName = "";
-            }
-            return;
-        }
-
-        int idx = GetCurrentChapterIndex(chapters);
-        if (idx != _lastChapterIndex)
-        {
-            _lastChapterIndex = idx;
-            CurrentChapterName = chapters[idx].Title;
-        }
-    }
-
-    /// <summary>
-    /// True when the current item has enough chapters (3+) that the scrub bar should snap to chapter boundaries.
-    /// </summary>
-    public bool ShouldSnapToChapters => (_currentlyPlaying?.Chapters?.Count ?? 0) >= 3 && _playbackDuration > 1;
-
-    public bool IsPlaying => CurrentlyPlaying != null;
-
-    private bool _isPaused;
+    /// <summary>Paused state for Player 1 (delegates to its context).</summary>
     public bool IsPaused
     {
-        get => _isPaused;
-        set => SetProperty(ref _isPaused, value);
+        get => Player1.IsPaused;
+        set => Player1.IsPaused = value;
     }
 
     /// <summary>
@@ -1149,7 +1029,16 @@ public partial class JukeboxViewModel : ObservableObject
 
     public bool HasQueueItems => Queue.Count > 0;
 
-    public string QueueCountText => Queue.Count > 0 ? $"({Queue.Count} {(Queue.Count == 1 ? "item" : "items")})" : "";
+    /// <summary>
+    /// The parenthetical suffix shown after "QUEUE" in the queue panel title. When the second player is
+    /// enabled we identify the visible queue by its owner name (e.g. "(Backglass)") — saving space and
+    /// making it clear which player's queue is shown — instead of the item count. When the second player
+    /// is off (single-queue) we keep the familiar item count (e.g. "(25 items)").
+    /// </summary>
+    public string QueueCountText =>
+        SecondPlayerEnabled
+            ? $"({Player1.Queue.OwnerName})"
+            : Queue.Count > 0 ? $"({Queue.Count} {(Queue.Count == 1 ? "item" : "items")})" : "";
 
     private string _statusText = "Select a category or search";
     public string StatusText
@@ -1267,65 +1156,39 @@ public partial class JukeboxViewModel : ObservableObject
         }
     }
 
-    private bool _repeatEnabled;
+    /// <summary>Repeat toggle for Player 1's queue. Delegates to its <see cref="Phosphor.Playback.PlayerQueue"/>.</summary>
     public bool RepeatEnabled
     {
-        get => _repeatEnabled;
-        set
-        {
-            if (SetProperty(ref _repeatEnabled, value))
-                RepeatEnabledChanged?.Invoke(value);
-        }
+        get => Player1.Queue.RepeatEnabled;
+        set => Player1.Queue.RepeatEnabled = value;
     }
 
-    public event Action<bool>? RepeatEnabledChanged;
-
-    private int _queueIndex = -1;
     /// <summary>
-    /// Index of the currently playing item in the queue. -1 means nothing is playing from the queue.
+    /// Index of the currently playing item in Player 1's queue. -1 means nothing is playing from the
+    /// queue. Delegates to its <see cref="Phosphor.Playback.PlayerQueue"/>.
     /// </summary>
     public int QueueIndex
     {
-        get => _queueIndex;
-        set
-        {
-            if (SetProperty(ref _queueIndex, value))
-            {
-                if (value >= 0)
-                    LastKnownQueueIndex = value;
-                OnPropertyChanged(nameof(CurrentQueueItem));
-            }
-        }
+        get => Player1.Queue.QueueIndex;
+        set => Player1.Queue.QueueIndex = value;
     }
 
     /// <summary>
-    /// Remembers the last non-negative queue index for persistence across sessions.
+    /// Remembers the last non-negative queue index for persistence across sessions (Player 1).
     /// </summary>
-    public int LastKnownQueueIndex { get; private set; } = -1;
+    public int LastKnownQueueIndex => Player1.Queue.LastKnownQueueIndex;
 
     /// <summary>
-    /// The queue item currently being played, or null if nothing is playing.
+    /// The queue item currently being played on Player 1, or null if nothing is playing.
     /// </summary>
-    public VideoItem? CurrentQueueItem => _queueIndex >= 0 && _queueIndex < Queue.Count ? Queue[_queueIndex] : null;
+    public VideoItem? CurrentQueueItem => Player1.Queue.CurrentQueueItem;
 
-    private bool _autoDjEnabled;
+    /// <summary>AutoDJ toggle for Player 1's queue. Delegates to its <see cref="Phosphor.Playback.PlayerQueue"/>.</summary>
     public bool AutoDjEnabled
     {
-        get => _autoDjEnabled;
-        set
-        {
-            if (SetProperty(ref _autoDjEnabled, value))
-            {
-                if (value)
-                    _ = SafeFireAndForget(AutoDjFillQueue());
-                AutoDjEnabledChanged?.Invoke(value);
-            }
-        }
+        get => Player1.Queue.AutoDjEnabled;
+        set => Player1.Queue.AutoDjEnabled = value;
     }
-
-    public event Action<bool>? AutoDjEnabledChanged;
-
-    private bool _isAutoDjFilling;
 
     // ── Favorites view (aggregated tile): two independent axes, persisted in AppSettings and mirrored
     //    by the quick dropdowns on the Favorites view + the Settings → DMD → Favorites section. ──
@@ -1427,109 +1290,568 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     public RangedObservableCollection<VideoItem> SearchResults { get; } = new();
-    public ObservableCollection<VideoItem> Queue { get; } = new();
+    public ObservableCollection<VideoItem> Queue => Player1.Queue.Queue;
 
     // ── Search history for ComboBox ──
     public ObservableCollection<string> SearchSuggestions { get; } = new();
     public IReadOnlyList<string> AllSearchHistory => _searchHistory.Searches;
 
-    public event Action<string>? PlayRequested;
-    public event Action? StopRequested;
-    public event Action? PauseRequested;
-    public event Action? ResumeRequested;
-    public event Action<long>? SeekRequested;
+    /// <summary>
+    /// Player 1's command channel (Backglass = primary). Phase 0 plumbing: the VM's command events
+    /// are re-exposed as pass-throughs to this context so existing subscribers (the Backglass's
+    /// <c>AttachViewModel</c>) keep working unchanged while a second player's channel can now exist.
+    /// </summary>
+    public Phosphor.Playback.PlayerContext Player1 { get; } = new();
 
-    private double _playbackPosition;
+    /// <summary>
+    /// Player 2's command channel (Topper = secondary). Phase 1: a second, independent player. It has
+    /// its own <see cref="Phosphor.Playback.JukeboxPlayer"/>/engine/host on the Topper. The queue,
+    /// chapters, and audio-reactive driving all stay on <see cref="Player1"/> for this pass.
+    /// </summary>
+    public Phosphor.Playback.PlayerContext Player2 { get; } = new();
+
+    private Phosphor.Playback.PlayerContext _activePlayer;
+    /// <summary>
+    /// The command channel that a newly-played item targets. Defaults to <see cref="Player1"/> so
+    /// behavior is unchanged until the user marks the Topper (Player 2) active. Stop / seek / pause /
+    /// resume / volume and the queue stay bound to <see cref="Player1"/> for this pass; only the
+    /// "play this item" command follows the active player.
+    /// </summary>
+    public Phosphor.Playback.PlayerContext ActivePlayer
+    {
+        get => _activePlayer;
+        set
+        {
+            if (SetProperty(ref _activePlayer, value))
+            {
+                OnPropertyChanged(nameof(IsPlayer1Active));
+                OnPropertyChanged(nameof(IsPlayer2Active));
+                OnPropertyChanged(nameof(TargetTopperPlayer));
+                SwapActiveQueueSubscription(value);
+                RaiseActiveQueueChanged();
+            }
+        }
+    }
+
+    /// <summary>The active queue whose PropertyChanged/CollectionChanged we're currently forwarding.</summary>
+    private Phosphor.Playback.PlayerQueue? _subscribedActiveQueue;
+
+    /// <summary>
+    /// Re-points the active-queue forwarder at the newly-active player's queue so the DMD panel refreshes
+    /// when that queue's items or cursor/toggles change. Unsubscribes the previous queue first.
+    /// </summary>
+    private void SwapActiveQueueSubscription(Phosphor.Playback.PlayerContext player)
+    {
+        if (_subscribedActiveQueue != null)
+        {
+            _subscribedActiveQueue.PropertyChanged -= OnActiveQueuePropertyChanged;
+            _subscribedActiveQueue.Queue.CollectionChanged -= OnActiveQueueCollectionChanged;
+        }
+        _subscribedActiveQueue = player.Queue;
+        _subscribedActiveQueue.PropertyChanged += OnActiveQueuePropertyChanged;
+        _subscribedActiveQueue.Queue.CollectionChanged += OnActiveQueueCollectionChanged;
+    }
+
+    private void OnActiveQueuePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(Phosphor.Playback.PlayerQueue.CurrentQueueItem):
+                OnPropertyChanged(nameof(ActiveCurrentQueueItem));
+                break;
+            case nameof(Phosphor.Playback.PlayerQueue.RepeatEnabled):
+                OnPropertyChanged(nameof(ActiveRepeatEnabled));
+                break;
+            case nameof(Phosphor.Playback.PlayerQueue.AutoDjEnabled):
+                OnPropertyChanged(nameof(ActiveAutoDjEnabled));
+                break;
+            case nameof(Phosphor.Playback.PlayerQueue.HasQueueItems):
+                OnPropertyChanged(nameof(HasActiveQueueItems));
+                OnPropertyChanged(nameof(ActiveQueueCountText));
+                break;
+        }
+    }
+
+    private void OnActiveQueueCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(HasActiveQueueItems));
+        OnPropertyChanged(nameof(ActiveQueueCountText));
+        OnPropertyChanged(nameof(ActiveCurrentQueueItem));
+    }
+
+    /// <summary>Raises PropertyChanged for every active-queue projection member (used on active switch).</summary>
+    private void RaiseActiveQueueChanged()
+    {
+        OnPropertyChanged(nameof(ActiveQueue));
+        OnPropertyChanged(nameof(ActiveCurrentQueueItem));
+        OnPropertyChanged(nameof(HasActiveQueueItems));
+        OnPropertyChanged(nameof(ActiveQueueCountText));
+        OnPropertyChanged(nameof(ActiveRepeatEnabled));
+        OnPropertyChanged(nameof(ActiveAutoDjEnabled));
+    }
+
+    /// <summary>True when Player 1 (Backglass) is the active target for newly-played items.</summary>
+    public bool IsPlayer1Active => ReferenceEquals(_activePlayer, Player1);
+
+    /// <summary>True when Player 2 (Topper) is the active target for newly-played items.</summary>
+    public bool IsPlayer2Active => ReferenceEquals(_activePlayer, Player2);
+
+    // ── Active-queue projection (Stage B) ──
+    // The single DMD queue panel binds to these so it follows whichever player is active. They project
+    // the active player's PlayerQueue; the VM's Player-1-bound Queue/QueueIndex/etc. stay unchanged so
+    // host/gapless/prefetch consumers keep targeting Player 1.
+
+    /// <summary>The active player's queue collection (what the DMD queue panel shows).</summary>
+    public ObservableCollection<VideoItem> ActiveQueue => _activePlayer.Queue.Queue;
+
+    /// <summary>The active player's currently-playing queue item (drives the panel highlight).</summary>
+    public VideoItem? ActiveCurrentQueueItem => _activePlayer.Queue.CurrentQueueItem;
+
+    /// <summary>The active player's queue cursor index (used by the panel's drag-reorder code-behind).</summary>
+    public int ActiveQueueIndex
+    {
+        get => _activePlayer.Queue.QueueIndex;
+        set => _activePlayer.Queue.QueueIndex = value;
+    }
+
+    /// <summary>True when the active player's queue has items.</summary>
+    public bool HasActiveQueueItems => _activePlayer.Queue.HasQueueItems;
+
+    /// <summary>
+    /// The parenthetical suffix after "QUEUE" in the panel title. When the 2nd player is enabled the
+    /// active queue is identified by its owner name (e.g. "(Topper)"); single-player shows the count.
+    /// </summary>
+    public string ActiveQueueCountText =>
+        SecondPlayerEnabled
+            ? $"({_activePlayer.Queue.OwnerName})"
+            : ActiveQueue.Count > 0 ? $"({ActiveQueue.Count} {(ActiveQueue.Count == 1 ? "item" : "items")})" : "";
+
+    /// <summary>Repeat toggle for the active player's queue (bound by the panel's Repeat button).</summary>
+    public bool ActiveRepeatEnabled
+    {
+        get => _activePlayer.Queue.RepeatEnabled;
+        set => _activePlayer.Queue.RepeatEnabled = value;
+    }
+
+    /// <summary>AutoDJ toggle for the active player's queue (bound by the panel's AutoDJ button).</summary>
+    public bool ActiveAutoDjEnabled
+    {
+        get => _activePlayer.Queue.AutoDjEnabled;
+        set => _activePlayer.Queue.AutoDjEnabled = value;
+    }
+
+    [RelayCommand]
+    private void ClearActiveQueue() => ClearQueueOn(_activePlayer);
+
+    /// <summary>
+    /// Cycles which player's queue the panel shows/controls (Backglass ↔ Topper) by flipping
+    /// <see cref="ActivePlayer"/>. Bound to the queue header's "switch queue" affordance; only surfaced
+    /// when the second player is enabled.
+    /// </summary>
+    [RelayCommand]
+    private void ToggleActiveQueueFocus() => ActivePlayer = IsPlayer1Active ? Player2 : Player1;
+
+    [RelayCommand]
+    private void ShuffleActiveQueue() => ShuffleQueueOn(_activePlayer);
+
+    [RelayCommand]
+    private void RemoveFromActiveQueue(VideoItem? item) => RemoveFromQueueOn(_activePlayer, item);
+
+    /// <summary>Plays the item at <paramref name="index"/> in the active player's queue.</summary>
+    public void PlayFromActiveQueueIndex(int index) => PlayFromQueueIndexOn(_activePlayer, index);
+
+    [RelayCommand]
+    private void ToggleActiveRepeat()
+    {
+        ActiveRepeatEnabled = !ActiveRepeatEnabled;
+        StatusText = ActiveRepeatEnabled ? "Repeat enabled" : "Repeat disabled";
+    }
+
+    [RelayCommand]
+    private void ToggleActiveAutoDj()
+    {
+        ActiveAutoDjEnabled = !ActiveAutoDjEnabled;
+        if (ActiveAutoDjEnabled)
+        {
+            // Player 1's fill-on-enable is wired via WirePlayerQueue; for any other active player
+            // (Topper) kick the fill here so enabling AutoDJ starts populating its queue immediately.
+            if (!ReferenceEquals(_activePlayer, Player1))
+                _ = SafeFireAndForget(AutoDjFillQueueOn(_activePlayer));
+        }
+        else
+        {
+            StatusText = "AutoDJ disabled";
+            _autoDjUsedIds.Clear();
+        }
+    }
+
+    /// <summary>Makes Player 1 (Backglass) the active target (click-to-activate on its now-playing bar).</summary>
+    [RelayCommand]
+    private void ActivatePlayer1() => ActivePlayer = Player1;
+
+    /// <summary>Makes Player 2 (Topper) the active target (click-to-activate on its now-playing bar).</summary>
+    [RelayCommand]
+    private void ActivatePlayer2() => ActivePlayer = Player2;
+
+    // ── Player 2 (Topper) transport — each bar's buttons drive only its own player ──
+    // Queue integration for Player 2 is deferred; skip/previous/shuffle/repeat/autodj are stubs so the
+    // bar's layout matches Player 1 but only affect the Topper. Wired in a later queue-management pass.
+
+    private bool Player2IsPlaying => Player2.IsPlaying;
+
+    [RelayCommand]
+    private void Player2Stop()
+    {
+        Player2.RaiseStopRequested();
+        Player2.CurrentlyPlaying = null;
+        Player2.IsPaused = false;
+        Player2.PlaybackPosition = 0;
+        Player2.PlaybackDuration = 1;
+    }
+
+    [RelayCommand]
+    private void Player2Play()
+    {
+        if (Player2.IsPaused)
+        {
+            Player2Resume();
+            return;
+        }
+        if (Player2.IsPlaying) return;
+
+        // Nothing playing on the Topper — start from its own queue (resume last index if valid, else 0).
+        var queue = Player2.Queue;
+        if (queue.Queue.Count == 0) return;
+
+        int resumeIndex = queue.LastKnownQueueIndex >= 0 && queue.LastKnownQueueIndex < queue.Queue.Count
+            ? queue.LastKnownQueueIndex
+            : 0;
+        PlayFromQueueIndexOn(Player2, resumeIndex);
+    }
+
+    [RelayCommand]
+    private void Player2Pause()
+    {
+        if (!Player2.IsPlaying || Player2.IsPaused) return;
+        Player2.RaisePauseRequested();
+        Player2.IsPaused = true;
+    }
+
+    [RelayCommand]
+    private void Player2Resume()
+    {
+        if (!Player2.IsPlaying || !Player2.IsPaused) return;
+        Player2.RaiseResumeRequested();
+        Player2.IsPaused = false;
+    }
+
+    /// <summary>Player 2 previous — steps back through the Topper's own queue (Player 2 context/engine).</summary>
+    [RelayCommand]
+    private void Player2Previous()
+    {
+        if (!Player2.IsPlaying) return;
+
+        var queue = Player2.Queue;
+        if (queue.Queue.Count == 0) return;
+
+        int currentIdx = queue.QueueIndex;
+        bool isFirstItem = currentIdx <= 0;
+        bool isBeyond10Seconds = Player2.PlaybackPosition >= 10000;
+
+        if (isBeyond10Seconds || isFirstItem)
+            Player2.RaiseSeekRequested(0);
+        else
+            PlayFromQueueIndexOn(Player2, currentIdx - 1);
+    }
+
+    /// <summary>Player 2 skip — advances the Topper's own queue to the next track (Player 2 context/engine).</summary>
+    [RelayCommand]
+    private void Player2Skip() => PlayNextOn(Player2);
+
+    /// <summary>
+    /// The "NOW PLAYING" label prefix for a bar. When the second player is enabled the bars are
+    /// qualified "[BACKGLASS]" / "[TOPPER]"; otherwise (single bar) no qualifier is shown.
+    /// </summary>
+    public string Player1NowPlayingLabel => SecondPlayerEnabled ? "[BACKGLASS] NOW PLAYING" : "NOW PLAYING";
+    public string Player2NowPlayingLabel => "[TOPPER] NOW PLAYING";
+
+    private bool _secondPlayerEnabled;
+    /// <summary>
+    /// True when the second media player (Topper = Player 2) is enabled in settings. Gates the DMD
+    /// active-target selector UI. Set once at startup from <see cref="AppSettings.EnableSecondPlayer"/>.
+    /// </summary>
+    public bool SecondPlayerEnabled
+    {
+        get => _secondPlayerEnabled;
+        set
+        {
+            if (SetProperty(ref _secondPlayerEnabled, value))
+            {
+                OnPropertyChanged(nameof(Player1NowPlayingLabel));
+                OnPropertyChanged(nameof(QueueCountText));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Bindable active-target selector for the DMD: false = Backglass (Player 1), true = Topper
+    /// (Player 2). Setting it repoints <see cref="ActivePlayer"/> so newly-played items target the
+    /// chosen player. Queue/transport stay on Player 1 for this pass.
+    /// </summary>
+    public bool TargetTopperPlayer
+    {
+        get => ReferenceEquals(_activePlayer, Player2);
+        set
+        {
+            ActivePlayer = value ? Player2 : Player1;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Returns the player context currently hosting <paramref name="item"/> as its now-playing item,
+    /// or null if neither player is on it (the user moved on). Used by async resolve paths to start the
+    /// right player after a slow tune/resolve.
+    /// </summary>
+    private Phosphor.Playback.PlayerContext? PlayerHosting(VideoItem item) =>
+        ReferenceEquals(Player2.CurrentlyPlaying, item) ? Player2
+        : ReferenceEquals(Player1.CurrentlyPlaying, item) ? Player1
+        : null;
+
+    /// <summary>
+    /// Wires a per-player context to the VM: injects the shared source-text resolver and, for Player 1,
+    /// forwards its state PropertyChanged onto the VM's delegating now-playing properties so existing
+    /// single-bar XAML bindings refresh. Also runs the source release side effect on track change.
+    /// </summary>
+    private void WirePlayerContext(Phosphor.Playback.PlayerContext ctx)
+    {
+        ctx.SourceTextResolver = ResolveNowPlayingSourceText;
+
+        // Release any stateful resource the outgoing item's source held (e.g. a Plex Live TV tuner).
+        ctx.CurrentlyPlayingChanged += (outgoing, incoming) =>
+        {
+            if (outgoing is not null && !ReferenceEquals(outgoing, incoming))
+                ReleasePlaybackFor(outgoing);
+        };
+
+        // Player 1 drives the VM's own (delegating) now-playing surface for the existing single bar.
+        if (ReferenceEquals(ctx, Player1))
+        {
+            ctx.PropertyChanged += (_, e) =>
+            {
+                switch (e.PropertyName)
+                {
+                    case nameof(Phosphor.Playback.PlayerContext.CurrentlyPlaying):
+                        OnPropertyChanged(nameof(CurrentlyPlaying));
+                        OnPropertyChanged(nameof(IsPlaying));
+                        OnPropertyChanged(nameof(CanStartOrStop));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.IsPaused):
+                        OnPropertyChanged(nameof(IsPaused));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.PlayTransitioning):
+                        OnPropertyChanged(nameof(PlayTransitioning));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.Volume):
+                        OnPropertyChanged(nameof(Volume));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.IsSeeking):
+                        OnPropertyChanged(nameof(IsSeeking));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.PlaybackPosition):
+                        OnPropertyChanged(nameof(PlaybackPosition));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.PlaybackDuration):
+                        OnPropertyChanged(nameof(PlaybackDuration));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.PlaybackTimeText):
+                        OnPropertyChanged(nameof(PlaybackTimeText));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.NowPlayingTitle):
+                        OnPropertyChanged(nameof(NowPlayingTitle));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.NowPlayingSourceText):
+                        OnPropertyChanged(nameof(NowPlayingSourceText));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.CurrentChapterName):
+                        OnPropertyChanged(nameof(CurrentChapterName));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.ChapterTickPositions):
+                        OnPropertyChanged(nameof(ChapterTickPositions));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.ShouldSnapToChapters):
+                        OnPropertyChanged(nameof(ShouldSnapToChapters));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.IsLiveStream):
+                        OnPropertyChanged(nameof(IsLiveStream));
+                        break;
+                }
+            };
+        }
+    }
+
+    /// <summary>
+    /// Forwards Player 1's queue state changes to the VM's delegating queue members so the existing
+    /// single queue panel + transport keep updating unchanged. Also preserves the AutoDJ-on-enable
+    /// fill behavior that previously lived in the VM's <c>AutoDjEnabled</c> setter.
+    /// </summary>
+    private void WirePlayerQueue(Phosphor.Playback.PlayerQueue queue)
+    {
+        queue.PropertyChanged += (_, e) =>
+        {
+            switch (e.PropertyName)
+            {
+                case nameof(Phosphor.Playback.PlayerQueue.QueueIndex):
+                    OnPropertyChanged(nameof(QueueIndex));
+                    break;
+                case nameof(Phosphor.Playback.PlayerQueue.CurrentQueueItem):
+                    OnPropertyChanged(nameof(CurrentQueueItem));
+                    break;
+                case nameof(Phosphor.Playback.PlayerQueue.RepeatEnabled):
+                    OnPropertyChanged(nameof(RepeatEnabled));
+                    break;
+                case nameof(Phosphor.Playback.PlayerQueue.AutoDjEnabled):
+                    OnPropertyChanged(nameof(AutoDjEnabled));
+                    break;
+                case nameof(Phosphor.Playback.PlayerQueue.HasQueueItems):
+                    OnPropertyChanged(nameof(HasQueueItems));
+                    OnPropertyChanged(nameof(CanStartOrStop));
+                    break;
+                case nameof(Phosphor.Playback.PlayerQueue.HasNextTrack):
+                    OnPropertyChanged(nameof(HasNextTrack));
+                    break;
+            }
+        };
+
+        // Preserve the "start filling immediately when AutoDJ is switched on" behavior that previously
+        // lived in the VM's AutoDjEnabled setter.
+        queue.AutoDjEnabledChanged += enabled =>
+        {
+            if (enabled)
+                _ = SafeFireAndForget(AutoDjFillQueue());
+        };
+    }
+
+    public event Action<string>? PlayRequested
+    {
+        add => Player1.AddPlayRequested(value!);
+        remove => Player1.RemovePlayRequested(value!);
+    }
+    public event Action? StopRequested
+    {
+        add => Player1.AddStopRequested(value!);
+        remove => Player1.RemoveStopRequested(value!);
+    }
+    public event Action? PauseRequested
+    {
+        add => Player1.AddPauseRequested(value!);
+        remove => Player1.RemovePauseRequested(value!);
+    }
+    public event Action? ResumeRequested
+    {
+        add => Player1.AddResumeRequested(value!);
+        remove => Player1.RemoveResumeRequested(value!);
+    }
+    public event Action<long>? SeekRequested
+    {
+        add => Player1.AddSeekRequested(value!);
+        remove => Player1.RemoveSeekRequested(value!);
+    }
+
+    /// <summary>Playback scrubber position (ms) for Player 1. Delegates to its per-player context.</summary>
     public double PlaybackPosition
     {
-        get => _playbackPosition;
-        set
-        {
-            if (SetProperty(ref _playbackPosition, value))
-            {
-                OnPropertyChanged(nameof(PlaybackTimeText));
-                UpdateCurrentChapter();
-            }
-        }
+        get => Player1.PlaybackPosition;
+        set => Player1.PlaybackPosition = value;
     }
 
-    private double _playbackDuration = 1;
+    /// <summary>Playback duration (ms) for Player 1. Delegates to its per-player context.</summary>
     public double PlaybackDuration
     {
-        get => _playbackDuration;
-        set
-        {
-            if (SetProperty(ref _playbackDuration, value))
-            {
-                OnPropertyChanged(nameof(PlaybackTimeText));
-                UpdateChapterTickPositions();
-            }
-        }
+        get => Player1.PlaybackDuration;
+        set => Player1.PlaybackDuration = value;
     }
 
-    private bool _isSeeking;
-    public bool IsSeeking { get => _isSeeking; set => SetProperty(ref _isSeeking, value); }
+    /// <summary>Scrubbing flag for Player 1. Delegates to its per-player context.</summary>
+    public bool IsSeeking
+    {
+        get => Player1.IsSeeking;
+        set => Player1.IsSeeking = value;
+    }
 
-    private int _volume = 100;
+    /// <summary>Playback volume (0–100) for Player 1. Delegates to its per-player context.</summary>
     public int Volume
     {
-        get => _volume;
-        set
-        {
-            if (SetProperty(ref _volume, Math.Clamp(value, 0, 100)))
-                VolumeChanged?.Invoke(_volume);
-        }
+        get => Player1.Volume;
+        set => Player1.Volume = value;
     }
 
-    public event Action<int>? VolumeChanged;
-
-    public string PlaybackTimeText
+    /// <summary>
+    /// Per-player volume for the Topper (Player 2). Delegates to <see cref="Player2"/>'s context so the
+    /// user can balance the mix between the two simultaneous players.
+    /// </summary>
+    public int Player2Volume
     {
-        get
-        {
-            // Live streams have no fixed duration — show elapsed-since-start against "*".
-            if (_currentlyPlaying?.IsLiveStream == true)
-            {
-                var elapsed = TimeSpan.FromMilliseconds(Math.Max(0, PlaybackPosition));
-                var lfmt = elapsed.TotalHours >= 1 ? @"h\:mm\:ss" : @"m\:ss";
-                return $"{elapsed.ToString(lfmt)} / *";
-            }
-            if (PlaybackDuration <= 1) return "0:00 / 0:00";
-            var pos = TimeSpan.FromMilliseconds(PlaybackPosition);
-            var dur = TimeSpan.FromMilliseconds(PlaybackDuration);
-            var fmt = dur.TotalHours >= 1 ? @"h\:mm\:ss" : @"m\:ss";
-            return $"{pos.ToString(fmt)} / {dur.ToString(fmt)}";
-        }
+        get => Player2.Volume;
+        set => Player2.Volume = value;
     }
+
+    /// <summary>
+    /// Per-player audio-only toggle for the Topper (Player 2). Delegates to <see cref="Player2"/>'s
+    /// context (its AudioOnlyChanged event drives the Topper host).
+    /// </summary>
+    public bool Player2AudioOnly
+    {
+        get => Player2.AudioOnly;
+        set => Player2.AudioOnly = value;
+    }
+
+    /// <summary>
+    /// Per-player audio-only toggle for the Backglass (Player 1) — the "stream audio only" setting. When
+    /// on, the player plays audio but never brings the video surface on screen (keeps the idle/blob
+    /// screensaver visible). Read by <see cref="Phosphor.Playback.JukeboxPlayer"/> via its context.
+    /// </summary>
+    public bool Player1AudioOnly
+    {
+        get => Player1.AudioOnly;
+        set => Player1.AudioOnly = value;
+    }
+
+    public event Action<int>? VolumeChanged
+    {
+        add => Player1.AddVolumeChanged(value!);
+        remove => Player1.RemoveVolumeChanged(value!);
+    }
+
+    public string PlaybackTimeText => Player1.PlaybackTimeText;
 
     /// <summary>True when the currently-playing item is a continuous live stream (e.g. SiriusXM).
     /// The UI hides the scrub bar/duration and seek is a no-op; playback shows elapsed "M:SS / *".</summary>
-    public bool IsLiveStream => _currentlyPlaying?.IsLiveStream == true;
+    public bool IsLiveStream => Player1.IsLiveStream;
 
     public void SeekTo(long timeMs)
     {
         if (IsLiveStream) return; // live streams are not seekable
-        SeekRequested?.Invoke(timeMs);
+        Player1.RaiseSeekRequested(timeMs);
     }
 
     [RelayCommand]
     private void SeekForward()
     {
-        if (IsLiveStream) return;
-        SeekRequested?.Invoke((long)PlaybackPosition + 15000);
+        if (Player1.IsLiveStream) return;
+        Player1.RaiseSeekRequested((long)Player1.PlaybackPosition + 15000);
     }
 
     [RelayCommand]
     private void SeekBack()
     {
-        if (IsLiveStream) return;
-        SeekRequested?.Invoke(Math.Max(0, (long)PlaybackPosition - 15000));
+        if (Player1.IsLiveStream) return;
+        Player1.RaiseSeekRequested(Math.Max(0, (long)Player1.PlaybackPosition - 15000));
     }
 
     // ── Video cache ──
     public VideoCache? Cache => _cache;
     public PrefetchCache? Prefetch => _prefetch;
-    private string? _prefetchingVideoId;
 
     // Guards against an unbounded skip loop when many consecutive tracks fail to resolve (e.g. a run
     // of DRM-protected SoundCloud tracks). Reset whenever a track resolves or the user picks a track.
@@ -2138,8 +2460,8 @@ public partial class JukeboxViewModel : ObservableObject
     {
         if (!GaplessPlayback || Queue.Count == 0) return null;
 
-        int nextIdx = _queueIndex + 1;
-        if (nextIdx >= Queue.Count && _repeatEnabled && Queue.Count > 0)
+        int nextIdx = QueueIndex + 1;
+        if (nextIdx >= Queue.Count && RepeatEnabled && Queue.Count > 0)
             nextIdx = 0;
         if (nextIdx < 0 || nextIdx >= Queue.Count) return null;
 
@@ -2188,8 +2510,8 @@ public partial class JukeboxViewModel : ObservableObject
         if (_cache is not { Enabled: true }) return;
 
         // Determine which item is "next" in the queue (with repeat wrap-around).
-        int nextIdx = _queueIndex + 1;
-        if (nextIdx >= Queue.Count && _repeatEnabled && Queue.Count > 0)
+        int nextIdx = QueueIndex + 1;
+        if (nextIdx >= Queue.Count && RepeatEnabled && Queue.Count > 0)
             nextIdx = 0;
         if (nextIdx < 0 || nextIdx >= Queue.Count) return;
 
@@ -2244,16 +2566,16 @@ public partial class JukeboxViewModel : ObservableObject
     public void PrefetchNextTrack()
     {
         if (_prefetch == null) return;
-        int nextIdx = _queueIndex + 1;
+        int nextIdx = QueueIndex + 1;
 
         // Wrap around for repeat mode
-        if (nextIdx >= Queue.Count && _repeatEnabled && Queue.Count > 0)
+        if (nextIdx >= Queue.Count && RepeatEnabled && Queue.Count > 0)
             nextIdx = 0;
 
         if (nextIdx < 0 || nextIdx >= Queue.Count) return;
 
         var nextId = Queue[nextIdx].VideoId;
-        if (nextId == _prefetchingVideoId) return;
+        if (nextId == Player1.Queue.PrefetchingVideoId) return;
 
         // Non-cacheable sources are streamed directly — no YouTube-style prefetch needed
         if (!IsItemCacheable(Queue[nextIdx])) return;
@@ -2262,7 +2584,7 @@ public partial class JukeboxViewModel : ObservableObject
         if (_cache?.TryGet(nextId) != null) return;
         if (_prefetch.TryGet(nextId) != null) return;
 
-        _prefetchingVideoId = nextId;
+        Player1.Queue.PrefetchingVideoId = nextId;
         SetStatusPrefix("Prefetching");
         // Route through the registry-ready gate so an early prefetch doesn't lose the startup race for
         // the shared DownloadOverride (same fix as the current-item / preemptive caches).
@@ -2320,6 +2642,13 @@ public partial class JukeboxViewModel : ObservableObject
 
     public JukeboxViewModel()
     {
+        _activePlayer = Player1;
+        Player1.Queue = new Phosphor.Playback.PlayerQueue("Backglass", QueuePath);
+        Player2.Queue = new Phosphor.Playback.PlayerQueue("Topper", TopperQueuePath);
+        WirePlayerQueue(Player1.Queue);
+        SwapActiveQueueSubscription(_activePlayer);
+        WirePlayerContext(Player1);
+        WirePlayerContext(Player2);
         _history = PlayHistory.Load();
         _playlists = new PlaylistManager();
         _searchHistory = SearchHistory.Load();
@@ -2327,6 +2656,7 @@ public partial class JukeboxViewModel : ObservableObject
         RebuildCategories();
         RefreshSearchSuggestions();
         LoadQueue();
+        Player2.Queue.Load();
         Queue.CollectionChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(CanStartOrStop));
@@ -2334,6 +2664,8 @@ public partial class JukeboxViewModel : ObservableObject
             OnPropertyChanged(nameof(QueueCountText));
             SaveQueue();
         };
+        // The Topper's queue persists independently to queue_topper.json.
+        Player2.Queue.Queue.CollectionChanged += (_, _) => Player2.Queue.Save();
     }
 
     // ── Category management ──
@@ -3333,71 +3665,35 @@ public partial class JukeboxViewModel : ObservableObject
     private static readonly string QueuePath = Path.Combine(
         AppDomain.CurrentDomain.BaseDirectory, "queue.json");
 
-    private void SaveQueue()
-    {
-        try
-        {
-            var json = JsonSerializer.Serialize(SanitizeForPersist(Queue), new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(QueuePath, json);
-        }
-        catch { }
-    }
+    private static readonly string TopperQueuePath = Path.Combine(
+        AppDomain.CurrentDomain.BaseDirectory, "queue_topper.json");
+
+    private void SaveQueue() => Player1.Queue.Save();
 
     /// <summary>
-    /// Produces the queue list to persist, stripping the ephemeral resolved URLs from live-stream
-    /// items so an expired URL is never written to disk. On restore those items re-resolve from their
-    /// id at play time (see <see cref="ResolveAndPlayLiveAsync"/>); persisting the URL would make the
-    /// player hand VLC a dead link and surface a misleading "stream timed out".
-    /// </summary>
-    private static List<VideoItem> SanitizeForPersist(IEnumerable<VideoItem> queue)
-    {
-        var list = new List<VideoItem>();
-        foreach (var item in queue)
-        {
-            if (item.IsLiveStream && (item.StreamUrl != null || item.AudioStreamUrl != null))
-            {
-                var copy = item.ShallowCopy();
-                copy.StreamUrl = null;
-                copy.AudioStreamUrl = null;
-                list.Add(copy);
-            }
-            else
-            {
-                list.Add(item);
-            }
-        }
-        return list;
-    }
-
-    /// <summary>
-    /// Persists the current queue to disk. Called on exit so metadata enriched during the
+    /// Persists both players' queues to disk. Called on exit so metadata enriched during the
     /// session (upload date, accurate duration, chapters populated on play) survives a
     /// restart — the per-item enrichment does not raise <see cref="Queue"/>'s
     /// CollectionChanged, so it is not otherwise re-saved.
     /// </summary>
-    public void SaveQueueState() => SaveQueue();
-
-    private void LoadQueue()
+    public void SaveQueueState()
     {
-        if (!File.Exists(QueuePath)) return;
-        try
-        {
-            var json = File.ReadAllText(QueuePath);
-            var items = JsonSerializer.Deserialize<List<VideoItem>>(json);
-            if (items != null)
-                foreach (var item in items)
-                    Queue.Add(item);
-        }
-        catch { }
+        Player1.Queue.Save();
+        Player2.Queue.Save();
     }
+
+    private void LoadQueue() => Player1.Queue.Load();
 
     // ── Queue & Playback ──
 
     [RelayCommand]
-    private void ClearQueue()
+    private void ClearQueue() => ClearQueueOn(Player1);
+
+    /// <summary>Clears <paramref name="player"/>'s queue and resets its cursor.</summary>
+    public void ClearQueueOn(Phosphor.Playback.PlayerContext player)
     {
-        Queue.Clear();
-        QueueIndex = -1;
+        player.Queue.Queue.Clear();
+        player.Queue.QueueIndex = -1;
         StatusText = "Queue cleared";
     }
 
@@ -3670,7 +3966,11 @@ public partial class JukeboxViewModel : ObservableObject
     {
         if (item == null || item.IsHeader) return;
 
-        if (Queue.Count >= MaxQueueSize)
+        // Add to the ACTIVE player's queue (the one the panel currently shows). With the 2nd player off
+        // this is always Player 1, so behavior is unchanged.
+        var q = _activePlayer.Queue.Queue;
+
+        if (q.Count >= MaxQueueSize)
         {
             StatusText = $"Queue is full ({MaxQueueSize} items max)";
             return;
@@ -3687,8 +3987,8 @@ public partial class JukeboxViewModel : ObservableObject
                 int added = 0;
                 foreach (var track in leaves)
                 {
-                    if (Queue.Count >= MaxQueueSize) break;
-                    Queue.Add(track);
+                    if (q.Count >= MaxQueueSize) break;
+                    q.Add(track);
                     added++;
                 }
                 StatusText = added < leaves.Count
@@ -3703,7 +4003,7 @@ public partial class JukeboxViewModel : ObservableObject
             return;
         }
 
-        Queue.Add(item);
+        q.Add(item);
         StatusText = $"Queued: {item.Title}";
     }
 
@@ -3786,7 +4086,15 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void PlayNow(VideoItem? item)
+    private void PlayNow(VideoItem? item) => PlayNowOn(ActivePlayer, item);
+
+    /// <summary>
+    /// Core play entry point. Starts <paramref name="item"/> on the given <paramref name="target"/>
+    /// player (its context + engine), rather than always the active player, so a queue advance targets
+    /// its owning player. The user-initiated <see cref="PlayNow"/> command routes here with
+    /// <see cref="ActivePlayer"/>; queue navigation routes here with the owning queue's player.
+    /// </summary>
+    private void PlayNowOn(Phosphor.Playback.PlayerContext target, VideoItem? item)
     {
         if (item == null || item.IsHeader) return;
 
@@ -3811,9 +4119,9 @@ public partial class JukeboxViewModel : ObservableObject
             return;
         }
 
-        PlayTransitioning = true;
+        target.PlayTransitioning = true;
         SetStatusPrefix("Transitioning");
-        CurrentlyPlaying = item;
+        target.CurrentlyPlaying = item;
         StatusText = $"Playing: {item.Title}{item.AudioTag}";
         _history.Add(item);
 
@@ -3826,7 +4134,7 @@ public partial class JukeboxViewModel : ObservableObject
             (item.StreamUrl == null &&
              (item.PendingLiveSourceItem != null || item.PendingResolveSourceItem != null)))
         {
-            StopRequested?.Invoke();
+            target.RaiseStopRequested();
         }
 
         // Live streams (e.g. Twitch, SiriusXM) resolve lazily at play time — resolve a fresh URL now,
@@ -3846,7 +4154,7 @@ public partial class JukeboxViewModel : ObservableObject
             return;
         }
 
-        PlayRequested?.Invoke(item.VideoId);
+        target.RaisePlayRequested(item.VideoId);
 
         // Fetch duration/chapters from the item's own source (source-agnostic). Fire-and-forget so
         // playback starts immediately; results apply to the now-playing item when they arrive.
@@ -3889,7 +4197,7 @@ public partial class JukeboxViewModel : ObservableObject
         if (source is not Phosphor.Plugin.Abstractions.IPlayableResolver resolver)
         {
             StatusText = $"Can't play {item.Title}: source unavailable.";
-            PlayTransitioning = false;
+            if (PlayerHosting(item) is { } p) p.PlayTransitioning = false;
             return;
         }
 
@@ -3913,7 +4221,7 @@ public partial class JukeboxViewModel : ObservableObject
         if (sourceItem == null)
         {
             StatusText = $"Can't tune {item.Title} — not live right now.";
-            PlayTransitioning = false;
+            if (PlayerHosting(item) is { } p) p.PlayTransitioning = false;
             return;
         }
 
@@ -3928,14 +4236,14 @@ public partial class JukeboxViewModel : ObservableObject
                 // NB: do NOT clear PendingLiveSourceItem — live URLs expire, so the item must stay
                 // re-resolvable for the next play (and the persisted StreamUrl is dropped on save).
                 // Guard against the user having moved on while we were tuning.
-                if (ReferenceEquals(CurrentlyPlaying, item))
-                    PlayRequested?.Invoke(item.VideoId);
+                if (PlayerHosting(item) is { } tuned)
+                    tuned.RaisePlayRequested(item.VideoId);
             }
             else
             {
                 StatusText = $"Can't tune {item.Title} — stream unavailable.";
                 NotifyPlaybackFailed(item);
-                PlayTransitioning = false;
+                if (PlayerHosting(item) is { } p) p.PlayTransitioning = false;
             }
         }
         catch (Exception ex)
@@ -3943,7 +4251,7 @@ public partial class JukeboxViewModel : ObservableObject
             DebugLog.LogException($"Live resolve '{item.VideoId}'", ex);
             StatusText = $"Can't tune {item.Title}: {ex.Message}";
             NotifyPlaybackFailed(item);
-            PlayTransitioning = false;
+            if (PlayerHosting(item) is { } p) p.PlayTransitioning = false;
         }
     }
 
@@ -3985,7 +4293,7 @@ public partial class JukeboxViewModel : ObservableObject
             || item.PendingResolveSourceItem is not Phosphor.Plugin.Abstractions.SourceItem sourceItem)
         {
             StatusText = $"Can't play {item.Title}: source unavailable.";
-            PlayTransitioning = false;
+            if (PlayerHosting(item) is { } p) p.PlayTransitioning = false;
             return;
         }
 
@@ -4004,8 +4312,8 @@ public partial class JukeboxViewModel : ObservableObject
                 item.IsAudioOnly = sourceItem.IsAudioOnly;
                 item.PendingResolveSourceItem = null; // resolved
                 // Guard against the user having moved on while we were resolving.
-                if (ReferenceEquals(CurrentlyPlaying, item))
-                    PlayRequested?.Invoke(item.VideoId);
+                if (PlayerHosting(item) is { } resolved)
+                    resolved.RaisePlayRequested(item.VideoId);
             }
             else
             {
@@ -4064,15 +4372,15 @@ public partial class JukeboxViewModel : ObservableObject
         // Whether this play is driven by the queue: the failing item is the one at the current queue
         // index. Ad-hoc plays (PlayNow directly, e.g. a browse/search row or an aggregated favorite)
         // don't move QueueIndex to the item, so this is false and we stop instead of skipping.
-        bool isQueuePlayback = _queueIndex >= 0 && _queueIndex < Queue.Count
-            && ReferenceEquals(Queue[_queueIndex], item);
+        bool isQueuePlayback = QueueIndex >= 0 && QueueIndex < Queue.Count
+            && ReferenceEquals(Queue[QueueIndex], item);
 
         // Stop (don't skip) for ad-hoc plays, if the user moved on, or if there's nowhere to advance.
         if (!isQueuePlayback || !ReferenceEquals(CurrentlyPlaying, item) || !HasNextTrack)
         {
             _consecutiveResolveFailures = 0;
             StatusText = reason;
-            PlayTransitioning = false;
+            if (PlayerHosting(item) is { } p) p.PlayTransitioning = false;
             return;
         }
 
@@ -4080,7 +4388,7 @@ public partial class JukeboxViewModel : ObservableObject
         {
             _consecutiveResolveFailures = 0;
             StatusText = $"{reason} Stopped after several unplayable tracks.";
-            PlayTransitioning = false;
+            if (PlayerHosting(item) is { } p2) p2.PlayTransitioning = false;
             return;
         }
 
@@ -4189,15 +4497,15 @@ public partial class JukeboxViewModel : ObservableObject
     [RelayCommand]
     private void StopPlayback()
     {
-        StopRequested?.Invoke();
+        Player1.RaiseStopRequested();
         PlayTransitioning = false;
         _statusPrefixCts?.Cancel();
         StatusPrefix = "";
-        CurrentlyPlaying = null;
+        Player1.CurrentlyPlaying = null;
         QueueIndex = -1;
-        IsPaused = false;
-        PlaybackPosition = 0;
-        PlaybackDuration = 1;
+        Player1.IsPaused = false;
+        Player1.PlaybackPosition = 0;
+        Player1.PlaybackDuration = 1;
         StatusText = "Playback stopped";
     }
 
@@ -4218,7 +4526,7 @@ public partial class JukeboxViewModel : ObservableObject
     {
         if (IsPlaying)
         {
-            _lastPlayedQueueIndex = _queueIndex;
+            _lastPlayedQueueIndex = QueueIndex;
             StopPlayback();
         }
         else if (fallbackItem != null)
@@ -4244,7 +4552,7 @@ public partial class JukeboxViewModel : ObservableObject
             ResumePlayback();
             return;
         }
-        PauseRequested?.Invoke();
+        Player1.RaisePauseRequested();
         IsPaused = true;
         StatusText = "Paused";
     }
@@ -4253,7 +4561,7 @@ public partial class JukeboxViewModel : ObservableObject
     private void ResumePlayback()
     {
         if (!IsPlaying || !IsPaused) return;
-        ResumeRequested?.Invoke();
+        Player1.RaiseResumeRequested();
         IsPaused = false;
         StatusText = $"Playing: {CurrentlyPlaying?.Title}{CurrentlyPlaying?.AudioTag}";
     }
@@ -4267,8 +4575,8 @@ public partial class JukeboxViewModel : ObservableObject
         }
         else if (!IsPlaying && Queue.Count > 0)
         {
-            if (_queueIndex >= 0 && _queueIndex < Queue.Count)
-                PlayFromQueueIndex(_queueIndex);
+            if (QueueIndex >= 0 && QueueIndex < Queue.Count)
+                PlayFromQueueIndex(QueueIndex);
             else
             {
                 QueueIndex = -1; // Reset so PlayNext starts at 0
@@ -4280,51 +4588,61 @@ public partial class JukeboxViewModel : ObservableObject
     /// <summary>
     /// Plays the queue item at the specified index, stopping any current playback first.
     /// </summary>
-    public void PlayFromQueueIndex(int index)
+    public void PlayFromQueueIndex(int index) => PlayFromQueueIndexOn(Player1, index);
+
+    /// <summary>
+    /// Plays the item at <paramref name="index"/> in <paramref name="player"/>'s queue on that player.
+    /// </summary>
+    public void PlayFromQueueIndexOn(Phosphor.Playback.PlayerContext player, int index)
     {
-        if (index < 0 || index >= Queue.Count) return;
-        if (_playTransitioning) return;
+        var queue = player.Queue;
+        if (index < 0 || index >= queue.Queue.Count) return;
+        if (player.PlayTransitioning) return;
 
-        // Do NOT pre-emptively stop here: PlayNow -> the player handles the transition from the current
+        // Do NOT pre-emptively stop here: PlayNow → Play() handles the transition from the current
         // track (and PlayNow issues its own stop for live/deferred items that resolve first). A
-        // pre-emptive StopRequested races the new play on the Backglass thread and briefly flashes the
+        // pre-emptive StopRequested races the new Play on the Backglass thread and briefly flashes the
         // idle blob overlay between tracks; the natural-end path never stops first and is clean.
-        QueueIndex = index;
-        PlayNow(Queue[index]);
+        queue.QueueIndex = index;
+        PlayNowOn(player, queue.Queue[index]);
 
-        if (_autoDjEnabled)
-            _ = SafeFireAndForget(AutoDjFillQueue());
+        if (queue.AutoDjEnabled)
+            _ = SafeFireAndForget(AutoDjFillQueueOn(player));
     }
 
     [RelayCommand]
-    private void RemoveFromQueue(VideoItem? item)
+    private void RemoveFromQueue(VideoItem? item) => RemoveFromQueueOn(Player1, item);
+
+    /// <summary>Removes <paramref name="item"/> from <paramref name="player"/>'s queue, adjusting its cursor.</summary>
+    public void RemoveFromQueueOn(Phosphor.Playback.PlayerContext player, VideoItem? item)
     {
         if (item == null) return;
-        int idx = Queue.IndexOf(item);
+        var pq = player.Queue;
+        int idx = pq.Queue.IndexOf(item);
         if (idx < 0) return;
 
         // Adjust QueueIndex if removing an item at or before current position
-        if (idx < _queueIndex)
-            QueueIndex--;
-        else if (idx == _queueIndex)
+        if (idx < pq.QueueIndex)
+            pq.QueueIndex--;
+        else if (idx == pq.QueueIndex)
         {
             // Removing the currently playing item — stop or advance
-            Queue.Remove(item);
-            if (_queueIndex >= Queue.Count)
-                QueueIndex = Queue.Count > 0 ? Queue.Count - 1 : -1;
-            OnPropertyChanged(nameof(CurrentQueueItem));
+            pq.Queue.Remove(item);
+            if (pq.QueueIndex >= pq.Queue.Count)
+                pq.QueueIndex = pq.Queue.Count > 0 ? pq.Queue.Count - 1 : -1;
+            pq.NotifyQueueContentsChanged();
             return;
         }
 
-        Queue.Remove(item);
-        OnPropertyChanged(nameof(CurrentQueueItem));
+        pq.Queue.Remove(item);
+        pq.NotifyQueueContentsChanged();
     }
 
     [RelayCommand]
     private void Skip()
     {
-        var chapters = _currentlyPlaying?.Chapters;
-        if (chapters != null && chapters.Count > 0 && _playbackDuration > 1)
+        var chapters = Player1.CurrentlyPlaying?.Chapters;
+        if (chapters != null && chapters.Count > 0 && Player1.PlaybackDuration > 1)
         {
             int currentChapter = GetCurrentChapterIndex(chapters);
             if (currentChapter < chapters.Count - 1)
@@ -4332,16 +4650,16 @@ public partial class JukeboxViewModel : ObservableObject
                 // Seek to next chapter
                 var nextStart = (long)chapters[currentChapter + 1].StartTime.TotalMilliseconds;
                 PlayTransitioning = true;
-                SeekRequested?.Invoke(nextStart);
+                Player1.RaiseSeekRequested(nextStart);
                 return;
             }
         }
 
         // Last chapter or no chapters — skip to next queue item. Do NOT pre-emptively stop here: a
-        // track *change* is a transition, not a stop-to-idle. PlayNext -> PlayNow -> the player already
+        // track *change* is a transition, not a stop-to-idle. PlayNext → PlayNow → Play() already
         // handles stopping the old media as part of the transition (and PlayNow issues its own stop for
         // live/deferred items that resolve before playing). A pre-emptive StopRequested races the new
-        // play on the Backglass thread and briefly flashes the idle blob overlay between tracks — the
+        // Play on the Backglass thread and briefly flashes the idle blob overlay between tracks — the
         // natural-end path (which never stops first) is clean, so mirror it.
         PlayNext();
     }
@@ -4352,7 +4670,7 @@ public partial class JukeboxViewModel : ObservableObject
     /// </summary>
     private int GetCurrentChapterIndex(List<ChapterMarker> chapters)
     {
-        var posMs = PlaybackPosition;
+        var posMs = Player1.PlaybackPosition;
         for (int i = chapters.Count - 1; i >= 0; i--)
         {
             if (posMs >= chapters[i].StartTime.TotalMilliseconds)
@@ -4366,8 +4684,8 @@ public partial class JukeboxViewModel : ObservableObject
     {
         if (!IsPlaying) return;
 
-        var chapters = _currentlyPlaying?.Chapters;
-        if (chapters != null && chapters.Count > 0 && _playbackDuration > 1)
+        var chapters = Player1.CurrentlyPlaying?.Chapters;
+        if (chapters != null && chapters.Count > 0 && Player1.PlaybackDuration > 1)
         {
             int currentChapter = GetCurrentChapterIndex(chapters);
             var chapterStartMs = chapters[currentChapter].StartTime.TotalMilliseconds;
@@ -4377,14 +4695,14 @@ public partial class JukeboxViewModel : ObservableObject
             {
                 // Restart current chapter
                 PlayTransitioning = true;
-                SeekRequested?.Invoke((long)chapterStartMs);
+                Player1.RaiseSeekRequested((long)chapterStartMs);
                 return;
             }
             else if (currentChapter > 0)
             {
                 // Jump to previous chapter
                 PlayTransitioning = true;
-                SeekRequested?.Invoke((long)chapters[currentChapter - 1].StartTime.TotalMilliseconds);
+                Player1.RaiseSeekRequested((long)chapters[currentChapter - 1].StartTime.TotalMilliseconds);
                 return;
             }
             // First chapter and near start — fall through to previous queue item logic
@@ -4392,13 +4710,13 @@ public partial class JukeboxViewModel : ObservableObject
 
         // No chapters — original behavior
         if (Queue.Count == 0) return;
-        int currentIdx = _queueIndex;
+        int currentIdx = QueueIndex;
         bool isFirstItem = currentIdx <= 0;
         bool isBeyond10Seconds = PlaybackPosition >= 10000;
 
         if (isBeyond10Seconds || isFirstItem)
         {
-            SeekRequested?.Invoke(0);
+            Player1.RaiseSeekRequested(0);
         }
         else
         {
@@ -4415,73 +4733,86 @@ public partial class JukeboxViewModel : ObservableObject
         get
         {
             if (Queue.Count == 0) return false;
-            int nextIndex = _queueIndex + 1;
+            int nextIndex = QueueIndex + 1;
             if (nextIndex < Queue.Count) return true;
-            if (_repeatEnabled && Queue.Count > 0) return true;
-            if (_autoDjEnabled) return true;
+            if (RepeatEnabled && Queue.Count > 0) return true;
+            if (AutoDjEnabled) return true;
             return false;
         }
     }
 
-    public void PlayNext()
-    {
-        _prefetchingVideoId = null;
+    public void PlayNext() => PlayNextOn(Player1);
 
-        if (Queue.Count == 0)
+    /// <summary>Advances <paramref name="player"/>'s queue to the next track and plays it on that player.</summary>
+    public void PlayNextOn(Phosphor.Playback.PlayerContext player)
+    {
+        var queue = player.Queue;
+        queue.PrefetchingVideoId = null;
+
+        if (queue.Queue.Count == 0)
         {
-            CurrentlyPlaying = null;
-            QueueIndex = -1;
+            player.CurrentlyPlaying = null;
+            queue.QueueIndex = -1;
             StatusText = "Queue empty";
             return;
         }
 
-        int nextIndex = _queueIndex + 1;
+        int nextIndex = queue.QueueIndex + 1;
 
-        if (nextIndex >= Queue.Count)
+        if (nextIndex >= queue.Queue.Count)
         {
-            if (_repeatEnabled)
+            if (queue.RepeatEnabled)
             {
                 nextIndex = 0; // Wrap around to start
             }
             else
             {
-                CurrentlyPlaying = null;
+                player.CurrentlyPlaying = null;
                 StatusText = "Queue finished";
                 // Keep QueueIndex pointing at the last item (stays highlighted)
-                if (_autoDjEnabled)
-                    _ = SafeFireAndForget(AutoDjFillQueue());
+                if (queue.AutoDjEnabled)
+                    _ = SafeFireAndForget(AutoDjFillQueueOn(player));
                 return;
             }
         }
 
-        IsQueueTransition = true;
-        QueueIndex = nextIndex;
-        PlayNow(Queue[nextIndex]);
+        if (ReferenceEquals(player, Player1))
+            IsQueueTransition = true;
+        queue.QueueIndex = nextIndex;
+        PlayNowOn(player, queue.Queue[nextIndex]);
 
-        if (_autoDjEnabled)
-            _ = SafeFireAndForget(AutoDjFillQueue());
+        if (queue.AutoDjEnabled)
+            _ = SafeFireAndForget(AutoDjFillQueueOn(player));
     }
 
     /// <summary>
     /// Advances the queue index and updates state for a gapless transition
     /// (the BackglassWindow has already started playback on a pre-loaded MediaPlayer).
     /// </summary>
-    public void AdvanceQueueGapless()
+    public void AdvanceQueueGapless() => AdvanceQueueGaplessOn(Player1);
+
+    /// <summary>
+    /// Advances <paramref name="player"/>'s queue for a gapless transition (the host has already started
+    /// playback on a pre-loaded decoder), updating that player's now-playing state — no new play request.
+    /// </summary>
+    public void AdvanceQueueGaplessOn(Phosphor.Playback.PlayerContext player)
     {
-        _prefetchingVideoId = null;
+        var queue = player.Queue;
+        queue.PrefetchingVideoId = null;
 
-        int nextIndex = _queueIndex + 1;
-        if (nextIndex >= Queue.Count && _repeatEnabled && Queue.Count > 0)
+        int nextIndex = queue.QueueIndex + 1;
+        if (nextIndex >= queue.Queue.Count && queue.RepeatEnabled && queue.Queue.Count > 0)
             nextIndex = 0;
-        if (nextIndex < 0 || nextIndex >= Queue.Count) return;
+        if (nextIndex < 0 || nextIndex >= queue.Queue.Count) return;
 
-        IsQueueTransition = true;
-        QueueIndex = nextIndex;
-        var item = Queue[nextIndex];
-        CurrentlyPlaying = item;
+        if (ReferenceEquals(player, Player1))
+            IsQueueTransition = true;
+        queue.QueueIndex = nextIndex;
+        var item = queue.Queue[nextIndex];
+        player.CurrentlyPlaying = item;
         StatusText = $"Playing: {item.Title}{item.AudioTag}";
         _history.Add(item);
-        PlayTransitioning = false;
+        player.PlayTransitioning = false;
         _statusPrefixCts?.Cancel();
         StatusPrefix = "";
 
@@ -4489,8 +4820,8 @@ public partial class JukeboxViewModel : ObservableObject
         if (item.Chapters == null)
             _ = SafeFireAndForget(FetchChaptersViaSourceAsync(item));
 
-        if (_autoDjEnabled)
-            _ = SafeFireAndForget(AutoDjFillQueue());
+        if (queue.AutoDjEnabled)
+            _ = SafeFireAndForget(AutoDjFillQueueOn(player));
     }
 
     // ── Playlists ──
@@ -4675,15 +5006,19 @@ public partial class JukeboxViewModel : ObservableObject
     /// Randomize the order of the queue.
     /// </summary>
     [RelayCommand]
-    private void ShuffleQueue()
+    private void ShuffleQueue() => ShuffleQueueOn(Player1);
+
+    /// <summary>Randomizes the order of <paramref name="player"/>'s queue, keeping its current item's cursor.</summary>
+    public void ShuffleQueueOn(Phosphor.Playback.PlayerContext player)
     {
-        if (Queue.Count < 2) return;
+        var pq = player.Queue;
+        if (pq.Queue.Count < 2) return;
 
         // Remember the currently playing item
-        var currentItem = CurrentQueueItem;
+        var currentItem = pq.CurrentQueueItem;
 
-        var items = Queue.ToList();
-        Queue.Clear();
+        var items = pq.Queue.ToList();
+        pq.Queue.Clear();
 
         // Fisher-Yates shuffle
         for (int i = items.Count - 1; i > 0; i--)
@@ -4693,13 +5028,13 @@ public partial class JukeboxViewModel : ObservableObject
         }
 
         foreach (var item in items)
-            Queue.Add(item);
+            pq.Queue.Add(item);
 
         // Restore QueueIndex to point at the same item
         if (currentItem != null)
-            QueueIndex = Queue.IndexOf(currentItem);
+            pq.QueueIndex = pq.Queue.IndexOf(currentItem);
 
-        StatusText = $"Shuffled {Queue.Count} items in queue";
+        StatusText = $"Shuffled {pq.Queue.Count} items in queue";
     }
 
     // ── AutoDJ ──
@@ -4709,16 +5044,20 @@ public partial class JukeboxViewModel : ObservableObject
     private readonly HashSet<string> _autoDjUsedIds = new();
     private readonly Random _autoDjRng = new();
 
-    private async Task AutoDjFillQueue()
+    private async Task AutoDjFillQueue() => await AutoDjFillQueueOn(Player1);
+
+    /// <summary>Refills <paramref name="player"/>'s queue via AutoDJ when it is running low.</summary>
+    private async Task AutoDjFillQueueOn(Phosphor.Playback.PlayerContext player)
     {
-        if (_isAutoDjFilling || !_autoDjEnabled) return;
+        var pq = player.Queue;
+        if (pq.IsAutoDjFilling || !pq.AutoDjEnabled) return;
 
         // Only refill when fewer than 5 items remain ahead of the current position
-        int remaining = Queue.Count - Math.Max(_queueIndex, 0);
-        if (remaining >= AutoDjRefillThreshold && Queue.Count > 0) return;
+        int remaining = pq.Queue.Count - Math.Max(pq.QueueIndex, 0);
+        if (remaining >= AutoDjRefillThreshold && pq.Queue.Count > 0) return;
 
-        _isAutoDjFilling = true;
-        int targetSize = Queue.Count + AutoDjBatchSize;
+        pq.IsAutoDjFilling = true;
+        int targetSize = pq.Queue.Count + AutoDjBatchSize;
 
         try
         {
@@ -4729,22 +5068,23 @@ public partial class JukeboxViewModel : ObservableObject
             if (genreEntry != null)
             {
                 var genreCat = new Category { Name = genreEntry.Name, Icon = genreEntry.Icon, SearchTerm = genreEntry.SearchTerm };
-                await AutoDjFromGenre(genreCat, targetSize);
+                await AutoDjFromGenre(player, genreCat, targetSize);
             }
             else
-                await AutoDjFromVideo(targetSize);
+                await AutoDjFromVideo(player, targetSize);
 
-            if (_autoDjEnabled && Queue.Count > 0)
-                StatusText = $"AutoDJ active — {Queue.Count} in queue";
+            if (pq.AutoDjEnabled && pq.Queue.Count > 0)
+                StatusText = $"AutoDJ active — {pq.Queue.Count} in queue";
         }
         finally
         {
-            _isAutoDjFilling = false;
+            pq.IsAutoDjFilling = false;
         }
     }
 
-    private async Task AutoDjFromGenre(Category genre, int targetSize)
+    private async Task AutoDjFromGenre(Phosphor.Playback.PlayerContext player, Category genre, int targetSize)
     {
+        var pq = player.Queue;
         StatusText = $"AutoDJ: browsing {genre.Name}...";
 
         try
@@ -4774,18 +5114,18 @@ public partial class JukeboxViewModel : ObservableObject
             {
                 foreach (var item in shuffled)
                 {
-                    if (Queue.Count >= targetSize) break;
+                    if (pq.Queue.Count >= targetSize) break;
                     var videoId = item.VideoId;
                     if (_autoDjUsedIds.Contains(videoId)) continue;
-                    if (Queue.Any(q => q.VideoId == videoId)) continue;
-                    if (CurrentlyPlaying?.VideoId == videoId) continue;
+                    if (pq.Queue.Any(q => q.VideoId == videoId)) continue;
+                    if (player.CurrentlyPlaying?.VideoId == videoId) continue;
 
-                    Queue.Add(item);
+                    pq.Queue.Add(item);
                     _autoDjUsedIds.Add(videoId);
                     StatusText = $"AutoDJ queued: {item.Title}";
 
-                    if (CurrentlyPlaying == null)
-                        PlayNext();
+                    if (player.CurrentlyPlaying == null)
+                        PlayNextOn(player);
                 }
             });
         }
@@ -4795,11 +5135,12 @@ public partial class JukeboxViewModel : ObservableObject
         }
     }
 
-    private async Task AutoDjFromVideo(int targetSize)
+    private async Task AutoDjFromVideo(Phosphor.Playback.PlayerContext player, int targetSize)
     {
+        var pq = player.Queue;
         // Use the title of the currently playing (or most recent) track to find similar content,
         // since the channel/author name often doesn't reflect the actual music.
-        string? query = CurrentlyPlaying?.Title;
+        string? query = player.CurrentlyPlaying?.Title;
 
         if (string.IsNullOrWhiteSpace(query))
         {
@@ -4842,18 +5183,18 @@ public partial class JukeboxViewModel : ObservableObject
             {
                 foreach (var item in shuffled)
                 {
-                    if (Queue.Count >= targetSize) break;
+                    if (pq.Queue.Count >= targetSize) break;
                     var videoId = item.VideoId;
                     if (_autoDjUsedIds.Contains(videoId)) continue;
-                    if (Queue.Any(q => q.VideoId == videoId)) continue;
-                    if (CurrentlyPlaying?.VideoId == videoId) continue;
+                    if (pq.Queue.Any(q => q.VideoId == videoId)) continue;
+                    if (player.CurrentlyPlaying?.VideoId == videoId) continue;
 
-                    Queue.Add(item);
+                    pq.Queue.Add(item);
                     _autoDjUsedIds.Add(videoId);
                     StatusText = $"AutoDJ queued: {item.Title}";
 
-                    if (CurrentlyPlaying == null)
-                        PlayNext();
+                    if (player.CurrentlyPlaying == null)
+                        PlayNextOn(player);
                 }
             });
         }
@@ -4984,7 +5325,7 @@ public partial class JukeboxViewModel : ObservableObject
                 if (meta.UploadDate.HasValue)
                 {
                     item.UploadDate = meta.UploadDate;
-                    if (ReferenceEquals(item, _currentlyPlaying))
+                    if (ReferenceEquals(item, Player1.CurrentlyPlaying) || ReferenceEquals(item, Player2.CurrentlyPlaying))
                         OnPropertyChanged(nameof(NowPlayingTitle));
                 }
 
@@ -4992,11 +5333,12 @@ public partial class JukeboxViewModel : ObservableObject
                 {
                     item.Chapters = chapters;
                     DebugLog.Log(LogLevel.Debug, "Chapters", $"Chapters ({chapterSource}): {chapters.Count}");
-                    if (ReferenceEquals(item, _currentlyPlaying))
+                    var owner = ReferenceEquals(item, Player2.CurrentlyPlaying) ? Player2
+                              : ReferenceEquals(item, Player1.CurrentlyPlaying) ? Player1 : null;
+                    if (owner != null)
                     {
-                        UpdateChapterTickPositions();
-                        OnPropertyChanged(nameof(ShouldSnapToChapters));
-                        UpdateCurrentChapter();
+                        owner.UpdateChapterTickPositions();
+                        owner.NotifyCachedChaptersRestored();
                     }
 
                     // Persist chapters to video cache if the item is cached.

@@ -13,8 +13,14 @@ namespace Phosphor;
 
 public partial class BackglassWindow : JukeboxWindow
 {
-    private LibVLC? _libVLC;
-    private MediaPlayer? _mediaPlayer;
+    // The raw LibVLC engine for this window's player (VLC lifecycle, last-stream context, live clock).
+    // Owned by JukeboxPlayer (so a second player gets an independent engine); the window references the
+    // same instance here so its not-yet-relocated orchestration and the player's relocated code share
+    // one engine during the migration.
+    private Phosphor.Playback.MediaEngine _engine => JukeboxPlayer.Engine;
+
+    private LibVLC? _libVLC { get => _engine.LibVLC; set => _engine.SetSharedVlc(value); }
+    private MediaPlayer? _mediaPlayer => _engine.MediaPlayer;
     private readonly Random _rng = new();
     private readonly DispatcherTimer _colorTimer;
     // Debounces IdleCanvas resize so the blob pattern is rebuilt (re-centered) only
@@ -23,7 +29,7 @@ public partial class BackglassWindow : JukeboxWindow
     private DispatcherTimer? _positionTimer;
     // Wall-clock start of the current live stream, used to show elapsed time (LibVLC's Time reflects
     // the live DVR window, not elapsed-since-start). Null when not playing a live stream.
-    private DateTime? _liveStartUtc;
+    private DateTime? _liveStartUtc { get => _engine.LiveStartUtc; set => _engine.LiveStartUtc = value; }
     private double _hueOffset;
     private bool _idleAnimStarted;
     private bool _showVideoInfo;
@@ -55,36 +61,35 @@ public partial class BackglassWindow : JukeboxWindow
     private readonly DispatcherTimer _logoDimTimer = new();
     private bool _logoMorphEnabled;
     private bool _audioOnly;
-    private CancellationTokenSource? _playCts;
+    private CancellationTokenSource? _playCts { get => _engine.PlayCts; set => _engine.PlayCts = value; }
     private readonly DispatcherTimer _morphTimer = new();
-    private Task? _vlcInitTask;
-    private Task<LibVLC?>? _sharedVlcTask;
+    private Task? _vlcInitTask { get => _engine.InitTask; set => _engine.InitTask = value; }
     private readonly DispatcherTimer _expandButtonHideTimer = new() { Interval = TimeSpan.FromSeconds(3) };
 
-    // ── Gapless playback ──
-    private MediaPlayer? _nextMediaPlayer;
-    private string? _nextGaplessVideoId;
-    private bool _gaplessPrimed;
+    // ── Gapless playback (state lives in MediaEngine; delegated here so existing code compiles) ──
+    private MediaPlayer? _nextMediaPlayer { get => _engine.NextMediaPlayer; set => _engine.NextMediaPlayer = value; }
+    private string? _nextGaplessVideoId { get => _engine.NextGaplessVideoId; set => _engine.NextGaplessVideoId = value; }
+    private bool _gaplessPrimed { get => _engine.GaplessPrimed; set => _engine.GaplessPrimed = value; }
 
     // ── PCM gapless playback ──
-    private GaplessAudioPlayer? _gaplessPlayer;
-    private bool _usingGaplessPlayer;
+    private GaplessAudioPlayer? _gaplessPlayer { get => _engine.GaplessPlayer; set => _engine.GaplessPlayer = value; }
+    private bool _usingGaplessPlayer { get => _engine.UsingGaplessPlayer; set => _engine.UsingGaplessPlayer = value; }
 
     // ── Last YouTube/HTTP stream context (used for re-opening on failed seek) ──
     // These are populated whenever we kick off playback so that OnSeekRequested can
     // rebuild a Media with ":start-time=<seconds>" without re-querying the manifest.
     // _lastLocalFilePath is set for cached/prefetched playback (re-open uses Time/Position
-    // since seeking always works on local files).
-    private string? _lastPlayingVideoId;
-    private string? _lastVideoStreamUrl;
-    private string? _lastAudioStreamUrl;
-    private string? _lastMuxedStreamUrl;
-    private string? _lastLocalFilePath;
+    // since seeking always works on local files). Backed by the MediaEngine (slice 1).
+    private string? _lastPlayingVideoId { get => _engine.LastPlayingVideoId; set => _engine.LastPlayingVideoId = value; }
+    private string? _lastVideoStreamUrl { get => _engine.LastVideoStreamUrl; set => _engine.LastVideoStreamUrl = value; }
+    private string? _lastAudioStreamUrl { get => _engine.LastAudioStreamUrl; set => _engine.LastAudioStreamUrl = value; }
+    private string? _lastMuxedStreamUrl { get => _engine.LastMuxedStreamUrl; set => _engine.LastMuxedStreamUrl = value; }
+    private string? _lastLocalFilePath { get => _engine.LastLocalFilePath; set => _engine.LastLocalFilePath = value; }
 
     // ── Seek verification cancellation ──
     // A new seek request cancels any in-flight verification from the previous seek so
     // that the older verification can't "restore" a position over the new target.
-    private CancellationTokenSource? _seekVerifyCts;
+    private CancellationTokenSource? _seekVerifyCts { get => _engine.SeekVerifyCts; set => _engine.SeekVerifyCts = value; }
 
     // ── Transition idle-overlay reveal timer ──
     // During a track-to-track transition we delay showing the idle (logo/blob) overlay
@@ -93,24 +98,6 @@ public partial class BackglassWindow : JukeboxWindow
     // overlay, avoiding a jarring blob-screen blip on fast transitions.
     private DispatcherTimer? _transitionOverlayTimer;
     private const int TransitionOverlayDelayMs = 600;
-
-    // Default budget for the first-frame / audio-start watchdog. Finite media (YouTube, Plex/Jellyfin
-    // on-demand) uses this; slow-starting live streams (Plex/Jellyfin Live TV) request a longer budget
-    // via ResolvedStream.StartupTimeout → VideoItem.StartupTimeout so they aren't killed before their
-    // first HLS segment (tuner + transcode spin-up) appears.
-    private const int DefaultFirstFrameTimeoutMs = 10000;
-
-    /// <summary>
-    /// The first-frame watchdog budget (ms) for the item now starting: the source-supplied
-    /// <see cref="VideoItem.StartupTimeout"/> hint when present (slow-starting live streams), otherwise
-    /// the standard <see cref="DefaultFirstFrameTimeoutMs"/> for finite media.
-    /// </summary>
-    private static int FirstFrameTimeoutMs(JukeboxViewModel? vm)
-    {
-        if (vm?.CurrentlyPlaying?.StartupTimeout is { } budget && budget > TimeSpan.Zero)
-            return (int)Math.Min(budget.TotalMilliseconds, int.MaxValue);
-        return DefaultFirstFrameTimeoutMs;
-    }
 
     public MediaPlayer MediaPlayer => EnsureVlcInitialized();
 
@@ -121,23 +108,7 @@ public partial class BackglassWindow : JukeboxWindow
     /// </summary>
     private MediaPlayer EnsureVlcInitialized()
     {
-        if (_mediaPlayer != null)
-            return _mediaPlayer;
-
-        // Background init may still be running � wait for it
-        if (_vlcInitTask != null && !_vlcInitTask.IsCompleted)
-        {
-            // Pump dispatcher messages so the window doesn't freeze
-            var frame = new DispatcherFrame();
-            _vlcInitTask.ContinueWith(_ => frame.Continue = false);
-            Dispatcher.PushFrame(frame);
-        }
-
-        // If background init didn't run (shouldn't happen), init synchronously
-        if (_mediaPlayer == null)
-            InitializeVlcCore();
-
-        return _mediaPlayer!;
+        return _engine.EnsureInitialized(Dispatcher);
     }
 
     /// <summary>
@@ -147,8 +118,7 @@ public partial class BackglassWindow : JukeboxWindow
     /// </summary>
     public void SetSharedVlc(LibVLC? vlc)
     {
-        if (vlc != null)
-            _libVLC = vlc;
+        _engine.SetSharedVlc(vlc);
     }
 
     /// <summary>
@@ -158,7 +128,7 @@ public partial class BackglassWindow : JukeboxWindow
     /// </summary>
     public void SetSharedVlcTask(Task<LibVLC?>? task)
     {
-        _sharedVlcTask = task;
+        _engine.SetSharedVlcTask(task);
     }
 
     /// <summary>
@@ -168,18 +138,7 @@ public partial class BackglassWindow : JukeboxWindow
     /// </summary>
     private void InitializeVlcCore()
     {
-        var vlc = _libVLC ?? new LibVLC("--no-video-title-show", "--network-caching=3000", "--http-reconnect");
-        var mp = new MediaPlayer(vlc);
-        // Stop VLC from grabbing mouse/keyboard on its video HWND so events pass
-        // through to the hosting WinForms panel (enables our drag/resize hooks).
-        mp.EnableMouseInput = false;
-        mp.EnableKeyInput = false;
-        // Wire EndReached on our dispatcher so the handler can touch UI
-        Dispatcher.Invoke(() => mp.EndReached += OnMediaEnded);
-        // Clear chapter-seek spinner once VLC finishes buffering
-        mp.Buffering += OnMediaBuffering;
-        _libVLC = vlc;
-        _mediaPlayer = mp;
+        _engine.InitializeCore(Dispatcher);
     }
 
     /// <summary>
@@ -239,6 +198,11 @@ public partial class BackglassWindow : JukeboxWindow
         _colorTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         _colorTimer.Tick += ColorCycleBlobs;
 
+        // The MediaEngine owns the VLC player and raises EndReached/Buffering; keep the window's
+        // existing handlers by subscribing them here (they still touch view/VM state on the window).
+        _engine.EndReached += OnMediaEnded;
+        _engine.Buffering += OnMediaBuffering;
+
         _resizeDebounceTimer.Tick += OnResizeDebounceTick;
 
         _logoDimTimer.Tick += LogoDimTimer_Tick;
@@ -297,22 +261,8 @@ public partial class BackglassWindow : JukeboxWindow
             // appears immediately without the ~17% startup cost.
             // If the user hits play before this completes,
             // EnsureVlcInitialized will wait with dispatcher pumping.
-            _vlcInitTask = Task.Run(() =>
-            {
-                // If app provided a shared-VLC task, wait for it here (off-thread)
-                // and reuse the result instead of spinning up a second LibVLC.
-                if (_sharedVlcTask != null && _libVLC == null)
-                {
-                    try
-                    {
-                        var shared = _sharedVlcTask.GetAwaiter().GetResult();
-                        if (shared != null)
-                            _libVLC = shared;
-                    }
-                    catch { }
-                }
-                InitializeVlcCore();
-            });
+            // The engine's InitializeCore adopts the shared-VLC task result internally.
+            _engine.InitTask = Task.Run(() => _engine.InitializeCore(Dispatcher));
         };
     }
 
@@ -403,41 +353,26 @@ public partial class BackglassWindow : JukeboxWindow
 
     public void AttachViewModel(JukeboxViewModel vm)
     {
-        vm.PlayRequested += OnPlayRequested;
-        vm.StopRequested += OnStopRequested;
-        vm.SeekRequested += OnSeekRequested;
-        vm.PauseRequested += () => Dispatcher.BeginInvoke(() =>
-        {
-            if (_usingGaplessPlayer && _gaplessPlayer != null)
-                _gaplessPlayer.Pause();
-            else
-                EnsureVlcInitialized().SetPause(true);
-        });
-        vm.ResumeRequested += () => Dispatcher.BeginInvoke(() =>
-        {
-            if (_usingGaplessPlayer && _gaplessPlayer != null)
-                _gaplessPlayer.Resume();
-            else
-                EnsureVlcInitialized().SetPause(false);
-        });
-        vm.VolumeChanged += v => Dispatcher.BeginInvoke(() =>
-        {
-            if (_usingGaplessPlayer && _gaplessPlayer != null)
-                _gaplessPlayer.SetVolume(v);
-            EnsureVlcInitialized().Volume = VolumeTaper.VlcVolume(v);
-            DebugLog.Log(LogLevel.Trace, "Volume", $"Volume set to {v}");
-        });
+        // Bind this window's playback engine to Player 1's command channel (context → player → host).
+        // JukeboxPlayer owns all six command handlers AND the full play/stop/seek orchestration; this
+        // window is now a pure IPlaybackHost (video surface + idle visuals + engine host), no longer
+        // holding any playback logic.
+        JukeboxPlayer.Attach(vm);
 
         _positionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _positionTimer.Tick += (_, _) =>
         {
-            if (DataContext is not JukeboxViewModel v || v.IsSeeking) return;
+            if (DataContext is not JukeboxViewModel v) return;
+            // Write back to THIS player's own context (Backglass = Player 1) so a second player never
+            // clobbers it. Reads (IsSeeking / CurrentlyPlaying) also come from this player's state.
+            var state = JukeboxPlayer.Context;
+            if (state == null || state.IsSeeking) return;
 
             // PCM gapless mode
             if (_usingGaplessPlayer && _gaplessPlayer != null)
             {
-                v.PlaybackDuration = Math.Max(1, _gaplessPlayer.DurationMs);
-                v.PlaybackPosition = Math.Max(0, _gaplessPlayer.PositionMs);
+                state.PlaybackDuration = Math.Max(1, _gaplessPlayer.DurationMs);
+                state.PlaybackPosition = Math.Max(0, _gaplessPlayer.PositionMs);
 
                 // Prime next track ~10 seconds before end
                 var remaining = _gaplessPlayer.DurationMs - _gaplessPlayer.PositionMs;
@@ -451,11 +386,11 @@ public partial class BackglassWindow : JukeboxWindow
             // Live streams (e.g. SiriusXM): LibVLC's Time is the position within the live DVR window
             // (SXM buffers ~2 min), which makes elapsed jump to ~2:20 at start. Instead, count elapsed
             // from a wall-clock stamp taken when playback began, and report no fixed duration.
-            if (v.CurrentlyPlaying?.IsLiveStream == true)
+            if (state.CurrentlyPlaying?.IsLiveStream == true)
             {
                 if (_liveStartUtc == null) _liveStartUtc = DateTime.UtcNow;
-                v.PlaybackDuration = 1; // no seekable duration
-                v.PlaybackPosition = Math.Max(0, (DateTime.UtcNow - _liveStartUtc.Value).TotalMilliseconds);
+                state.PlaybackDuration = 1; // no seekable duration
+                state.PlaybackPosition = Math.Max(0, (DateTime.UtcNow - _liveStartUtc.Value).TotalMilliseconds);
                 return;
             }
             _liveStartUtc = null;
@@ -464,11 +399,11 @@ public partial class BackglassWindow : JukeboxWindow
             // HLS transcode), which would pin the scrub bar "at the end". Fall back to the item's
             // known duration (Jellyfin RunTimeTicks, Plex duration, …) so time/seek still work.
             long lengthMs = _mediaPlayer.Length;
-            if (lengthMs <= 0 && v.CurrentlyPlaying?.Duration is { } known && known > TimeSpan.Zero)
+            if (lengthMs <= 0 && state.CurrentlyPlaying?.Duration is { } known && known > TimeSpan.Zero)
                 lengthMs = (long)known.TotalMilliseconds;
 
-            v.PlaybackDuration = Math.Max(1, lengthMs);
-            v.PlaybackPosition = Math.Max(0, _mediaPlayer.Time);
+            state.PlaybackDuration = Math.Max(1, lengthMs);
+            state.PlaybackPosition = Math.Max(0, _mediaPlayer.Time);
 
             // Prefetch next track when within 30 seconds of the end
             var remaining2 = lengthMs - _mediaPlayer.Time;
@@ -532,12 +467,7 @@ public partial class BackglassWindow : JukeboxWindow
     /// </summary>
     private void DisposeGaplessNext()
     {
-        _gaplessPrimed = false;
-        _nextGaplessVideoId = null;
-        var mp = _nextMediaPlayer;
-        _nextMediaPlayer = null;
-        if (mp != null)
-            Task.Run(() => { try { mp.Stop(); mp.Dispose(); } catch { } });
+        _engine.DisposeGaplessNext();
     }
 
     /// <summary>
@@ -592,8 +522,7 @@ public partial class BackglassWindow : JukeboxWindow
     /// </summary>
     private void StopGaplessPlayer()
     {
-        _usingGaplessPlayer = false;
-        _gaplessPlayer?.Stop();
+        _engine.StopGaplessPlayer();
     }
 
     private static void ApplyNetworkOptions(Media media, JukeboxViewModel? vm)
@@ -618,718 +547,7 @@ public partial class BackglassWindow : JukeboxWindow
         // a small value) and our verification can detect and recover.
     }
 
-    private async void OnPlayRequested(string videoId)
-    {
-        // VM events fire on the main UI thread � marshal to our thread
-        if (!Dispatcher.CheckAccess())
-        {
-            _ = Dispatcher.BeginInvoke(() => OnPlayRequested(videoId));
-            return;
-        }
 
-        // Cancel any in-flight play operation
-        _playCts?.Cancel();
-        StopGaplessPlayer();
-        DisposeGaplessNext();
-        var cts = _playCts = new CancellationTokenSource();
-        var ct = cts.Token;
-
-        // Any in-flight seek verification from the previous track is now stale.
-        // Cancel it so it can't restore an old position into a brand-new player.
-        _seekVerifyCts?.Cancel();
-
-        // Reset re-open context — populated below for the source we actually use.
-        _lastPlayingVideoId = videoId;
-        _lastVideoStreamUrl = null;
-        _lastAudioStreamUrl = null;
-        _lastMuxedStreamUrl = null;
-        _lastLocalFilePath = null;
-        // Fresh live-stream elapsed clock (restamped on the first position tick).
-        _liveStartUtc = null;
-
-        // Wait for background LibVLC initialization to complete if it's still
-        // in flight (e.g. user hit play within the first few seconds of launch).
-        // Without this, the request would silently drop and leave the UI stuck
-        // showing "Playing: <title>" with nothing actually happening.
-        if (_mediaPlayer == null && _vlcInitTask != null)
-        {
-            try { await _vlcInitTask.WaitAsync(ct); }
-            catch (OperationCanceledException) { return; }
-            catch { /* fall through to null check below */ }
-        }
-
-        if (_libVLC == null || _mediaPlayer == null) return;
-
-        try
-            {
-                _colorTimer.Stop();
-
-                // Cancel any pending delayed-overlay reveal from a previous transition
-                _transitionOverlayTimer?.Stop();
-                _transitionOverlayTimer = null;
-
-                // During transitions (video view still attached from previous track),
-                // detach the old video view BEFORE stopping. This removes the WinForms
-                // HWND from the visual tree so VLC's surface clear isn't visible — the
-                // black Grid background shows through instead of a white flash.
-                bool isTransition = _videoView != null;
-                if (isTransition)
-                {
-                    DetachVideoView();
-
-                    // Schedule a delayed reveal of the idle overlay. Cached / prefetched
-                    // transitions typically Vout within 100-300ms, so the timer fires
-                    // *after* the overlay is no longer needed and OnVout cancels it —
-                    // the user sees a clean black-to-video swap with no blob-screen blip.
-                    // Only slower buffering transitions (>600ms) reach the timer tick and
-                    // reveal the overlay, which then animates until the new video appears.
-                    _transitionOverlayTimer = new DispatcherTimer
-                    {
-                        Interval = TimeSpan.FromMilliseconds(TransitionOverlayDelayMs)
-                    };
-                    _transitionOverlayTimer.Tick += (_, _) =>
-                    {
-                        _transitionOverlayTimer?.Stop();
-                        _transitionOverlayTimer = null;
-                        // Only reveal if video still hasn't appeared (videoView is hidden)
-                        if (_videoView == null || _videoView.Visibility != Visibility.Visible)
-                        {
-                            ShowIdleBackground();
-                            _colorTimer.Start();
-                        }
-                    };
-                    _transitionOverlayTimer.Start();
-                }
-
-            // Ensure the media player is fully stopped before starting new playback.
-            // This is critical when called from OnMediaEnded (via PlayNext) because
-            // LibVLC's EndReached leaves the player in Ended state � calling Play
-            // without Stop first can silently fail.
-            if (_mediaPlayer.State != VLCState.Stopped)
-            {
-                await Task.Run(() => _mediaPlayer.Stop());
-            }
-
-            if (ct.IsCancellationRequested) return;
-
-            // Non-null once a streaming (non-cached) source starts. Doubles as the
-            // "is streaming" signal for the overlay + seekability diagnostics; the
-            // string is the "WxH" resolution ("" for audio-only).
-            string? streamingResolution = null;
-            string? cachedResolution = null;
-
-            // Wait for first video output before revealing the video surface
-            var voutTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            void OnVout(object? s, MediaPlayerVoutEventArgs a)
-            {
-                _mediaPlayer.Vout -= OnVout;
-                Dispatcher.BeginInvoke(() =>
-                {
-                    // Cancel the pending overlay reveal — video is ready, no need to flash blobs.
-                    _transitionOverlayTimer?.Stop();
-                    _transitionOverlayTimer = null;
-
-                    if (_videoView != null)
-                    {
-                        _videoView.Visibility = Visibility.Visible;
-                        HookVideoViewForDrag();
-                    }
-                    // Hide idle overlay once video is rendering (in case it was
-                    // briefly shown during a slow transition)
-                    HideIdleForJukeboxVideo();
-                    // Stop the blob color cycle now that the overlay is hidden — no
-                    // point burning CPU on an invisible surface during playback.
-                    _colorTimer.Stop();
-                });
-                voutTcs.TrySetResult();
-            }
-            _mediaPlayer.Vout += OnVout;
-
-            // Create a fresh VideoView, hidden until VLC has a frame ready.
-            var videoView = EnsureVideoView();
-            videoView.Visibility = Visibility.Hidden;
-
-            var vm = DataContext as JukeboxViewModel;
-
-            // Apply the VM's volume once VLC actually starts playing. libVLC ignores volume set
-            // before a track is playing, and _mediaPlayer.Volume defaults to 0/-1 until a
-            // VolumeChanged event has fired — so without this, direct-stream/local playback is
-            // silent on a fresh start (the gapless PCM path applies volume separately). One-shot
-            // per play; re-subscribed on each call.
-            if (vm != null)
-            {
-                void OnPlayingApplyVolume(object? s, EventArgs a)
-                {
-                    _mediaPlayer.Playing -= OnPlayingApplyVolume;
-                    try { _mediaPlayer.Volume = VolumeTaper.VlcVolume(vm.Volume); } catch { /* player may be tearing down */ }
-                }
-                _mediaPlayer.Playing += OnPlayingApplyVolume;
-            }
-
-            // Reset scrubber and duration for the transition; leave volume untouched
-            if (vm != null)
-            {
-                vm.PlaybackPosition = 0;
-                vm.PlaybackDuration = 1;
-            }
-
-            // Check if this item is audio-only (e.g. Plex music track)
-            bool isAudioOnly = _audioOnly || (vm?.CurrentlyPlaying?.IsAudioOnly == true);
-
-            // ── PCM gapless path (sources that can supply a stable pre-loadable audio stream) ──
-            if (isAudioOnly && vm?.GaplessPlayback == true
-                && vm.CurrentlyPlaying is { } gaplessItem
-                && vm.TryGetGaplessStreamUrl(gaplessItem) is { } gaplessUrl)
-            {
-                _mediaPlayer.Vout -= OnVout;
-                if (_videoView != null)
-                    _videoView.Visibility = Visibility.Hidden;
-
-                // Lazily create the gapless player
-                _gaplessPlayer ??= CreateGaplessPlayer();
-                _usingGaplessPlayer = true;
-                _gaplessPrimed = false;
-                _nextGaplessVideoId = null;
-
-                // Play via PCM queue engine (blocking wait handled internally).
-                // Use the VM's volume — _mediaPlayer.Volume may be 0 or -1 if no
-                // VolumeChanged event has fired yet.
-                int vol = vm.Volume;
-                await Task.Run(() => _gaplessPlayer.Play(new Uri(gaplessUrl), vol));
-
-                if (ct.IsCancellationRequested) { _gaplessPlayer.Stop(); _usingGaplessPlayer = false; return; }
-
-                ShowIdleBackground();
-                _colorTimer.Start();
-                _positionTimer?.Start();
-                PlaybackStarted?.Invoke();
-                vm.NotifyPlaybackStarted();
-                DebugLog.Log(LogLevel.Debug, "GaplessPCM", $"Playing via PCM queue: {vm.CurrentlyPlaying.Title}");
-                return;
-            }
-
-            // Plex or other direct-stream source
-            if (vm?.CurrentlyPlaying?.StreamUrl is { } streamUrl)
-            {
-                var media = new Media(_libVLC, new Uri(streamUrl));
-
-                // Separate video+audio (yt-dlp SeparateVideoAudio, e.g. Vimeo/Dailymotion): attach the
-                // audio-slave URL so the video-only primary actually has sound.
-                if (vm.CurrentlyPlaying.AudioStreamUrl is { Length: > 0 } audioSlaveUrl)
-                    media.AddSlave(MediaSlaveType.Audio, 4, new Uri(audioSlaveUrl));
-
-                // HLS transcode streams need extra buffering for reliable cold-start
-                if (streamUrl.Contains("transcode", StringComparison.OrdinalIgnoreCase))
-                {
-                    media.AddOption(":network-caching=5000");
-                    media.AddOption(":live-caching=5000");
-                    media.AddOption(":adaptive-logic=lowest");
-                    media.AddOption(":clock-jitter=0");
-                    media.AddOption(":clock-synchro=0");
-                    media.AddOption(":http-reconnect");
-                    media.AddOption(":sout-mux-caching=5000");
-                }
-
-                // Remember the source so a failed in-place seek can re-open at :start-time.
-                _lastMuxedStreamUrl = streamUrl;
-
-                _mediaPlayer.Play(media);
-            }
-            // Check local cache first (main cache, then prefetch cache)
-            else
-            {
-                var cached = !isAudioOnly
-                    ? (vm?.Cache?.TryGet(videoId) ?? vm?.Prefetch?.TryConsume(videoId))
-                    : null;
-
-                if (cached != null)
-                {
-                    // Play from local muxed file � instant, no buffering, seekable
-                    vm?.SetStatusPrefix("Cached");
-                    vm?.SetCurrentFromCache(true);
-                    DebugLog.Log(LogLevel.Debug, "Play", $"Cached playback: {cached.FilePath}");
-                    var media = new Media(_libVLC, new Uri(cached.FilePath));
-                    _lastLocalFilePath = cached.FilePath;
-                    _mediaPlayer.Play(media);
-                    cachedResolution = cached.Resolution;
-
-                    // Restore cached chapters to the playing item
-                    if (cached.Chapters is { Count: > 0 } && vm?.CurrentlyPlaying is { } cp && cp.Chapters == null)
-                    {
-                        cp.Chapters = cached.Chapters;
-                        DebugLog.Log(LogLevel.Trace, "Chapters", $"Restored {cached.Chapters.Count} chapters from cache");
-                        vm.NotifyCachedChaptersRestored();
-                    }
-                }
-                else
-                {
-                    var quality = vm?.VideoQuality ?? VideoQualityPreference.High;
-                    var stereo = vm?.StereoAudio ?? false;
-
-                    // Route through the VM so the plug-in source path is honored. The helper
-                    // returns plain data (no UI/dispatcher), so awaiting it from this window's own
-                    // thread is safe. Without a VM there is no source to resolve — nothing to play.
-                    var streams = vm != null
-                        ? await vm.ResolveStreamsViaPluginOrLegacy(videoId, quality, stereo, isAudioOnly, ct)
-                        : null;
-                    if (ct.IsCancellationRequested) { _mediaPlayer.Vout -= OnVout; return; }
-
-                    if (streams == null)
-                    {
-                        _mediaPlayer.Vout -= OnVout;
-                        (DataContext as JukeboxViewModel)?.NotifyPlaybackStarted();
-                        return;
-                    }
-
-                    switch (streams.Kind)
-                    {
-                        case Phosphor.Video.VideoStreamKind.AudioOnly:
-                        {
-                            // Audio-only mode — stream only audio, no video download
-                            var media = new Media(_libVLC, new Uri(streams.PrimaryUrl));
-                            ApplyNetworkOptions(media, vm);
-                            _lastAudioStreamUrl = streams.PrimaryUrl;
-                            _mediaPlayer.Play(media);
-                            break;
-                        }
-                        case Phosphor.Video.VideoStreamKind.SeparateVideoAudio:
-                        {
-                            // Feed video as primary, audio as slave input
-                            var media = new Media(_libVLC, new Uri(streams.PrimaryUrl));
-                            media.AddSlave(MediaSlaveType.Audio, 4, new Uri(streams.AudioSlaveUrl!));
-                            ApplyNetworkOptions(media, vm);
-                            _lastVideoStreamUrl = streams.PrimaryUrl;
-                            _lastAudioStreamUrl = streams.AudioSlaveUrl;
-                            _mediaPlayer.Play(media);
-                            streamingResolution = streams.Resolution;
-                            break;
-                        }
-                        default: // Muxed
-                        {
-                            // Fallback to muxed if separate streams aren't available
-                            var media = new Media(_libVLC, new Uri(streams.PrimaryUrl));
-                            ApplyNetworkOptions(media, vm);
-                            _lastMuxedStreamUrl = streams.PrimaryUrl;
-                            _mediaPlayer.Play(media);
-                            streamingResolution = streams.Resolution;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if (isAudioOnly)
-            {
-                // Audio-only: keep idle screen visible, skip waiting for video frame
-                _mediaPlayer.Vout -= OnVout;
-                if (_videoView != null)
-                    _videoView.Visibility = Visibility.Hidden;
-
-                // Wait up to 10s for VLC to actually start playing the audio stream
-                var playingTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                void OnPlaying(object? s, EventArgs a)
-                {
-                    _mediaPlayer.Playing -= OnPlaying;
-                    playingTcs.TrySetResult();
-                }
-                _mediaPlayer.Playing += OnPlaying;
-
-                var audioCompleted = await Task.WhenAny(playingTcs.Task, Task.Delay(FirstFrameTimeoutMs(vm)));
-                _mediaPlayer.Playing -= OnPlaying;
-
-                if (ct.IsCancellationRequested) return;
-
-                if (audioCompleted != playingTcs.Task)
-                {
-                    // Timed out � server likely unreachable
-                    await Task.Run(() => _mediaPlayer.Stop());
-                    DetachVideoView();
-                    ShowIdleBackground();
-                    _colorTimer.Start();
-                    if (DataContext is JukeboxViewModel vmAoTimeout)
-                    {
-                        vmAoTimeout.StatusText = "Playback failed: server unreachable or stream timed out";
-                        vmAoTimeout.NotifyPlaybackFailed(vmAoTimeout.CurrentlyPlaying);
-                        vmAoTimeout.CurrentlyPlaying = null;
-                        vmAoTimeout.NotifyPlaybackStarted();
-                    }
-                    return;
-                }
-
-                ShowIdleBackground();
-                _colorTimer.Start();
-                _positionTimer?.Start();
-                PlaybackStarted?.Invoke();
-                if (DataContext is JukeboxViewModel vmAo)
-                    vmAo.NotifyPlaybackStarted();
-                return;
-            }
-
-            // Wait up to 10s for first video frame
-            var completed = await Task.WhenAny(voutTcs.Task, Task.Delay(FirstFrameTimeoutMs(vm)));
-            _mediaPlayer.Vout -= OnVout;
-
-            if (ct.IsCancellationRequested) return;
-
-            if (completed != voutTcs.Task)
-            {
-                // Timed out waiting for video � server likely unreachable
-                await Task.Run(() => _mediaPlayer.Stop());
-                DetachVideoView();
-                ShowIdleBackground();
-                _colorTimer.Start();
-                if (DataContext is JukeboxViewModel vmTimeout)
-                {
-                    vmTimeout.StatusText = "Playback failed: server unreachable or stream timed out";
-                    vmTimeout.NotifyPlaybackFailed(vmTimeout.CurrentlyPlaying);
-                    vmTimeout.CurrentlyPlaying = null;
-                    vmTimeout.NotifyPlaybackStarted();
-                }
-                return;
-            }
-
-            HideIdleForJukeboxVideo();
-
-            if (streamingResolution != null)
-                StartVideoInfoPolling(streamingResolution);
-            else if (cachedResolution != null)
-                StartVideoInfoPollingCached(cachedResolution);
-            _positionTimer?.Start();
-
-            // Log seekability diagnostics for streaming (non-cached) playback
-            if (streamingResolution != null)
-            {
-                var seekable = _mediaPlayer.IsSeekable;
-                var length = _mediaPlayer.Length;
-                DebugLog.Log(LogLevel.Debug, "Play", $"Streaming playback started | Seekable={seekable} Length={length}ms | Note: seeking may be unreliable for progressive YouTube streams (no seek index until fully downloaded)");
-            }
-
-            // Notify so the DMD window can reclaim focus
-            PlaybackStarted?.Invoke();
-
-            // Allow new play requests now that playback is established
-            if (DataContext is JukeboxViewModel vm2)
-                vm2.NotifyPlaybackStarted();
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            // Play was cancelled by stop or a new play request � silently bail out
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Playback error: {ex.Message}");
-            DetachVideoView();
-            ShowIdleBackground();
-            _colorTimer.Start();
-            if (DataContext is JukeboxViewModel vmErr)
-                vmErr.NotifyPlaybackStarted();
-        }
-    }
-
-    private void OnSeekRequested(long timeMs)
-    {
-        Dispatcher.BeginInvoke(() =>
-        {
-            // PCM gapless mode: seek via the gapless player
-            if (_usingGaplessPlayer && _gaplessPlayer != null)
-            {
-                _gaplessPlayer.Seek(timeMs);
-                DebugLog.Log(LogLevel.Trace, "Seek", $"PCM gapless seek to {timeMs}ms");
-                return;
-            }
-
-            if (_mediaPlayer == null) return;
-            var length = _mediaPlayer.Length;
-            var seekable = _mediaPlayer.IsSeekable;
-            DebugLog.Log(LogLevel.Trace, "Seek", $"Requested: {timeMs}ms | State={_mediaPlayer.State} Length={length} Time={_mediaPlayer.Time} Seekable={seekable}");
-
-            if (length <= 0)
-            {
-                DebugLog.Log(LogLevel.Trace, "Seek", "Skipped: Length <= 0");
-                return;
-            }
-
-            var timeBefore = _mediaPlayer.Time;
-            var targetMs = Math.Clamp(timeMs, 0, length);
-            var userRequestedStart = targetMs < 3000; // explicit seek to beginning
-
-            // Cancel any pending verification from a previous seek; otherwise an older
-            // task could fire after a newer scrub and "restore" the wrong position.
-            _seekVerifyCts?.Cancel();
-            var verifyCts = _seekVerifyCts = new CancellationTokenSource();
-            var verifyCt = verifyCts.Token;
-
-            // If the source is a local file (cached / prefetched), seeks always work —
-            // skip the in-place attempt and the verification dance.
-            bool isLocalSource = !string.IsNullOrEmpty(_lastLocalFilePath);
-
-            // The current track may have started as a live stream while its cached
-            // (downloaded + remuxed) copy finished in the background. Live streams scrub
-            // unreliably, so if a ready cache now exists for this video, switch to it
-            // seamlessly and resume at the scrub target — the user never notices because
-            // playback is already interrupted by the scrub. Skip in audio-only mode: the
-            // cache holds full video files and we must not introduce video mid-scrub.
-            if (!isLocalSource)
-            {
-                var vmForCache = DataContext as JukeboxViewModel;
-                bool isAudioOnly = _audioOnly || (vmForCache?.CurrentlyPlaying?.IsAudioOnly == true);
-                var cached = !isAudioOnly && !string.IsNullOrEmpty(_lastPlayingVideoId)
-                    ? vmForCache?.Cache?.TryGet(_lastPlayingVideoId!)
-                    : null;
-                if (cached != null)
-                {
-                    DebugLog.Log(LogLevel.Debug, "Seek", $"Cache ready — switching from live stream to cached file for reliable scrub: {cached.FilePath}");
-                    SwitchToCachedFileAndSeek(cached, targetMs);
-                    return;
-                }
-            }
-
-            if (isLocalSource || seekable)
-            {
-                _mediaPlayer.Time = targetMs;
-            }
-
-            // For local files we're done.
-            if (isLocalSource) return;
-
-            // For HTTP streams reported as not-seekable, there is no in-place recovery
-            // path that works reliably. Restart from the beginning so the player ends
-            // in a known good state.
-            if (!seekable)
-            {
-                DebugLog.Log(LogLevel.Warning, "Seek", "IsSeekable=false — restarting playback from the beginning (use transient caching for reliable scrubbing)");
-
-                var vm = DataContext as JukeboxViewModel;
-                var videoIdToRestart = _lastPlayingVideoId;
-                if (vm != null && !string.IsNullOrEmpty(videoIdToRestart))
-                {
-                    vm.SetStatusPrefix("Seek failed — restarted");
-                    vm.PlaybackPosition = 0;
-                    OnPlayRequested(videoIdToRestart);
-                }
-                return;
-            }
-
-            // VLC echoes back whatever we set to Time — it does NOT reflect where the
-            // stream actually landed. Worse, on a wedged demuxer (e.g. forward seek to
-            // a non-keyframe in a YouTube webm/vp9 stream), Time can stay frozen at the
-            // value we wrote while playback has actually restarted from 0 (or stalled).
-            //
-            // Detection strategy: two complementary signals, whichever proves health first.
-            //   1. BUFFERING activity. A healthy seek causes VLC to fire Buffering events
-            //      almost immediately (0→100% as the new chunk loads). A wedged player
-            //      fires nothing because VLC thinks it's still happily playing. We hook
-            //      Buffering for the verification window and check if any tick arrived.
-            //   2. TIME PROGRESS. A real playing decoder advances ~750ms in 750ms wall
-            //      time; a wedged player reports the same number twice.
-            //
-            // Fast path: if we see buffering AND time advances within ~800ms, the seek
-            // worked — exit early. Slow path: if neither signal appears by ~1500ms, the
-            // seek wedged — restart playback from the beginning.
-            //
-            // Recovery: we tried multiple in-place strategies (Position retry, Play(newMedia)
-            // on the same player, swapping to a fresh MediaPlayer with :start-time, force
-            // Time= on the fresh player) — all failed for problem YouTube progressive
-            // streams. The only reliable recovery is a full restart. Users who need
-            // reliable scrubbing on long YouTube videos should enable transient caching
-            // in settings — that downloads + remuxes the file, after which all seeks are
-            // file-based and always work.
-            const int fastCheckDelayMs = 800;   // by this point a healthy seek shows life
-            const int finalCheckDelayMs = 700;  // additional wait if fast check inconclusive
-            const long MinHealthyProgressMs = 100;
-
-            // Subscribe to Buffering events so we can detect activity without polling.
-            int bufferingTickCount = 0;
-            void OnBufferingTick(object? s, LibVLCSharp.Shared.MediaPlayerBufferingEventArgs e)
-            {
-                System.Threading.Interlocked.Increment(ref bufferingTickCount);
-            }
-            _mediaPlayer.Buffering += OnBufferingTick;
-
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    // Fast check at ~800ms — most healthy seeks show life by now
-                    await Task.Delay(fastCheckDelayMs, verifyCt);
-
-                    long sample1 = 0;
-                    await Dispatcher.InvokeAsync(() => { if (_mediaPlayer != null) sample1 = _mediaPlayer.Time; });
-
-                    int bufferTicksFast = System.Threading.Interlocked.CompareExchange(ref bufferingTickCount, 0, 0);
-                    bool sawBuffering = bufferTicksFast > 0;
-                    bool nearTargetFast = Math.Abs(sample1 - targetMs) <= Math.Max(5000L, (long)(length * 0.02));
-
-                    DebugLog.Log(LogLevel.Trace, "Seek", $"Fast check ({fastCheckDelayMs}ms): sample1={sample1} bufferTicks={bufferTicksFast} sawBuffering={sawBuffering} nearTargetFast={nearTargetFast}");
-
-                    // Confirm with a second sample to ensure time is actually advancing.
-                    await Task.Delay(finalCheckDelayMs, verifyCt);
-                    long sample2 = 0;
-                    await Dispatcher.InvokeAsync(() => { if (_mediaPlayer != null) sample2 = _mediaPlayer.Time; });
-
-                    if (verifyCt.IsCancellationRequested) return;
-
-                    await Dispatcher.InvokeAsync(() =>
-                    {
-                        if (_mediaPlayer == null) return;
-
-                        var nearTargetTolerance = Math.Max(5000L, (long)(length * 0.02));
-                        long progress = sample2 - sample1;
-                        bool advancing = progress >= MinHealthyProgressMs;
-                        bool nearTarget = Math.Abs(sample2 - targetMs) <= nearTargetTolerance;
-
-                        // Healthy if Time is at the right spot AND either we saw buffering
-                        // activity OR Time is still advancing. Both signals are sufficient.
-                        bool seekHealthy = nearTarget && (sawBuffering || advancing);
-
-                        DebugLog.Log(LogLevel.Trace, "Seek", $"Verify: sample2={sample2} progress={progress}ms (was {timeBefore}, target {targetMs}) nearTarget={nearTarget} advancing={advancing} sawBuffering={sawBuffering} healthy={seekHealthy}");
-
-                        if (seekHealthy) return;
-
-                        // Wedge confirmed. Bail out cleanly: stop and restart from the
-                        // beginning so the user has a known, controllable state.
-                        DebugLog.Log(LogLevel.Warning, "Seek", "Seek failed — restarting playback from the beginning (use transient caching for reliable scrubbing)");
-
-                        var vm = DataContext as JukeboxViewModel;
-                        var videoIdToRestart = _lastPlayingVideoId;
-                        if (vm == null || string.IsNullOrEmpty(videoIdToRestart)) return;
-
-                        vm.SetStatusPrefix("Seek failed — restarted");
-                        vm.PlaybackPosition = 0;
-
-                        // Re-fire the play request via the normal code path. This rebuilds
-                        // the stream from scratch and ends up in a fully healthy state.
-                        OnPlayRequested(videoIdToRestart);
-                    });
-                }
-                catch (OperationCanceledException) { /* superseded by a newer seek */ }
-                catch (Exception ex)
-                {
-                    DebugLog.LogException("Seek/Verify", ex);
-                }
-                finally
-                {
-                    // Always detach our buffering probe — both on success and failure.
-                    // Marshal to dispatcher since events live on it.
-                    try
-                    {
-                        await Dispatcher.InvokeAsync(() =>
-                        {
-                            if (_mediaPlayer != null)
-                                _mediaPlayer.Buffering -= OnBufferingTick;
-                        });
-                    }
-                    catch { /* shutting down */ }
-                }
-            }, verifyCt);
-        });
-    }
-
-    /// <summary>
-    /// Seamlessly swaps the currently-playing live stream for its now-ready cached
-    /// (downloaded + remuxed) local file, resuming at <paramref name="targetMs"/>.
-    /// The cached .mkv has proper cue points, so all subsequent seeks are file-based
-    /// and reliable. Uses ":start-time" so VLC begins decoding at the scrub target
-    /// rather than replaying from the beginning.
-    /// </summary>
-    private void SwitchToCachedFileAndSeek(CachedVideo cached, long targetMs)
-    {
-        if (_mediaPlayer == null || _libVLC == null) return;
-
-        // A cache switch supersedes any in-flight seek verification from the live stream.
-        _seekVerifyCts?.Cancel();
-
-        var vm = DataContext as JukeboxViewModel;
-
-        try
-        {
-            var media = new Media(_libVLC, new Uri(cached.FilePath));
-
-            // Begin decoding at the scrub target (seconds). Clamp so we never pass a
-            // negative or absurd value if Length was briefly misreported.
-            var startSeconds = Math.Max(0, targetMs) / 1000.0;
-            media.AddOption($":start-time={startSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)}");
-
-            // Preserve a paused scrub: if the user scrubbed while paused, re-apply pause
-            // once VLC reaches the playing state (SetPause before then is ignored).
-            bool wasPaused = vm?.IsPaused == true;
-            if (wasPaused)
-            {
-                void OnPlayingReapplyPause(object? s, EventArgs a)
-                {
-                    _mediaPlayer.Playing -= OnPlayingReapplyPause;
-                    _mediaPlayer.SetPause(true);
-                }
-                _mediaPlayer.Playing += OnPlayingReapplyPause;
-            }
-
-            _mediaPlayer.Play(media);
-
-            // From now on this track is a local file — future seeks skip the live-stream
-            // verification path and just set Time directly.
-            _lastLocalFilePath = cached.FilePath;
-            _lastVideoStreamUrl = null;
-            _lastAudioStreamUrl = null;
-            _lastMuxedStreamUrl = null;
-
-            // The track is now served from the local cache — reflect that in the source label.
-            vm?.SetCurrentFromCache(true);
-
-            // Reflect the seek target immediately so the scrubber doesn't snap back.
-            if (vm != null)
-                vm.PlaybackPosition = targetMs;
-
-            // Restore cached chapters if the playing item doesn't have them yet.
-            if (cached.Chapters is { Count: > 0 } && vm?.CurrentlyPlaying is { } cp && cp.Chapters == null)
-            {
-                cp.Chapters = cached.Chapters;
-                vm.NotifyCachedChaptersRestored();
-            }
-
-            StartVideoInfoPollingCached(cached.Resolution);
-        }
-        catch (Exception ex)
-        {
-            DebugLog.LogException("Seek/CacheSwitch", ex);
-        }
-    }
-
-    private void OnStopRequested()
-    {
-        // Cancel any in-flight play operation so it doesn't resume after stop
-        _playCts?.Cancel();
-        // Cancel any pending seek verification / re-open
-        _seekVerifyCts?.Cancel();
-
-        Dispatcher.BeginInvoke(async () =>
-        {
-            _positionTimer?.Stop();
-            _infoTimer?.Stop();
-            // Cancel any pending delayed-overlay reveal from a transition
-            _transitionOverlayTimer?.Stop();
-            _transitionOverlayTimer = null;
-            VideoInfoChanged?.Invoke("");
-
-            // Stop PCM gapless player if active
-            StopGaplessPlayer();
-
-            // Detach the VideoView BEFORE stopping so the WinForms HWND is
-            // removed from the visual tree first — this prevents VLC's video
-            // output thread from waiting on UI-thread window messages while
-            // Stop() blocks, which would cause a deadlock.
-            DetachVideoView();
-            DisposeGaplessNext();
-
-            // Stop on a background thread to avoid blocking the dispatcher
-            // (same pattern used in OnPlayRequested and other call sites).
-            if (_mediaPlayer != null)
-                await Task.Run(() => _mediaPlayer.Stop());
-
-            ShowIdleBackground();
-            _colorTimer.Start();
-            ResetLogoDimIdle();
-        });
-    }
 
     private void OnMediaBuffering(object? sender, LibVLCSharp.Shared.MediaPlayerBufferingEventArgs e)
     {
@@ -1369,12 +587,10 @@ public partial class BackglassWindow : JukeboxWindow
                 if (_nextMediaPlayer != null && _gaplessPrimed)
                 {
                     DebugLog.Log(LogLevel.Debug, "Gapless", "Swapping to primed next player");
-                    var oldPlayer = _mediaPlayer;
 
-                    // Swap the player reference and resume the pre-loaded track
-                    _mediaPlayer = _nextMediaPlayer;
-                    _mediaPlayer.EndReached += OnMediaEnded;
-                    _mediaPlayer.SetPause(false);
+                    // Swap the player reference (engine rewires EndReached) and resume the pre-loaded track.
+                    var oldPlayer = _engine.SwapMediaPlayer(_nextMediaPlayer);
+                    _mediaPlayer!.SetPause(false);
 
                     _nextMediaPlayer = null;
                     _gaplessPrimed = false;
@@ -1383,7 +599,6 @@ public partial class BackglassWindow : JukeboxWindow
                     // Stop and dispose the old player in the background
                     if (oldPlayer != null)
                     {
-                        oldPlayer.EndReached -= OnMediaEnded;
                         Task.Run(() => { try { oldPlayer.Stop(); oldPlayer.Dispose(); } catch { } });
                     }
 

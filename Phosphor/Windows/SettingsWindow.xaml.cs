@@ -622,6 +622,7 @@ public partial class SettingsWindow : JukeboxWindow
         CbShowBackglass.IsChecked = settings.ShowBackglass;
         CbShowPlayfield.IsChecked = settings.ShowPlayfield;
         CbShowTopper.IsChecked = settings.ShowTopper;
+        CbEnableSecondPlayer.IsChecked = settings.EnableSecondPlayer;
         CbAutoPlayQueue.IsChecked = settings.AutoPlayQueueOnStart;
         // Populate startup ditti list (migrate legacy single path if present)
         _startupDittiPaths.Clear();
@@ -817,6 +818,7 @@ public partial class SettingsWindow : JukeboxWindow
             case LogoColorMode.Reactive: RbTopperLogoColorReactive.IsChecked = true; break;
             default: RbTopperLogoColorOff.IsChecked = true; break;
         }
+        CbTopperAudioOnly.IsChecked = settings.TopperAudioOnly;
 
         // Blob pattern per screen (alphabetized)
         var blobPatterns = Enum.GetValues<BlobPattern>()
@@ -3957,6 +3959,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.ShowBackglass = CbShowBackglass.IsChecked == true;
         _settings.ShowPlayfield = CbShowPlayfield.IsChecked == true;
         _settings.ShowTopper = CbShowTopper.IsChecked == true;
+        _settings.EnableSecondPlayer = CbEnableSecondPlayer.IsChecked == true;
         _settings.AutoPlayQueueOnStart = CbAutoPlayQueue.IsChecked == true;
         _settings.StartupDittiPaths = new List<string>(_startupDittiPaths);
         _settings.StartupDittiPath = ""; // legacy field cleared; data lives in StartupDittiPaths
@@ -4312,6 +4315,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.TopperLogoColorMode = RbTopperLogoColorReactive.IsChecked == true ? LogoColorMode.Reactive
             : RbTopperLogoColorMorph.IsChecked == true ? LogoColorMode.SlowMorph
             : LogoColorMode.Off;
+        _settings.TopperAudioOnly = CbTopperAudioOnly.IsChecked == true;
         _settings.NetworkCachingMs = (int)SliderNetworkCaching.Value;
         _settings.LiveCachingMs = (int)SliderLiveCaching.Value;
         _settings.FileCachingMs = (int)SliderFileCaching.Value;

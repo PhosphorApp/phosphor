@@ -88,6 +88,10 @@
                                       Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"/>
                             <CheckBox x:Name="CbShowTopper" Content="Show topper window"
                                       Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"/>
+                            <CheckBox x:Name="CbEnableSecondPlayer" Content="Enable second media player (Topper)"
+                                      Foreground="{StaticResource TextBrush}" Margin="20,8,0,0"
+                                      IsEnabled="{Binding IsChecked, ElementName=CbShowTopper}"
+                                      ToolTip="Runs an independent second jukebox player on the Topper (Player 2). The Backglass (Player 1) stays the primary and audio-reactive driver. Takes effect on Apply."/>
                             <DockPanel Margin="0,8,0,0">
                                 <TextBlock Text="Hide Cursor After:" Foreground="{StaticResource TextBrush}"
                                            VerticalAlignment="Center" Width="140"/>
@@ -2825,10 +2829,12 @@
                                              Foreground="{StaticResource TextBrush}" Margin="0,0,0,0"
                                              ToolTip="Logo color follows the dominant playfield color (blobs/ProjectM)."/>
                             </StackPanel>
+                            <CheckBox x:Name="CbTopperAudioOnly" Content="Stream audio only (no video on topper)"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"/>
 
                             <!-- ═══ SECTION: Topper Ambient Content ═══ -->
                             <TextBlock Text="AMBIENT CONTENT" FontSize="12" FontWeight="Bold"
-                                Foreground="{StaticResource AccentBrush}" Margin="0,4,0,4"/>
+                                Foreground="{StaticResource AccentBrush}" Margin="0,16,0,4"/>
                             <TextBlock Text="Content shown on the topper. Choose the content to display; Pinup Popper is configured on the General tab."
                                        FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,8"
                                        TextWrapping="Wrap"/>

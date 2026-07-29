@@ -118,6 +118,22 @@ Caching helps when the brush color is stable; thrashes when color cycles.
 `BlobPatternConfig.UseBitmapCache` exists for callers — confirm
 externally-color-cycled patterns are passing `false`.
 
+### 7. Backglass animation hitch when stopping playback (esp. audio-only)
+**Observed:** stopping an audio-only track often produces a big one-off hitch in
+the Backglass idle animation (blob/logo). Intermittent — doesn't always happen,
+and may also occur on other stop/transition paths but be less visible there.
+
+**Investigate:** the stop path (`OnStopRequested` → `StopGaplessPlayer` /
+`_mediaPlayer.Stop()` on a background thread, then `ShowIdleBackground()` +
+`_colorTimer.Start()` + `RestartIdleBlobs`/`ResumeIdleBlobs`) may be doing
+synchronous teardown or a pattern rebuild on the Backglass dispatcher right as
+the idle animation resumes, stalling a frame. Candidate causes: (a) VLC `Stop()`
+or gapless PCM drain briefly blocking the dispatcher despite the `Task.Run`;
+(b) `RestartIdleBlobs` rebuilding the pattern against a just-resized canvas;
+(c) GC from disposing the media/decoder. Cross-reference the
+`PERF.BackglassStall` render-gap warnings already in the log around a stop.
+Low priority (cosmetic), but worth a root-cause pass.
+
 ---
 
 ## 🟡 Smaller wins / cleanup
