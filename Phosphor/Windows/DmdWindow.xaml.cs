@@ -191,7 +191,18 @@ public partial class DmdWindow : JukeboxWindow
                 vmLoaded.Categories.CollectionChanged += (_, _) => InvalidateNavRing();
                 vmLoaded.Queue.CollectionChanged += (_, _) => InvalidateNavRing();
                 vmLoaded.Queue.CollectionChanged += (_, _) => HandleQueueAutoHide(vmLoaded);
-                _queueWasEmpty = vmLoaded.Queue.Count == 0;
+                // The queue panel follows the active player; when the active queue's contents change
+                // (add/remove/clear or an active-player switch) refresh the nav ring + auto-hide state.
+                vmLoaded.PropertyChanged += (_, args) =>
+                {
+                    if (args.PropertyName is nameof(JukeboxViewModel.HasActiveQueueItems)
+                        or nameof(JukeboxViewModel.ActiveQueue))
+                    {
+                        InvalidateNavRing();
+                        HandleQueueAutoHide(vmLoaded);
+                    }
+                };
+                _queueWasEmpty = vmLoaded.ActiveQueue.Count == 0;
                 // Update favorites view axes in-memory when changed via the quick dropdowns; AppSettings
                 // is persisted once on exit (per project convention — no save in event handlers).
                 vmLoaded.FavoritesViewChanged += () =>
@@ -212,8 +223,8 @@ public partial class DmdWindow : JukeboxWindow
                 {
                     if (args.PropertyName == nameof(JukeboxViewModel.PlayTransitioning))
                         _dofClient?.Trigger('E', 110, vmLoaded.PlayTransitioning ? 1 : 0);
-                    if (args.PropertyName == nameof(JukeboxViewModel.CurrentQueueItem) && vmLoaded.CurrentQueueItem != null)
-                        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => QueueList.ScrollIntoView(vmLoaded.CurrentQueueItem));
+                    if (args.PropertyName == nameof(JukeboxViewModel.ActiveCurrentQueueItem) && vmLoaded.ActiveCurrentQueueItem != null)
+                        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => QueueList.ScrollIntoView(vmLoaded.ActiveCurrentQueueItem));
                     if (args.PropertyName == nameof(JukeboxViewModel.ChapterTickPositions))
                         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, UpdateChapterTickPositions);
                 };
@@ -574,10 +585,10 @@ public partial class DmdWindow : JukeboxWindow
         StartStopButton.PreviewMouseLeftButtonDown += (_, e) =>
         {
             if (DataContext is JukeboxViewModel vm && !vm.IsPlaying && !vm.IsPaused
-                && QueueList.SelectedIndex >= 0 && QueueList.SelectedIndex < vm.Queue.Count)
+                && QueueList.SelectedIndex >= 0 && QueueList.SelectedIndex < vm.ActiveQueue.Count)
             {
                 e.Handled = true;
-                vm.PlayFromQueueIndex(QueueList.SelectedIndex);
+                vm.PlayFromActiveQueueIndex(QueueList.SelectedIndex);
             }
         };
     }
@@ -612,11 +623,11 @@ public partial class DmdWindow : JukeboxWindow
     {
         if (_appSettings?.DmdAutoHideQueueWhenEmpty != true)
         {
-            _queueWasEmpty = vm.Queue.Count == 0;
+            _queueWasEmpty = vm.ActiveQueue.Count == 0;
             return;
         }
 
-        bool isEmpty = vm.Queue.Count == 0;
+        bool isEmpty = vm.ActiveQueue.Count == 0;
         if (isEmpty == _queueWasEmpty)
             return; // No empty↔non-empty transition — leave the user's manual state alone.
 
@@ -829,7 +840,7 @@ public partial class DmdWindow : JukeboxWindow
             vmFav.FavoritesSort = settings.FavoritesSort;
 
             // Auto-hide-when-empty: start collapsed if enabled and the queue is empty at launch.
-            _queueWasEmpty = vmFav.Queue.Count == 0;
+            _queueWasEmpty = vmFav.ActiveQueue.Count == 0;
             if (settings.DmdAutoHideQueueWhenEmpty && _queueWasEmpty && !_queueCollapsed)
             {
                 _queueCollapsed = true;
@@ -1673,10 +1684,10 @@ public partial class DmdWindow : JukeboxWindow
             ring.Add(new NavEntry(SkipButton, "Skip", () => SkipButton.Command?.Execute(SkipButton.CommandParameter)));
 
         // Queue items
-        for (int i = 0; i < vm.Queue.Count; i++)
+        for (int i = 0; i < vm.ActiveQueue.Count; i++)
         {
             var qIdx = i;
-            ring.Add(new NavEntry(null, $"Queue: {vm.Queue[qIdx].Title}",
+            ring.Add(new NavEntry(null, $"Queue: {vm.ActiveQueue[qIdx].Title}",
                 () => { /* selecting a queue item does nothing special */ }));
         }
 
@@ -4465,16 +4476,16 @@ public partial class DmdWindow : JukeboxWindow
     private void MakePlaylistFromQueue_Click(object sender, RoutedEventArgs e)
     {
         if (DataContext is not JukeboxViewModel vm) return;
-        if (vm.Queue.Count == 0) return;
+        if (vm.ActiveQueue.Count == 0) return;
 
         var result = ShowNewPlaylistDialog("My Playlist");
         if (result == null) return;
 
         vm.CreatePlaylistWithIcon(result.Value.Name, result.Value.Icon);
-        foreach (var item in vm.Queue)
+        foreach (var item in vm.ActiveQueue)
             vm.AddToPlaylistCommand.Execute(item);
 
-        vm.StatusText = $"Created playlist '{result.Value.Name}' with {vm.Queue.Count} items";
+        vm.StatusText = $"Created playlist '{result.Value.Name}' with {vm.ActiveQueue.Count} items";
     }
 
     private void DeletePlaylist_Click(object sender, RoutedEventArgs e)
@@ -4605,7 +4616,7 @@ public partial class DmdWindow : JukeboxWindow
             Bindings =
             {
                 new System.Windows.Data.Binding(),
-                new System.Windows.Data.Binding("DataContext.CurrentQueueItem") { RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.FindAncestor, typeof(System.Windows.Controls.ListBox), 1) }
+                new System.Windows.Data.Binding("DataContext.ActiveCurrentQueueItem") { RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.FindAncestor, typeof(System.Windows.Controls.ListBox), 1) }
             }
         };
         trigger.Setters.Add(new Setter(System.Windows.Controls.Control.BackgroundProperty, new SolidColorBrush(WpfColor.FromRgb(0x2A, 0x2A, 0x2A))));
@@ -4777,9 +4788,9 @@ public partial class DmdWindow : JukeboxWindow
         var item = GetDataContextAtPoint<VideoItem>(QueueList, e.GetPosition(QueueList));
         if (item == null) return;
 
-        int index = vm.Queue.IndexOf(item);
+        int index = vm.ActiveQueue.IndexOf(item);
         if (index >= 0)
-            vm.PlayFromQueueIndex(index);
+            vm.PlayFromActiveQueueIndex(index);
     }
 
     private void QueueList_Drop(object sender, System.Windows.DragEventArgs e)
@@ -4790,20 +4801,20 @@ public partial class DmdWindow : JukeboxWindow
         var draggedItem = (VideoItem)e.Data.GetData(typeof(VideoItem))!;
         var targetItem = GetDataContextAtPoint<VideoItem>(QueueList, e.GetPosition(QueueList));
 
-        int oldIndex = vm.Queue.IndexOf(draggedItem);
-        int newIndex = targetItem != null ? vm.Queue.IndexOf(targetItem) : vm.Queue.Count - 1;
+        int oldIndex = vm.ActiveQueue.IndexOf(draggedItem);
+        int newIndex = targetItem != null ? vm.ActiveQueue.IndexOf(targetItem) : vm.ActiveQueue.Count - 1;
 
         if (oldIndex < 0 || oldIndex == newIndex) return;
 
-        vm.Queue.Move(oldIndex, newIndex);
+        vm.ActiveQueue.Move(oldIndex, newIndex);
 
         // Keep QueueIndex tracking the currently playing item after reorder
-        if (vm.QueueIndex == oldIndex)
-            vm.QueueIndex = newIndex;
-        else if (oldIndex < vm.QueueIndex && newIndex >= vm.QueueIndex)
-            vm.QueueIndex--;
-        else if (oldIndex > vm.QueueIndex && newIndex <= vm.QueueIndex)
-            vm.QueueIndex++;
+        if (vm.ActiveQueueIndex == oldIndex)
+            vm.ActiveQueueIndex = newIndex;
+        else if (oldIndex < vm.ActiveQueueIndex && newIndex >= vm.ActiveQueueIndex)
+            vm.ActiveQueueIndex--;
+        else if (oldIndex > vm.ActiveQueueIndex && newIndex <= vm.ActiveQueueIndex)
+            vm.ActiveQueueIndex++;
 
         // Force queue index labels to refresh after reorder
         RefreshQueueIndices();

@@ -1407,6 +1407,13 @@ public partial class JukeboxViewModel : ObservableObject
     /// <summary>The active player's currently-playing queue item (drives the panel highlight).</summary>
     public VideoItem? ActiveCurrentQueueItem => _activePlayer.Queue.CurrentQueueItem;
 
+    /// <summary>The active player's queue cursor index (used by the panel's drag-reorder code-behind).</summary>
+    public int ActiveQueueIndex
+    {
+        get => _activePlayer.Queue.QueueIndex;
+        set => _activePlayer.Queue.QueueIndex = value;
+    }
+
     /// <summary>True when the active player's queue has items.</summary>
     public bool HasActiveQueueItems => _activePlayer.Queue.HasQueueItems;
 
