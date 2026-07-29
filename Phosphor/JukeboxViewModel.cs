@@ -1375,13 +1375,28 @@ public partial class JukeboxViewModel : ObservableObject
         Player2.IsPaused = false;
     }
 
-    /// <summary>Player 2 previous — queue not wired yet; stub kept for layout parity with Player 1.</summary>
+    /// <summary>Player 2 previous — steps back through the Topper's own queue (Player 2 context/engine).</summary>
     [RelayCommand]
-    private void Player2Previous() { }
+    private void Player2Previous()
+    {
+        if (!Player2.IsPlaying) return;
 
-    /// <summary>Player 2 skip — queue not wired yet; stub kept for layout parity with Player 1.</summary>
+        var queue = Player2.Queue;
+        if (queue.Queue.Count == 0) return;
+
+        int currentIdx = queue.QueueIndex;
+        bool isFirstItem = currentIdx <= 0;
+        bool isBeyond10Seconds = Player2.PlaybackPosition >= 10000;
+
+        if (isBeyond10Seconds || isFirstItem)
+            Player2.RaiseSeekRequested(0);
+        else
+            PlayFromQueueIndexOn(Player2, currentIdx - 1);
+    }
+
+    /// <summary>Player 2 skip — advances the Topper's own queue to the next track (Player 2 context/engine).</summary>
     [RelayCommand]
-    private void Player2Skip() { }
+    private void Player2Skip() => PlayNextOn(Player2);
 
     /// <summary>
     /// The "NOW PLAYING" label prefix for a bar. When the second player is enabled the bars are
