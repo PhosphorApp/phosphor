@@ -425,7 +425,7 @@ public partial class BackglassWindow : JukeboxWindow
     /// </summary>
     private void PrepareGaplessNext(JukeboxViewModel vm)
     {
-        var nextTrack = vm.GetNextGaplessTrack();
+        var nextTrack = vm.GetNextGaplessTrackOn(vm.Player1);
         if (nextTrack == null || _libVLC == null) return;
         if (_nextGaplessVideoId == nextTrack.VideoId) return; // already preparing this one
 
@@ -482,7 +482,7 @@ public partial class BackglassWindow : JukeboxWindow
             {
                 if (DataContext is JukeboxViewModel vm && hasNext)
                 {
-                    vm.AdvanceQueueGapless();
+                    vm.AdvanceQueueGaplessOn(vm.Player1);
                     DebugLog.Log(LogLevel.Debug, "GaplessPCM", "Track advanced via PCM queue");
 
                     // Notify listeners (DmdWindow.OnPlaybackStartedTransition) so
@@ -502,15 +502,15 @@ public partial class BackglassWindow : JukeboxWindow
                 _usingGaplessPlayer = false;
                 _positionTimer?.Stop();
 
-                if (DataContext is JukeboxViewModel vm && vm.HasNextTrack)
-                    vm.PlayNext();
+                if (DataContext is JukeboxViewModel vm && vm.Player1.Queue.HasNextTrack)
+                    vm.PlayNextOn(vm.Player1);
                 else
                 {
                     ShowIdleBackground();
                     _colorTimer.Start();
                     ResetLogoDimIdle();
                     if (DataContext is JukeboxViewModel vm2)
-                        vm2.PlayNext(); // will set "Queue finished"
+                        vm2.PlayNextOn(vm2.Player1); // will set "Queue finished"
                 }
             });
         };
@@ -581,7 +581,7 @@ public partial class BackglassWindow : JukeboxWindow
                 return;
             }
 
-            if (DataContext is JukeboxViewModel vm && vm.HasNextTrack)
+            if (DataContext is JukeboxViewModel vm && vm.Player1.Queue.HasNextTrack)
             {
                 // Gapless: if a next player is primed, swap it in immediately
                 if (_nextMediaPlayer != null && _gaplessPrimed)
@@ -603,7 +603,7 @@ public partial class BackglassWindow : JukeboxWindow
                     }
 
                     // Advance the queue without triggering a new play request
-                    vm.AdvanceQueueGapless();
+                    vm.AdvanceQueueGaplessOn(vm.Player1);
 
                     // If the new track is audio-only (e.g. Plex music), the video
                     // surface from the previous track would just sit there black —
@@ -624,7 +624,7 @@ public partial class BackglassWindow : JukeboxWindow
 
                 // Next track available — keep video view attached to avoid idle screen flash.
                 // OnPlayRequested will reuse or recreate it as needed.
-                vm.PlayNext();
+                vm.PlayNextOn(vm.Player1);
             }
             else
             {
@@ -635,7 +635,7 @@ public partial class BackglassWindow : JukeboxWindow
                 _colorTimer.Start();
                 ResetLogoDimIdle();
                 if (DataContext is JukeboxViewModel vm2)
-                    vm2.PlayNext(); // will set CurrentlyPlaying = null / "Queue finished"
+                    vm2.PlayNextOn(vm2.Player1); // will set CurrentlyPlaying = null / "Queue finished"
             }
         });
     }

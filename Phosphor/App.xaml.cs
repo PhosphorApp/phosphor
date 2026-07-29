@@ -98,8 +98,8 @@ public partial class App : Application
         viewModel.GaplessPlayback = _settings.GaplessPlayback;
         viewModel.AutoDjProviderId = _settings.AutoDjProviderId;
         viewModel.Volume = _settings.Volume;
-        viewModel.RepeatEnabled = _settings.RepeatEnabled;
-        viewModel.AutoDjEnabled = _settings.AutoDjEnabled;
+        viewModel.Player1.Queue.RepeatEnabled = _settings.RepeatEnabled;
+        viewModel.Player1.Queue.AutoDjEnabled = _settings.AutoDjEnabled;
         viewModel.SecondPlayerEnabled = _settings.EnableSecondPlayer;
         viewModel.Player2AudioOnly = _settings.TopperAudioOnly;
         // Configure Plex + its category tiles from the plug-in instance configs.
@@ -246,7 +246,7 @@ public partial class App : Application
                 }
                 else
                 {
-                    viewModel.QueueIndex = restoreIndex;
+                    viewModel.Player1.Queue.QueueIndex = restoreIndex;
                 }
             }
             else if (_settings.AutoPlayQueueOnStart && viewModel.Queue.Count > 0)
@@ -433,9 +433,9 @@ public partial class App : Application
         _topperProxy?.SaveLayout(_settings.Topper);
         if (_dmdWindow.DataContext is JukeboxViewModel vmSettings)
         {
-            _settings.RepeatEnabled = vmSettings.RepeatEnabled;
-            _settings.AutoDjEnabled = vmSettings.AutoDjEnabled;
-            _settings.LastQueueIndex = vmSettings.LastKnownQueueIndex;
+            _settings.RepeatEnabled = vmSettings.Player1.Queue.RepeatEnabled;
+            _settings.AutoDjEnabled = vmSettings.Player1.Queue.AutoDjEnabled;
+            _settings.LastQueueIndex = vmSettings.Player1.Queue.LastKnownQueueIndex;
             // Persist the queue on exit so metadata enriched during the session
             // (upload date, accurate duration, chapters) survives a restart.
             vmSettings.SaveQueueState();
