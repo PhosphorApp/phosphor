@@ -33,6 +33,16 @@ second item (music-only, video, or ambience).
 > making `PlayTransitioning` per-player (currently a shared VM flag). **Stage B** is next: the DMD
 > queue panel follows `ActivePlayer` (swap `ItemsSource` + commands) + "focus active queue" affordance.
 
+> **POST-STAGE-A FIX:** `PlayTransitioning` is now per-player — it routes through the owning
+> `PlayerContext` (`PlayNowOn` sets the target; `NotifyPlaybackStarted(context)` and the resolve-failure
+> paths clear the hosting player) so each now-playing bar's loading spinner reflects only its own
+> player. `VM.PlayTransitioning` delegates to `Player1`. This closes the Stage-A "make PlayTransitioning
+> per-player" follow-up early.
+
+> **STATUS (Phase 3 Stage B in progress on branch `multiplayer`).** Making the single DMD queue panel
+> follow `ActivePlayer` (swap `ItemsSource`/commands/title to the active player's `PlayerQueue`) and
+> reopening per-queue Repeat/AutoDJ/Shuffle for the active player.
+
 **Where things stand (end of Phase 2 + tweaks):**
 - `PlayerContext` (`Phosphor/Playback/PlayerContext.cs`) is the **per-player state holder**
   (`INotifyPropertyChanged`): `CurrentlyPlaying`, `PlaybackPosition/Duration`, `Volume`,

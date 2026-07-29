@@ -1339,6 +1339,43 @@ public partial class JukeboxViewModel : ObservableObject
     /// <summary>True when Player 2 (Topper) is the active target for newly-played items.</summary>
     public bool IsPlayer2Active => ReferenceEquals(_activePlayer, Player2);
 
+    // ── Active-queue projection (Stage B) ──
+    // The single DMD queue panel binds to these so it follows whichever player is active. They project
+    // the active player's PlayerQueue; the VM's Player-1-bound Queue/QueueIndex/etc. stay unchanged so
+    // host/gapless/prefetch consumers keep targeting Player 1.
+
+    /// <summary>The active player's queue collection (what the DMD queue panel shows).</summary>
+    public ObservableCollection<VideoItem> ActiveQueue => _activePlayer.Queue.Queue;
+
+    /// <summary>The active player's currently-playing queue item (drives the panel highlight).</summary>
+    public VideoItem? ActiveCurrentQueueItem => _activePlayer.Queue.CurrentQueueItem;
+
+    /// <summary>True when the active player's queue has items.</summary>
+    public bool HasActiveQueueItems => _activePlayer.Queue.HasQueueItems;
+
+    /// <summary>
+    /// The parenthetical suffix after "QUEUE" in the panel title. When the 2nd player is enabled the
+    /// active queue is identified by its owner name (e.g. "(Topper)"); single-player shows the count.
+    /// </summary>
+    public string ActiveQueueCountText =>
+        SecondPlayerEnabled
+            ? $"({_activePlayer.Queue.OwnerName})"
+            : ActiveQueue.Count > 0 ? $"({ActiveQueue.Count} {(ActiveQueue.Count == 1 ? "item" : "items")})" : "";
+
+    /// <summary>Repeat toggle for the active player's queue (bound by the panel's Repeat button).</summary>
+    public bool ActiveRepeatEnabled
+    {
+        get => _activePlayer.Queue.RepeatEnabled;
+        set => _activePlayer.Queue.RepeatEnabled = value;
+    }
+
+    /// <summary>AutoDJ toggle for the active player's queue (bound by the panel's AutoDJ button).</summary>
+    public bool ActiveAutoDjEnabled
+    {
+        get => _activePlayer.Queue.AutoDjEnabled;
+        set => _activePlayer.Queue.AutoDjEnabled = value;
+    }
+
     /// <summary>Makes Player 1 (Backglass) the active target (click-to-activate on its now-playing bar).</summary>
     [RelayCommand]
     private void ActivatePlayer1() => ActivePlayer = Player1;
