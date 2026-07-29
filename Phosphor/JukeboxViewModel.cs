@@ -1433,6 +1433,45 @@ public partial class JukeboxViewModel : ObservableObject
         set => _activePlayer.Queue.AutoDjEnabled = value;
     }
 
+    // ── Active-queue commands (bound by the DMD queue panel; act on whichever player is active) ──
+
+    [RelayCommand]
+    private void ClearActiveQueue() => ClearQueueOn(_activePlayer);
+
+    [RelayCommand]
+    private void ShuffleActiveQueue() => ShuffleQueueOn(_activePlayer);
+
+    [RelayCommand]
+    private void RemoveFromActiveQueue(VideoItem? item) => RemoveFromQueueOn(_activePlayer, item);
+
+    /// <summary>Plays the item at <paramref name="index"/> in the active player's queue.</summary>
+    public void PlayFromActiveQueueIndex(int index) => PlayFromQueueIndexOn(_activePlayer, index);
+
+    [RelayCommand]
+    private void ToggleActiveRepeat()
+    {
+        ActiveRepeatEnabled = !ActiveRepeatEnabled;
+        StatusText = ActiveRepeatEnabled ? "Repeat enabled" : "Repeat disabled";
+    }
+
+    [RelayCommand]
+    private void ToggleActiveAutoDj()
+    {
+        ActiveAutoDjEnabled = !ActiveAutoDjEnabled;
+        if (ActiveAutoDjEnabled)
+        {
+            // Player 1's fill-on-enable is wired via WirePlayerQueue; for any other active player
+            // (Topper) kick the fill here so enabling AutoDJ starts populating its queue immediately.
+            if (!ReferenceEquals(_activePlayer, Player1))
+                _ = SafeFireAndForget(AutoDjFillQueueOn(_activePlayer));
+        }
+        else
+        {
+            StatusText = "AutoDJ disabled";
+            _autoDjUsedIds.Clear();
+        }
+    }
+
     /// <summary>Makes Player 1 (Backglass) the active target (click-to-activate on its now-playing bar).</summary>
     [RelayCommand]
     private void ActivatePlayer1() => ActivePlayer = Player1;
@@ -3883,7 +3922,11 @@ public partial class JukeboxViewModel : ObservableObject
     {
         if (item == null || item.IsHeader) return;
 
-        if (Queue.Count >= MaxQueueSize)
+        // Add to the ACTIVE player's queue (the one the panel currently shows). With the 2nd player off
+        // this is always Player 1, so behavior is unchanged.
+        var q = _activePlayer.Queue.Queue;
+
+        if (q.Count >= MaxQueueSize)
         {
             StatusText = $"Queue is full ({MaxQueueSize} items max)";
             return;
@@ -3900,8 +3943,8 @@ public partial class JukeboxViewModel : ObservableObject
                 int added = 0;
                 foreach (var track in leaves)
                 {
-                    if (Queue.Count >= MaxQueueSize) break;
-                    Queue.Add(track);
+                    if (q.Count >= MaxQueueSize) break;
+                    q.Add(track);
                     added++;
                 }
                 StatusText = added < leaves.Count
@@ -3916,7 +3959,7 @@ public partial class JukeboxViewModel : ObservableObject
             return;
         }
 
-        Queue.Add(item);
+        q.Add(item);
         StatusText = $"Queued: {item.Title}";
     }
 
