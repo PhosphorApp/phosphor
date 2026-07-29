@@ -1440,10 +1440,16 @@ public partial class JukeboxViewModel : ObservableObject
         set => _activePlayer.Queue.AutoDjEnabled = value;
     }
 
-    // ── Active-queue commands (bound by the DMD queue panel; act on whichever player is active) ──
-
     [RelayCommand]
     private void ClearActiveQueue() => ClearQueueOn(_activePlayer);
+
+    /// <summary>
+    /// Cycles which player's queue the panel shows/controls (Backglass ↔ Topper) by flipping
+    /// <see cref="ActivePlayer"/>. Bound to the queue header's "switch queue" affordance; only surfaced
+    /// when the second player is enabled.
+    /// </summary>
+    [RelayCommand]
+    private void ToggleActiveQueueFocus() => ActivePlayer = IsPlayer1Active ? Player2 : Player1;
 
     [RelayCommand]
     private void ShuffleActiveQueue() => ShuffleQueueOn(_activePlayer);

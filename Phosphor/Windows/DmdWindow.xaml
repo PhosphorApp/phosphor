@@ -748,6 +748,12 @@
             </Button>
             <DockPanel x:Name="QueueExpandedPanel">
                 <DockPanel x:Name="QueueHeaderPanel" DockPanel.Dock="Top" Margin="0,0,0,4">
+                    <Button x:Name="QueueSwitchButton" Content="&#x21C4;" DockPanel.Dock="Right" Padding="4,1" FontSize="12"
+                            Background="Transparent" Foreground="{StaticResource AccentBrush}"
+                            BorderThickness="0" Cursor="Hand" VerticalAlignment="Center"
+                            ToolTip="Switch which player's queue is shown (Backglass / Topper)"
+                            Command="{Binding ToggleActiveQueueFocusCommand}"
+                            Visibility="{Binding SecondPlayerEnabled, Converter={StaticResource BoolVis}}"/>
                     <Button x:Name="QueueClearButton" Content="✕ Clear" DockPanel.Dock="Right" Padding="4,1" FontSize="11"
                             Background="Transparent" Foreground="{StaticResource TextDimBrush}"
                             BorderThickness="0" Cursor="Hand" VerticalAlignment="Center"
