@@ -1396,7 +1396,7 @@ public partial class JukeboxViewModel : ObservableObject
         else
         {
             StatusText = "AutoDJ disabled";
-            _autoDjUsedIds.Clear();
+            _autoDj.ClearUsedIds();
         }
     }
 
@@ -2549,6 +2549,16 @@ public partial class JukeboxViewModel : ObservableObject
         WirePlayerQueue(Player1.Queue);
         _activeQueueForwarder = new Phosphor.Playback.ActiveQueueForwarder(OnPropertyChanged);
         _activeQueueForwarder.SwitchTo(_activePlayer.Queue);
+        _autoDj = new Phosphor.Playback.AutoDjService(
+            setStatus: text => StatusText = text,
+            search: query => SearchVideosViaPluginOrLegacy(query, AutoDjProviderId),
+            runOnUi: RunOnUiAsync,
+            playNext: PlayNextOn,
+            resolveActiveGenre: ResolveActiveGenreForAutoDj,
+            mostRecentHistoryTitle: () => _history.Entries
+                .Select(e => e.Title)
+                .FirstOrDefault(t => !string.IsNullOrWhiteSpace(t)),
+            logException: DebugLog.LogException);
         WirePlayerContext(Player1);
         WirePlayerContext(Player2);
         _history = PlayHistory.Load();
@@ -4897,12 +4907,8 @@ public partial class JukeboxViewModel : ObservableObject
         var items = pq.Queue.ToList();
         pq.Queue.Clear();
 
-        // Fisher-Yates shuffle
-        for (int i = items.Count - 1; i > 0; i--)
-        {
-            int j = _autoDjRng.Next(i + 1);
-            (items[i], items[j]) = (items[j], items[i]);
-        }
+        // Fisher-Yates shuffle (shares the AutoDJ engine's RNG)
+        _autoDj.Shuffle(items);
 
         foreach (var item in items)
             pq.Queue.Add(item);
@@ -4916,169 +4922,27 @@ public partial class JukeboxViewModel : ObservableObject
 
     // ── AutoDJ ──
 
-    private const int AutoDjRefillThreshold = 5;
-    private const int AutoDjBatchSize = 10;
-    private readonly HashSet<string> _autoDjUsedIds = new();
-    private readonly Random _autoDjRng = new();
+    /// <summary>The AutoDJ engine (owns the used-id de-dup set, RNG, and genre/video fill bodies).</summary>
+    private readonly Phosphor.Playback.AutoDjService _autoDj;
 
     private async Task AutoDjFillQueue() => await AutoDjFillQueueOn(Player1);
 
     /// <summary>Refills <paramref name="player"/>'s queue via AutoDJ when it is running low.</summary>
-    private async Task AutoDjFillQueueOn(Phosphor.Playback.PlayerContext player)
+    private Task AutoDjFillQueueOn(Phosphor.Playback.PlayerContext player) => _autoDj.FillAsync(player);
+
+    /// <summary>
+    /// Resolves the genre <see cref="Category"/> AutoDJ should browse from the current category, or null
+    /// to fall back to "similar to the current/most-recent track". A genre tile is a saved category with
+    /// a non-empty search term.
+    /// </summary>
+    private Category? ResolveActiveGenreForAutoDj()
     {
-        var pq = player.Queue;
-        if (pq.IsAutoDjFilling || !pq.AutoDjEnabled) return;
+        var genreEntry = _genreCategories.FirstOrDefault(c =>
+            c.Name == ActiveCategory && !string.IsNullOrEmpty(c.SearchTerm));
 
-        // Only refill when fewer than 5 items remain ahead of the current position
-        int remaining = pq.Queue.Count - Math.Max(pq.QueueIndex, 0);
-        if (remaining >= AutoDjRefillThreshold && pq.Queue.Count > 0) return;
-
-        pq.IsAutoDjFilling = true;
-        int targetSize = pq.Queue.Count + AutoDjBatchSize;
-
-        try
-        {
-            // Check if we're in a genre category
-            var genreEntry = _genreCategories.FirstOrDefault(c =>
-                c.Name == ActiveCategory && !string.IsNullOrEmpty(c.SearchTerm));
-
-            if (genreEntry != null)
-            {
-                var genreCat = new Category { Name = genreEntry.Name, Icon = genreEntry.Icon, SearchTerm = genreEntry.SearchTerm };
-                await AutoDjFromGenre(player, genreCat, targetSize);
-            }
-            else
-                await AutoDjFromVideo(player, targetSize);
-
-            if (pq.AutoDjEnabled && pq.Queue.Count > 0)
-                StatusText = $"AutoDJ active — {pq.Queue.Count} in queue";
-        }
-        finally
-        {
-            pq.IsAutoDjFilling = false;
-        }
-    }
-
-    private async Task AutoDjFromGenre(Phosphor.Playback.PlayerContext player, Category genre, int targetSize)
-    {
-        var pq = player.Queue;
-        StatusText = $"AutoDJ: browsing {genre.Name}...";
-
-        try
-        {
-            // Load a larger pool from this genre to pick randomly from
-            var results = new List<VideoItem>();
-            var enumerator = SearchVideosViaPluginOrLegacy(genre.SearchTerm, AutoDjProviderId).GetAsyncEnumerator();
-            try
-            {
-                int fetched = 0;
-                while (fetched < 50 && await enumerator.MoveNextAsync())
-                {
-                    results.Add(enumerator.Current);
-                    fetched++;
-                }
-            }
-            finally
-            {
-                try { await enumerator.DisposeAsync(); }
-                catch { /* enumerator may be faulted */ }
-            }
-
-            // Shuffle and pick items not already queued/played
-            var shuffled = results.OrderBy(_ => _autoDjRng.Next()).ToList();
-
-            await RunOnUiAsync(() =>
-            {
-                foreach (var item in shuffled)
-                {
-                    if (pq.Queue.Count >= targetSize) break;
-                    var videoId = item.VideoId;
-                    if (_autoDjUsedIds.Contains(videoId)) continue;
-                    if (pq.Queue.Any(q => q.VideoId == videoId)) continue;
-                    if (player.CurrentlyPlaying?.VideoId == videoId) continue;
-
-                    pq.Queue.Add(item);
-                    _autoDjUsedIds.Add(videoId);
-                    StatusText = $"AutoDJ queued: {item.Title}";
-
-                    if (player.CurrentlyPlaying == null)
-                        PlayNextOn(player);
-                }
-            });
-        }
-        catch (Exception ex)
-        {
-            DebugLog.LogException("AutoDJ genre", ex);
-        }
-    }
-
-    private async Task AutoDjFromVideo(Phosphor.Playback.PlayerContext player, int targetSize)
-    {
-        var pq = player.Queue;
-        // Use the title of the currently playing (or most recent) track to find similar content,
-        // since the channel/author name often doesn't reflect the actual music.
-        string? query = player.CurrentlyPlaying?.Title;
-
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            query = _history.Entries
-                .Select(e => e.Title)
-                .FirstOrDefault(t => !string.IsNullOrWhiteSpace(t));
-        }
-
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            StatusText = "AutoDJ: no track info available";
-            return;
-        }
-
-        StatusText = $"AutoDJ: finding similar to {query}...";
-
-        try
-        {
-            // Fetch a page of results and randomize so we don't always pick the same top results
-            var pool = new List<VideoItem>();
-            var enumerator = SearchVideosViaPluginOrLegacy(query, AutoDjProviderId).GetAsyncEnumerator();
-            try
-            {
-                int fetched = 0;
-                while (fetched < 50 && await enumerator.MoveNextAsync())
-                {
-                    pool.Add(enumerator.Current);
-                    fetched++;
-                }
-            }
-            finally
-            {
-                try { await enumerator.DisposeAsync(); }
-                catch { /* enumerator may be faulted */ }
-            }
-
-            var shuffled = pool.OrderBy(_ => _autoDjRng.Next()).ToList();
-
-            await RunOnUiAsync(() =>
-            {
-                foreach (var item in shuffled)
-                {
-                    if (pq.Queue.Count >= targetSize) break;
-                    var videoId = item.VideoId;
-                    if (_autoDjUsedIds.Contains(videoId)) continue;
-                    if (pq.Queue.Any(q => q.VideoId == videoId)) continue;
-                    if (player.CurrentlyPlaying?.VideoId == videoId) continue;
-
-                    pq.Queue.Add(item);
-                    _autoDjUsedIds.Add(videoId);
-                    StatusText = $"AutoDJ queued: {item.Title}";
-
-                    if (player.CurrentlyPlaying == null)
-                        PlayNextOn(player);
-                }
-            });
-        }
-        catch (Exception ex)
-        {
-            DebugLog.LogException("AutoDJ video", ex);
-        }
+        return genreEntry == null
+            ? null
+            : new Category { Name = genreEntry.Name, Icon = genreEntry.Icon, SearchTerm = genreEntry.SearchTerm };
     }
 
     [RelayCommand]
@@ -5088,7 +4952,7 @@ public partial class JukeboxViewModel : ObservableObject
         if (!Player1.Queue.AutoDjEnabled)
         {
             StatusText = "AutoDJ disabled";
-            _autoDjUsedIds.Clear();
+            _autoDj.ClearUsedIds();
         }
     }
 
