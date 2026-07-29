@@ -147,6 +147,38 @@ public sealed class PlayerQueue : INotifyPropertyChanged
         OnPropertyChanged(nameof(CurrentQueueItem));
     }
 
+    private readonly Random _rng = new();
+
+    /// <summary>
+    /// Randomizes the order of the queue in place (Fisher-Yates), keeping the currently-playing item's
+    /// cursor pointed at the same item. No-op for fewer than two items. Returns the item count so the
+    /// caller can surface a status message. A pure queue operation — owns its own RNG.
+    /// </summary>
+    public int Shuffle()
+    {
+        if (Queue.Count < 2) return Queue.Count;
+
+        var currentItem = CurrentQueueItem;
+
+        var items = Queue.ToList();
+        Queue.Clear();
+
+        for (int i = items.Count - 1; i > 0; i--)
+        {
+            int j = _rng.Next(i + 1);
+            (items[i], items[j]) = (items[j], items[i]);
+        }
+
+        foreach (var item in items)
+            Queue.Add(item);
+
+        // Restore the cursor to point at the same item.
+        if (currentItem != null)
+            QueueIndex = Queue.IndexOf(currentItem);
+
+        return Queue.Count;
+    }
+
     // ── Persistence ──
 
     /// <summary>

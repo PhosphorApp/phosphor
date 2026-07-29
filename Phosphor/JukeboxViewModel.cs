@@ -4898,26 +4898,9 @@ public partial class JukeboxViewModel : ObservableObject
     /// <summary>Randomizes the order of <paramref name="player"/>'s queue, keeping its current item's cursor.</summary>
     public void ShuffleQueueOn(Phosphor.Playback.PlayerContext player)
     {
-        var pq = player.Queue;
-        if (pq.Queue.Count < 2) return;
-
-        // Remember the currently playing item
-        var currentItem = pq.CurrentQueueItem;
-
-        var items = pq.Queue.ToList();
-        pq.Queue.Clear();
-
-        // Fisher-Yates shuffle (shares the AutoDJ engine's RNG)
-        _autoDj.Shuffle(items);
-
-        foreach (var item in items)
-            pq.Queue.Add(item);
-
-        // Restore QueueIndex to point at the same item
-        if (currentItem != null)
-            pq.QueueIndex = pq.Queue.IndexOf(currentItem);
-
-        StatusText = $"Shuffled {pq.Queue.Count} items in queue";
+        int count = player.Queue.Shuffle();
+        if (count >= 2)
+            StatusText = $"Shuffled {count} items in queue";
     }
 
     // ── AutoDJ ──

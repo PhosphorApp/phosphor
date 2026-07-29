@@ -47,17 +47,6 @@ public sealed class AutoDjService
     /// <summary>Clears the used-id de-dup set (called when AutoDJ is switched off).</summary>
     public void ClearUsedIds() => _usedIds.Clear();
 
-    /// <summary>Randomizes <paramref name="items"/> in place with the service RNG (Fisher-Yates), used by
-    /// the queue Shuffle command so shuffle and AutoDJ share one deterministic RNG source.</summary>
-    public void Shuffle(IList<VideoItem> items)
-    {
-        for (int i = items.Count - 1; i > 0; i--)
-        {
-            int j = _rng.Next(i + 1);
-            (items[i], items[j]) = (items[j], items[i]);
-        }
-    }
-
     /// <summary>Refills <paramref name="player"/>'s queue via AutoDJ when it is running low.</summary>
     public async System.Threading.Tasks.Task FillAsync(PlayerContext player)
     {
