@@ -74,6 +74,31 @@ second item (music-only, video, or ambience).
 > for the Topper). Several other sources are also single-stream by nature. This is likely best handled
 > with **UX verbiage/guidance** about concurrent-stream usage rather than a hard technical fix — TBD.
 
+> **FOLLOWUP — VM delegation-bloat / tech debt (architecture assessment after Phase 3):** The domain
+> abstractions landed well — `PlayerQueue` (per-player queue state + persistence), `PlayerContext`
+> (per-player now-playing/transition/audio-only), and the player-parameterized `...On(player)` cores
+> (`PlayNowOn`/`PlayNextOn`/`AdvanceQueueGaplessOn`/`ClearQueueOn`/`ShuffleQueueOn`/`RemoveFromQueueOn`/
+> `AutoDjFillQueueOn`) mean the playback/queue *logic* now exists once and is targeted by parameter.
+> **The cost:** `JukeboxViewModel` (~5.4k lines) now carries a heavy delegation surface — ~49
+> `=> Player1.…` forwarders + ~45 `Active*` projection members — so queue state is exposed as **three
+> overlapping views** (`Queue`/`QueueIndex`/… → Player 1 for host/gapless consumers; `Active*` → the
+> panel's active player; `Player2*` → the Topper bar). It works and kept XAML/persistence byte-for-byte
+> stable, but a reader must know which projection a member represents, and the forwarding plumbing
+> (`WirePlayerQueue`, `SwapActiveQueueSubscription`, the PropertyChanged switch statements) all lives on
+> the VM. Some cross-player state is still shared/Player-1-centric (`_history`, `_autoDjUsedIds`,
+> `StatusText`) so the two players aren't *fully* independent yet.
+>
+> **Suggested cleanup (not urgent; no user-visible change):**
+> 1. **Collapse the three queue views into one.** Make the host/gapless callers
+>    (`BackglassWindow` `PlayNext`/`HasNextTrack`/`AdvanceQueueGapless`/`GetNextGaplessTrack`,
+>    `JukeboxPlayer`) player-aware so the panel can bind everything through the `Active*` projection —
+>    eliminating roughly half the `=> Player1` delegators.
+> 2. **Move the forwarding plumbing off the VM** into a small `PlayerQueueViewModel` (or onto
+>    `PlayerContext`/`PlayerQueue`) so the VM stops being the PropertyChanged switchboard.
+> 3. **Extract a `QueueService` / AutoDJ engine** off the VM to start dismantling the God object
+>    (own the shared `_autoDjUsedIds`/RNG/fill orchestration; take `PlayerQueue` as a parameter).
+> Overall grade: solid **B+** — abstractions are right; the VM just needs a follow-up diet.
+
 **Where things stand (end of Phase 2 + tweaks):**
 - `PlayerContext` (`Phosphor/Playback/PlayerContext.cs`) is the **per-player state holder**
   (`INotifyPropertyChanged`): `CurrentlyPlaying`, `PlaybackPosition/Duration`, `Volume`,
