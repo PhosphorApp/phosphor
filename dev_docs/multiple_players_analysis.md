@@ -39,9 +39,24 @@ second item (music-only, video, or ambience).
 > player. `VM.PlayTransitioning` delegates to `Player1`. This closes the Stage-A "make PlayTransitioning
 > per-player" follow-up early.
 
-> **STATUS (Phase 3 Stage B in progress on branch `multiplayer`).** Making the single DMD queue panel
-> follow `ActivePlayer` (swap `ItemsSource`/commands/title to the active player's `PlayerQueue`) and
-> reopening per-queue Repeat/AutoDJ/Shuffle for the active player.
+> **STATUS (Phase 3 Stage B complete on branch `multiplayer`).** The single DMD queue panel now
+> **follows `ActivePlayer`**. The VM exposes an active-queue projection (`ActiveQueue`,
+> `ActiveCurrentQueueItem`, `ActiveQueueIndex`, `ActiveQueueCountText`, `HasActiveQueueItems`,
+> `ActiveRepeatEnabled`, `ActiveAutoDjEnabled`) plus active-targeted commands (`ClearActiveQueue`,
+> `ShuffleActiveQueue`, `RemoveFromActiveQueue`, `ToggleActiveRepeat`, `ToggleActiveAutoDj`,
+> `PlayFromActiveQueueIndex`, `ToggleActiveQueueFocus`); `AddToQueue` targets the active player's queue.
+> On an active-player switch the VM swaps a forwarding subscription (PropertyChanged +
+> CollectionChanged) to the newly-active `PlayerQueue` and raises the active-* members so the panel
+> refreshes. The queue command bodies are player-parameterized (`ClearQueueOn`/`ShuffleQueueOn`/
+> `RemoveFromQueueOn`/`AutoDjFillQueueOn(player)`, with per-queue `IsAutoDjFilling`), so Repeat/AutoDJ/
+> Shuffle are **per-queue** for whichever player is active. The DMD panel XAML + code-behind
+> (double-click, drag-reorder, play-selected, nav ring, auto-hide, make-playlist, current-item
+> scroll/highlight) all bind to the active-* surface. A header **"switch queue"** affordance (`⇄`,
+> shown only when the 2nd player is enabled) flips the visible queue; the title shows the active owner
+> name. The VM's Player-1-bound `Queue`/`QueueIndex`/`CurrentQueueItem`/`HasNextTrack`/
+> `AdvanceQueueGapless`/`GetNextGaplessTrack` stay unchanged, so Backglass host/gapless/prefetch are
+> unaffected. **Still deferred:** Player 2 natural-end (PCM-callback) gapless auto-advance; relocating
+> prefetch/preemptive-cache cursors into `PlayerQueue` (Player 2 doesn't gapless-prefetch yet).
 
 **Where things stand (end of Phase 2 + tweaks):**
 - `PlayerContext` (`Phosphor/Playback/PlayerContext.cs`) is the **per-player state holder**
