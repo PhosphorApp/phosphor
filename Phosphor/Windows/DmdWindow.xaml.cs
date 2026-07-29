@@ -387,7 +387,7 @@ public partial class DmdWindow : JukeboxWindow
                 if (DataContext is JukeboxViewModel vm)
                 {
                     DebugLog.Log(LogLevel.Trace, "ScrubBar", $"DragStarted | Value={ScrubBar.Value} Max={ScrubBar.Maximum} IsSeeking→true");
-                    vm.IsSeeking = true;
+                    vm.Player1.IsSeeking = true;
                 }
             }));
         ScrubBar.AddHandler(System.Windows.Controls.Primitives.Thumb.DragCompletedEvent,
@@ -398,13 +398,13 @@ public partial class DmdWindow : JukeboxWindow
                 if (DataContext is JukeboxViewModel vm)
                 {
                     var seekPos = SnapToChapter(vm, (long)ScrubBar.Value);
-                    DebugLog.Log(LogLevel.Trace, "ScrubBar", $"DragCompleted | SeekTo={seekPos} Duration={vm.PlaybackDuration} Position={vm.PlaybackPosition}");
-                    if (vm.CurrentlyPlaying?.Chapters?.Count > 0)
+                    DebugLog.Log(LogLevel.Trace, "ScrubBar", $"DragCompleted | SeekTo={seekPos} Duration={vm.Player1.PlaybackDuration} Position={vm.Player1.PlaybackPosition}");
+                    if (vm.Player1.CurrentlyPlaying?.Chapters?.Count > 0)
                         vm.PlayTransitioning = true;
                     vm.SeekTo(seekPos);
                     Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
                     {
-                        vm.IsSeeking = false;
+                        vm.Player1.IsSeeking = false;
                         DebugLog.Log(LogLevel.Trace, "ScrubBar", "IsSeeking→false");
                     });
                 }
@@ -414,10 +414,10 @@ public partial class DmdWindow : JukeboxWindow
         ScrubBar.PreviewMouseUp += (_, e) =>
         {
             if (_scrubDragging) return; // handled by DragCompleted
-            if (DataContext is JukeboxViewModel vm && vm.IsPlaying)
+            if (DataContext is JukeboxViewModel vm && vm.Player1.IsPlaying)
             {
                 var seekPos = SnapToChapter(vm, (long)ScrubBar.Value);
-                if (vm.CurrentlyPlaying?.Chapters?.Count > 0)
+                if (vm.Player1.CurrentlyPlaying?.Chapters?.Count > 0)
                     vm.PlayTransitioning = true;
                 vm.SeekTo(seekPos);
             }
@@ -427,12 +427,12 @@ public partial class DmdWindow : JukeboxWindow
         ScrubBar.MouseMove += (_, e) =>
         {
             if (DataContext is not JukeboxViewModel vm) return;
-            var chapters = vm.CurrentlyPlaying?.Chapters;
-            if (chapters == null || chapters.Count == 0 || vm.PlaybackDuration <= 1) { HideScrubToolTip(); return; }
+            var chapters = vm.Player1.CurrentlyPlaying?.Chapters;
+            if (chapters == null || chapters.Count == 0 || vm.Player1.PlaybackDuration <= 1) { HideScrubToolTip(); return; }
 
             var pos = e.GetPosition(ScrubBar);
             var fraction = Math.Clamp(pos.X / ScrubBar.ActualWidth, 0, 1);
-            var timeMs = fraction * vm.PlaybackDuration;
+            var timeMs = fraction * vm.Player1.PlaybackDuration;
             var chapter = GetChapterAtTime(chapters, timeMs);
             if (chapter != null && !string.IsNullOrEmpty(chapter.Title))
                 ShowScrubToolTip(chapter.Title, pos);
@@ -448,8 +448,8 @@ public partial class DmdWindow : JukeboxWindow
     /// </summary>
     private long SnapToChapter(JukeboxViewModel vm, long positionMs)
     {
-        if (!vm.ShouldSnapToChapters) return positionMs;
-        var chapters = vm.CurrentlyPlaying?.Chapters;
+        if (!vm.Player1.ShouldSnapToChapters) return positionMs;
+        var chapters = vm.Player1.CurrentlyPlaying?.Chapters;
         if (chapters == null || chapters.Count == 0) return positionMs;
 
         // Find the chapter whose start is closest
@@ -534,19 +534,19 @@ public partial class DmdWindow : JukeboxWindow
         if (DataContext is not JukeboxViewModel vm) return;
 
         var width = ChapterTicksOverlay.ActualWidth;
-        if (width <= 0 || vm.ChapterTickPositions.Count == 0) return;
+        if (width <= 0 || vm.Player1.ChapterTickPositions.Count == 0) return;
 
         var generator = ChapterTicksOverlay.ItemContainerGenerator;
         int placed = 0;
-        for (int i = 0; i < vm.ChapterTickPositions.Count; i++)
+        for (int i = 0; i < vm.Player1.ChapterTickPositions.Count; i++)
         {
             if (generator.ContainerFromIndex(i) is System.Windows.Controls.ContentPresenter cp)
             {
-                System.Windows.Controls.Canvas.SetLeft(cp, vm.ChapterTickPositions[i] * width);
+                System.Windows.Controls.Canvas.SetLeft(cp, vm.Player1.ChapterTickPositions[i] * width);
                 placed++;
             }
         }
-        DebugLog.Log(LogLevel.Trace, "Chapters", $"PositionChapterTicks: {placed}/{vm.ChapterTickPositions.Count} placed, width={width:F1}");
+        DebugLog.Log(LogLevel.Trace, "Chapters", $"PositionChapterTicks: {placed}/{vm.Player1.ChapterTickPositions.Count} placed, width={width:F1}");
     }
 
     private void WirePlaylistPicker()
@@ -584,7 +584,7 @@ public partial class DmdWindow : JukeboxWindow
         // When Play is pressed and nothing is playing, start from the selected queue item
         StartStopButton.PreviewMouseLeftButtonDown += (_, e) =>
         {
-            if (DataContext is JukeboxViewModel vm && !vm.IsPlaying && !vm.IsPaused
+            if (DataContext is JukeboxViewModel vm && !vm.Player1.IsPlaying && !vm.Player1.IsPaused
                 && QueueList.SelectedIndex >= 0 && QueueList.SelectedIndex < vm.ActiveQueue.Count)
             {
                 e.Handled = true;
@@ -4466,7 +4466,7 @@ public partial class DmdWindow : JukeboxWindow
     {
         if (DataContext is not JukeboxViewModel vm) return;
 
-        var result = ShowNewPlaylistDialog(vm.CurrentlyPlaying?.Title ?? "My Playlist");
+        var result = ShowNewPlaylistDialog(vm.Player1.CurrentlyPlaying?.Title ?? "My Playlist");
         if (result != null)
             vm.CreatePlaylistWithIcon(result.Value.Name, result.Value.Icon);
     }

@@ -575,7 +575,7 @@ public partial class BackglassWindow : JukeboxWindow
             // Live streams (e.g. SiriusXM) have no natural end — an EndReached means the stream
             // dropped. Don't auto-advance the queue; just log it (lean v1). Reconnect/robustness
             // is a later refinement.
-            if (DataContext is JukeboxViewModel liveVm && liveVm.CurrentlyPlaying?.IsLiveStream == true)
+            if (DataContext is JukeboxViewModel liveVm && liveVm.Player1.CurrentlyPlaying?.IsLiveStream == true)
             {
                 DebugLog.Log(LogLevel.Info, "MediaEnded", "Live stream ended (dropped) — not auto-advancing.");
                 return;
@@ -609,7 +609,7 @@ public partial class BackglassWindow : JukeboxWindow
                     // surface from the previous track would just sit there black —
                     // detach it and show the idle overlay (logo + blobs). Mirrors
                     // the audio-only branch in OnPlayRequested.
-                    bool nextIsAudioOnly = _audioOnly || (vm.CurrentlyPlaying?.IsAudioOnly == true);
+                    bool nextIsAudioOnly = _audioOnly || (vm.Player1.CurrentlyPlaying?.IsAudioOnly == true);
                     if (nextIsAudioOnly)
                     {
                         DetachVideoView();

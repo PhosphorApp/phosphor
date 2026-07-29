@@ -560,10 +560,10 @@ public partial class App : Application
         try
         {
             _dittiPlayer = new System.Windows.Media.MediaPlayer();
-            _dittiPlayer.Volume = viewModel.Volume / 100.0; // WPF volume is 0.0–1.0
+            _dittiPlayer.Volume = viewModel.Player1.Volume / 100.0; // WPF volume is 0.0–1.0
 
             // Show in Now Playing
-            viewModel.CurrentlyPlaying = new VideoItem { Title = "Startup Ditti", VideoId = "ditti:startup" };
+            viewModel.Player1.CurrentlyPlaying = new VideoItem { Title = "Startup Ditti", VideoId = "ditti:startup" };
 
             // Track volume changes from the slider
             void onVolumeChanged(int v) { if (_dittiPlayer != null) _dittiPlayer.Volume = v / 100.0; }
@@ -573,8 +573,8 @@ public partial class App : Application
             void clearDitti()
             {
                 cleanupDittiEvents();
-                if (viewModel.CurrentlyPlaying?.VideoId == "ditti:startup")
-                    viewModel.CurrentlyPlaying = null;
+                if (viewModel.Player1.CurrentlyPlaying?.VideoId == "ditti:startup")
+                    viewModel.Player1.CurrentlyPlaying = null;
                 DisposeStartupDitti();
             }
             void onPlay(string _) => clearDitti();
@@ -589,8 +589,8 @@ public partial class App : Application
                 cleanupDittiEvents();
                 Dispatcher.BeginInvoke(() =>
                 {
-                    if (viewModel.CurrentlyPlaying?.VideoId == "ditti:startup")
-                        viewModel.CurrentlyPlaying = null;
+                    if (viewModel.Player1.CurrentlyPlaying?.VideoId == "ditti:startup")
+                        viewModel.Player1.CurrentlyPlaying = null;
                     DisposeStartupDitti();
                 });
             };
@@ -602,8 +602,8 @@ public partial class App : Application
                 cleanupDittiEvents();
                 Dispatcher.BeginInvoke(() =>
                 {
-                    if (viewModel.CurrentlyPlaying?.VideoId == "ditti:startup")
-                        viewModel.CurrentlyPlaying = null;
+                    if (viewModel.Player1.CurrentlyPlaying?.VideoId == "ditti:startup")
+                        viewModel.Player1.CurrentlyPlaying = null;
                     DisposeStartupDitti();
                 });
             };
@@ -615,8 +615,8 @@ public partial class App : Application
         catch (Exception ex)
         {
             DebugLog.Log(LogLevel.Warning, "Ditti", $"Startup ditti failed: {ex.Message}");
-            if (viewModel.CurrentlyPlaying?.VideoId == "ditti:startup")
-                viewModel.CurrentlyPlaying = null;
+            if (viewModel.Player1.CurrentlyPlaying?.VideoId == "ditti:startup")
+                viewModel.Player1.CurrentlyPlaying = null;
             DisposeStartupDitti();
         }
     }

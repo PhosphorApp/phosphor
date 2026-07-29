@@ -1731,7 +1731,7 @@ public partial class JukeboxViewModel : ObservableObject
 
     public void SeekTo(long timeMs)
     {
-        if (IsLiveStream) return; // live streams are not seekable
+        if (Player1.IsLiveStream) return; // live streams are not seekable
         Player1.RaiseSeekRequested(timeMs);
     }
 
@@ -4436,7 +4436,7 @@ public partial class JukeboxViewModel : ObservableObject
     [RelayCommand]
     private void TogglePlayStop(VideoItem? fallbackItem)
     {
-        if (IsPlaying)
+        if (Player1.IsPlaying)
         {
             _lastPlayedQueueIndex = Player1.Queue.QueueIndex;
             StopPlayback();
@@ -4458,34 +4458,34 @@ public partial class JukeboxViewModel : ObservableObject
     [RelayCommand]
     private void PausePlayback()
     {
-        if (!IsPlaying) return;
-        if (IsPaused)
+        if (!Player1.IsPlaying) return;
+        if (Player1.IsPaused)
         {
             ResumePlayback();
             return;
         }
         Player1.RaisePauseRequested();
-        IsPaused = true;
+        Player1.IsPaused = true;
         StatusText = "Paused";
     }
 
     [RelayCommand]
     private void ResumePlayback()
     {
-        if (!IsPlaying || !IsPaused) return;
+        if (!Player1.IsPlaying || !Player1.IsPaused) return;
         Player1.RaiseResumeRequested();
-        IsPaused = false;
-        StatusText = $"Playing: {CurrentlyPlaying?.Title}{CurrentlyPlaying?.AudioTag}";
+        Player1.IsPaused = false;
+        StatusText = $"Playing: {Player1.CurrentlyPlaying?.Title}{Player1.CurrentlyPlaying?.AudioTag}";
     }
 
     [RelayCommand]
     private void Play()
     {
-        if (IsPaused)
+        if (Player1.IsPaused)
         {
             ResumePlayback();
         }
-        else if (!IsPlaying && Queue.Count > 0)
+        else if (!Player1.IsPlaying && Queue.Count > 0)
         {
             if (Player1.Queue.QueueIndex >= 0 && Player1.Queue.QueueIndex < Queue.Count)
                 PlayFromQueueIndex(Player1.Queue.QueueIndex);
@@ -4594,14 +4594,14 @@ public partial class JukeboxViewModel : ObservableObject
     [RelayCommand]
     private void PreviousTrack()
     {
-        if (!IsPlaying) return;
+        if (!Player1.IsPlaying) return;
 
         var chapters = Player1.CurrentlyPlaying?.Chapters;
         if (chapters != null && chapters.Count > 0 && Player1.PlaybackDuration > 1)
         {
             int currentChapter = GetCurrentChapterIndex(chapters);
             var chapterStartMs = chapters[currentChapter].StartTime.TotalMilliseconds;
-            bool isNearChapterStart = (PlaybackPosition - chapterStartMs) < 10000;
+            bool isNearChapterStart = (Player1.PlaybackPosition - chapterStartMs) < 10000;
 
             if (!isNearChapterStart)
             {
@@ -4624,7 +4624,7 @@ public partial class JukeboxViewModel : ObservableObject
         if (Queue.Count == 0) return;
         int currentIdx = Player1.Queue.QueueIndex;
         bool isFirstItem = currentIdx <= 0;
-        bool isBeyond10Seconds = PlaybackPosition >= 10000;
+        bool isBeyond10Seconds = Player1.PlaybackPosition >= 10000;
 
         if (isBeyond10Seconds || isFirstItem)
         {
@@ -4791,7 +4791,7 @@ public partial class JukeboxViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(name))
         {
             // Default to currently playing title or generic name
-            name = CurrentlyPlaying?.Title ?? $"Playlist {_playlists.Playlists.Count}";
+            name = Player1.CurrentlyPlaying?.Title ?? $"Playlist {_playlists.Playlists.Count}";
         }
 
         _playlists.GetOrCreate(name);
@@ -4942,7 +4942,7 @@ public partial class JukeboxViewModel : ObservableObject
     [RelayCommand]
     private void TogglePauseResume()
     {
-        if (IsPaused)
+        if (Player1.IsPaused)
             ResumePlayback();
         else
             PausePlayback();
