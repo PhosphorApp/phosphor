@@ -211,7 +211,7 @@ public sealed class JukeboxPlayer
                 _host.StartColorCycle();
                 _host.StartPositionTimer();
                 _host.NotifyDmdPlaybackStarted();
-                vm.NotifyPlaybackStarted();
+                vm.NotifyPlaybackStarted(Context);
                 DebugLog.Log(LogLevel.Debug, "GaplessPCM", $"Playing via PCM queue: {state.CurrentlyPlaying.Title}");
                 return;
             }
@@ -278,7 +278,7 @@ public sealed class JukeboxPlayer
                     if (streams == null)
                     {
                         mediaPlayer.Vout -= OnVout;
-                        Model?.NotifyPlaybackStarted();
+                        Model?.NotifyPlaybackStarted(Context);
                         return;
                     }
 
@@ -347,7 +347,7 @@ public sealed class JukeboxPlayer
                         vmAoTimeout.StatusText = "Playback failed: server unreachable or stream timed out";
                         vmAoTimeout.NotifyPlaybackFailed(state?.CurrentlyPlaying);
                         if (state != null) state.CurrentlyPlaying = null;
-                        vmAoTimeout.NotifyPlaybackStarted();
+                        vmAoTimeout.NotifyPlaybackStarted(Context);
                     }
                     return;
                 }
@@ -356,7 +356,7 @@ public sealed class JukeboxPlayer
                 _host.StartColorCycle();
                 _host.StartPositionTimer();
                 _host.NotifyDmdPlaybackStarted();
-                Model?.NotifyPlaybackStarted();
+                Model?.NotifyPlaybackStarted(Context);
                 return;
             }
 
@@ -378,7 +378,7 @@ public sealed class JukeboxPlayer
                     vmTimeout.StatusText = "Playback failed: server unreachable or stream timed out";
                     vmTimeout.NotifyPlaybackFailed(state?.CurrentlyPlaying);
                     if (state != null) state.CurrentlyPlaying = null;
-                    vmTimeout.NotifyPlaybackStarted();
+                    vmTimeout.NotifyPlaybackStarted(Context);
                 }
                 return;
             }
@@ -401,7 +401,7 @@ public sealed class JukeboxPlayer
 
             // Notify so the DMD window can reclaim focus.
             _host.NotifyDmdPlaybackStarted();
-            Model?.NotifyPlaybackStarted();
+            Model?.NotifyPlaybackStarted(Context);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -413,7 +413,7 @@ public sealed class JukeboxPlayer
             _host.DetachVideoView();
             _host.ReturnToIdle();
             _host.StartColorCycle();
-            Model?.NotifyPlaybackStarted();
+            Model?.NotifyPlaybackStarted(Context);
         }
     }
 

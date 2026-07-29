@@ -844,11 +844,10 @@ public partial class JukeboxViewModel : ObservableObject
     /// Guards against rapid successive play requests (e.g. double-click race).
     /// Set before dispatching a play request, cleared once the player signals playback started.
     /// </summary>
-    private bool _playTransitioning;
     public bool PlayTransitioning
     {
-        get => _playTransitioning;
-        internal set => SetProperty(ref _playTransitioning, value);
+        get => Player1.PlayTransitioning;
+        internal set => Player1.PlayTransitioning = value;
     }
     /// <summary>
     /// The current item awaiting a background cache download, deferred until playback is confirmed
@@ -859,11 +858,13 @@ public partial class JukeboxViewModel : ObservableObject
 
     /// <summary>
     /// Call from the player host once playback has actually started (video output received)
-    /// to allow the next play request to proceed.
+    /// to allow the next play request to proceed. The <paramref name="context"/> identifies which
+    /// player started (so its transition spinner clears on the right now-playing bar); defaults to
+    /// <see cref="Player1"/> for the single-player call sites.
     /// </summary>
-    public void NotifyPlaybackStarted()
+    public void NotifyPlaybackStarted(Phosphor.Playback.PlayerContext? context = null)
     {
-        PlayTransitioning = false;
+        (context ?? Player1).PlayTransitioning = false;
         _statusPrefixCts?.Cancel();
         StatusPrefix = "";
 
@@ -878,7 +879,7 @@ public partial class JukeboxViewModel : ObservableObject
         // Self-healing badges: a successful play clears any "unavailable" mark the owning source kept
         // for this item (e.g. an IPTV channel that was previously geo-blocked/offline). Report it and
         // clear the live row's badge so the ⊘ disappears immediately.
-        var playing = CurrentlyPlaying;
+        var playing = (context ?? Player1).CurrentlyPlaying;
         if (playing is { ShowUnavailableBadge: true } && SourceForItem(playing) is Phosphor.Plugin.Abstractions.IPlaybackSuccessReportable ok)
         {
             try
@@ -1487,6 +1488,9 @@ public partial class JukeboxViewModel : ObservableObject
                         break;
                     case nameof(Phosphor.Playback.PlayerContext.IsPaused):
                         OnPropertyChanged(nameof(IsPaused));
+                        break;
+                    case nameof(Phosphor.Playback.PlayerContext.PlayTransitioning):
+                        OnPropertyChanged(nameof(PlayTransitioning));
                         break;
                     case nameof(Phosphor.Playback.PlayerContext.Volume):
                         OnPropertyChanged(nameof(Volume));
@@ -3930,7 +3934,7 @@ public partial class JukeboxViewModel : ObservableObject
             return;
         }
 
-        PlayTransitioning = true;
+        target.PlayTransitioning = true;
         SetStatusPrefix("Transitioning");
         target.CurrentlyPlaying = item;
         StatusText = $"Playing: {item.Title}{item.AudioTag}";
@@ -4008,7 +4012,7 @@ public partial class JukeboxViewModel : ObservableObject
         if (source is not Phosphor.Plugin.Abstractions.IPlayableResolver resolver)
         {
             StatusText = $"Can't play {item.Title}: source unavailable.";
-            PlayTransitioning = false;
+            if (PlayerHosting(item) is { } p) p.PlayTransitioning = false;
             return;
         }
 
@@ -4032,7 +4036,7 @@ public partial class JukeboxViewModel : ObservableObject
         if (sourceItem == null)
         {
             StatusText = $"Can't tune {item.Title} — not live right now.";
-            PlayTransitioning = false;
+            if (PlayerHosting(item) is { } p) p.PlayTransitioning = false;
             return;
         }
 
@@ -4054,7 +4058,7 @@ public partial class JukeboxViewModel : ObservableObject
             {
                 StatusText = $"Can't tune {item.Title} — stream unavailable.";
                 NotifyPlaybackFailed(item);
-                PlayTransitioning = false;
+                if (PlayerHosting(item) is { } p) p.PlayTransitioning = false;
             }
         }
         catch (Exception ex)
@@ -4062,7 +4066,7 @@ public partial class JukeboxViewModel : ObservableObject
             DebugLog.LogException($"Live resolve '{item.VideoId}'", ex);
             StatusText = $"Can't tune {item.Title}: {ex.Message}";
             NotifyPlaybackFailed(item);
-            PlayTransitioning = false;
+            if (PlayerHosting(item) is { } p) p.PlayTransitioning = false;
         }
     }
 
@@ -4104,7 +4108,7 @@ public partial class JukeboxViewModel : ObservableObject
             || item.PendingResolveSourceItem is not Phosphor.Plugin.Abstractions.SourceItem sourceItem)
         {
             StatusText = $"Can't play {item.Title}: source unavailable.";
-            PlayTransitioning = false;
+            if (PlayerHosting(item) is { } p) p.PlayTransitioning = false;
             return;
         }
 
@@ -4191,7 +4195,7 @@ public partial class JukeboxViewModel : ObservableObject
         {
             _consecutiveResolveFailures = 0;
             StatusText = reason;
-            PlayTransitioning = false;
+            if (PlayerHosting(item) is { } p) p.PlayTransitioning = false;
             return;
         }
 
@@ -4199,7 +4203,7 @@ public partial class JukeboxViewModel : ObservableObject
         {
             _consecutiveResolveFailures = 0;
             StatusText = $"{reason} Stopped after several unplayable tracks.";
-            PlayTransitioning = false;
+            if (PlayerHosting(item) is { } p2) p2.PlayTransitioning = false;
             return;
         }
 
@@ -4408,7 +4412,7 @@ public partial class JukeboxViewModel : ObservableObject
     {
         var queue = player.Queue;
         if (index < 0 || index >= queue.Queue.Count) return;
-        if (_playTransitioning) return;
+        if (player.PlayTransitioning) return;
 
         // Do NOT pre-emptively stop here: PlayNow → Play() handles the transition from the current
         // track (and PlayNow issues its own stop for live/deferred items that resolve first). A
