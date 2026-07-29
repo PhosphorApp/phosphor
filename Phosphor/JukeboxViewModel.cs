@@ -1028,7 +1028,16 @@ public partial class JukeboxViewModel : ObservableObject
 
     public bool HasQueueItems => Queue.Count > 0;
 
-    public string QueueCountText => Queue.Count > 0 ? $"({Queue.Count} {(Queue.Count == 1 ? "item" : "items")})" : "";
+    /// <summary>
+    /// The parenthetical suffix shown after "QUEUE" in the queue panel title. When the second player is
+    /// enabled we identify the visible queue by its owner name (e.g. "(Backglass)") — saving space and
+    /// making it clear which player's queue is shown — instead of the item count. When the second player
+    /// is off (single-queue) we keep the familiar item count (e.g. "(25 items)").
+    /// </summary>
+    public string QueueCountText =>
+        SecondPlayerEnabled
+            ? $"({Player1.Queue.OwnerName})"
+            : Queue.Count > 0 ? $"({Queue.Count} {(Queue.Count == 1 ? "item" : "items")})" : "";
 
     private string _statusText = "Select a category or search";
     public string StatusText
@@ -1416,7 +1425,10 @@ public partial class JukeboxViewModel : ObservableObject
         set
         {
             if (SetProperty(ref _secondPlayerEnabled, value))
+            {
                 OnPropertyChanged(nameof(Player1NowPlayingLabel));
+                OnPropertyChanged(nameof(QueueCountText));
+            }
         }
     }
 
