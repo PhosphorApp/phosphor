@@ -121,6 +121,16 @@ public class VideoItem : ObservableObject
     public object? PendingResolveSourceItem { get; set; }
 
     /// <summary>
+    /// The originating plug-in <c>SourceItem</c> this row was mapped from (opaque to the host), kept for
+    /// eagerly-resolved leaves so later per-item source round-trips (e.g. <c>IPlayableResolver.
+    /// GetMetadataAsync</c> for on-demand chapters) can hand the source back its <em>own</em> item —
+    /// which carries source-internal identity (e.g. Plex's rating key) the flat host fields don't. Unlike
+    /// <see cref="PendingLiveSourceItem"/>/<see cref="PendingResolveSourceItem"/> it implies no deferred
+    /// resolution; it's purely a round-trip handle. Null for items not produced by a plug-in source.
+    /// </summary>
+    public object? OriginatingSourceItem { get; set; }
+
+    /// <summary>
     /// True when this row came from the host-level aggregated Favorites tile — it carries only display
     /// data (<see cref="SourceInstanceId"/> + <see cref="VideoId"/>), so the play path must first call
     /// the owning source's <c>IFavoritable.GetFavorite(VideoId)</c> to rebuild a resolvable item.

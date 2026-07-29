@@ -1802,14 +1802,19 @@ public partial class JukeboxViewModel : ObservableObject
     /// <see cref="VideoItem"/> isn't a string). One shape serves every source.
     /// </summary>
     private static Phosphor.Plugin.Abstractions.SourceItem ProbeSourceItem(
-        VideoItem item, string sourceInstanceId) => new()
-    {
-        SourceInstanceId = sourceInstanceId,
-        ItemId = item.VideoId,
-        Title = item.Title,
-        IsAudioOnly = item.IsAudioOnly,
-        SourceState = item,
-    };
+        VideoItem item, string sourceInstanceId) =>
+        // Prefer handing the source back its OWN originating SourceItem — its SourceState carries the
+        // plug-in's internal item (e.g. Plex's VideoItem with the rating key) that GetMetadataAsync reads
+        // back. Only fall back to a synthesized probe for sources (e.g. YouTube) that key off ItemId.
+        item.OriginatingSourceItem as Phosphor.Plugin.Abstractions.SourceItem
+        ?? new()
+        {
+            SourceInstanceId = sourceInstanceId,
+            ItemId = item.VideoId,
+            Title = item.Title,
+            IsAudioOnly = item.IsAudioOnly,
+            SourceState = item,
+        };
 
     /// <summary>
     /// Runs <paramref name="action"/> on the UI (dispatcher) thread. A no-op marshal when the
@@ -1925,6 +1930,10 @@ public partial class JukeboxViewModel : ObservableObject
             }
 
             var vi = ToVideoItem(item);
+            // Keep the originating plug-in SourceItem so later per-item source round-trips (e.g. on-demand
+            // chapters via GetMetadataAsync) can hand the source back its own item, carrying source-internal
+            // identity (e.g. Plex rating key) the flat host fields drop.
+            vi.OriginatingSourceItem = item;
             if (item.IsLiveStream)
             {
                 // Live streams (e.g. SiriusXM channels) MUST resolve lazily at play time. Resolving
@@ -4453,7 +4462,15 @@ public partial class JukeboxViewModel : ObservableObject
         // live/deferred items that resolve before playing). A pre-emptive StopRequested races the new
         // Play on the Backglass thread and briefly flashes the idle blob overlay between tracks — the
         // natural-end path (which never stops first) is clean, so mirror it.
-        PlayNextOn(Player1);
+        //
+        // BUT when this skip would *finish* the queue (no next item, no repeat/AutoDJ), there is no
+        // transition to protect: stop for real. Otherwise PlayNextOn only clears the now-playing bar
+        // (CurrentlyPlaying = null) while the current media keeps playing — leaving a "nothing playing"
+        // bar over audible playback. StopPlayback stops the media and lands in the proper stopped state.
+        if (Player1.Queue.HasNextTrack)
+            PlayNextOn(Player1);
+        else
+            StopPlayback();
     }
 
     /// <summary>
