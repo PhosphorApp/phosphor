@@ -4936,12 +4936,8 @@ public partial class JukeboxViewModel : ObservableObject
             if (source is Phosphor.Plugin.Abstractions.IPlayableResolver resolver)
             {
                 var probe = ProbeSourceItem(item, source!.InstanceId);
-                DebugLog.Log(LogLevel.Debug, "ChapterTicks",
-                    $"FetchChapters: '{item.Title}' token={item.SourceStateToken ?? "null"} probeState={probe.SourceState?.GetType().Name ?? "null"}");
                 var raw = await resolver.GetMetadataAsync(probe);
                 meta = raw == null ? null : MapPluginMetadata(raw);
-                DebugLog.Log(LogLevel.Debug, "ChapterTicks",
-                    $"FetchChapters: meta={(raw == null ? "null" : "ok")} chapters={meta?.Chapters.Count.ToString() ?? "n/a"}");
             }
             else
             {
