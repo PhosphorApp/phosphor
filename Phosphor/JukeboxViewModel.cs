@@ -1306,7 +1306,7 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     public RangedObservableCollection<VideoItem> SearchResults { get; } = new();
-    public ObservableCollection<VideoItem> Queue { get; } = new();
+    public ObservableCollection<VideoItem> Queue => Player1.Queue.Queue;
 
     // ── Search history for ComboBox ──
     public ObservableCollection<string> SearchSuggestions { get; } = new();
@@ -2424,6 +2424,8 @@ public partial class JukeboxViewModel : ObservableObject
     public JukeboxViewModel()
     {
         _activePlayer = Player1;
+        Player1.Queue = new Phosphor.Playback.PlayerQueue("Backglass", QueuePath);
+        Player2.Queue = new Phosphor.Playback.PlayerQueue("Topper", TopperQueuePath);
         WirePlayerContext(Player1);
         WirePlayerContext(Player2);
         _history = PlayHistory.Load();
@@ -3439,41 +3441,10 @@ public partial class JukeboxViewModel : ObservableObject
     private static readonly string QueuePath = Path.Combine(
         AppDomain.CurrentDomain.BaseDirectory, "queue.json");
 
-    private void SaveQueue()
-    {
-        try
-        {
-            var json = JsonSerializer.Serialize(SanitizeForPersist(Queue), new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(QueuePath, json);
-        }
-        catch { }
-    }
+    private static readonly string TopperQueuePath = Path.Combine(
+        AppDomain.CurrentDomain.BaseDirectory, "queue_topper.json");
 
-    /// <summary>
-    /// Produces the queue list to persist, stripping the ephemeral resolved URLs from live-stream
-    /// items so an expired URL is never written to disk. On restore those items re-resolve from their
-    /// id at play time (see <see cref="ResolveAndPlayLiveAsync"/>); persisting the URL would make the
-    /// player hand VLC a dead link and surface a misleading "stream timed out".
-    /// </summary>
-    private static List<VideoItem> SanitizeForPersist(IEnumerable<VideoItem> queue)
-    {
-        var list = new List<VideoItem>();
-        foreach (var item in queue)
-        {
-            if (item.IsLiveStream && (item.StreamUrl != null || item.AudioStreamUrl != null))
-            {
-                var copy = item.ShallowCopy();
-                copy.StreamUrl = null;
-                copy.AudioStreamUrl = null;
-                list.Add(copy);
-            }
-            else
-            {
-                list.Add(item);
-            }
-        }
-        return list;
-    }
+    private void SaveQueue() => Player1.Queue.Save();
 
     /// <summary>
     /// Persists the current queue to disk. Called on exit so metadata enriched during the
@@ -3481,21 +3452,9 @@ public partial class JukeboxViewModel : ObservableObject
     /// restart — the per-item enrichment does not raise <see cref="Queue"/>'s
     /// CollectionChanged, so it is not otherwise re-saved.
     /// </summary>
-    public void SaveQueueState() => SaveQueue();
+    public void SaveQueueState() => Player1.Queue.Save();
 
-    private void LoadQueue()
-    {
-        if (!File.Exists(QueuePath)) return;
-        try
-        {
-            var json = File.ReadAllText(QueuePath);
-            var items = JsonSerializer.Deserialize<List<VideoItem>>(json);
-            if (items != null)
-                foreach (var item in items)
-                    Queue.Add(item);
-        }
-        catch { }
-    }
+    private void LoadQueue() => Player1.Queue.Load();
 
     // ── Queue & Playback ──
 

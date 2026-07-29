@@ -2,7 +2,9 @@ namespace Phosphor.Playback;
 
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 
 /// <summary>
 /// The per-player play queue + its navigation cursor and persistence. Phase 3: each player
@@ -38,9 +40,13 @@ public sealed class PlayerQueue : INotifyPropertyChanged
     /// </summary>
     public string OwnerName { get; }
 
-    public PlayerQueue(string ownerName)
+    /// <summary>Absolute path of this queue's persistence file (e.g. queue.json / queue_topper.json).</summary>
+    private readonly string _persistPath;
+
+    public PlayerQueue(string ownerName, string persistPath)
     {
         OwnerName = ownerName;
+        _persistPath = persistPath;
     }
 
     /// <summary>The ordered play queue for this player.</summary>
@@ -130,5 +136,64 @@ public sealed class PlayerQueue : INotifyPropertyChanged
         OnPropertyChanged(nameof(HasQueueItems));
         OnPropertyChanged(nameof(HasNextTrack));
         OnPropertyChanged(nameof(CurrentQueueItem));
+    }
+
+    // ── Persistence ──
+
+    /// <summary>
+    /// Persists the current queue to this queue's json path. Called on every collection change and on
+    /// exit so metadata enriched during the session (upload date, accurate duration, chapters populated
+    /// on play) survives a restart — the per-item enrichment does not raise <see cref="Queue"/>'s
+    /// CollectionChanged, so it is not otherwise re-saved.
+    /// </summary>
+    public void Save()
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(SanitizeForPersist(Queue), new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(_persistPath, json);
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// Produces the queue list to persist, stripping the ephemeral resolved URLs from live-stream
+    /// items so an expired URL is never written to disk. On restore those items re-resolve from their
+    /// id at play time; persisting the URL would make the player hand VLC a dead link and surface a
+    /// misleading "stream timed out".
+    /// </summary>
+    private static List<VideoItem> SanitizeForPersist(IEnumerable<VideoItem> queue)
+    {
+        var list = new List<VideoItem>();
+        foreach (var item in queue)
+        {
+            if (item.IsLiveStream && (item.StreamUrl != null || item.AudioStreamUrl != null))
+            {
+                var copy = item.ShallowCopy();
+                copy.StreamUrl = null;
+                copy.AudioStreamUrl = null;
+                list.Add(copy);
+            }
+            else
+            {
+                list.Add(item);
+            }
+        }
+        return list;
+    }
+
+    /// <summary>Loads the queue from this queue's json path (no-op if the file does not exist).</summary>
+    public void Load()
+    {
+        if (!File.Exists(_persistPath)) return;
+        try
+        {
+            var json = File.ReadAllText(_persistPath);
+            var items = JsonSerializer.Deserialize<List<VideoItem>>(json);
+            if (items != null)
+                foreach (var item in items)
+                    Queue.Add(item);
+        }
+        catch { }
     }
 }

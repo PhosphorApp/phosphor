@@ -36,6 +36,12 @@ public sealed class PlayerContext : INotifyPropertyChanged
     /// </summary>
     public Func<VideoItem?, bool, string>? SourceTextResolver { get; set; }
 
+    /// <summary>
+    /// This player's own play queue (Phase 3). Set by the VM at construction. Player 1 (Backglass)
+    /// persists to <c>queue.json</c>; Player 2 (Topper) to <c>queue_topper.json</c>.
+    /// </summary>
+    public PlayerQueue Queue { get; set; } = null!;
+
     // ── Now-playing state (per player) ──
 
     private VideoItem? _currentlyPlaying;
