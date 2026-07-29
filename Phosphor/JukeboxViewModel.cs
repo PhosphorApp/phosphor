@@ -4372,19 +4372,25 @@ public partial class JukeboxViewModel : ObservableObject
     /// <summary>
     /// Plays the queue item at the specified index, stopping any current playback first.
     /// </summary>
-    public void PlayFromQueueIndex(int index)
+    public void PlayFromQueueIndex(int index) => PlayFromQueueIndexOn(Player1, index);
+
+    /// <summary>
+    /// Plays the item at <paramref name="index"/> in <paramref name="player"/>'s queue on that player.
+    /// </summary>
+    public void PlayFromQueueIndexOn(Phosphor.Playback.PlayerContext player, int index)
     {
-        if (index < 0 || index >= Queue.Count) return;
+        var queue = player.Queue;
+        if (index < 0 || index >= queue.Queue.Count) return;
         if (_playTransitioning) return;
 
         // Do NOT pre-emptively stop here: PlayNow → Play() handles the transition from the current
         // track (and PlayNow issues its own stop for live/deferred items that resolve first). A
         // pre-emptive StopRequested races the new Play on the Backglass thread and briefly flashes the
         // idle blob overlay between tracks; the natural-end path never stops first and is clean.
-        QueueIndex = index;
-        PlayNow(Queue[index]);
+        queue.QueueIndex = index;
+        PlayNowOn(player, queue.Queue[index]);
 
-        if (AutoDjEnabled)
+        if (queue.AutoDjEnabled)
             _ = SafeFireAndForget(AutoDjFillQueue());
     }
 
@@ -4515,42 +4521,48 @@ public partial class JukeboxViewModel : ObservableObject
         }
     }
 
-    public void PlayNext()
-    {
-        _prefetchingVideoId = null;
+    public void PlayNext() => PlayNextOn(Player1);
 
-        if (Queue.Count == 0)
+    /// <summary>Advances <paramref name="player"/>'s queue to the next track and plays it on that player.</summary>
+    public void PlayNextOn(Phosphor.Playback.PlayerContext player)
+    {
+        var queue = player.Queue;
+        if (ReferenceEquals(player, Player1))
+            _prefetchingVideoId = null;
+
+        if (queue.Queue.Count == 0)
         {
-            CurrentlyPlaying = null;
-            QueueIndex = -1;
+            player.CurrentlyPlaying = null;
+            queue.QueueIndex = -1;
             StatusText = "Queue empty";
             return;
         }
 
-        int nextIndex = QueueIndex + 1;
+        int nextIndex = queue.QueueIndex + 1;
 
-        if (nextIndex >= Queue.Count)
+        if (nextIndex >= queue.Queue.Count)
         {
-            if (RepeatEnabled)
+            if (queue.RepeatEnabled)
             {
                 nextIndex = 0; // Wrap around to start
             }
             else
             {
-                CurrentlyPlaying = null;
+                player.CurrentlyPlaying = null;
                 StatusText = "Queue finished";
                 // Keep QueueIndex pointing at the last item (stays highlighted)
-                if (AutoDjEnabled)
+                if (queue.AutoDjEnabled)
                     _ = SafeFireAndForget(AutoDjFillQueue());
                 return;
             }
         }
 
-        IsQueueTransition = true;
-        QueueIndex = nextIndex;
-        PlayNow(Queue[nextIndex]);
+        if (ReferenceEquals(player, Player1))
+            IsQueueTransition = true;
+        queue.QueueIndex = nextIndex;
+        PlayNowOn(player, queue.Queue[nextIndex]);
 
-        if (AutoDjEnabled)
+        if (queue.AutoDjEnabled)
             _ = SafeFireAndForget(AutoDjFillQueue());
     }
 
