@@ -196,7 +196,7 @@ public sealed class MediaEngine
     /// </summary>
     public static int FirstFrameTimeoutMs(JukeboxViewModel? vm)
     {
-        if (vm?.CurrentlyPlaying?.StartupTimeout is { } budget && budget > TimeSpan.Zero)
+        if (vm?.Player1.CurrentlyPlaying?.StartupTimeout is { } budget && budget > TimeSpan.Zero)
             return (int)Math.Min(budget.TotalMilliseconds, int.MaxValue);
         return DefaultFirstFrameTimeoutMs;
     }

@@ -952,43 +952,6 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The now-playing item for Player 1 (Backglass). Phase 2: delegates to <see cref="Player1"/>'s
-    /// per-player state so the existing single now-playing bar keeps working; Player 2 (Topper) binds
-    /// to its own <see cref="Player2"/> context directly.
-    /// </summary>
-    public VideoItem? CurrentlyPlaying
-    {
-        get => Player1.CurrentlyPlaying;
-        set => Player1.CurrentlyPlaying = value;
-    }
-
-    /// <summary>
-    /// Fractional positions (0.0–1.0) of chapter markers relative to total duration,
-    /// used to render tick marks on the scrub bar. Delegates to Player 1.
-    /// </summary>
-    public List<double> ChapterTickPositions => Player1.ChapterTickPositions;
-
-    /// <summary>
-    /// Called when chapters are restored from cache on a currently playing item (Player 1).
-    /// </summary>
-    public void NotifyCachedChaptersRestored() => Player1.NotifyCachedChaptersRestored();
-
-    /// <summary>Name of the chapter currently playing on Player 1, or empty if no chapters.</summary>
-    public string CurrentChapterName => Player1.CurrentChapterName;
-
-    /// <summary>Display title for the (Player 1) now-playing area.</summary>
-    public string NowPlayingTitle => Player1.NowPlayingTitle;
-
-    /// <summary>
-    /// Called by the player host to indicate whether the current (Player 1) item is playing
-    /// from the local cache, so the now-playing area can reflect the source.
-    /// </summary>
-    public void SetCurrentFromCache(bool fromCache) => Player1.SetCurrentFromCache(fromCache);
-
-    /// <summary>Short source annotation for the (Player 1) now-playing label, e.g. "(from YouTube)".</summary>
-    public string NowPlayingSourceText => Player1.NowPlayingSourceText;
-
-    /// <summary>
     /// Builds the short source annotation (e.g. "(from YouTube - Cached)") for an item. Shared by both
     /// players via <see cref="PlayerContext.SourceTextResolver"/> — needs the source registry.
     /// </summary>
@@ -1008,24 +971,10 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
-    /// True when the current (Player 1) item has enough chapters (3+) that the scrub bar should snap.
-    /// </summary>
-    public bool ShouldSnapToChapters => Player1.ShouldSnapToChapters;
-
-    public bool IsPlaying => Player1.IsPlaying;
-
-    /// <summary>Paused state for Player 1 (delegates to its context).</summary>
-    public bool IsPaused
-    {
-        get => Player1.IsPaused;
-        set => Player1.IsPaused = value;
-    }
-
-    /// <summary>
     /// True when the Start/Stop button should be enabled: either something is playing (stop)
     /// or there are items in the queue (start).
     /// </summary>
-    public bool CanStartOrStop => IsPlaying || Queue.Count > 0;
+    public bool CanStartOrStop => Player1.IsPlaying || Queue.Count > 0;
 
     public bool HasQueueItems => Queue.Count > 0;
 
@@ -1549,7 +1498,10 @@ public partial class JukeboxViewModel : ObservableObject
                 ReleasePlaybackFor(outgoing);
         };
 
-        // Player 1 drives the VM's own (delegating) now-playing surface for the existing single bar.
+        // Player 1 still drives two VM-level aggregates the DMD binds directly (the rest of the
+        // now-playing surface binds to Player1 via dotted-path, so no per-property forwarding here):
+        // CanStartOrStop (Start/Stop button enable) tracks IsPlaying, and PlayTransitioning drives the
+        // loading spinner.
         if (ReferenceEquals(ctx, Player1))
         {
             ctx.PropertyChanged += (_, e) =>
@@ -1557,48 +1509,10 @@ public partial class JukeboxViewModel : ObservableObject
                 switch (e.PropertyName)
                 {
                     case nameof(Phosphor.Playback.PlayerContext.CurrentlyPlaying):
-                        OnPropertyChanged(nameof(CurrentlyPlaying));
-                        OnPropertyChanged(nameof(IsPlaying));
                         OnPropertyChanged(nameof(CanStartOrStop));
-                        break;
-                    case nameof(Phosphor.Playback.PlayerContext.IsPaused):
-                        OnPropertyChanged(nameof(IsPaused));
                         break;
                     case nameof(Phosphor.Playback.PlayerContext.PlayTransitioning):
                         OnPropertyChanged(nameof(PlayTransitioning));
-                        break;
-                    case nameof(Phosphor.Playback.PlayerContext.Volume):
-                        OnPropertyChanged(nameof(Volume));
-                        break;
-                    case nameof(Phosphor.Playback.PlayerContext.IsSeeking):
-                        OnPropertyChanged(nameof(IsSeeking));
-                        break;
-                    case nameof(Phosphor.Playback.PlayerContext.PlaybackPosition):
-                        OnPropertyChanged(nameof(PlaybackPosition));
-                        break;
-                    case nameof(Phosphor.Playback.PlayerContext.PlaybackDuration):
-                        OnPropertyChanged(nameof(PlaybackDuration));
-                        break;
-                    case nameof(Phosphor.Playback.PlayerContext.PlaybackTimeText):
-                        OnPropertyChanged(nameof(PlaybackTimeText));
-                        break;
-                    case nameof(Phosphor.Playback.PlayerContext.NowPlayingTitle):
-                        OnPropertyChanged(nameof(NowPlayingTitle));
-                        break;
-                    case nameof(Phosphor.Playback.PlayerContext.NowPlayingSourceText):
-                        OnPropertyChanged(nameof(NowPlayingSourceText));
-                        break;
-                    case nameof(Phosphor.Playback.PlayerContext.CurrentChapterName):
-                        OnPropertyChanged(nameof(CurrentChapterName));
-                        break;
-                    case nameof(Phosphor.Playback.PlayerContext.ChapterTickPositions):
-                        OnPropertyChanged(nameof(ChapterTickPositions));
-                        break;
-                    case nameof(Phosphor.Playback.PlayerContext.ShouldSnapToChapters):
-                        OnPropertyChanged(nameof(ShouldSnapToChapters));
-                        break;
-                    case nameof(Phosphor.Playback.PlayerContext.IsLiveStream):
-                        OnPropertyChanged(nameof(IsLiveStream));
                         break;
                 }
             };
@@ -1658,34 +1572,6 @@ public partial class JukeboxViewModel : ObservableObject
         remove => Player1.RemoveSeekRequested(value!);
     }
 
-    /// <summary>Playback scrubber position (ms) for Player 1. Delegates to its per-player context.</summary>
-    public double PlaybackPosition
-    {
-        get => Player1.PlaybackPosition;
-        set => Player1.PlaybackPosition = value;
-    }
-
-    /// <summary>Playback duration (ms) for Player 1. Delegates to its per-player context.</summary>
-    public double PlaybackDuration
-    {
-        get => Player1.PlaybackDuration;
-        set => Player1.PlaybackDuration = value;
-    }
-
-    /// <summary>Scrubbing flag for Player 1. Delegates to its per-player context.</summary>
-    public bool IsSeeking
-    {
-        get => Player1.IsSeeking;
-        set => Player1.IsSeeking = value;
-    }
-
-    /// <summary>Playback volume (0–100) for Player 1. Delegates to its per-player context.</summary>
-    public int Volume
-    {
-        get => Player1.Volume;
-        set => Player1.Volume = value;
-    }
-
     /// <summary>
     /// Per-player volume for the Topper (Player 2). Delegates to <see cref="Player2"/>'s context so the
     /// user can balance the mix between the two simultaneous players.
@@ -1722,12 +1608,6 @@ public partial class JukeboxViewModel : ObservableObject
         add => Player1.AddVolumeChanged(value!);
         remove => Player1.RemoveVolumeChanged(value!);
     }
-
-    public string PlaybackTimeText => Player1.PlaybackTimeText;
-
-    /// <summary>True when the currently-playing item is a continuous live stream (e.g. SiriusXM).
-    /// The UI hides the scrub bar/duration and seek is a no-op; playback shows elapsed "M:SS / *".</summary>
-    public bool IsLiveStream => Player1.IsLiveStream;
 
     public void SeekTo(long timeMs)
     {
@@ -4288,7 +4168,7 @@ public partial class JukeboxViewModel : ObservableObject
             && ReferenceEquals(Queue[Player1.Queue.QueueIndex], item);
 
         // Stop (don't skip) for ad-hoc plays, if the user moved on, or if there's nowhere to advance.
-        if (!isQueuePlayback || !ReferenceEquals(CurrentlyPlaying, item) || !Player1.Queue.HasNextTrack)
+        if (!isQueuePlayback || !ReferenceEquals(Player1.CurrentlyPlaying, item) || !Player1.Queue.HasNextTrack)
         {
             _consecutiveResolveFailures = 0;
             StatusText = reason;
@@ -5049,8 +4929,10 @@ public partial class JukeboxViewModel : ObservableObject
                 if (meta.UploadDate.HasValue)
                 {
                     item.UploadDate = meta.UploadDate;
-                    if (ReferenceEquals(item, Player1.CurrentlyPlaying) || ReferenceEquals(item, Player2.CurrentlyPlaying))
-                        OnPropertyChanged(nameof(NowPlayingTitle));
+                    if (ReferenceEquals(item, Player1.CurrentlyPlaying))
+                        Player1.NotifyNowPlayingTitleChanged();
+                    else if (ReferenceEquals(item, Player2.CurrentlyPlaying))
+                        Player2.NotifyNowPlayingTitleChanged();
                 }
 
                 if (chapters.Count > 0)

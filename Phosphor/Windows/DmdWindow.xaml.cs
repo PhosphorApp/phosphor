@@ -225,7 +225,11 @@ public partial class DmdWindow : JukeboxWindow
                         _dofClient?.Trigger('E', 110, vmLoaded.PlayTransitioning ? 1 : 0);
                     if (args.PropertyName == nameof(JukeboxViewModel.ActiveCurrentQueueItem) && vmLoaded.ActiveCurrentQueueItem != null)
                         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => QueueList.ScrollIntoView(vmLoaded.ActiveCurrentQueueItem));
-                    if (args.PropertyName == nameof(JukeboxViewModel.ChapterTickPositions))
+                };
+                // Chapter ticks come from Player 1's context now — reposition when they change.
+                vmLoaded.Player1.PropertyChanged += (_, args) =>
+                {
+                    if (args.PropertyName == nameof(Phosphor.Playback.PlayerContext.ChapterTickPositions))
                         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, UpdateChapterTickPositions);
                 };
                 vmLoaded.SearchResults.CollectionChanged += (_, args) =>

@@ -97,7 +97,7 @@ public partial class App : Application
         viewModel.PreemptiveCache = _settings.PreemptiveCache;
         viewModel.GaplessPlayback = _settings.GaplessPlayback;
         viewModel.AutoDjProviderId = _settings.AutoDjProviderId;
-        viewModel.Volume = _settings.Volume;
+        viewModel.Player1.Volume = _settings.Volume;
         viewModel.Player1.Queue.RepeatEnabled = _settings.RepeatEnabled;
         viewModel.Player1.Queue.AutoDjEnabled = _settings.AutoDjEnabled;
         viewModel.SecondPlayerEnabled = _settings.EnableSecondPlayer;

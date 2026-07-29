@@ -212,6 +212,10 @@ public sealed class PlayerContext : INotifyPropertyChanged
         }
     }
 
+    /// <summary>Re-raises <see cref="NowPlayingTitle"/> after the current item's own fields (e.g. upload
+    /// date) are enriched in place, so the now-playing bar refreshes without a full item swap.</summary>
+    public void NotifyNowPlayingTitleChanged() => OnPropertyChanged(nameof(NowPlayingTitle));
+
     private List<double> _chapterTickPositions = [];
     public List<double> ChapterTickPositions
     {
