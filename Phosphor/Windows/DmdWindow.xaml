@@ -895,8 +895,8 @@
             <DockPanel>
                 <!-- Hidden for now; may revisit later -->
                 <Button Content="&#x1F4CB; Add to Playlist" ToolTip="Add playing to playlist" DockPanel.Dock="Right" Padding="16,8" FontSize="15"
-                        Click="AddToPlaylist_Click" Tag="{Binding CurrentlyPlaying}" Margin="4,0,0,0"
-                        IsEnabled="{Binding IsPlaying}" Visibility="Collapsed"/>
+                        Click="AddToPlaylist_Click" Tag="{Binding Player1.CurrentlyPlaying}" Margin="4,0,0,0"
+                        IsEnabled="{Binding Player1.IsPlaying}" Visibility="Collapsed"/>
 
                 <!-- Transport buttons: two rows, right-docked -->
                 <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center" Margin="6,0,0,0">
@@ -906,7 +906,7 @@
                                 Width="{DynamicResource PlayButtonSize}" Height="{DynamicResource PlayButtonSize}"
                                 FontSize="{DynamicResource PlayButtonFontSize}" Padding="0" Margin="3,0"
                                 Command="{Binding PreviousTrackCommand}"
-                                IsEnabled="{Binding IsPlaying}"/>
+                                IsEnabled="{Binding Player1.IsPlaying}"/>
                         <Button x:Name="StartStopButton" Content="&#x25B6;" ToolTip="Play"
                                 Width="{DynamicResource PlayButtonSize}" Height="{DynamicResource PlayButtonSize}"
                                 FontSize="{DynamicResource PlayButtonFontSize}" Padding="0" Margin="3,0"
@@ -916,24 +916,24 @@
                                 Width="{DynamicResource PlayButtonSize}" Height="{DynamicResource PlayButtonSize}"
                                 FontSize="{DynamicResource PlayButtonFontSize}" Padding="0" Margin="3,0"
                                 Command="{Binding PausePlaybackCommand}"
-                                IsEnabled="{Binding IsPlaying}"/>
+                                IsEnabled="{Binding Player1.IsPlaying}"/>
                         <Button x:Name="StopButton" Content="&#x23F9;" ToolTip="Stop"
                                 Width="{DynamicResource PlayButtonSize}" Height="{DynamicResource PlayButtonSize}"
                                 FontSize="{DynamicResource PlayButtonFontSize}" Padding="0" Margin="3,0"
                                 Command="{Binding StopPlaybackCommand}"
-                                IsEnabled="{Binding IsPlaying}"/>
+                                IsEnabled="{Binding Player1.IsPlaying}"/>
                         <Button x:Name="SkipButton" Content="&#x23ED;" ToolTip="Skip"
                                 Width="{DynamicResource PlayButtonSize}" Height="{DynamicResource PlayButtonSize}"
                                 FontSize="{DynamicResource PlayButtonFontSize}" Padding="0" Margin="3,0"
                                 Command="{Binding SkipCommand}"
-                                IsEnabled="{Binding IsPlaying}"/>
+                                IsEnabled="{Binding Player1.IsPlaying}"/>
                     </StackPanel>
                     <!-- Row 2: -15s, AutoDJ, Repeat, Shuffle, +15s -->
                     <StackPanel x:Name="MinorButtonsPanel" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,0">
                         <Button x:Name="SeekBackMinorButton" Content="-15s" ToolTip="Skip Back 15s"
                                 Width="{DynamicResource SmallButtonSize}" Height="{DynamicResource SmallButtonSize}" FontSize="11" Padding="0" Margin="3,0"
                                 Command="{Binding SeekBackCommand}" VerticalAlignment="Center"
-                                IsEnabled="{Binding IsPlaying}"/>
+                                IsEnabled="{Binding Player1.IsPlaying}"/>
                         <Button x:Name="DjButton" ToolTip="Toggle AutoDJ"
                                 Width="{DynamicResource SmallButtonSize}" Height="{DynamicResource SmallButtonSize}" FontSize="{DynamicResource SmallButtonFontSize}" Padding="0" Margin="3,0"
                                 Command="{Binding ToggleActiveAutoDjCommand}">
@@ -970,7 +970,7 @@
                         <Button x:Name="SeekForwardMinorButton" Content="+15s" ToolTip="Skip Forward 15s"
                                 Width="{DynamicResource SmallButtonSize}" Height="{DynamicResource SmallButtonSize}" FontSize="11" Padding="0" Margin="3,0"
                                 Command="{Binding SeekForwardCommand}" VerticalAlignment="Center"
-                                IsEnabled="{Binding IsPlaying}"/>
+                                IsEnabled="{Binding Player1.IsPlaying}"/>
                     </StackPanel>
                 </StackPanel>
 
@@ -981,12 +981,12 @@
                         <Image Stretch="Uniform" MaxWidth="160" MaxHeight="{Binding ActualHeight, ElementName=NowPlayingInfoPanel}">
                             <Image.Style>
                                 <Style TargetType="Image">
-                                    <Setter Property="local:CachedImage.SourceUrl" Value="{Binding CurrentlyPlaying.ThumbnailUrl}"/>
+                                    <Setter Property="local:CachedImage.SourceUrl" Value="{Binding Player1.CurrentlyPlaying.ThumbnailUrl}"/>
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding CurrentlyPlaying}" Value="{x:Null}">
+                                        <DataTrigger Binding="{Binding Player1.CurrentlyPlaying}" Value="{x:Null}">
                                             <Setter Property="Source" Value="/default_thumb.png"/>
                                         </DataTrigger>
-                                        <DataTrigger Binding="{Binding CurrentlyPlaying.ThumbnailUrl}" Value="">
+                                        <DataTrigger Binding="{Binding Player1.CurrentlyPlaying.ThumbnailUrl}" Value="">
                                             <Setter Property="Source" Value="/default_thumb.png"/>
                                         </DataTrigger>
                                     </Style.Triggers>
@@ -1062,7 +1062,7 @@
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
                             <TextBlock Text="{Binding Player1NowPlayingLabel}" Foreground="{StaticResource TextDimBrush}"
                                        FontSize="{DynamicResource NowPlayingLabelFontSize}" FontWeight="Bold"/>
-                            <TextBlock Text="{Binding NowPlayingSourceText}" Foreground="{StaticResource TextDimBrush}"
+                            <TextBlock Text="{Binding Player1.NowPlayingSourceText}" Foreground="{StaticResource TextDimBrush}"
                                        FontSize="{DynamicResource NowPlayingLabelFontSize}" VerticalAlignment="Center"
                                        Margin="6,0,0,0" Opacity="0.8"/>
                             <!-- ACTIVE badge shown on the active bar when the second player is enabled. -->
@@ -1087,7 +1087,7 @@
                             </Border>
                         </StackPanel>
 
-                        <TextBlock Text="{Binding NowPlayingTitle, FallbackValue='Nothing playing'}"
+                        <TextBlock Text="{Binding Player1.NowPlayingTitle, FallbackValue='Nothing playing'}"
                                    Foreground="{StaticResource Accent2Brush}" FontWeight="SemiBold"
                                    FontSize="{DynamicResource NowPlayingTitleFontSize}" TextTrimming="CharacterEllipsis"/>
                         <!-- Progress bar row -->
@@ -1096,35 +1096,35 @@
                                 <Style TargetType="DockPanel">
                                     <Setter Property="Opacity" Value="1.0"/>
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsPlaying}" Value="False">
+                                        <DataTrigger Binding="{Binding Player1.IsPlaying}" Value="False">
                                             <Setter Property="Opacity" Value="0.35"/>
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </DockPanel.Style>
-                            <TextBlock DockPanel.Dock="Right" Text="{Binding PlaybackTimeText}"
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding Player1.PlaybackTimeText}"
                                        Foreground="{StaticResource TextDimBrush}" FontSize="{DynamicResource NowPlayingTimeFontSize}"
                                        VerticalAlignment="Center" Margin="8,0,0,0"/>
                             <Slider x:Name="VolumeSlider" DockPanel.Dock="Right" Minimum="0" Maximum="100"
-                                    Value="{Binding Volume}" Width="{DynamicResource NowPlayingVolumeWidth}"
+                                    Value="{Binding Player1.Volume}" Width="{DynamicResource NowPlayingVolumeWidth}"
                                     Style="{StaticResource NowPlayingSliderStyle}"
                                     VerticalAlignment="Center" IsMoveToPointEnabled="True"/>
                             <TextBlock Text="&#x1F50A;" DockPanel.Dock="Right" Foreground="{StaticResource TextDimBrush}" FontSize="{DynamicResource NowPlayingSpeakerFontSize}"
                                        VerticalAlignment="Center" Margin="8,0,2,0"/>
                             <Grid>
-                                <Slider x:Name="ScrubBar" Minimum="0" Maximum="{Binding PlaybackDuration}"
-                                     Value="{Binding PlaybackPosition}"
+                                <Slider x:Name="ScrubBar" Minimum="0" Maximum="{Binding Player1.PlaybackDuration}"
+                                     Value="{Binding Player1.PlaybackPosition}"
                                      Style="{StaticResource NowPlayingSliderStyle}"
                                      VerticalAlignment="Center" IsMoveToPointEnabled="True"
-                                     IsEnabled="{Binding IsPlaying}"
-                                     Visibility="{Binding IsLiveStream, Converter={StaticResource BoolVis}, ConverterParameter=Invert}"/>
+                                     IsEnabled="{Binding Player1.IsPlaying}"
+                                     Visibility="{Binding Player1.IsLiveStream, Converter={StaticResource BoolVis}, ConverterParameter=Invert}"/>
                                 <!-- Live streams (e.g. SiriusXM) have no seekable timeline — show a LIVE badge instead of the scrub bar. -->
                                 <TextBlock Text="● LIVE" Foreground="{StaticResource AccentBrush}"
                                            FontWeight="Bold" VerticalAlignment="Center" HorizontalAlignment="Left"
                                            Margin="8,0,0,0"
-                                           Visibility="{Binding IsLiveStream, Converter={StaticResource BoolVis}}"/>
+                                           Visibility="{Binding Player1.IsLiveStream, Converter={StaticResource BoolVis}}"/>
                                 <!-- Chapter tick marks overlay -->
-                                <ItemsControl x:Name="ChapterTicksOverlay" ItemsSource="{Binding ChapterTickPositions}" IsHitTestVisible="False"
+                                <ItemsControl x:Name="ChapterTicksOverlay" ItemsSource="{Binding Player1.ChapterTickPositions}" IsHitTestVisible="False"
                                               VerticalAlignment="Center" Margin="8,0"
                                               SizeChanged="ChapterTicksOverlay_SizeChanged">
                                     <ItemsControl.ItemsPanel>
