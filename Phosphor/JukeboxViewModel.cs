@@ -1399,20 +1399,6 @@ public partial class JukeboxViewModel : ObservableObject
         Player2.IsPaused = false;
     }
 
-    [RelayCommand]
-    private void Player2SeekForward()
-    {
-        if (Player2.IsLiveStream) return;
-        Player2.RaiseSeekRequested((long)Player2.PlaybackPosition + 15000);
-    }
-
-    [RelayCommand]
-    private void Player2SeekBack()
-    {
-        if (Player2.IsLiveStream) return;
-        Player2.RaiseSeekRequested(Math.Max(0, (long)Player2.PlaybackPosition - 15000));
-    }
-
     /// <summary>Player 2 previous — queue not wired yet; stub kept for layout parity with Player 1.</summary>
     [RelayCommand]
     private void Player2Previous() { }

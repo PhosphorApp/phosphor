@@ -49,12 +49,34 @@ public partial class TopperWindow : IPlaybackHost
 
     /// <summary>
     /// Binds the Topper's jukebox player to <see cref="JukeboxViewModel.Player2"/> and kicks off
-    /// background LibVLC init (mirrors the Backglass's <c>AttachViewModel</c> + Loaded init).
+    /// background LibVLC init (mirrors the Backglass's <c>AttachViewModel</c> + Loaded init). Idempotent:
+    /// calling again while already attached is a no-op, so the second player can be enabled at runtime.
     /// </summary>
     public void AttachJukeboxViewModel(JukeboxViewModel vm)
     {
+        if (_jukeboxAttached) return;
+        _jukeboxAttached = true;
         JukeboxPlayer.Attach(vm, vm.Player2);
-        JukeboxEngine.InitTask = Task.Run(() => JukeboxEngine.InitializeCore(Dispatcher));
+        // Only kick off engine init the first time; a re-enable reuses the existing MediaPlayer.
+        if (JukeboxEngine.MediaPlayer == null && JukeboxEngine.InitTask == null)
+            JukeboxEngine.InitTask = Task.Run(() => JukeboxEngine.InitializeCore(Dispatcher));
+    }
+
+    private bool _jukeboxAttached;
+
+    /// <summary>
+    /// Tears down the Topper's jukebox player at runtime (second player disabled in settings): stops any
+    /// playback, yields back to ambient, and unsubscribes the command handlers. The ambient pipeline and
+    /// window stay intact; a later re-enable re-attaches.
+    /// </summary>
+    public void DetachJukeboxViewModel()
+    {
+        if (!_jukeboxAttached) return;
+        _jukeboxAttached = false;
+        try { JukeboxPlayer.Stop(); } catch { /* tearing down */ }
+        _jukeboxPositionTimer?.Stop();
+        JukeboxPlayer.Detach();
+        ReturnToAmbientMode();
     }
 
     /// <summary>Sets whether the Topper's jukebox player treats tracks as audio-only.</summary>

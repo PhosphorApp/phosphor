@@ -1195,51 +1195,8 @@
                                 Command="{Binding DataContext.Player2SkipCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                 IsEnabled="{Binding IsPlaying}"/>
                     </StackPanel>
-                    <!-- Row 2: -15s, AutoDJ, Repeat, Shuffle, +15s (AutoDJ/Repeat/Shuffle are global queue
-                         features shared with Player 1 for now; queue-per-player comes in a later pass). -->
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,0">
-                        <Button Content="-15s" ToolTip="Skip Back 15s"
-                                Width="{DynamicResource SmallButtonSize}" Height="{DynamicResource SmallButtonSize}" FontSize="11" Padding="0" Margin="3,0"
-                                Command="{Binding DataContext.Player2SeekBackCommand, RelativeSource={RelativeSource AncestorType=Window}}" VerticalAlignment="Center"
-                                IsEnabled="{Binding IsPlaying}"/>
-                        <Button ToolTip="Toggle AutoDJ"
-                                Width="{DynamicResource SmallButtonSize}" Height="{DynamicResource SmallButtonSize}" FontSize="{DynamicResource SmallButtonFontSize}" Padding="0" Margin="3,0"
-                                Command="{Binding DataContext.ToggleAutoDjCommand, RelativeSource={RelativeSource AncestorType=Window}}">
-                            <Button.Style>
-                                <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                                    <Setter Property="Content" Value="&#x1F3B5;"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding DataContext.AutoDjEnabled, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
-                                            <Setter Property="Content" Value="&#x1F3B5;"/>
-                                            <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Button.Style>
-                        </Button>
-                        <Button ToolTip="Toggle Repeat"
-                                Width="{DynamicResource SmallButtonSize}" Height="{DynamicResource SmallButtonSize}" FontSize="{DynamicResource SmallButtonFontSize}" Padding="0" Margin="3,0"
-                                Command="{Binding DataContext.ToggleRepeatCommand, RelativeSource={RelativeSource AncestorType=Window}}">
-                            <Button.Style>
-                                <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                                    <Setter Property="Content" Value="&#x1F501;"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding DataContext.RepeatEnabled, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
-                                            <Setter Property="Content" Value="&#x1F501;"/>
-                                            <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Button.Style>
-                        </Button>
-                        <Button Content="&#x1F500;" ToolTip="Shuffle Queue"
-                                Width="{DynamicResource SmallButtonSize}" Height="{DynamicResource SmallButtonSize}" FontSize="{DynamicResource SmallButtonFontSize}" Padding="0" Margin="3,0"
-                                Command="{Binding DataContext.ShuffleQueueCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
-                        <Button Content="+15s" ToolTip="Skip Forward 15s"
-                                Width="{DynamicResource SmallButtonSize}" Height="{DynamicResource SmallButtonSize}" FontSize="11" Padding="0" Margin="3,0"
-                                Command="{Binding DataContext.Player2SeekForwardCommand, RelativeSource={RelativeSource AncestorType=Window}}" VerticalAlignment="Center"
-                                IsEnabled="{Binding IsPlaying}"/>
-                    </StackPanel>
+                    <!-- (The -15s/AutoDJ/Repeat/Shuffle/+15s row was removed: those controls now live in
+                         the Queue window. Seek is available on the scrub bar. -->
                 </StackPanel>
 
                 <DockPanel>

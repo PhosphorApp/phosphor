@@ -91,7 +91,7 @@
                             <CheckBox x:Name="CbEnableSecondPlayer" Content="Enable second media player (Topper)"
                                       Foreground="{StaticResource TextBrush}" Margin="20,8,0,0"
                                       IsEnabled="{Binding IsChecked, ElementName=CbShowTopper}"
-                                      ToolTip="Runs an independent second jukebox player on the Topper (Player 2). The Backglass (Player 1) stays the primary and audio-reactive driver. Requires a restart."/>
+                                      ToolTip="Runs an independent second jukebox player on the Topper (Player 2). The Backglass (Player 1) stays the primary and audio-reactive driver. Takes effect on Apply."/>
                             <DockPanel Margin="0,8,0,0">
                                 <TextBlock Text="Hide Cursor After:" Foreground="{StaticResource TextBrush}"
                                            VerticalAlignment="Center" Width="140"/>

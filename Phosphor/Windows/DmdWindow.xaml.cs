@@ -2503,6 +2503,8 @@ public partial class DmdWindow : JukeboxWindow
         _backglassProxy?.SetAudioOnly(_appSettings.BackglassAudioOnly);
         if (DataContext is JukeboxViewModel vmAudioOnly)
             vmAudioOnly.Player2AudioOnly = _appSettings.TopperAudioOnly;
+        // Enable/disable the Topper's second media player live (no relaunch needed).
+        (System.Windows.Application.Current as App)?.SetSecondPlayerEnabled(_appSettings.EnableSecondPlayer);
         LogStep("BackglassDim/AudioOnly/OLED");
 
         if (settingsWindow.BackglassBlobsChanged)

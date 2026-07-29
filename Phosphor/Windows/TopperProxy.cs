@@ -197,6 +197,10 @@ public sealed class TopperProxy : IPinupFollower
     public void AttachViewModel(JukeboxViewModel vm) =>
         _dispatcher.BeginInvoke(() => _window.AttachJukeboxViewModel(vm));
 
+    /// <summary>Tears down the Topper's jukebox player at runtime (second player disabled).</summary>
+    public void DetachViewModel() =>
+        _dispatcher.BeginInvoke(() => _window.DetachJukeboxViewModel());
+
     /// <summary>Sets whether the Topper's jukebox player treats tracks as audio-only.</summary>
     public void SetAudioOnly(bool audioOnly) =>
         _dispatcher.BeginInvoke(() => _window.SetJukeboxAudioOnly(audioOnly));
