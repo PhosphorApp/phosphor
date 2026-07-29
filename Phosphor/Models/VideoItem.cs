@@ -42,6 +42,15 @@ public class VideoItem : ObservableObject
     public string? SourceInstanceId { get; set; }
 
     /// <summary>
+    /// A durable, source-serialized handle to this item's private identity (e.g. Plex's rating key),
+    /// mirrored from <c>SourceItem.SourceStateToken</c> and persisted in <c>queue.json</c>. Handed back
+    /// to the owning source verbatim on later per-item round-trips (e.g. on-demand chapter fetch) so a
+    /// queued item still resolves after a restart, when the live plug-in <c>SourceState</c> object is
+    /// gone. Opaque to the host. Null when the source needs no durable identity beyond the id.
+    /// </summary>
+    public string? SourceStateToken { get; set; }
+
+    /// <summary>
     /// True for real YouTube items. YouTube video IDs are plain identifiers with no
     /// "scheme:" prefix, so anything containing a colon (e.g. "plex:", "ditti:startup")
     /// is a non-YouTube source.

@@ -89,9 +89,20 @@ public sealed class SourceItem
 
     /// <summary>
     /// Plug-in-private payload the host stores and hands back unchanged (rating keys,
-    /// hub keys, etc.). Opaque to the host.
+    /// hub keys, etc.). Opaque to the host. Held only for the lifetime of the in-memory item — it is
+    /// NOT persisted, so do not rely on it surviving a restart (see <see cref="SourceStateToken"/>).
     /// </summary>
     public object? SourceState { get; init; }
+
+    /// <summary>
+    /// A <em>durable</em>, source-serialized handle to this item's private identity (e.g. Plex's rating
+    /// key). Unlike <see cref="SourceState"/> — a live object that does not survive serialization — this
+    /// is a plain string the host persists (e.g. in <c>queue.json</c>) and hands back verbatim on later
+    /// per-item round-trips (e.g. <c>IPlayableResolver.GetMetadataAsync</c> for on-demand chapters), so a
+    /// queued item still resolves its source identity after a restart. Opaque to the host; the source
+    /// owns the format. Null when the source needs no durable identity beyond <see cref="ItemId"/>.
+    /// </summary>
+    public string? SourceStateToken { get; init; }
 }
 
 /// <summary>A single chapter marker within an item.</summary>

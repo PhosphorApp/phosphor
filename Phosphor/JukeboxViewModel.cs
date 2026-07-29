@@ -1818,6 +1818,10 @@ public partial class JukeboxViewModel : ObservableObject
         Title = item.Title,
         IsAudioOnly = item.IsAudioOnly,
         SourceState = item,
+        // Durable source identity (survives queue.json). The source recovers its private id (e.g. Plex's
+        // rating key) from this when the live SourceState is unavailable — e.g. an item restored from the
+        // queue after a restart, whose on-demand chapters would otherwise be unresolvable.
+        SourceStateToken = item.SourceStateToken,
     };
 
     /// <summary>
@@ -2005,6 +2009,9 @@ public partial class JukeboxViewModel : ObservableObject
             IsPlayable = item.IsPlayable,
             HasVideoAlternative = item.HasVideoAlternative,
             VideoSearchQuery = item.VideoSearchQuery,
+            // Durable source identity (e.g. Plex rating key) persisted in queue.json so a restored item
+            // can still round-trip to its source (on-demand chapters) after the live SourceState is gone.
+            SourceStateToken = item.SourceStateToken,
             // Carry native chapters the source supplied at browse/search time (e.g. Plex's
             // includeChapters). The host persists these in queue.json, so tick marks survive a restart
             // without depending on the fragile on-demand GetMetadataAsync round-trip.
@@ -4929,8 +4936,12 @@ public partial class JukeboxViewModel : ObservableObject
             if (source is Phosphor.Plugin.Abstractions.IPlayableResolver resolver)
             {
                 var probe = ProbeSourceItem(item, source!.InstanceId);
+                DebugLog.Log(LogLevel.Debug, "ChapterTicks",
+                    $"FetchChapters: '{item.Title}' token={item.SourceStateToken ?? "null"} probeState={probe.SourceState?.GetType().Name ?? "null"}");
                 var raw = await resolver.GetMetadataAsync(probe);
                 meta = raw == null ? null : MapPluginMetadata(raw);
+                DebugLog.Log(LogLevel.Debug, "ChapterTicks",
+                    $"FetchChapters: meta={(raw == null ? "null" : "ok")} chapters={meta?.Chapters.Count.ToString() ?? "n/a"}");
             }
             else
             {
