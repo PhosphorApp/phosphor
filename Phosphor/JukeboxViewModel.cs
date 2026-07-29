@@ -1428,9 +1428,18 @@ public partial class JukeboxViewModel : ObservableObject
             PlayFromQueueIndexOn(Player2, currentIdx - 1);
     }
 
-    /// <summary>Player 2 skip — advances the Topper's own queue to the next track (Player 2 context/engine).</summary>
+    /// <summary>Player 2 skip — advances the Topper's own queue to the next track (Player 2 context/engine).
+    /// When the skip would finish the queue (no next item, no repeat/AutoDJ), stops instead — otherwise
+    /// PlayNextOn only clears the now-playing bar while the Topper media keeps playing (mirrors the
+    /// Backglass Skip fix). Player2Stop raises the stop request, which returns the Topper to ambient.</summary>
     [RelayCommand]
-    private void Player2Skip() => PlayNextOn(Player2);
+    private void Player2Skip()
+    {
+        if (Player2.Queue.HasNextTrack)
+            PlayNextOn(Player2);
+        else
+            Player2Stop();
+    }
 
     /// <summary>
     /// The "NOW PLAYING" label prefix for a bar. When the second player is enabled the bars are
@@ -4917,12 +4926,18 @@ public partial class JukeboxViewModel : ObservableObject
         try
         {
             var source = SourceForItem(item);
+            DebugLog.Log(LogLevel.Debug, "ChapterTicks",
+                $"FetchChapters: item '{item.Title}' source={source?.GetType().Name ?? "null"} isResolver={source is Phosphor.Plugin.Abstractions.IPlayableResolver} originating={item.OriginatingSourceItem?.GetType().Name ?? "null"}");
             Video.VideoMetadata? meta;
             if (source is Phosphor.Plugin.Abstractions.IPlayableResolver resolver)
             {
                 var probe = ProbeSourceItem(item, source!.InstanceId);
+                DebugLog.Log(LogLevel.Debug, "ChapterTicks",
+                    $"FetchChapters: probe.SourceState={probe.SourceState?.GetType().Name ?? "null"} probe.ItemId={probe.ItemId}");
                 var raw = await resolver.GetMetadataAsync(probe);
                 meta = raw == null ? null : MapPluginMetadata(raw);
+                DebugLog.Log(LogLevel.Debug, "ChapterTicks",
+                    $"FetchChapters: resolver returned meta={(raw == null ? "null" : "ok")} chapters={meta?.Chapters.Count.ToString() ?? "n/a"}");
             }
             else
             {
