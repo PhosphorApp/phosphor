@@ -4,13 +4,93 @@ Exploratory analysis / feasibility + phasing for allowing **two media items to p
 at once** — e.g. the **Backglass** playing a music video while the **Topper** plays a
 second item (music-only, video, or ambience).
 
-> **STATUS (Phase 0 complete on branch `multiplayer`; Phase 1 not started).** The full
-> non-user-visible refactor is done and validated: the playback engine **and** its
-> orchestration now live in `JukeboxPlayer`/`MediaEngine`, and `BackglassWindow` is a pure
-> `IPlaybackHost`. See the milestone sections below (tags `phase-0.5-command-routing`,
-> `phase-0.7-orchestration-relocated`). The next chapter is **Phase 1 — the real second
-> player**, which is now a wiring exercise. **Start a new session from the "Phase 1
-> kickoff" section below.**
+> **STATUS (Phases 0–2 complete on branch `multiplayer`; Phase 3 not started).** Phase 0
+> (engine/orchestration extraction), Phase 1 (real second player on the Topper), and Phase 2
+> (per-player now-playing state + dual now-playing bars) are all done and validated. Several
+> post-Phase-2 tweaks also landed (audio isolation, settings moves, full Topper bar, live
+> enable/disable). The next chapter is **Phase 3 — per-player queues**. **Start a new session
+> from the "Phase 3 kickoff" section below.**
+
+---
+
+## 🚀 Phase 3 kickoff — self-contained handoff (per-player queues) (start here)
+
+> Written so a fresh session needs no other context. Skim the Phase 1 & 2 kickoff sections and
+> the milestone sections for architecture; this section is the Phase 3 brief.
+
+**Where things stand (end of Phase 2 + tweaks):**
+- `PlayerContext` (`Phosphor/Playback/PlayerContext.cs`) is the **per-player state holder**
+  (`INotifyPropertyChanged`): `CurrentlyPlaying`, `PlaybackPosition/Duration`, `Volume`,
+  `IsPaused`, `PlayTransitioning`, `AudioOnly`, chapters, and derived getters
+  (`NowPlayingTitle`, `PlaybackTimeText`, `IsLiveStream`, `NowPlayingSourceText`). It also
+  carries the command events (play/stop/pause/resume/seek/volume).
+- The VM (`JukeboxViewModel`) owns `Player1` (Backglass) and `Player2` (Topper), plus
+  `ActivePlayer`/`IsPlayer1Active`/`IsPlayer2Active`/`TargetTopperPlayer`. The VM's now-playing
+  properties **delegate to `Player1`** (with `PropertyChanged` forwarding via
+  `WirePlayerContext`), so the single-bar UI is unchanged when the 2nd player is off.
+- `PlayNow` sets `ActivePlayer.CurrentlyPlaying` and raises `ActivePlayer` play; the main DMD
+  transport (Play/Pause/Stop/Seek) is bound to **Player 1**; the Topper bar's transport is bound
+  to `Player2*` commands (`Player2Play/Pause/Resume/Stop`, and `Player2Skip`/`Player2Previous`
+  which are **currently stubs** awaiting per-player queues).
+- Each player has its own `JukeboxPlayer` + `MediaEngine` + `IPlaybackHost`. The Topper's engine
+  uses an **audio-isolated DirectSound LibVLC** (`MediaEngine.UseIsolatedAudioInstance()`) so
+  per-window volume is real. The Topper's second player can be enabled/disabled **live** (App
+  `SetSecondPlayerEnabled` → `TopperProxy.Attach/DetachViewModel`).
+- The DMD has **two now-playing bars** (Player 1 + Player 2), click-to-activate, active-bar
+  highlight + `[BACKGLASS]`/`[TOPPER]` label qualifiers; collapses to the single bar when the
+  2nd player is disabled.
+
+**Phase 3 goal:** give **each player its own queue**. Backglass (Player 1) keeps `queue.json`;
+the Topper (Player 2) gets `queue_topper.json`. The queue UI panel stays a single panel that
+**follows the active player** (swaps its bound queue when you switch active). AutoDJ / Repeat /
+Shuffle become **per-queue**. Wire `Player2Skip`/`Player2Previous` to the Topper's queue.
+
+**Locked decisions for Phase 3 (do not revisit):**
+- **One queue panel that follows `ActivePlayer`** (swap `ItemsSource`/commands on active change),
+  NOT two simultaneous queue panels. Optionally a "focus active queue" affordance later.
+- **Per-queue** AutoDJ / Repeat / Shuffle (each player has its own).
+- Backglass persists to `queue.json` (unchanged path); Topper persists to `queue_topper.json`.
+- No settings migration / back-compat shims (testers only).
+
+**The core refactor (this is the crux — the queue is the most VM-coupled subsystem, ~281
+queue references):** extract a **`PlayerQueue`** object owning `Queue` (ObservableCollection),
+`QueueIndex`/`CurrentQueueItem`/`LastKnownQueueIndex`, `RepeatEnabled`, `AutoDjEnabled`, the
+prefetch/preemptive-cache cursor, and persistence (its own json path). Give `Player1` and
+`Player2` each a `PlayerQueue`. Then relocate the queue-navigation methods
+(`PlayNext`, `PlayFromQueueIndex`, `AdvanceQueueGapless`, `AddToQueue`, `RemoveFromQueue`,
+`ClearQueue`, `ShuffleQueue`, AutoDJ fill, prefetch/preemptive-cache) to operate on a given
+`PlayerQueue`. The VM's existing queue members become **delegators to `Player1`'s queue** (same
+proven pattern as the Phase 2 now-playing delegation) so all current XAML bindings + persistence
+keep working byte-for-byte when the 2nd player is off.
+
+**Key files:** `Phosphor/JukeboxViewModel.cs` (queue state/nav/persistence — the bulk),
+`Phosphor/Playback/PlayerContext.cs` (or a new `Phosphor/Playback/PlayerQueue.cs`),
+`Phosphor/Windows/DmdWindow.xaml(.cs)` (queue panel bind-to-active + collapse logic in
+`ApplyQueueCollapsedState`/`SetQueuePosition`), queue persistence (`queue.json` →
+add `queue_topper.json`).
+
+**Suggested Phase 3 stages (plan fresh in the new session; work in build-validated,
+individually-committed slices):**
+- **Stage A — per-player queue *state* (no UI change):** create `PlayerQueue`; give both players
+  one; delegate the VM's queue members to `Player1`'s; add `queue_topper.json`; relocate queue
+  navigation to operate on a `PlayerQueue`; wire `Player2Skip`/`Player2Previous` to the Topper's
+  queue. *Validate: single-queue behavior identical; Topper advances its own queue via its bar.*
+- **Stage B — queue UI follows the active player:** the DMD queue panel's `ItemsSource` +
+  Clear/Shuffle/AutoDJ/Repeat commands bind to `ActivePlayer`'s queue; add the "focus active
+  queue" affordance. *Validate: switching active swaps the visible queue; per-queue controls.*
+
+**Watch-outs:**
+- Queue navigation drives `CurrentlyPlaying` (now per-player), prefetch, and gapless priming —
+  make sure the Topper's queue advance targets `Player2`'s context/engine, not Player 1's.
+- `AdvanceQueueGapless` is called from the gapless PCM callback inside each host — it must
+  advance the **owning** player's queue.
+- Preemptive/prefetch cache is shared (one `VideoCache`/`PrefetchCache` on the VM) — that's fine;
+  only the *cursor* (which next item) is per-queue.
+- The DMD `CurrentQueueItem` highlight + auto-hide-when-empty logic assume one queue; rebind to
+  the active queue in Stage B.
+
+---
+
 
 ---
 
