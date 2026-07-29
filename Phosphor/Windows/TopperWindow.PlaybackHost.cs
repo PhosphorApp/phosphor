@@ -57,12 +57,19 @@ public partial class TopperWindow : IPlaybackHost
         if (_jukeboxAttached) return;
         _jukeboxAttached = true;
         JukeboxPlayer.Attach(vm, vm.Player2);
+        // Advance Player 2's own queue when a track ends naturally (subscribe once per attach).
+        if (!_jukeboxEndReachedWired)
+        {
+            JukeboxEngine.EndReached += OnJukeboxMediaEnded;
+            _jukeboxEndReachedWired = true;
+        }
         // Only kick off engine init the first time; a re-enable reuses the existing MediaPlayer.
         if (JukeboxEngine.MediaPlayer == null && JukeboxEngine.InitTask == null)
             JukeboxEngine.InitTask = Task.Run(() => JukeboxEngine.InitializeCore(Dispatcher));
     }
 
     private bool _jukeboxAttached;
+    private bool _jukeboxEndReachedWired;
 
     /// <summary>
     /// Tears down the Topper's jukebox player at runtime (second player disabled in settings): stops any
@@ -74,6 +81,11 @@ public partial class TopperWindow : IPlaybackHost
         if (!_jukeboxAttached) return;
         _jukeboxAttached = false;
         try { JukeboxPlayer.Stop(); } catch { /* tearing down */ }
+        if (_jukeboxEndReachedWired)
+        {
+            JukeboxEngine.EndReached -= OnJukeboxMediaEnded;
+            _jukeboxEndReachedWired = false;
+        }
         _jukeboxPositionTimer?.Stop();
         JukeboxPlayer.Detach();
         ReturnToAmbientMode();
@@ -251,12 +263,51 @@ public partial class TopperWindow : IPlaybackHost
     Phosphor.Audio.GaplessAudioPlayer IPlaybackHost.CreateGaplessPlayer()
     {
         var player = new Phosphor.Audio.GaplessAudioPlayer(JukeboxEngine.LibVLC!);
-        // Pass 1: no queue/track-advance on Player 2 (queue stays on Player 1). Finished → yield to ambient.
+        // PCM gapless: advance Player 2's own queue as the pre-loaded next track starts, and when the
+        // queue drains, yield back to ambient (mirrors the Backglass but scoped to Player 2).
+        player.TrackAdvanced += hasNext => Dispatcher.BeginInvoke(() =>
+        {
+            if (hasNext && DataContext is JukeboxViewModel vm)
+                vm.AdvanceQueueGaplessOn(vm.Player2);
+        });
         player.PlaybackFinished += () => Dispatcher.BeginInvoke(() =>
         {
             JukeboxEngine.UsingGaplessPlayer = false;
-            ReturnToAmbientMode();
+            if (DataContext is JukeboxViewModel vm && vm.Player2.Queue.HasNextTrack)
+                vm.PlayNextOn(vm.Player2);
+            else
+                ReturnToAmbientMode();
         });
         return player;
+    }
+
+    /// <summary>
+    /// Natural-end handler for the Topper's jukebox engine (Player 2): when a track finishes on its own,
+    /// advance Player 2's own queue (mirrors the Backglass's <c>OnMediaEnded</c> but scoped to Player 2
+    /// and mapping "queue finished" onto returning to ambient). Live streams have no natural end (an
+    /// EndReached means the stream dropped) so they are not auto-advanced. Marshalled to the UI thread
+    /// because VLC raises EndReached on a VLC worker thread.
+    /// </summary>
+    private void OnJukeboxMediaEnded(object? sender, EventArgs e)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (DataContext is not JukeboxViewModel vm) return;
+
+            // Live streams (e.g. SiriusXM) drop rather than end — don't auto-advance.
+            if (vm.Player2.CurrentlyPlaying?.IsLiveStream == true)
+                return;
+
+            if (vm.Player2.Queue.HasNextTrack)
+            {
+                vm.PlayNextOn(vm.Player2);
+            }
+            else
+            {
+                // Queue finished — clear Player 2's now-playing and yield back to ambient.
+                vm.PlayNextOn(vm.Player2); // sets CurrentlyPlaying = null / "Queue finished"
+                ReturnToAmbientMode();
+            }
+        });
     }
 }
