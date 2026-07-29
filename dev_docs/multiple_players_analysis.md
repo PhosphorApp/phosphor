@@ -85,8 +85,13 @@ second item (music-only, video, or ambience).
 > panel's active player; `Player2*` → the Topper bar). It works and kept XAML/persistence byte-for-byte
 > stable, but a reader must know which projection a member represents, and the forwarding plumbing
 > (`WirePlayerQueue`, `SwapActiveQueueSubscription`, the PropertyChanged switch statements) all lives on
-> the VM. Some cross-player state is still shared/Player-1-centric (`_history`, `_autoDjUsedIds`,
-> `StatusText`) so the two players aren't *fully* independent yet.
+> the VM. Some cross-player state is deliberately shared and app-scoped, **by design, not as unfinished
+> extraction**: `_history` (one chronological play log per cabinet — both players already write to the
+> single `history.json`; a per-screen split would fragment a naturally-unified timeline for no user
+> benefit) and `StatusText` (a single "what's happening" feedback line — a stack-of-1 where the most
+> recent writer wins, bound to one DMD status label). The AutoDJ de-dup set is likewise one shared set
+> across both queues (now inside `AutoDjService`). These are correct as shared app concerns; the only
+> nicety left is *placement* (they live as VM fields rather than clearly app-scoped services).
 >
 > **Suggested cleanup (not urgent; no user-visible change):**
 > 1. **Collapse the three queue views into one.** Make the host/gapless callers
