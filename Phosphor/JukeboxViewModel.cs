@@ -3870,7 +3870,15 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void PlayNow(VideoItem? item)
+    private void PlayNow(VideoItem? item) => PlayNowOn(ActivePlayer, item);
+
+    /// <summary>
+    /// Core play entry point. Starts <paramref name="item"/> on the given <paramref name="target"/>
+    /// player (its context + engine), rather than always the active player, so a queue advance targets
+    /// its owning player. The user-initiated <see cref="PlayNow"/> command routes here with
+    /// <see cref="ActivePlayer"/>; queue navigation routes here with the owning queue's player.
+    /// </summary>
+    private void PlayNowOn(Phosphor.Playback.PlayerContext target, VideoItem? item)
     {
         if (item == null || item.IsHeader) return;
 
@@ -3897,7 +3905,7 @@ public partial class JukeboxViewModel : ObservableObject
 
         PlayTransitioning = true;
         SetStatusPrefix("Transitioning");
-        ActivePlayer.CurrentlyPlaying = item;
+        target.CurrentlyPlaying = item;
         StatusText = $"Playing: {item.Title}{item.AudioTag}";
         _history.Add(item);
 
@@ -3910,7 +3918,7 @@ public partial class JukeboxViewModel : ObservableObject
             (item.StreamUrl == null &&
              (item.PendingLiveSourceItem != null || item.PendingResolveSourceItem != null)))
         {
-            ActivePlayer.RaiseStopRequested();
+            target.RaiseStopRequested();
         }
 
         // Live streams (e.g. Twitch, SiriusXM) resolve lazily at play time — resolve a fresh URL now,
@@ -3930,7 +3938,7 @@ public partial class JukeboxViewModel : ObservableObject
             return;
         }
 
-        ActivePlayer.RaisePlayRequested(item.VideoId);
+        target.RaisePlayRequested(item.VideoId);
 
         // Fetch duration/chapters from the item's own source (source-agnostic). Fire-and-forget so
         // playback starts immediately; results apply to the now-playing item when they arrive.
