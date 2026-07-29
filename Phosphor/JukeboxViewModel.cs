@@ -1512,7 +1512,21 @@ public partial class JukeboxViewModel : ObservableObject
     [RelayCommand]
     private void Player2Play()
     {
-        if (Player2.IsPaused) Player2Resume();
+        if (Player2.IsPaused)
+        {
+            Player2Resume();
+            return;
+        }
+        if (Player2.IsPlaying) return;
+
+        // Nothing playing on the Topper — start from its own queue (resume last index if valid, else 0).
+        var queue = Player2.Queue;
+        if (queue.Queue.Count == 0) return;
+
+        int resumeIndex = queue.LastKnownQueueIndex >= 0 && queue.LastKnownQueueIndex < queue.Queue.Count
+            ? queue.LastKnownQueueIndex
+            : 0;
+        PlayFromQueueIndexOn(Player2, resumeIndex);
     }
 
     [RelayCommand]
@@ -2631,6 +2645,7 @@ public partial class JukeboxViewModel : ObservableObject
         RebuildCategories();
         RefreshSearchSuggestions();
         LoadQueue();
+        Player2.Queue.Load();
         Queue.CollectionChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(CanStartOrStop));
@@ -2638,6 +2653,8 @@ public partial class JukeboxViewModel : ObservableObject
             OnPropertyChanged(nameof(QueueCountText));
             SaveQueue();
         };
+        // The Topper's queue persists independently to queue_topper.json.
+        Player2.Queue.Queue.CollectionChanged += (_, _) => Player2.Queue.Save();
     }
 
     // ── Category management ──
@@ -3643,12 +3660,16 @@ public partial class JukeboxViewModel : ObservableObject
     private void SaveQueue() => Player1.Queue.Save();
 
     /// <summary>
-    /// Persists the current queue to disk. Called on exit so metadata enriched during the
+    /// Persists both players' queues to disk. Called on exit so metadata enriched during the
     /// session (upload date, accurate duration, chapters populated on play) survives a
     /// restart — the per-item enrichment does not raise <see cref="Queue"/>'s
     /// CollectionChanged, so it is not otherwise re-saved.
     /// </summary>
-    public void SaveQueueState() => Player1.Queue.Save();
+    public void SaveQueueState()
+    {
+        Player1.Queue.Save();
+        Player2.Queue.Save();
+    }
 
     private void LoadQueue() => Player1.Queue.Load();
 
