@@ -1329,8 +1329,67 @@ public partial class JukeboxViewModel : ObservableObject
                 OnPropertyChanged(nameof(IsPlayer1Active));
                 OnPropertyChanged(nameof(IsPlayer2Active));
                 OnPropertyChanged(nameof(TargetTopperPlayer));
+                SwapActiveQueueSubscription(value);
+                RaiseActiveQueueChanged();
             }
         }
+    }
+
+    /// <summary>The active queue whose PropertyChanged/CollectionChanged we're currently forwarding.</summary>
+    private Phosphor.Playback.PlayerQueue? _subscribedActiveQueue;
+
+    /// <summary>
+    /// Re-points the active-queue forwarder at the newly-active player's queue so the DMD panel refreshes
+    /// when that queue's items or cursor/toggles change. Unsubscribes the previous queue first.
+    /// </summary>
+    private void SwapActiveQueueSubscription(Phosphor.Playback.PlayerContext player)
+    {
+        if (_subscribedActiveQueue != null)
+        {
+            _subscribedActiveQueue.PropertyChanged -= OnActiveQueuePropertyChanged;
+            _subscribedActiveQueue.Queue.CollectionChanged -= OnActiveQueueCollectionChanged;
+        }
+        _subscribedActiveQueue = player.Queue;
+        _subscribedActiveQueue.PropertyChanged += OnActiveQueuePropertyChanged;
+        _subscribedActiveQueue.Queue.CollectionChanged += OnActiveQueueCollectionChanged;
+    }
+
+    private void OnActiveQueuePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(Phosphor.Playback.PlayerQueue.CurrentQueueItem):
+                OnPropertyChanged(nameof(ActiveCurrentQueueItem));
+                break;
+            case nameof(Phosphor.Playback.PlayerQueue.RepeatEnabled):
+                OnPropertyChanged(nameof(ActiveRepeatEnabled));
+                break;
+            case nameof(Phosphor.Playback.PlayerQueue.AutoDjEnabled):
+                OnPropertyChanged(nameof(ActiveAutoDjEnabled));
+                break;
+            case nameof(Phosphor.Playback.PlayerQueue.HasQueueItems):
+                OnPropertyChanged(nameof(HasActiveQueueItems));
+                OnPropertyChanged(nameof(ActiveQueueCountText));
+                break;
+        }
+    }
+
+    private void OnActiveQueueCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(HasActiveQueueItems));
+        OnPropertyChanged(nameof(ActiveQueueCountText));
+        OnPropertyChanged(nameof(ActiveCurrentQueueItem));
+    }
+
+    /// <summary>Raises PropertyChanged for every active-queue projection member (used on active switch).</summary>
+    private void RaiseActiveQueueChanged()
+    {
+        OnPropertyChanged(nameof(ActiveQueue));
+        OnPropertyChanged(nameof(ActiveCurrentQueueItem));
+        OnPropertyChanged(nameof(HasActiveQueueItems));
+        OnPropertyChanged(nameof(ActiveQueueCountText));
+        OnPropertyChanged(nameof(ActiveRepeatEnabled));
+        OnPropertyChanged(nameof(ActiveAutoDjEnabled));
     }
 
     /// <summary>True when Player 1 (Backglass) is the active target for newly-played items.</summary>
@@ -2513,6 +2572,7 @@ public partial class JukeboxViewModel : ObservableObject
         Player1.Queue = new Phosphor.Playback.PlayerQueue("Backglass", QueuePath);
         Player2.Queue = new Phosphor.Playback.PlayerQueue("Topper", TopperQueuePath);
         WirePlayerQueue(Player1.Queue);
+        SwapActiveQueueSubscription(_activePlayer);
         WirePlayerContext(Player1);
         WirePlayerContext(Player2);
         _history = PlayHistory.Load();
