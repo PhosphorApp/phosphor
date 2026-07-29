@@ -1806,6 +1806,17 @@ public partial class JukeboxViewModel : ObservableObject
         set => Player2.AudioOnly = value;
     }
 
+    /// <summary>
+    /// Per-player audio-only toggle for the Backglass (Player 1) — the "stream audio only" setting. When
+    /// on, the player plays audio but never brings the video surface on screen (keeps the idle/blob
+    /// screensaver visible). Read by <see cref="Phosphor.Playback.JukeboxPlayer"/> via its context.
+    /// </summary>
+    public bool Player1AudioOnly
+    {
+        get => Player1.AudioOnly;
+        set => Player1.AudioOnly = value;
+    }
+
     public event Action<int>? VolumeChanged
     {
         add => Player1.AddVolumeChanged(value!);

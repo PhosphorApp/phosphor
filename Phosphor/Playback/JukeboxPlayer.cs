@@ -184,8 +184,10 @@ public sealed class JukeboxPlayer
                 state.PlaybackDuration = 1;
             }
 
-            // Check if this item is audio-only (e.g. Plex music track).
-            bool isAudioOnly = state?.CurrentlyPlaying?.IsAudioOnly == true;
+            // Check if this item is audio-only (e.g. Plex music track) OR the host's "stream audio only"
+            // setting is on for this player (per-player Context.AudioOnly) — in which case we play the
+            // audio but never bring the video surface on screen, keeping the idle/screensaver visuals.
+            bool isAudioOnly = state?.CurrentlyPlaying?.IsAudioOnly == true || state?.AudioOnly == true;
 
             // ── PCM gapless path (sources that can supply a stable pre-loadable audio stream) ──
             if (isAudioOnly && vm?.GaplessPlayback == true
@@ -510,7 +512,7 @@ public sealed class JukeboxPlayer
             if (!isLocalSource)
             {
                 var vmForCache = Model;
-                bool isAudioOnly = Context?.CurrentlyPlaying?.IsAudioOnly == true;
+                bool isAudioOnly = Context?.CurrentlyPlaying?.IsAudioOnly == true || Context?.AudioOnly == true;
                 var cached = !isAudioOnly && !string.IsNullOrEmpty(Engine.LastPlayingVideoId)
                     ? vmForCache?.Cache?.TryGet(Engine.LastPlayingVideoId!)
                     : null;

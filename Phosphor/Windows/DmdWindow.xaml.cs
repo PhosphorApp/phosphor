@@ -1032,6 +1032,11 @@ public partial class DmdWindow : JukeboxWindow
         _backglassProxy.SetLogoDim(settings.BackglassLogoDimEnabled, settings.BackglassLogoDimOpacity, settings.BackglassLogoDimTimeoutSeconds);
         _backglassProxy.SetLogoMorphColor(settings.LogoColorMode);
         _backglassProxy.SetAudioOnly(settings.BackglassAudioOnly);
+        if (DataContext is JukeboxViewModel vmInitAudioOnly)
+        {
+            vmInitAudioOnly.Player1AudioOnly = settings.BackglassAudioOnly;
+            vmInitAudioOnly.Player2AudioOnly = settings.TopperAudioOnly;
+        }
         if (settings.ShowTopper)
             _topperProxy.SetLogoMorphColor(settings.TopperLogoColorMode);
         _backglassProxy.LogoColorsMorphed += (titleColor, recordColor) =>
@@ -2513,7 +2518,10 @@ public partial class DmdWindow : JukeboxWindow
         _backglassProxy?.SetLogoDim(_appSettings.BackglassLogoDimEnabled, _appSettings.BackglassLogoDimOpacity, _appSettings.BackglassLogoDimTimeoutSeconds);
         _backglassProxy?.SetAudioOnly(_appSettings.BackglassAudioOnly);
         if (DataContext is JukeboxViewModel vmAudioOnly)
+        {
+            vmAudioOnly.Player1AudioOnly = _appSettings.BackglassAudioOnly;
             vmAudioOnly.Player2AudioOnly = _appSettings.TopperAudioOnly;
+        }
         // Enable/disable the Topper's second media player live (no relaunch needed).
         (System.Windows.Application.Current as App)?.SetSecondPlayerEnabled(_appSettings.EnableSecondPlayer);
         LogStep("BackglassDim/AudioOnly/OLED");
