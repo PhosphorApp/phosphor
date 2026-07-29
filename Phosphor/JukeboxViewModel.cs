@@ -1806,24 +1806,19 @@ public partial class JukeboxViewModel : ObservableObject
     /// <summary>
     /// Builds a probe <see cref="Phosphor.Plugin.Abstractions.SourceItem"/> for a playing host
     /// <see cref="VideoItem"/>, suitable for <c>IPlayableResolver.GetMetadataAsync</c>. Carries the
-    /// whole <see cref="VideoItem"/> in <c>SourceState</c> (Plex reads it back for its rating key)
-    /// while <c>ItemId</c> holds the id (YouTube's <c>VideoIdOf</c> falls back to it, since a
-    /// <see cref="VideoItem"/> isn't a string). One shape serves every source.
+    /// whole <see cref="VideoItem"/> in <c>SourceState</c> while <c>ItemId</c> holds the id (YouTube's
+    /// <c>VideoIdOf</c> falls back to it, since a <see cref="VideoItem"/> isn't a string). One shape
+    /// serves every source.
     /// </summary>
     private static Phosphor.Plugin.Abstractions.SourceItem ProbeSourceItem(
-        VideoItem item, string sourceInstanceId) =>
-        // Prefer handing the source back its OWN originating SourceItem — its SourceState carries the
-        // plug-in's internal item (e.g. Plex's VideoItem with the rating key) that GetMetadataAsync reads
-        // back. Only fall back to a synthesized probe for sources (e.g. YouTube) that key off ItemId.
-        item.OriginatingSourceItem as Phosphor.Plugin.Abstractions.SourceItem
-        ?? new()
-        {
-            SourceInstanceId = sourceInstanceId,
-            ItemId = item.VideoId,
-            Title = item.Title,
-            IsAudioOnly = item.IsAudioOnly,
-            SourceState = item,
-        };
+        VideoItem item, string sourceInstanceId) => new()
+    {
+        SourceInstanceId = sourceInstanceId,
+        ItemId = item.VideoId,
+        Title = item.Title,
+        IsAudioOnly = item.IsAudioOnly,
+        SourceState = item,
+    };
 
     /// <summary>
     /// Runs <paramref name="action"/> on the UI (dispatcher) thread. A no-op marshal when the
@@ -1939,10 +1934,6 @@ public partial class JukeboxViewModel : ObservableObject
             }
 
             var vi = ToVideoItem(item);
-            // Keep the originating plug-in SourceItem so later per-item source round-trips (e.g. on-demand
-            // chapters via GetMetadataAsync) can hand the source back its own item, carrying source-internal
-            // identity (e.g. Plex rating key) the flat host fields drop.
-            vi.OriginatingSourceItem = item;
             if (item.IsLiveStream)
             {
                 // Live streams (e.g. SiriusXM channels) MUST resolve lazily at play time. Resolving
@@ -1990,10 +1981,9 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>Maps a plug-in <see cref="Phosphor.Plugin.Abstractions.SourceItem"/> to a host
-    /// <see cref="VideoItem"/>. When the source stashed a full <see cref="VideoItem"/> in
-    /// <see cref="Phosphor.Plugin.Abstractions.SourceItem.SourceState"/> (as Plex does, carrying its
-    /// rich <c>plex:</c> id / rating key / audio stream), it is unwrapped directly so playback and
-    /// caching route correctly; otherwise the flat fields are copied (YouTube discovery shape).</summary>
+    /// <see cref="VideoItem"/> by copying its flat fields (id, title, duration, badges, native chapters,
+    /// …). The <see cref="Phosphor.Plugin.Abstractions.SourceItem.SourceState"/> stays opaque and is
+    /// handed back to the source on resolve/metadata round-trips.</summary>
     private static VideoItem ToVideoItem(Phosphor.Plugin.Abstractions.SourceItem item)
     {
         if (item.SourceState is VideoItem carried)
@@ -2015,6 +2005,15 @@ public partial class JukeboxViewModel : ObservableObject
             IsPlayable = item.IsPlayable,
             HasVideoAlternative = item.HasVideoAlternative,
             VideoSearchQuery = item.VideoSearchQuery,
+            // Carry native chapters the source supplied at browse/search time (e.g. Plex's
+            // includeChapters). The host persists these in queue.json, so tick marks survive a restart
+            // without depending on the fragile on-demand GetMetadataAsync round-trip.
+            Chapters = item.Chapters?.Select(c => new ChapterMarker
+            {
+                Title = c.Title,
+                StartTime = c.Start,
+                EndTime = c.End ?? TimeSpan.Zero,
+            }).ToList(),
         };
     }
 
@@ -4926,18 +4925,12 @@ public partial class JukeboxViewModel : ObservableObject
         try
         {
             var source = SourceForItem(item);
-            DebugLog.Log(LogLevel.Debug, "ChapterTicks",
-                $"FetchChapters: item '{item.Title}' source={source?.GetType().Name ?? "null"} isResolver={source is Phosphor.Plugin.Abstractions.IPlayableResolver} originating={item.OriginatingSourceItem?.GetType().Name ?? "null"}");
             Video.VideoMetadata? meta;
             if (source is Phosphor.Plugin.Abstractions.IPlayableResolver resolver)
             {
                 var probe = ProbeSourceItem(item, source!.InstanceId);
-                DebugLog.Log(LogLevel.Debug, "ChapterTicks",
-                    $"FetchChapters: probe.SourceState={probe.SourceState?.GetType().Name ?? "null"} probe.ItemId={probe.ItemId}");
                 var raw = await resolver.GetMetadataAsync(probe);
                 meta = raw == null ? null : MapPluginMetadata(raw);
-                DebugLog.Log(LogLevel.Debug, "ChapterTicks",
-                    $"FetchChapters: resolver returned meta={(raw == null ? "null" : "ok")} chapters={meta?.Chapters.Count.ToString() ?? "n/a"}");
             }
             else
             {
