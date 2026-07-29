@@ -1827,7 +1827,6 @@ public partial class JukeboxViewModel : ObservableObject
     // ── Video cache ──
     public VideoCache? Cache => _cache;
     public PrefetchCache? Prefetch => _prefetch;
-    private string? _prefetchingVideoId;
 
     // Guards against an unbounded skip loop when many consecutive tracks fail to resolve (e.g. a run
     // of DRM-protected SoundCloud tracks). Reset whenever a track resolves or the user picks a track.
@@ -2551,7 +2550,7 @@ public partial class JukeboxViewModel : ObservableObject
         if (nextIdx < 0 || nextIdx >= Queue.Count) return;
 
         var nextId = Queue[nextIdx].VideoId;
-        if (nextId == _prefetchingVideoId) return;
+        if (nextId == Player1.Queue.PrefetchingVideoId) return;
 
         // Non-cacheable sources are streamed directly — no YouTube-style prefetch needed
         if (!IsItemCacheable(Queue[nextIdx])) return;
@@ -2560,7 +2559,7 @@ public partial class JukeboxViewModel : ObservableObject
         if (_cache?.TryGet(nextId) != null) return;
         if (_prefetch.TryGet(nextId) != null) return;
 
-        _prefetchingVideoId = nextId;
+        Player1.Queue.PrefetchingVideoId = nextId;
         SetStatusPrefix("Prefetching");
         // Route through the registry-ready gate so an early prefetch doesn't lose the startup race for
         // the shared DownloadOverride (same fix as the current-item / preemptive caches).
@@ -4716,8 +4715,7 @@ public partial class JukeboxViewModel : ObservableObject
     public void PlayNextOn(Phosphor.Playback.PlayerContext player)
     {
         var queue = player.Queue;
-        if (ReferenceEquals(player, Player1))
-            _prefetchingVideoId = null;
+        queue.PrefetchingVideoId = null;
 
         if (queue.Queue.Count == 0)
         {
@@ -4759,22 +4757,30 @@ public partial class JukeboxViewModel : ObservableObject
     /// Advances the queue index and updates state for a gapless transition
     /// (the BackglassWindow has already started playback on a pre-loaded MediaPlayer).
     /// </summary>
-    public void AdvanceQueueGapless()
+    public void AdvanceQueueGapless() => AdvanceQueueGaplessOn(Player1);
+
+    /// <summary>
+    /// Advances <paramref name="player"/>'s queue for a gapless transition (the host has already started
+    /// playback on a pre-loaded decoder), updating that player's now-playing state — no new play request.
+    /// </summary>
+    public void AdvanceQueueGaplessOn(Phosphor.Playback.PlayerContext player)
     {
-        _prefetchingVideoId = null;
+        var queue = player.Queue;
+        queue.PrefetchingVideoId = null;
 
-        int nextIndex = QueueIndex + 1;
-        if (nextIndex >= Queue.Count && RepeatEnabled && Queue.Count > 0)
+        int nextIndex = queue.QueueIndex + 1;
+        if (nextIndex >= queue.Queue.Count && queue.RepeatEnabled && queue.Queue.Count > 0)
             nextIndex = 0;
-        if (nextIndex < 0 || nextIndex >= Queue.Count) return;
+        if (nextIndex < 0 || nextIndex >= queue.Queue.Count) return;
 
-        IsQueueTransition = true;
-        QueueIndex = nextIndex;
-        var item = Queue[nextIndex];
-        CurrentlyPlaying = item;
+        if (ReferenceEquals(player, Player1))
+            IsQueueTransition = true;
+        queue.QueueIndex = nextIndex;
+        var item = queue.Queue[nextIndex];
+        player.CurrentlyPlaying = item;
         StatusText = $"Playing: {item.Title}{item.AudioTag}";
         _history.Add(item);
-        PlayTransitioning = false;
+        player.PlayTransitioning = false;
         _statusPrefixCts?.Cancel();
         StatusPrefix = "";
 
@@ -4782,8 +4788,8 @@ public partial class JukeboxViewModel : ObservableObject
         if (item.Chapters == null)
             _ = SafeFireAndForget(FetchChaptersViaSourceAsync(item));
 
-        if (AutoDjEnabled)
-            _ = SafeFireAndForget(AutoDjFillQueue());
+        if (queue.AutoDjEnabled)
+            _ = SafeFireAndForget(AutoDjFillQueueOn(player));
     }
 
     // ── Playlists ──

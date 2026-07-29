@@ -116,6 +116,12 @@ public sealed class PlayerQueue : INotifyPropertyChanged
     public bool IsAutoDjFilling { get; set; }
 
     /// <summary>
+    /// The videoId this queue currently has a prefetch in flight for (its next-track gapless/prefetch
+    /// cursor), or null. Per-queue so each player tracks its own next-track prefetch independently.
+    /// </summary>
+    public string? PrefetchingVideoId { get; set; }
+
+    /// <summary>
     /// Returns true if there is a next track available to play (considering repeat and AutoDJ). Used
     /// by the host to decide whether to show the idle screen between tracks.
     /// </summary>
