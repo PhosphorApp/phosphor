@@ -55,8 +55,24 @@ second item (music-only, video, or ambience).
 > shown only when the 2nd player is enabled) flips the visible queue; the title shows the active owner
 > name. The VM's Player-1-bound `Queue`/`QueueIndex`/`CurrentQueueItem`/`HasNextTrack`/
 > `AdvanceQueueGapless`/`GetNextGaplessTrack` stay unchanged, so Backglass host/gapless/prefetch are
-> unaffected. **Still deferred:** Player 2 natural-end (PCM-callback) gapless auto-advance; relocating
-> prefetch/preemptive-cache cursors into `PlayerQueue` (Player 2 doesn't gapless-prefetch yet).
+> unaffected.
+
+> **STATUS (Phase 3 integration wrap-up complete on branch `multiplayer`).** The remaining deferrals
+> are done: (1) **Player 2 natural-end advance** — the Topper's jukebox engine `EndReached` is now
+> subscribed (`OnJukeboxMediaEnded` in `TopperWindow.PlaybackHost.cs`, wired once in
+> `AttachJukeboxViewModel` / unwired in `DetachJukeboxViewModel`), advancing Player 2's own queue via
+> `PlayNextOn(Player2)` (live-stream-guarded, yields to ambient when the queue finishes). The Topper's
+> PCM-gapless `CreateGaplessPlayer` now advances Player 2's queue too (`TrackAdvanced` →
+> `AdvanceQueueGaplessOn(Player2)`; `PlaybackFinished` → `PlayNextOn(Player2)` or ambient).
+> (2) **Prefetch cursor** moved into `PlayerQueue.PrefetchingVideoId` (structurally per-queue);
+> `AdvanceQueueGapless` is now player-parameterized (`AdvanceQueueGaplessOn(player)`). Public members
+> still delegate to Player 1, so Backglass behavior is unchanged.
+>
+> **FOLLOWUP — concurrent-stream limits:** YouTube playback is typically gated to a *single* player
+> instance; running the Backglass and Topper on YouTube simultaneously complicates/limits that.
+> Persistent caching is a partial workaround (a cached Backglass track frees the live YouTube session
+> for the Topper). Several other sources are also single-stream by nature. This is likely best handled
+> with **UX verbiage/guidance** about concurrent-stream usage rather than a hard technical fix — TBD.
 
 **Where things stand (end of Phase 2 + tweaks):**
 - `PlayerContext` (`Phosphor/Playback/PlayerContext.cs`) is the **per-player state holder**
