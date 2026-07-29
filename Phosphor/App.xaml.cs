@@ -97,9 +97,9 @@ public partial class App : Application
         viewModel.PreemptiveCache = _settings.PreemptiveCache;
         viewModel.GaplessPlayback = _settings.GaplessPlayback;
         viewModel.AutoDjProviderId = _settings.AutoDjProviderId;
-        viewModel.Volume = _settings.Volume;
-        viewModel.RepeatEnabled = _settings.RepeatEnabled;
-        viewModel.AutoDjEnabled = _settings.AutoDjEnabled;
+        viewModel.Player1.Volume = _settings.Volume;
+        viewModel.Player1.Queue.RepeatEnabled = _settings.RepeatEnabled;
+        viewModel.Player1.Queue.AutoDjEnabled = _settings.AutoDjEnabled;
         viewModel.SecondPlayerEnabled = _settings.EnableSecondPlayer;
         viewModel.Player2AudioOnly = _settings.TopperAudioOnly;
         // Configure Plex + its category tiles from the plug-in instance configs.
@@ -246,7 +246,7 @@ public partial class App : Application
                 }
                 else
                 {
-                    viewModel.QueueIndex = restoreIndex;
+                    viewModel.Player1.Queue.QueueIndex = restoreIndex;
                 }
             }
             else if (_settings.AutoPlayQueueOnStart && viewModel.Queue.Count > 0)
@@ -433,9 +433,9 @@ public partial class App : Application
         _topperProxy?.SaveLayout(_settings.Topper);
         if (_dmdWindow.DataContext is JukeboxViewModel vmSettings)
         {
-            _settings.RepeatEnabled = vmSettings.RepeatEnabled;
-            _settings.AutoDjEnabled = vmSettings.AutoDjEnabled;
-            _settings.LastQueueIndex = vmSettings.LastKnownQueueIndex;
+            _settings.RepeatEnabled = vmSettings.Player1.Queue.RepeatEnabled;
+            _settings.AutoDjEnabled = vmSettings.Player1.Queue.AutoDjEnabled;
+            _settings.LastQueueIndex = vmSettings.Player1.Queue.LastKnownQueueIndex;
             // Persist the queue on exit so metadata enriched during the session
             // (upload date, accurate duration, chapters) survives a restart.
             vmSettings.SaveQueueState();
@@ -560,10 +560,10 @@ public partial class App : Application
         try
         {
             _dittiPlayer = new System.Windows.Media.MediaPlayer();
-            _dittiPlayer.Volume = viewModel.Volume / 100.0; // WPF volume is 0.0–1.0
+            _dittiPlayer.Volume = viewModel.Player1.Volume / 100.0; // WPF volume is 0.0–1.0
 
             // Show in Now Playing
-            viewModel.CurrentlyPlaying = new VideoItem { Title = "Startup Ditti", VideoId = "ditti:startup" };
+            viewModel.Player1.CurrentlyPlaying = new VideoItem { Title = "Startup Ditti", VideoId = "ditti:startup" };
 
             // Track volume changes from the slider
             void onVolumeChanged(int v) { if (_dittiPlayer != null) _dittiPlayer.Volume = v / 100.0; }
@@ -573,8 +573,8 @@ public partial class App : Application
             void clearDitti()
             {
                 cleanupDittiEvents();
-                if (viewModel.CurrentlyPlaying?.VideoId == "ditti:startup")
-                    viewModel.CurrentlyPlaying = null;
+                if (viewModel.Player1.CurrentlyPlaying?.VideoId == "ditti:startup")
+                    viewModel.Player1.CurrentlyPlaying = null;
                 DisposeStartupDitti();
             }
             void onPlay(string _) => clearDitti();
@@ -589,8 +589,8 @@ public partial class App : Application
                 cleanupDittiEvents();
                 Dispatcher.BeginInvoke(() =>
                 {
-                    if (viewModel.CurrentlyPlaying?.VideoId == "ditti:startup")
-                        viewModel.CurrentlyPlaying = null;
+                    if (viewModel.Player1.CurrentlyPlaying?.VideoId == "ditti:startup")
+                        viewModel.Player1.CurrentlyPlaying = null;
                     DisposeStartupDitti();
                 });
             };
@@ -602,8 +602,8 @@ public partial class App : Application
                 cleanupDittiEvents();
                 Dispatcher.BeginInvoke(() =>
                 {
-                    if (viewModel.CurrentlyPlaying?.VideoId == "ditti:startup")
-                        viewModel.CurrentlyPlaying = null;
+                    if (viewModel.Player1.CurrentlyPlaying?.VideoId == "ditti:startup")
+                        viewModel.Player1.CurrentlyPlaying = null;
                     DisposeStartupDitti();
                 });
             };
@@ -615,8 +615,8 @@ public partial class App : Application
         catch (Exception ex)
         {
             DebugLog.Log(LogLevel.Warning, "Ditti", $"Startup ditti failed: {ex.Message}");
-            if (viewModel.CurrentlyPlaying?.VideoId == "ditti:startup")
-                viewModel.CurrentlyPlaying = null;
+            if (viewModel.Player1.CurrentlyPlaying?.VideoId == "ditti:startup")
+                viewModel.Player1.CurrentlyPlaying = null;
             DisposeStartupDitti();
         }
     }

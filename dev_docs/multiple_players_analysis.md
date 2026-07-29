@@ -85,8 +85,13 @@ second item (music-only, video, or ambience).
 > panel's active player; `Player2*` → the Topper bar). It works and kept XAML/persistence byte-for-byte
 > stable, but a reader must know which projection a member represents, and the forwarding plumbing
 > (`WirePlayerQueue`, `SwapActiveQueueSubscription`, the PropertyChanged switch statements) all lives on
-> the VM. Some cross-player state is still shared/Player-1-centric (`_history`, `_autoDjUsedIds`,
-> `StatusText`) so the two players aren't *fully* independent yet.
+> the VM. Some cross-player state is deliberately shared and app-scoped, **by design, not as unfinished
+> extraction**: `_history` (one chronological play log per cabinet — both players already write to the
+> single `history.json`; a per-screen split would fragment a naturally-unified timeline for no user
+> benefit) and `StatusText` (a single "what's happening" feedback line — a stack-of-1 where the most
+> recent writer wins, bound to one DMD status label). The AutoDJ de-dup set is likewise one shared set
+> across both queues (now inside `AutoDjService`). These are correct as shared app concerns; the only
+> nicety left is *placement* (they live as VM fields rather than clearly app-scoped services).
 >
 > **Suggested cleanup (not urgent; no user-visible change):**
 > 1. **Collapse the three queue views into one.** Make the host/gapless callers
@@ -98,6 +103,32 @@ second item (music-only, video, or ambience).
 > 3. **Extract a `QueueService` / AutoDJ engine** off the VM to start dismantling the God object
 >    (own the shared `_autoDjUsedIds`/RNG/fill orchestration; take `PlayerQueue` as a parameter).
 > Overall grade: solid **B+** — abstractions are right; the VM just needs a follow-up diet.
+
+> **STATUS (VM delegation-bloat cleanup complete on branch `refactor/vm-queue-cleanup`).** All three
+> suggested cleanups landed as build-validated, individually-committed slices:
+> 1. **Collapsed the three queue views into one.** `BackglassWindow`'s host/gapless callers are now
+>    player-aware (`GetNextGaplessTrackOn`/`AdvanceQueueGaplessOn`/`PlayNextOn(vm.Player1)`,
+>    `vm.Player1.Queue.HasNextTrack`), mirroring the Topper. The nine now-unused Player-1-bound
+>    forwarders (`Queue`-subset `QueueIndex`/`CurrentQueueItem`/`RepeatEnabled`/`AutoDjEnabled`/
+>    `LastKnownQueueIndex`/`HasNextTrack`/`PlayNext()`/`AdvanceQueueGapless()`/`GetNextGaplessTrack()`)
+>    were deleted; the DMD panel already bound through the `Active*` projection so XAML is untouched.
+>    Internal VM + `App.xaml.cs` callers repoint to `Player1.Queue.*`. (commit `9a4123a`)
+> 2. **Moved the forwarding plumbing off the VM.** The active-queue PropertyChanged/CollectionChanged
+>    switchboard (`SwapActiveQueueSubscription`/`OnActiveQueue*`/`RaiseActiveQueueChanged`) now lives in
+>    `Phosphor/Playback/ActiveQueueForwarder.cs`; the VM keeps thin `Active*` getters and delegates the
+>    subscription bookkeeping. (commit `a1f252a`)
+> 3. **Extracted the AutoDJ engine.** `Phosphor/Playback/AutoDjService.cs` owns the used-id de-dup set,
+>    RNG, refill thresholds, and the genre/video fill bodies, operating on a `PlayerContext`/`PlayerQueue`
+>    passed as a parameter. All VM couplings (status, source search binding `AutoDjProviderId`, UI
+>    marshalling, next-track playback, active-genre resolution, history titles, exception logging) are
+>    injected as delegates. The VM keeps thin `AutoDjFillQueueOn`/`AutoDjFillQueue` wrappers (call sites
+>    unchanged); `ShuffleQueueOn` shares the engine RNG via `_autoDj.Shuffle`. (commit `a187125`)
+>
+> Net: `JukeboxViewModel` ~5.4k → ~5.15k lines; the `=> Player1` delegator count dropped and two
+> cohesive concerns (active-queue forwarding, AutoDJ orchestration) moved to dedicated `Phosphor.Playback`
+> types. Zero user-visible change — XAML bindings and `queue.json`/`queue_topper.json` persistence are
+> byte-for-byte stable. Priority 3's original "risk" (deep VM coupling) collapsed cleanly into a small set
+> of injectable delegates, so the God-object dismantling is genuinely under way rather than deferred.
 
 **Where things stand (end of Phase 2 + tweaks):**
 - `PlayerContext` (`Phosphor/Playback/PlayerContext.cs`) is the **per-player state holder**
