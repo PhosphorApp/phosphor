@@ -16,5 +16,6 @@ Phosphor is a WPF (.NET 8) music jukebox for virtual pinball cabinets. It plays 
 
 ## Git Workflow
 - At the start of a working session, do a `git pull` to ensure the local repo is up to date.
+- Before pushing, flag any compile-time warnings introduced by your changes and resolve or call them out.
 - "check in" means: `git add -A && git commit` (local only, do NOT push).
 - "check in and push" means: `git add -A && git commit && git push`.

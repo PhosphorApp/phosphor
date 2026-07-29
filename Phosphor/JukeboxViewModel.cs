@@ -2459,7 +2459,7 @@ public partial class JukeboxViewModel : ObservableObject
             runOnUi: RunOnUiAsync,
             playNext: PlayNextOn,
             resolveActiveGenre: ResolveActiveGenreForAutoDj,
-            mostRecentHistoryTitle: () => _history.Entries
+            mostRecentHistoryTitle: () => _history?.Entries
                 .Select(e => e.Title)
                 .FirstOrDefault(t => !string.IsNullOrWhiteSpace(t)),
             logException: DebugLog.LogException);
