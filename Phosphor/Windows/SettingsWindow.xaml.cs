@@ -4494,6 +4494,9 @@ public partial class SettingsWindow : JukeboxWindow
     private readonly List<(System.Windows.Controls.Control Control, string InstanceId, string Key)> _pluginFieldControls = new();
     private readonly Dictionary<string, System.Windows.Controls.TextBox> _pluginDisplayNameBoxes = new();
     private readonly Dictionary<string, System.Windows.Controls.CheckBox> _pluginEnabledBoxes = new();
+    // Card container per instance, so the "Configured plug-ins:" quick-jump links can scroll a
+    // source's card into view (this tab gets long).
+    private readonly Dictionary<string, System.Windows.FrameworkElement> _pluginCards = new();
     // App-level yt-dlp "Update now" controls, tracked so an Apply (which rebuilds the source
     // registry) can refresh their enabled state without closing/reopening the window.
     private System.Windows.Controls.Button? _ytDlpUpdateBtn;
@@ -4559,6 +4562,7 @@ public partial class SettingsWindow : JukeboxWindow
         _pluginFieldControls.Clear();
         _pluginDisplayNameBoxes.Clear();
         _pluginEnabledBoxes.Clear();
+        _pluginCards.Clear();
         _pluginCachingBoxes.Clear();
         _pluginCustomFieldGetters.Clear();
         _pluginCategoryItems.Clear();
@@ -4572,6 +4576,19 @@ public partial class SettingsWindow : JukeboxWindow
         {
             var dimBrush = (System.Windows.Media.Brush)FindResource("TextDimBrush");
             var textBrush = (System.Windows.Media.Brush)FindResource("TextBrush");
+            var accentBrush = (System.Windows.Media.Brush)FindResource("AccentBrush");
+
+            // "GLOBAL SETTINGS" section header — these first few settings affect all sources, not a
+            // specific plug-in, so they're grouped to stand apart from the per-plug-in cards below.
+            PanelPluginSources.Children.Add(new System.Windows.Controls.TextBlock
+            {
+                Text = "GLOBAL SETTINGS",
+                Foreground = accentBrush,
+                FontWeight = FontWeights.Bold,
+                FontSize = 12,
+                Margin = new Thickness(0, 0, 0, 8),
+            });
+
             var encBox = new System.Windows.Controls.CheckBox
             {
                 Content = "Encrypt sensitive settings (API tokens, passwords)",
@@ -5181,6 +5198,7 @@ public partial class SettingsWindow : JukeboxWindow
             DisposeTransientSource(transient);
 
             card.Child = panel;
+            _pluginCards[cfg.InstanceId] = card;
             PanelPluginSources.Children.Add(card);
         }
 
@@ -5219,6 +5237,150 @@ public partial class SettingsWindow : JukeboxWindow
             addRow.Children.Add(addBtn);
             PanelPluginSources.Children.Add(addRow);
         }
+
+        // ── "Configured plug-ins:" quick-jump summary (inserted at the very top, under the tab's
+        // intro sentences). This tab gets long, so a compact list of links makes it easy to jump
+        // straight to a source's card. A "Available:" line follows with discovered-but-unconfigured
+        // providers for quick discovery. ──
+        BuildConfiguredPluginsSummary(text, dim, accent);
+    }
+
+    /// <summary>
+    /// Builds the compact "Configured plug-ins:" / "Available:" link summary as a 2×2 grid (label
+    /// column + list column) and inserts it at the top of the plug-ins panel, under the intro
+    /// sentences. Each configured link scrolls its source card into view; disabled instances are
+    /// annotated "(disabled)".
+    /// </summary>
+    private void BuildConfiguredPluginsSummary(
+        System.Windows.Media.Brush text,
+        System.Windows.Media.Brush dim,
+        System.Windows.Media.Brush accent)
+    {
+        var grid = new System.Windows.Controls.Grid { Margin = new Thickness(0, 0, 0, 10) };
+        grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = System.Windows.GridLength.Auto });
+        grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) });
+        grid.RowDefinitions.Add(new System.Windows.Controls.RowDefinition { Height = System.Windows.GridLength.Auto });
+        grid.RowDefinitions.Add(new System.Windows.Controls.RowDefinition { Height = System.Windows.GridLength.Auto });
+
+        System.Windows.Controls.TextBlock MakeLabel(string t) => new()
+        {
+            Text = t,
+            Foreground = text,
+            FontSize = 11,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 8, 0),
+        };
+
+        // Row 0 — "Configured plug-ins:" label + link list.
+        var configuredLabel = MakeLabel("Configured:");
+        System.Windows.Controls.Grid.SetColumn(configuredLabel, 0);
+        System.Windows.Controls.Grid.SetRow(configuredLabel, 0);
+        grid.Children.Add(configuredLabel);
+
+        var configured = new System.Windows.Controls.TextBlock
+        {
+            Foreground = text,
+            FontSize = 11,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 2),
+        };
+        bool first = true;
+        foreach (var cfg in _pluginWorkingConfigs)
+        {
+            if (!first)
+                configured.Inlines.Add(new System.Windows.Documents.Run(", "));
+            first = false;
+
+            var info = Phosphor.Plugins.PluginSettingsFactory.DescribeProvider(cfg.TypeId);
+            var name = cfg.DisplayName ?? info?.DisplayName ?? cfg.TypeId;
+
+            var link = new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run(name))
+            {
+                Foreground = accent,
+            };
+            var instId = cfg.InstanceId;
+            link.Click += (_, _) =>
+            {
+                if (_pluginCards.TryGetValue(instId, out var card))
+                    ScrollElementIntoView(card);
+            };
+            configured.Inlines.Add(link);
+
+            if (!cfg.Enabled)
+                configured.Inlines.Add(new System.Windows.Documents.Run(" (disabled)") { Foreground = dim });
+        }
+        System.Windows.Controls.Grid.SetColumn(configured, 1);
+        System.Windows.Controls.Grid.SetRow(configured, 0);
+        grid.Children.Add(configured);
+
+        // Row 1 — "Available:" label + discovered-but-unconfigured providers (purely informational).
+        var configuredTypes = new HashSet<string>(
+            _pluginWorkingConfigs.Select(c => c.TypeId), StringComparer.OrdinalIgnoreCase);
+        var availableNames = Phosphor.Plugins.PluginSettingsFactory.AddableProviders()
+            .Where(p => !configuredTypes.Contains(p.TypeId))
+            .Select(p => p.DisplayName)
+            .ToList();
+        if (availableNames.Count > 0)
+        {
+            var availableLabel = MakeLabel("Available:");
+            System.Windows.Controls.Grid.SetColumn(availableLabel, 0);
+            System.Windows.Controls.Grid.SetRow(availableLabel, 1);
+            grid.Children.Add(availableLabel);
+
+            var available = new System.Windows.Controls.TextBlock
+            {
+                Text = string.Join(", ", availableNames),
+                Foreground = dim,
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap,
+            };
+            System.Windows.Controls.Grid.SetColumn(available, 1);
+            System.Windows.Controls.Grid.SetRow(available, 1);
+            grid.Children.Add(available);
+        }
+
+        // Insert at the very top of the panel, under the XAML intro sentences and above the
+        // "GLOBAL SETTINGS" header.
+        PanelPluginSources.Children.Insert(0, grid);
+    }
+
+    /// <summary>
+    /// Scrolls a settings-panel element into view within its containing ScrollViewer, cooperating
+    /// with the "scroll jumps to top" guard (<see cref="AttachScrollGuard"/>): the guard snaps back
+    /// any programmatic scroll not preceded by a real gesture, which would otherwise revert this
+    /// jump. We compute the target offset directly and record it as the user's intended offset so
+    /// the guard treats it as intentional.
+    /// </summary>
+    private void ScrollElementIntoView(System.Windows.FrameworkElement element)
+    {
+        var sv = FindVisualParent<System.Windows.Controls.ScrollViewer>(element);
+        if (sv == null)
+        {
+            element.BringIntoView();
+            return;
+        }
+
+        // Offset of the element relative to the ScrollViewer's scrollable content.
+        var content = sv.Content as System.Windows.UIElement ?? sv;
+        var transform = element.TransformToAncestor(content);
+        var top = transform.Transform(new System.Windows.Point(0, 0)).Y;
+        var target = Math.Max(0, Math.Min(top, sv.ScrollableHeight));
+
+        // Tell the guard this is an intentional move before scrolling so it isn't snapped back.
+        if (_scrollGuards.TryGetValue(sv, out var state))
+        {
+            state.UserOffset = target;
+            state.LastInputTick = Environment.TickCount;
+        }
+        sv.ScrollToVerticalOffset(target);
+    }
+
+    private static T? FindVisualParent<T>(DependencyObject child) where T : DependencyObject
+    {
+        var parent = System.Windows.Media.VisualTreeHelper.GetParent(child);
+        while (parent != null && parent is not T)
+            parent = System.Windows.Media.VisualTreeHelper.GetParent(parent);
+        return parent as T;
     }
 
     /// <summary>Adds a new instance of a multi-instance provider and re-renders the tab.</summary>
