@@ -42,6 +42,15 @@ capability interfaces (`ITextSearchCapable`, `IBrowsable`, `IPagedBrowsable`, `I
 `Phosphor/bin/.../plugins/<Name>/`. Each plug-in loads in its own `AssemblyLoadContext` (isolated
 private deps). The host reaches shared native tools (`yt-dlp.exe`, `ffmpeg.exe`) via
 `IPluginHost.GetToolPath`; a provider declares `RequiredTools` for load-time validation.
+
+**Discovery convention (one plug-in per folder):** a folder `plugins/<Name>/` names its provider
+assembly `Phosphor.Plugins.<Name>.dll`. When that file exists the loader loads *only* it and skips
+reflecting the folder's private dependencies (a real win for multi-DLL plug-ins like YouTube, which
+ships AngleSharp/YoutubeExplode alongside it). A folder that doesn't follow the naming convention
+falls back to scanning every DLL, so this is a non-breaking speedup, not a hard requirement. This is
+deliberately lightweight — do **not** replace it with a `plugin.json` manifest or `MetadataLoadContext`
+pre-scan unless a single plug-in folder starts shipping *multiple candidate provider DLLs*; the
+`AssemblyLoadContext` isolation already makes a bad/incompatible DLL non-fatal (logged and skipped).
 ```
 
 

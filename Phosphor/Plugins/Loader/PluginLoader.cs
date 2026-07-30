@@ -9,6 +9,9 @@ namespace Phosphor.Plugins.Loader;
 /// Discovers source plug-ins by scanning a <c>plugins/</c> folder for assemblies that export
 /// <see cref="IPhosphorSourceProvider"/> implementations. Every source ships as a plug-in here
 /// (YouTube, Plex, and third-party sources alike) — there are no statically-referenced built-ins.
+/// Each subfolder holds exactly one plug-in and, by convention, names its provider assembly
+/// <c>Phosphor.Plugins.&lt;FolderName&gt;.dll</c>; when present, that assembly is loaded directly and
+/// its private dependencies are skipped (see <see cref="PluginAssemblyPrefix"/>).
 /// </summary>
 /// <remarks>
 /// Each plug-in assembly is loaded into its own <see cref="AssemblyLoadContext"/> so a bad or
@@ -24,6 +27,15 @@ public static class PluginLoader
 {
     /// <summary>The subfolder (under the app base directory) scanned for plug-ins.</summary>
     public const string PluginsFolderName = "plugins";
+
+    /// <summary>
+    /// Prefix of the conventional entry-point assembly for a plug-in folder: a folder named
+    /// <c>&lt;Name&gt;</c> is expected to contain <c>Phosphor.Plugins.&lt;Name&gt;.dll</c> as its
+    /// provider assembly (e.g. <c>YouTube/Phosphor.Plugins.YouTube.dll</c>). When that file exists,
+    /// discovery loads only it and skips the folder's private dependencies — a plug-in folder holds
+    /// exactly one plug-in. Folders that don't follow the convention fall back to scanning every DLL.
+    /// </summary>
+    public const string PluginAssemblyPrefix = "Phosphor.Plugins.";
 
     // Strong references to every loaded plug-in context, kept for the life of the process so a
     // context is never garbage-collected/unloaded while its provider (and lazily-loaded private
@@ -46,9 +58,21 @@ public static class PluginLoader
             return results;
         }
 
-        // Each plug-in lives in its own subfolder: plugins/<Name>/<Name>.dll (+ its private deps).
+        // Each plug-in lives in its own subfolder holding exactly one plug-in:
+        // plugins/<Name>/Phosphor.Plugins.<Name>.dll (+ its private deps).
         foreach (var dir in Directory.EnumerateDirectories(root))
         {
+            // Fast path: honour the naming convention and load only the entry-point assembly,
+            // skipping a reflection scan of the folder's private dependencies. This matters once a
+            // plug-in ships several DLLs (e.g. YouTube ships AngleSharp/YoutubeExplode alongside it).
+            var conventionalDll = Path.Combine(dir, PluginAssemblyPrefix + Path.GetFileName(dir) + ".dll");
+            if (File.Exists(conventionalDll))
+            {
+                TryLoadAssembly(conventionalDll, results);
+                continue;
+            }
+
+            // Fallback: folder doesn't follow the convention — scan every DLL as before.
             foreach (var dll in Directory.EnumerateFiles(dir, "*.dll", SearchOption.TopDirectoryOnly))
             {
                 // Skip the shared contract if a plug-in mistakenly shipped its own copy.

@@ -64,12 +64,14 @@ Create a **.NET 8 class library** that references **only** the contract, compile
 The host scans a `plugins/` folder next to `Phosphor.exe`. Drop your build output at:
 
 ```
-Phosphor/…/plugins/<YourPluginName>/<YourPluginName>.dll   (+ any private dependencies)
+Phosphor/…/plugins/<YourPluginName>/Phosphor.Plugins.<YourPluginName>.dll   (+ any private dependencies)
 ```
 
-Each plug-in gets its own subfolder and its own collectible `AssemblyLoadContext`, so a bad DLL is
-isolated (logged and skipped) and never crashes startup. (See `PluginLoader` in the host for the
-loading mechanics.)
+Each plug-in gets its own subfolder (one plug-in per folder) and its own collectible
+`AssemblyLoadContext`, so a bad DLL is isolated (logged and skipped) and never crashes startup. The
+host loads the entry-point assembly by convention — `Phosphor.Plugins.<FolderName>.dll` — and skips
+the folder's private dependencies; a folder that doesn't follow the naming convention falls back to a
+full scan. (See `PluginLoader` in the host for the loading mechanics.)
 
 ---
 
