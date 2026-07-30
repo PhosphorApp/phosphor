@@ -4827,8 +4827,9 @@ public partial class SettingsWindow : JukeboxWindow
             System.Windows.Controls.Grid.SetColumn(enabledBox, 1);
             headerGrid.Children.Add(enabledBox);
 
-            // Remove button — only for providers that support multiple instances.
-            if (info?.SupportsMultipleInstances == true)
+            // Remove button — available for every instance. Remove fully deletes the entry from
+            // settings (including any stored account/secret info); disabling merely hides it while
+            // keeping its config for later. A removed source can be re-added via "Add source" below.
             {
                 var removeBtn = new System.Windows.Controls.Button
                 {
@@ -4836,6 +4837,8 @@ public partial class SettingsWindow : JukeboxWindow
                     Padding = new Thickness(6, 2, 6, 2),
                     FontSize = 10,
                     VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = "Delete this source and its settings (including any account info). "
+                            + "Disable instead to keep it configured but inactive.",
                 };
                 var removeId = cfg.InstanceId;
                 removeBtn.Click += (_, _) => RemovePluginInstance(removeId);
@@ -5202,8 +5205,20 @@ public partial class SettingsWindow : JukeboxWindow
             PanelPluginSources.Children.Add(card);
         }
 
-        // ── "Add source" row for multi-instance providers ──
-        var addable = Phosphor.Plugins.PluginSettingsFactory.AddableProviders();
+        // ── "Add source" row ──
+        // List providers that can be added: multi-instance providers always, plus single-instance
+        // providers that aren't already configured (so a removed single-instance source can be
+        // re-added, but no duplicates are offered).
+        var configuredSingletonTypes = new HashSet<string>(
+            _pluginWorkingConfigs.Select(c => c.TypeId), StringComparer.OrdinalIgnoreCase);
+        var addable = Phosphor.Plugins.PluginSettingsFactory.AddableProviders()
+            .Where(p =>
+            {
+                var pinfo = Phosphor.Plugins.PluginSettingsFactory.DescribeProvider(p.TypeId);
+                return pinfo?.SupportsMultipleInstances == true
+                       || !configuredSingletonTypes.Contains(p.TypeId);
+            })
+            .ToList();
         if (addable.Count > 0)
         {
             var addRow = new System.Windows.Controls.StackPanel
