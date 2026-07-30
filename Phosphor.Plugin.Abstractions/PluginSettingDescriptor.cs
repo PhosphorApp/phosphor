@@ -44,7 +44,26 @@ public sealed record PluginSettingDescriptor(
     /// newline (fine for paths, URLs, ids).
     /// </summary>
     public bool AllowMultiple { get; init; }
+
+    /// <summary>
+    /// Optional dependency that gates whether this field is <em>editable</em>: the host enables this
+    /// field's editor only while the referenced sibling setting holds one of the allowed values, and
+    /// grays it out otherwise (the field stays visible so the user can see it exists). Null means the
+    /// field is always enabled. Purely generic — the host toggles enablement by watching the
+    /// controlling field; it never needs to understand what the values mean. Example: gray out an
+    /// "API Key" field unless an "authMode" enum equals "Bring your own key".
+    /// </summary>
+    public SettingDependency? EnabledWhen { get; init; }
 }
+
+/// <summary>
+/// Declares that a setting's editor should be enabled only while another sibling setting
+/// (<see cref="Key"/>) holds one of <see cref="Values"/>. The host wires the two fields together in
+/// the generic settings form and toggles enablement live as the controlling field changes.
+/// </summary>
+/// <param name="Key">The sibling setting key whose current value gates this field.</param>
+/// <param name="Values">The controlling values for which this field is enabled (compared ordinally).</param>
+public sealed record SettingDependency(string Key, IReadOnlyList<string> Values);
 
 /// <summary>
 /// A one-click quick-fill button for a text setting. The plug-in supplies the <see cref="Label"/>

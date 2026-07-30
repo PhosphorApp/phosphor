@@ -5031,6 +5031,10 @@ public partial class SettingsWindow : JukeboxWindow
 
             // Declarative settings fields
             var schema = info?.Schema ?? [];
+            // Track editors by key + any EnabledWhen dependencies so we can wire live enable/disable
+            // once every field in this instance has been created.
+            var editorsByKey = new Dictionary<string, System.Windows.Controls.Control>(StringComparer.Ordinal);
+            var pendingDeps = new List<(System.Windows.Controls.Control Editor, Phosphor.Plugin.Abstractions.SettingDependency Dep)>();
             foreach (var d in schema)
             {
                 cfg.Settings.TryGetValue(d.Key, out var current);
@@ -5097,6 +5101,11 @@ public partial class SettingsWindow : JukeboxWindow
 
                 _pluginFieldControls.Add((editor, cfg.InstanceId, d.Key));
 
+                // Record for live enable/disable wiring (EnabledWhen) after all fields are built.
+                editorsByKey[d.Key] = editor;
+                if (d.EnabledWhen is { } dep)
+                    pendingDeps.Add((editor, dep));
+
                 // A plain text field can offer plug-in-supplied quick-fill buttons (e.g. "Default" /
                 // "None"). The host stays generic: it just drops the preset's value into the box. The
                 // inner TextBox is what's harvested (registered above), so wrapping it for display is
@@ -5133,6 +5142,44 @@ public partial class SettingsWindow : JukeboxWindow
                 }
 
                 AddSettingRow(grid, d.Label, d.HelpText, display, text, dim);
+            }
+
+            // ── Live enable/disable (EnabledWhen): gray a field out unless its controlling sibling
+            // holds an allowed value. Generic — the host only watches the controlling editor's value. ──
+            foreach (var (dependent, dep) in pendingDeps)
+            {
+                if (!editorsByKey.TryGetValue(dep.Key, out var controller))
+                    continue;
+
+                bool IsAllowed()
+                {
+                    var v = controller switch
+                    {
+                        System.Windows.Controls.ComboBox cb => cb.SelectedItem?.ToString(),
+                        System.Windows.Controls.CheckBox chk => (chk.IsChecked == true).ToString(),
+                        System.Windows.Controls.TextBox tb => tb.Text,
+                        _ => null,
+                    };
+                    return v != null && dep.Values.Contains(v, StringComparer.Ordinal);
+                }
+
+                void Apply() => dependent.IsEnabled = IsAllowed();
+
+                switch (controller)
+                {
+                    case System.Windows.Controls.ComboBox cb:
+                        cb.SelectionChanged += (_, _) => Apply();
+                        break;
+                    case System.Windows.Controls.CheckBox chk:
+                        chk.Checked += (_, _) => Apply();
+                        chk.Unchecked += (_, _) => Apply();
+                        break;
+                    case System.Windows.Controls.TextBox tb:
+                        tb.TextChanged += (_, _) => Apply();
+                        break;
+                }
+
+                Apply(); // initial state
             }
 
             // ── Caching policy selector — only meaningful for sources that can download/cache.
