@@ -226,6 +226,10 @@
     (~60 MB combined). We delete them here rather than setting a RuntimeIdentifier, which would change
     build/deploy semantics for the other native dependencies. Any runtimes\<RID> folder that isn't
     win-x64 (and isn't the RID-agnostic 'win' folder, if present) is removed.
+
+    The VideoLAN.LibVLC.Windows package lays its native libs out under libvlc\<RID>\ (win-x86,
+    win-x64, win-arm64) rather than runtimes\, so it's pruned the same way here: LibVLC only ever
+    loads win-x64 for this app, and each extra RID is ~100+ MB of native DLLs.
   -->
   <Target Name="TrimUnusedNativeRuntimes" AfterTargets="Build;Publish">
     <ItemGroup>
@@ -233,9 +237,14 @@
                       Condition="Exists('$(OutDir)runtimes')" />
       <_UnusedRuntimeDir Include="@(_AllRuntimeDir)"
                          Condition="'%(Filename)' != 'win-x64' and '%(Filename)' != 'win'" />
+      <_AllLibVlcDir Include="$([System.IO.Directory]::GetDirectories('$(OutDir)libvlc'))"
+                     Condition="Exists('$(OutDir)libvlc')" />
+      <_UnusedLibVlcDir Include="@(_AllLibVlcDir)"
+                        Condition="'%(Filename)' != 'win-x64'" />
     </ItemGroup>
     <RemoveDir Directories="@(_UnusedRuntimeDir)" Condition="'@(_UnusedRuntimeDir)' != ''" />
-    <Message Importance="high" Text="Trimmed @(_UnusedRuntimeDir->Count()) unused native runtime(s) (kept win-x64)." />
+    <RemoveDir Directories="@(_UnusedLibVlcDir)" Condition="'@(_UnusedLibVlcDir)' != ''" />
+    <Message Importance="high" Text="Trimmed @(_UnusedRuntimeDir->Count()) unused native runtime(s) and @(_UnusedLibVlcDir->Count()) unused libvlc runtime(s) (kept win-x64)." />
   </Target>
 
 
