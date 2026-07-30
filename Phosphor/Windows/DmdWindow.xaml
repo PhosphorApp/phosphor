@@ -548,7 +548,7 @@
                                                 Content="&#x25B6;" ToolTip="Play all"
                                                 Command="{Binding DataContext.PlayContainerNowCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding}"
-                                                Visibility="{Binding IsGenericContainer, Converter={StaticResource BoolVis}}"/>
+                                                Visibility="{Binding ShowContainerPlayAll, Converter={StaticResource BoolVis}}"/>
                                         <Button Padding="{DynamicResource TrackButtonPadding}" FontSize="{DynamicResource TrackButtonFontSize}"
                                                 Command="{Binding DataContext.PlayNowCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding}">

@@ -449,6 +449,14 @@ public enum ContainerPlayAll
     /// entire back-catalog).
     /// </summary>
     PlayLatestOnly,
+
+    /// <summary>
+    /// The container has no meaningful "Play all" — it is a pure grouping/navigation node whose
+    /// children are themselves containers (e.g. a Podcast Index <em>category</em> of shows, or a
+    /// Twitch <em>game/category</em> of channels). The host offers browse/drill-in only and hides the
+    /// play affordance, so the user can't accidentally play one arbitrary leaf from deep in the tree.
+    /// </summary>
+    None,
 }
 
 /// <summary>

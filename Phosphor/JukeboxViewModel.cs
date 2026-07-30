@@ -441,7 +441,7 @@ public partial class JukeboxViewModel : ObservableObject
                 _genericPaged = null;
                 CanLoadMore = false;
                 foreach (var cat in searchResult.Categories)
-                    SearchResults.Add(ToGenericContainerItem(cat, node.Icon, source as Phosphor.Plugin.Abstractions.IFavoritable));
+                    SearchResults.Add(ToGenericContainerItem(cat, node.Icon, source as Phosphor.Plugin.Abstractions.IFavoritable, source as Phosphor.Plugin.Abstractions.IContainerPlayPolicy));
                 var searchResolver = source as Phosphor.Plugin.Abstractions.IPlayableResolver;
                 foreach (var leaf in searchResult.Items)
                     await AddResolvedLeafAsync(leaf, searchResolver, ct);
@@ -459,7 +459,7 @@ public partial class JukeboxViewModel : ObservableObject
 
             // Sub-categories first (drill-in containers), then leaf items (playable).
             foreach (var cat in result.Categories)
-                SearchResults.Add(ToGenericContainerItem(cat, node.Icon, source as Phosphor.Plugin.Abstractions.IFavoritable));
+                SearchResults.Add(ToGenericContainerItem(cat, node.Icon, source as Phosphor.Plugin.Abstractions.IFavoritable, source as Phosphor.Plugin.Abstractions.IContainerPlayPolicy));
 
             var resolver = source as Phosphor.Plugin.Abstractions.IPlayableResolver;
 
@@ -505,10 +505,13 @@ public partial class JukeboxViewModel : ObservableObject
     /// <summary>Maps a browse sub-category into a drill-in container <see cref="VideoItem"/>.
     /// Sub-categories without their own <see cref="Phosphor.Plugin.Abstractions.SourceCategory.Icon"/>
     /// inherit <paramref name="parentIcon"/> so grouping tiles (e.g. Hubs/Playlists) take on the
-    /// parent library's personality.</summary>
+    /// parent library's personality. <paramref name="playPolicy"/> (when the source implements it)
+    /// decides whether the tile offers a "Play all" affordance — a pure grouping node returns
+    /// <c>ContainerPlayAll.None</c> and renders as browse-only.</summary>
     private static VideoItem ToGenericContainerItem(
         Phosphor.Plugin.Abstractions.SourceCategory cat, string? parentIcon = null,
-        Phosphor.Plugin.Abstractions.IFavoritable? fav = null) => new()
+        Phosphor.Plugin.Abstractions.IFavoritable? fav = null,
+        Phosphor.Plugin.Abstractions.IContainerPlayPolicy? playPolicy = null) => new()
     {
         Title = cat.Title,
         ThumbnailUrl = cat.ThumbnailUrl ?? "",
@@ -520,7 +523,27 @@ public partial class JukeboxViewModel : ObservableObject
         GenericCategoryId = cat.CategoryId,
         CanFavorite = fav != null,
         IsFavorite = fav?.IsFavorite(cat.CategoryId) ?? false,
+        CanPlayContainer = ContainerOffersPlayAll(playPolicy, new Phosphor.Plugin.Abstractions.SourceItem
+        {
+            SourceInstanceId = cat.SourceInstanceId,
+            ItemId = cat.CategoryId,
+            Title = cat.Title,
+            IsContainer = true,
+            SourceState = cat.SourceState,
+        }),
     };
+
+    /// <summary>
+    /// Whether a container should offer a "Play all" affordance: false only when the source's
+    /// <see cref="Phosphor.Plugin.Abstractions.IContainerPlayPolicy"/> returns
+    /// <see cref="Phosphor.Plugin.Abstractions.ContainerPlayAll.None"/> (a pure grouping node).
+    /// Sources without the policy always offer it.
+    /// </summary>
+    private static bool ContainerOffersPlayAll(
+        Phosphor.Plugin.Abstractions.IContainerPlayPolicy? policy,
+        Phosphor.Plugin.Abstractions.SourceItem container)
+        => policy is null
+           || policy.GetPlayAllBehavior(container) != Phosphor.Plugin.Abstractions.ContainerPlayAll.None;
 
     /// <summary>
     /// Maps a leaf <see cref="SourceItem"/> that is actually a browsable container
@@ -530,7 +553,8 @@ public partial class JukeboxViewModel : ObservableObject
     /// </summary>
     private static VideoItem ToContainerLeafItem(
         Phosphor.Plugin.Abstractions.SourceItem item,
-        Phosphor.Plugin.Abstractions.IFavoritable? fav = null) => new()
+        Phosphor.Plugin.Abstractions.IFavoritable? fav = null,
+        Phosphor.Plugin.Abstractions.IContainerPlayPolicy? playPolicy = null) => new()
     {
         Title = item.Title,
         Author = item.Subtitle ?? "",
@@ -542,6 +566,7 @@ public partial class JukeboxViewModel : ObservableObject
         GenericCategoryId = item.ItemId,
         CanFavorite = fav != null,
         IsFavorite = fav?.IsFavorite(item.ItemId) ?? false,
+        CanPlayContainer = ContainerOffersPlayAll(playPolicy, item),
     };
 
     // ── Generic paged browse state ──
@@ -561,7 +586,9 @@ public partial class JukeboxViewModel : ObservableObject
         // inside a hub/playlist/search) — render it as a drill-in container, not a playable row.
         if (item.IsContainer)
         {
-            SearchResults.Add(ToContainerLeafItem(item, resolver as Phosphor.Plugin.Abstractions.IFavoritable));
+            var policy = _sourceRegistry?.ByInstance(item.SourceInstanceId)
+                as Phosphor.Plugin.Abstractions.IContainerPlayPolicy;
+            SearchResults.Add(ToContainerLeafItem(item, resolver as Phosphor.Plugin.Abstractions.IFavoritable, policy));
             return;
         }
 
@@ -1933,7 +1960,7 @@ public partial class JukeboxViewModel : ObservableObject
             // in browses its children, rather than trying (and failing) to play it.
             if (item.IsContainer)
             {
-                yield return ToContainerLeafItem(item, source as Phosphor.Plugin.Abstractions.IFavoritable);
+                yield return ToContainerLeafItem(item, source as Phosphor.Plugin.Abstractions.IFavoritable, source as Phosphor.Plugin.Abstractions.IContainerPlayPolicy);
                 continue;
             }
 
@@ -3525,6 +3552,14 @@ public partial class JukeboxViewModel : ObservableObject
     private async Task PlayContainerNow(VideoItem? item)
     {
         if (item is not { IsGenericContainer: true } || item.IsHeader) return;
+
+        // A pure grouping node (e.g. a Podcast category, a Twitch game) has no meaningful "Play all" —
+        // guard here too so an alternate invocation (keyboard/DMD) can't play one arbitrary leaf.
+        if (!item.CanPlayContainer)
+        {
+            StatusText = $"{item.Title} is a category — open it to browse.";
+            return;
+        }
 
         // Aggregated-favorite container carries no browse node — rehydrate it from the owning source.
         if (item.IsAggregatedFavorite)

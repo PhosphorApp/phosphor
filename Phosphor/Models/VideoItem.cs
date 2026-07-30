@@ -206,6 +206,18 @@ public class VideoItem : ObservableObject
     /// <summary>Optional glyph/emoji shown on a generic browse container tile (e.g. a Plex library's
     /// music note, inherited by its Hubs/Playlists sub-tiles when they don't set their own).</summary>
     public string? ContainerIcon { get; set; }
+    /// <summary>
+    /// Whether a generic container offers a "Play all" affordance. True by default. Set false for a
+    /// pure grouping/navigation node whose children are themselves containers (e.g. a Podcast Index
+    /// category of shows, a Twitch game of channels) — the host then shows drill-in only and hides the
+    /// play button, since playing one arbitrary leaf from deep in the tree isn't meaningful. Driven by
+    /// the source's <c>IContainerPlayPolicy</c> returning <c>ContainerPlayAll.None</c>.
+    /// </summary>
+    public bool CanPlayContainer { get; set; } = true;
+
+    /// <summary>True when the container's "Play all" button should be shown: a generic container that
+    /// opts into a play-all affordance. Bound by the results UI to gate the button.</summary>
+    public bool ShowContainerPlayAll => IsGenericContainer && CanPlayContainer;
 
     /// <summary>
     /// A short, human-readable audio-stream tag for the status bar (e.g. " (Stereo)", " (Surround)"),
