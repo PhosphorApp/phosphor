@@ -128,95 +128,12 @@
   </ItemGroup>
 
   <!--
-    Deploy the local-folder plug-in into the host's plugins/LocalFolder/ folder so the dynamic loader
-    (PluginLoader) discovers it as a real external DLL. The plug-in's own assembly and its third-party
-    dependencies (e.g. TagLibSharp) are copied — the shared contract (Phosphor.Plugin.Abstractions) is
-    supplied by the host at runtime and is deliberately excluded so it's never duplicated across the
-    load boundary.
+    Plug-in deployment is centralized in the repo-root Directory.Build.targets: every
+    Phosphor.Plugins.* project self-deploys its output into plugins/<Name>/ after it builds, with
+    Inputs/Outputs so incremental builds refresh the deployed DLL correctly. No per-plug-in copy
+    targets live here anymore (they used to run AfterTargets="Build" on the host and were silently
+    skipped whenever the host was up-to-date, leaving stale plug-in DLLs deployed).
   -->
-  <Target Name="DeployLocalFolderPlugin" AfterTargets="Build">
-    <PropertyGroup>
-      <LocalFolderPluginDir>$(MSBuildThisFileDirectory)..\Phosphor.Plugins.LocalFolder\bin\$(Configuration)\net8.0</LocalFolderPluginDir>
-      <LocalFolderPluginDest>$(OutDir)plugins\LocalFolder</LocalFolderPluginDest>
-    </PropertyGroup>
-    <ItemGroup>
-      <!-- All assemblies the plug-in emits/needs, minus the host-owned contract. -->
-      <LocalFolderPluginFiles Include="$(LocalFolderPluginDir)\*.dll"
-                              Exclude="$(LocalFolderPluginDir)\Phosphor.Plugin.Abstractions.dll" />
-      <LocalFolderPluginFiles Include="$(LocalFolderPluginDir)\Phosphor.Plugins.LocalFolder.pdb" Condition="Exists('$(LocalFolderPluginDir)\Phosphor.Plugins.LocalFolder.pdb')" />
-      <!--
-        The .deps.json is required: the loader's AssemblyDependencyResolver reads it to locate the
-        plug-in's private dependencies (e.g. TagLibSharp). Without it, dependency resolution fails.
-      -->
-      <LocalFolderPluginFiles Include="$(LocalFolderPluginDir)\Phosphor.Plugins.LocalFolder.deps.json" Condition="Exists('$(LocalFolderPluginDir)\Phosphor.Plugins.LocalFolder.deps.json')" />
-    </ItemGroup>
-    <MakeDir Directories="$(LocalFolderPluginDest)" />
-    <Copy SourceFiles="@(LocalFolderPluginFiles)" DestinationFolder="$(LocalFolderPluginDest)" SkipUnchangedFiles="true" />
-    <Message Importance="high" Text="Deployed Local Folder plug-in to $(LocalFolderPluginDest)" />
-  </Target>
-
-  <!--
-    Deploy the SiriusXM plug-in into the host's plugins/SiriusXM/ folder (same pattern as the
-    Local Folder plug-in above): copy the plug-in assembly + its .deps.json (and pdb), excluding
-    the host-owned shared contract so it's never duplicated across the load boundary.
-  -->
-  <Target Name="DeploySiriusXmPlugin" AfterTargets="Build">
-    <PropertyGroup>
-      <SiriusXmPluginDir>$(MSBuildThisFileDirectory)..\Phosphor.Plugins.SiriusXM\bin\$(Configuration)\net8.0</SiriusXmPluginDir>
-      <SiriusXmPluginDest>$(OutDir)plugins\SiriusXM</SiriusXmPluginDest>
-    </PropertyGroup>
-    <ItemGroup>
-      <SiriusXmPluginFiles Include="$(SiriusXmPluginDir)\*.dll"
-                           Exclude="$(SiriusXmPluginDir)\Phosphor.Plugin.Abstractions.dll" />
-      <SiriusXmPluginFiles Include="$(SiriusXmPluginDir)\Phosphor.Plugins.SiriusXM.pdb" Condition="Exists('$(SiriusXmPluginDir)\Phosphor.Plugins.SiriusXM.pdb')" />
-      <SiriusXmPluginFiles Include="$(SiriusXmPluginDir)\Phosphor.Plugins.SiriusXM.deps.json" Condition="Exists('$(SiriusXmPluginDir)\Phosphor.Plugins.SiriusXM.deps.json')" />
-    </ItemGroup>
-    <MakeDir Directories="$(SiriusXmPluginDest)" />
-    <Copy SourceFiles="@(SiriusXmPluginFiles)" DestinationFolder="$(SiriusXmPluginDest)" SkipUnchangedFiles="true" />
-    <Message Importance="high" Text="Deployed SiriusXM plug-in to $(SiriusXmPluginDest)" />
-  </Target>
-
-  <!--
-    Deploy the IPTV plug-in into the host's plugins/Iptv/ folder (same pattern as the plug-ins above):
-    copy the plug-in assembly + its .deps.json (and pdb), excluding the host-owned shared contract so
-    it's never duplicated across the load boundary.
-  -->
-  <Target Name="DeployIptvPlugin" AfterTargets="Build">
-    <PropertyGroup>
-      <IptvPluginDir>$(MSBuildThisFileDirectory)..\Phosphor.Plugins.Iptv\bin\$(Configuration)\net8.0</IptvPluginDir>
-      <IptvPluginDest>$(OutDir)plugins\Iptv</IptvPluginDest>
-    </PropertyGroup>
-    <ItemGroup>
-      <IptvPluginFiles Include="$(IptvPluginDir)\*.dll"
-                       Exclude="$(IptvPluginDir)\Phosphor.Plugin.Abstractions.dll" />
-      <IptvPluginFiles Include="$(IptvPluginDir)\Phosphor.Plugins.Iptv.pdb" Condition="Exists('$(IptvPluginDir)\Phosphor.Plugins.Iptv.pdb')" />
-      <IptvPluginFiles Include="$(IptvPluginDir)\Phosphor.Plugins.Iptv.deps.json" Condition="Exists('$(IptvPluginDir)\Phosphor.Plugins.Iptv.deps.json')" />
-    </ItemGroup>
-    <MakeDir Directories="$(IptvPluginDest)" />
-    <Copy SourceFiles="@(IptvPluginFiles)" DestinationFolder="$(IptvPluginDest)" SkipUnchangedFiles="true" />
-    <Message Importance="high" Text="Deployed IPTV plug-in to $(IptvPluginDest)" />
-  </Target>
-
-  <!--
-    Deploy the HDHomeRun plug-in into the host's plugins/HdHomeRun/ folder (same pattern as the
-    plug-ins above): copy the plug-in assembly + its .deps.json (and pdb), excluding the host-owned
-    shared contract so it's never duplicated across the load boundary.
-  -->
-  <Target Name="DeployHdHomeRunPlugin" AfterTargets="Build">
-    <PropertyGroup>
-      <HdHomeRunPluginDir>$(MSBuildThisFileDirectory)..\Phosphor.Plugins.HdHomeRun\bin\$(Configuration)\net8.0</HdHomeRunPluginDir>
-      <HdHomeRunPluginDest>$(OutDir)plugins\HdHomeRun</HdHomeRunPluginDest>
-    </PropertyGroup>
-    <ItemGroup>
-      <HdHomeRunPluginFiles Include="$(HdHomeRunPluginDir)\*.dll"
-                            Exclude="$(HdHomeRunPluginDir)\Phosphor.Plugin.Abstractions.dll" />
-      <HdHomeRunPluginFiles Include="$(HdHomeRunPluginDir)\Phosphor.Plugins.HdHomeRun.pdb" Condition="Exists('$(HdHomeRunPluginDir)\Phosphor.Plugins.HdHomeRun.pdb')" />
-      <HdHomeRunPluginFiles Include="$(HdHomeRunPluginDir)\Phosphor.Plugins.HdHomeRun.deps.json" Condition="Exists('$(HdHomeRunPluginDir)\Phosphor.Plugins.HdHomeRun.deps.json')" />
-    </ItemGroup>
-    <MakeDir Directories="$(HdHomeRunPluginDest)" />
-    <Copy SourceFiles="@(HdHomeRunPluginFiles)" DestinationFolder="$(HdHomeRunPluginDest)" SkipUnchangedFiles="true" />
-    <Message Importance="high" Text="Deployed HDHomeRun plug-in to $(HdHomeRunPluginDest)" />
-  </Target>
 
   <!--
     Trim unused native runtimes. Several NuGet packages (SkiaSharp ~40 MB, SQLitePCLRaw ~22 MB)
