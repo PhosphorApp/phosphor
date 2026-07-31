@@ -102,8 +102,9 @@ public partial class DmdWindow : JukeboxWindow
 
     // When dimming, keep the colored screensaver blobs visible and animating behind the dim overlay.
     // This lets the DMD's screensaver keep playing after a swap. Set to false to hide the colored
-    // blobs while dimmed (the previous behavior).
-    private const bool KeepColoredBlobsWhenDimmed = true;
+    // blobs while dimmed (the previous behavior). Declared static readonly (not const) so the
+    // "hide" branch does not compile to unreachable code.
+    private static readonly bool KeepColoredBlobsWhenDimmed = true;
 
     private DmdSwapMode _dmdSwapMode;
     private bool _applyDefaultDmdOnSwap;
