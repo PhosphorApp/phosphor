@@ -239,7 +239,7 @@
                           Foreground="{StaticResource TextBrush}"
                           BorderBrush="#333" BorderThickness="1"
                           FontSize="18" Padding="10,8"
-                          KeyDown="SearchBox_KeyDown" SelectionChanged="SearchBox_SelectionChanged"
+                          SelectionChanged="SearchBox_SelectionChanged"
                           IsTextSearchEnabled="False"
                           IsKeyboardFocusWithinChanged="SearchBox_FocusChanged"
                           ToolTip="Search the selected source &#x0a;&#x0a;Modifiers (YouTube):&#x0a;  channel:&lt;name&gt;&#x0a;  playlist:&lt;name&gt;&#x0a;  min:5m  max:30m"/>

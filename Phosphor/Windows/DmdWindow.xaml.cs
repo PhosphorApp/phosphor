@@ -186,6 +186,10 @@ public partial class DmdWindow : JukeboxWindow
                     FilterSearchDropdown(editBox.Text);
                 };
             }
+            // Handle Enter during the tunneling (preview) phase so we run BEFORE the editable
+            // ComboBox's built-in key handling, which otherwise consumes the first Enter just to
+            // close the dropdown, forcing a second Enter to actually search.
+            SearchBox.AddHandler(PreviewKeyDownEvent, new System.Windows.Input.KeyEventHandler(SearchBox_KeyDown), handledEventsToo: true);
             if (DataContext is JukeboxViewModel vmLoaded)
             {
                 vmLoaded.Categories.CollectionChanged += (_, _) => InvalidateNavRing();
@@ -1288,6 +1292,9 @@ public partial class DmdWindow : JukeboxWindow
     {
         if (e.Key == Key.Enter && DataContext is JukeboxViewModel vm)
         {
+            // Close the suggestion dropdown ourselves so this single Enter also runs the search,
+            // rather than the ComboBox swallowing the first Enter just to close the dropdown.
+            SearchBox.IsDropDownOpen = false;
             vm.SearchQuery = SearchBox.Text.Trim();
             vm.SearchCommand.Execute(null);
             ResultsList.Focus();
