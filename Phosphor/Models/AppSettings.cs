@@ -225,7 +225,6 @@ public class AppSettings
     public bool DmdScreensaverDimEnabled { get; set; }
     public int DmdScreensaverDimOpacity { get; set; } = 80;
     public int DmdScreensaverDimTimeoutSeconds { get; set; } = 60;
-    public bool DmdScreensaverDimDarkBlobs { get; set; } = true;
     public DmdSwapMode DmdSwapTarget { get; set; }
     public bool ApplyDefaultDmdOnSwap { get; set; }
     public bool BackglassLogoDimEnabled { get; set; }

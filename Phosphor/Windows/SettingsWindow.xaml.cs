@@ -763,7 +763,6 @@ public partial class SettingsWindow : JukeboxWindow
         UpdateTopperVideoFolderDurationLabels();
 
         CbDmdScreensaverDim.IsChecked = settings.DmdScreensaverDimEnabled;
-        CbDmdDimDarkBlobs.IsChecked = settings.DmdScreensaverDimDarkBlobs;
         switch (settings.DmdSwapTarget)
         {
             case DmdSwapMode.Playfield: RbSwapPlayfield.IsChecked = true; break;
@@ -4041,7 +4040,6 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.TopperVideoAudioVolume = (int)SliderTpVideoAudioVolume.Value;
 
         _settings.DmdScreensaverDimEnabled = CbDmdScreensaverDim.IsChecked == true;
-        _settings.DmdScreensaverDimDarkBlobs = CbDmdDimDarkBlobs.IsChecked == true;
         _settings.DmdSwapTarget = RbSwapBackglass.IsChecked == true ? DmdSwapMode.Backglass
             : RbSwapPlayfield.IsChecked == true ? DmdSwapMode.Playfield
             : DmdSwapMode.Off;

@@ -1,4 +1,5 @@
-<local:JukeboxWindow x:Class="Phosphor.SettingsWindow"
+
+    <local:JukeboxWindow x:Class="Phosphor.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:Phosphor"
@@ -1660,8 +1661,6 @@
                                           Foreground="{StaticResource TextBrush}"
                                           FontSize="12" BorderBrush="#333"/>
                             </DockPanel>
-                            <CheckBox x:Name="CbDmdDimDarkBlobs" Content="Show dark blobs when dimmed on the DMD"
-                                      Foreground="{StaticResource TextBrush}" Margin="24,8,0,0"/>
                             <TextBlock Text="SWAP DMD SCREEN" FontSize="12" FontWeight="Bold"
                                 Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
                             <TextBlock Text="After timeout, the DMD and another screen can swap positions for better readability, preference, or burn-in protection."

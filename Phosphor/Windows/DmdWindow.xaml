@@ -1370,9 +1370,6 @@
         <!-- Dim overlay rendered on top of all content -->
         <Border x:Name="DimOverlay" Background="Black" Opacity="0" IsHitTestVisible="False" Visibility="Collapsed"
                 Panel.ZIndex="100"/>
-        <!-- Dark blobs rendered above the dim overlay when dimmed -->
-        <Canvas x:Name="DimBlobCanvas" ClipToBounds="True" IsHitTestVisible="False" Visibility="Collapsed"
-                Panel.ZIndex="105" Background="Transparent"/>
         <!-- Fade overlay for swap transitions -->
         <Border x:Name="SwapFadeOverlay" Background="Black" Opacity="0" IsHitTestVisible="False" Visibility="Collapsed"
                 Panel.ZIndex="200"/>
