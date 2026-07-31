@@ -131,6 +131,20 @@ public interface IPlaylistChannelDiscovery
 
     /// <summary>Incrementally yields a channel's uploads (by handle or user name).</summary>
     IAsyncEnumerable<SourceItem> GetChannelUploadsAsync(string handleOrUser, CancellationToken ct = default);
+
+    /// <summary>
+    /// Incrementally yields <em>channels</em> matching a free-text query as browsable container
+    /// <see cref="SourceItem"/>s (<see cref="SourceItem.IsContainer"/> = <c>true</c>), so the user can
+    /// find and favorite a channel. Drilling into one lists its uploads via the source's browse path.
+    /// </summary>
+    IAsyncEnumerable<SourceItem> SearchChannelsAsync(string query, CancellationToken ct = default);
+
+    /// <summary>
+    /// Incrementally yields <em>playlists</em> matching a free-text query as browsable container
+    /// <see cref="SourceItem"/>s, so the user can find and favorite a playlist. Drilling into one lists
+    /// its videos via the source's browse path.
+    /// </summary>
+    IAsyncEnumerable<SourceItem> SearchPlaylistsAsync(string query, CancellationToken ct = default);
 }
 
 /// <summary>

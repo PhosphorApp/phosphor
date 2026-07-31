@@ -616,8 +616,13 @@ public partial class JukeboxViewModel : ObservableObject
         //    round-trip per channel (hundreds);
         //  • sources marked IDeferredStreamResolution (e.g. Vimeo via yt-dlp) — eager resolve would
         //    fire one expensive yt-dlp probe per browse row.
+        //  • YouTube — the player plays it natively by VideoId, so browse must NOT resolve here (an
+        //    eager yt-dlp probe per row makes channel/playlist drill-in load one video every few
+        //    seconds). Mirrors the search path, which also skips YouTube resolution.
+        var playsByNativeId = resolver is Phosphor.Plugin.Abstractions.IPhosphorSource ps
+            && ps.TypeId == Phosphor.Plugins.KnownSourceTypeIds.YouTube;
         var deferResolve = resolver is Phosphor.Plugin.Abstractions.IDeferredStreamResolution;
-        if (resolver != null && !item.IsLiveStream && !deferResolve)
+        if (resolver != null && !playsByNativeId && !item.IsLiveStream && !deferResolve)
         {
             try
             {
@@ -2051,12 +2056,32 @@ public partial class JukeboxViewModel : ObservableObject
         };
     }
 
-    private static async IAsyncEnumerable<VideoItem> MapPluginItems(
+    private async IAsyncEnumerable<VideoItem> MapPluginItems(
         IAsyncEnumerable<Phosphor.Plugin.Abstractions.SourceItem> source,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
     {
+        var fav = _sourceRegistry?.YouTube as Phosphor.Plugin.Abstractions.IFavoritable;
+        var playPolicy = _sourceRegistry?.YouTube as Phosphor.Plugin.Abstractions.IContainerPlayPolicy;
         await foreach (var item in source.WithCancellation(ct))
-            yield return ToVideoItem(item);
+        {
+            // A channel/playlist row is a drill-in container, not a playable video.
+            if (item.IsContainer)
+            {
+                yield return ToContainerLeafItem(item, fav, playPolicy);
+                continue;
+            }
+
+            var vi = ToVideoItem(item);
+            // Videos surfaced under a channel:/playlist: dive are the same favoritable YouTube videos
+            // as plain search — light the star toggle so they match (fixes the pre-existing gap where
+            // this thin discovery path never set CanFavorite).
+            if (fav != null)
+            {
+                vi.CanFavorite = true;
+                vi.IsFavorite = fav.IsFavorite(item.ItemId);
+            }
+            yield return vi;
+        }
     }
 
     /// <summary>The YouTube discovery capability if the registry is available, else null.</summary>
@@ -2080,6 +2105,18 @@ public partial class JukeboxViewModel : ObservableObject
     private IAsyncEnumerable<VideoItem> GetChannelUploadsViaPluginOrLegacy(string handleOrUser)
         => PluginDiscovery is { } d
             ? MapPluginItems(d.GetChannelUploadsAsync(handleOrUser))
+            : EmptyVideoItems();
+
+    /// <summary>Yields channel container rows matching a query via the plug-in discovery capability, else empty.</summary>
+    private IAsyncEnumerable<VideoItem> SearchChannelsViaPluginOrLegacy(string query)
+        => PluginDiscovery is { } d
+            ? MapPluginItems(d.SearchChannelsAsync(query))
+            : EmptyVideoItems();
+
+    /// <summary>Yields playlist container rows matching a query via the plug-in discovery capability, else empty.</summary>
+    private IAsyncEnumerable<VideoItem> SearchPlaylistsViaPluginOrLegacy(string query)
+        => PluginDiscovery is { } d
+            ? MapPluginItems(d.SearchPlaylistsAsync(query))
             : EmptyVideoItems();
 
     /// <summary>
@@ -2915,8 +2952,25 @@ public partial class JukeboxViewModel : ObservableObject
             : null;
         // Check for channel: prefix (e.g. "godzilla channel:vpinworkshop")
         var channelMatch = Regex.Match(query, @"channel:(\S+)", RegexOptions.IgnoreCase);
+        // Plural container-discovery prefixes surface channels/playlists AS favoritable rows (drill-in
+        // containers), distinct from the singular channel:/playlist: which list a container's videos.
+        // Checked first so "channels:" isn't swallowed by the "channel:" matcher.
+        var channelsMatch = Regex.Match(query, @"channels:(.+)", RegexOptions.IgnoreCase);
+        var playlistsMatch = Regex.Match(query, @"playlists:(.+)", RegexOptions.IgnoreCase);
 
-        if (playlistQuotedMatch.Success)
+        if (channelsMatch.Success)
+        {
+            var q = channelsMatch.Groups[1].Value.Trim();
+            if (q.Length == 0) { StatusText = "Type a channel name after channels:"; IsSearching = false; return; }
+            _searchEnumerator = SearchChannelsViaPluginOrLegacy(q).GetAsyncEnumerator();
+        }
+        else if (playlistsMatch.Success)
+        {
+            var q = playlistsMatch.Groups[1].Value.Trim();
+            if (q.Length == 0) { StatusText = "Type a playlist name after playlists:"; IsSearching = false; return; }
+            _searchEnumerator = SearchPlaylistsViaPluginOrLegacy(q).GetAsyncEnumerator();
+        }
+        else if (playlistQuotedMatch.Success)
         {
             var playlistIdOrName = playlistQuotedMatch.Groups[1].Value.Trim();
             var filterTerms = Regex.Replace(query, @"playlist:""[^""]+""", "", RegexOptions.IgnoreCase).Trim();
@@ -3800,9 +3854,28 @@ public partial class JukeboxViewModel : ObservableObject
         IsGenericContainer = e.IsContainer,
         GenericSourceInstanceId = e.IsContainer ? e.SourceInstanceId : null,
         GenericCategoryId = e.IsContainer ? e.ItemId : null,
+        // Honor the owning source's play-all policy: a pure drill-in container (e.g. a YouTube
+        // channel/playlist) reports ContainerPlayAll.None, so its favorite row hides the play button
+        // and offers browse only. Album-style containers keep their "Play all".
+        CanPlayContainer = !e.IsContainer || FavoriteContainerOffersPlayAll(e),
         CanFavorite = true,
         IsFavorite = true,
     };
+
+    /// <summary>Whether an aggregated container-favorite should show a "Play all" button, per the
+    /// owning source's <see cref="Phosphor.Plugin.Abstractions.IContainerPlayPolicy"/> (default: yes).</summary>
+    private bool FavoriteContainerOffersPlayAll(FavoriteEntry e)
+    {
+        var policy = _sourceRegistry?.ByInstance(e.SourceInstanceId)
+            as Phosphor.Plugin.Abstractions.IContainerPlayPolicy;
+        return ContainerOffersPlayAll(policy, new Phosphor.Plugin.Abstractions.SourceItem
+        {
+            SourceInstanceId = e.SourceInstanceId,
+            ItemId = e.ItemId,
+            Title = e.Title,
+            IsContainer = true,
+        });
+    }
 
     /// <summary>Maps a custom-order row (favorite or layout marker) to a display row.</summary>
     private VideoItem ToFavoriteRowOrMarker(FavoriteOrderRow row)
