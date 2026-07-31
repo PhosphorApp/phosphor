@@ -604,7 +604,7 @@ public static class BlobMotion
     public static List<BlobState> CreateStates(int count, BlobPattern pattern, double canvasWidth, double canvasHeight, Random rng, double maxOrbitRadius = 0, double speedMultiplier = 1.0)
     {
         var states = new List<BlobState>(count);
-        double defaultMax = Math.Min(canvasWidth, canvasHeight) * 0.35;
+        double defaultMax = Math.Min(canvasWidth, canvasHeight) * 0.45;
         double maxRadius = maxOrbitRadius > 0 ? maxOrbitRadius : defaultMax;
 
         for (int i = 0; i < count; i++)
