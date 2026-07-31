@@ -597,13 +597,22 @@ public class AppSettings
     private static readonly string DefaultSettingsPath = Path.Combine(
         AppDomain.CurrentDomain.BaseDirectory, "default_settings.json");
 
+    private static readonly string SwapSettingsPath = Path.Combine(
+        AppDomain.CurrentDomain.BaseDirectory, "swap_settings.json");
+
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     /// <summary>
     /// The default settings loaded from default_settings.json (or code defaults if the file is missing).
-    /// Always available for reference by other features.
+    /// Always available for reference by other features. This is a read-only shipped asset.
     /// </summary>
     public static AppSettings Defaults { get; private set; } = new();
+
+    /// <summary>
+    /// The user-saved post-swap layout settings loaded from swap_settings.json (or code defaults if
+    /// the file is missing). Applied to the DMD when it swaps with another screen after idle timeout.
+    /// </summary>
+    public static AppSettings SwapSettings { get; private set; } = new();
 
     /// <summary>
     /// Serializes for persistence, applying the plug-in secret transform first: secret-flagged
@@ -727,16 +736,17 @@ public class AppSettings
         });
     }
 
-    public void SaveDefaults()
+    public void SaveSwapSettings()
     {
         var json = JsonSerializer.Serialize(this, JsonOptions);
-        File.WriteAllText(DefaultSettingsPath, json);
-        Defaults = LoadDefaults();
+        File.WriteAllText(SwapSettingsPath, json);
+        SwapSettings = LoadSwapSettings();
     }
 
     public static AppSettings Load()
     {
         Defaults = LoadDefaults();
+        SwapSettings = LoadSwapSettings();
 
         if (File.Exists(SettingsPath))
         {
@@ -773,6 +783,22 @@ public class AppSettings
         try
         {
             var json = File.ReadAllText(DefaultSettingsPath);
+            return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+        }
+        catch
+        {
+            return new AppSettings();
+        }
+    }
+
+    private static AppSettings LoadSwapSettings()
+    {
+        if (!File.Exists(SwapSettingsPath))
+            return new AppSettings();
+
+        try
+        {
+            var json = File.ReadAllText(SwapSettingsPath);
             return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
         }
         catch

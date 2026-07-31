@@ -3422,7 +3422,7 @@ public partial class DmdWindow : JukeboxWindow
                             _preSwapQueueSplitterSize = _appSettings.DmdQueueSplitterSize;
                             _preSwapPlayfieldRotation = _appSettings.PlayfieldRotation;
 
-                            var d = AppSettings.Defaults;
+                            var d = AppSettings.SwapSettings;
                             ApplyTrackListSettings(d.ResultColumns, d.ResultFontSizeModifier);
                             SetDmdRotation(d.DmdRotation);
                             SetPlayButtonSize(d.DmdPlayButtonSizeModifier);
@@ -3491,7 +3491,7 @@ public partial class DmdWindow : JukeboxWindow
                             _preSwapQueueFontSizeModifier = _appSettings.QueueFontSizeModifier;
                             _preSwapQueueSplitterSize = _appSettings.DmdQueueSplitterSize;
 
-                            var d = AppSettings.Defaults;
+                            var d = AppSettings.SwapSettings;
                             ApplyTrackListSettings(d.ResultColumns, d.ResultFontSizeModifier);
                             SetDmdRotation(d.DmdRotation);
                             SetPlayButtonSize(d.DmdPlayButtonSizeModifier);

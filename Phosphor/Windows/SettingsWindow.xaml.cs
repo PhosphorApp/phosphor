@@ -7178,7 +7178,7 @@ public partial class SettingsWindow : JukeboxWindow
 
     private void SaveDefaultSettings_Click(object sender, RoutedEventArgs e)
     {
-        _settings.SaveDefaults();
+        _settings.SaveSwapSettings();
         DefaultSettingsSavedText.Visibility = System.Windows.Visibility.Visible;
         var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         timer.Tick += (s, args) => { timer.Stop(); DefaultSettingsSavedText.Visibility = System.Windows.Visibility.Collapsed; };

@@ -1642,8 +1642,8 @@
                                       Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"/>
                             <CheckBox x:Name="CbShowVideoInfo" Content="Show resolution, FPS, other stats in title bar"
                                       Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"/>
-                            <CheckBox x:Name="CbDmdScreensaverDim" Content="Dim screen after idle timeout"
-                                      Foreground="{StaticResource TextBrush}" Margin="0,12,0,0"/>
+                            <CheckBox x:Name="CbDmdScreensaverDim" Content="Enable idle timeout"
+                                      Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"/>
                             <DockPanel Margin="24,8,0,0">
                                 <TextBlock Text="Opacity:" Foreground="{StaticResource TextBrush}"
                                            VerticalAlignment="Center" Width="110"/>
@@ -1666,7 +1666,7 @@
                                 Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
                             <TextBlock Text="After timeout, the DMD and another screen can swap positions for better readability, preference, or burn-in protection."
                                        Foreground="{StaticResource TextDimBrush}" TextWrapping="Wrap" Margin="0,0,0,8"/>
-                            <TextBlock Text="Swap is only active when 'Dim screen after idle timeout' is checked."
+                            <TextBlock Text="Swap is only active when 'Enable idle timeout' is checked."
                                        Foreground="{StaticResource AccentBrush}" FontWeight="Bold" FontSize="11"
                                        TextWrapping="Wrap" Margin="0,0,0,4">
                                 <TextBlock.Style>
@@ -1688,12 +1688,12 @@
                                 <RadioButton x:Name="RbSwapBackglass" Content="Swap with Backglass" GroupName="DmdSwap"
                                              Foreground="{StaticResource TextBrush}" Margin="0,0,0,0"/>
                             </StackPanel>
-                            <CheckBox x:Name="CbApplyDefaultDmdOnSwap" Content="Apply default settings to DMD when swapped"
+                            <CheckBox x:Name="CbApplyDefaultDmdOnSwap" Content="Apply alternate swap-screen settings when swapped"
                                       Foreground="{StaticResource TextBrush}" Margin="20,8,0,0"/>
-                            <TextBlock Text="To configure swap:&#10;1) Set up your DMD and target screen for how you'd like them after the swap. Then, use this button to save as the default settings."
+                            <TextBlock Text="To configure swap:&#10;1) Set up your DMD and target screen for how you'd like them after the swap. Then, use this button to save as post-swap settings."
                                        Foreground="{StaticResource TextDimBrush}" Margin="20,8,0,0" TextWrapping="Wrap" FontSize="11"/>
                             <StackPanel Orientation="Horizontal" Margin="20,10,0,0">
-                                <Button x:Name="BtnSaveDefaultSettings" Content="Save Default Settings"
+                                <Button x:Name="BtnSaveDefaultSettings" Content="Save Swap Layout Settings"
                                         Click="SaveDefaultSettings_Click"
                                         Padding="12,6" HorizontalAlignment="Left"
                                         Background="{StaticResource AccentBrush}"
