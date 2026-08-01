@@ -1,0 +1,90 @@
+name: Release
+
+# Produces a client snapshot: the host app + a point-in-time build of phosphor-plugins folded in.
+# Distribution model = the client release IS the plugin snapshot (no in-app updater). The plugins
+# commit SHA is stamped into build-info.json for traceability (a given release is traceable to the
+# exact plugin source it shipped, even though it pulls plugins@latest rather than pinning versions).
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # create the GitHub Release
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout host
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build host (Release)
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart('v')
+          if (-not $v) { $v = "0.0.0" }
+          dotnet build Phosphor.slnx --configuration Release `
+            -p:Version=$v -p:AssemblyVersion=$v -p:FileVersion=$v
+
+      - name: Resolve host output dir
+        id: host
+        shell: pwsh
+        run: echo "dir=$(Resolve-Path 'Phosphor/bin/Release/net8.0-windows')" >> $env:GITHUB_OUTPUT
+
+      - name: Extract ProjectM presets
+        shell: pwsh
+        run: Expand-Archive -Path "dependencies/projectM/ProjectM_Presets_Base.zip" -DestinationPath "${{ steps.host.outputs.dir }}/presets" -Force
+
+      - name: Checkout plugins@latest
+        uses: actions/checkout@v4
+        with:
+          repository: PhosphorApp/phosphor-plugins
+          path: _plugins
+          fetch-depth: 0
+          # A PAT is required while phosphor-plugins is private. Store it as a repo secret.
+          token: ${{ secrets.PLUGINS_REPO_TOKEN }}
+
+      - name: Record plugins commit
+        id: plugins
+        shell: pwsh
+        run: echo "sha=$(git -C _plugins rev-parse HEAD)" >> $env:GITHUB_OUTPUT
+
+      - name: Build plugins into the host snapshot
+        shell: pwsh
+        env:
+          # Self-deploy target writes each plug-in into <host>/plugins/<Name>/.
+          PHOSPHOR_HOST_DIR: ${{ steps.host.outputs.dir }}
+        run: |
+          dotnet build _plugins/Phosphor.Plugins.slnx --configuration Release
+
+      - name: Write build-info.json
+        shell: pwsh
+        run: |
+          $hostDir = "${{ steps.host.outputs.dir }}"
+          $abstractionsDll = Join-Path $hostDir "Phosphor.Plugin.Abstractions.dll"
+          $contractVer = if (Test-Path $abstractionsDll) { (Get-Item $abstractionsDll).VersionInfo.FileVersion } else { $null }
+          $info = [pscustomobject]@{
+            hostVersion     = "${{ github.ref_name }}".TrimStart('v')
+            builtUtc        = (Get-Date).ToUniversalTime().ToString("o")
+            pluginsCommit   = "${{ steps.plugins.outputs.sha }}"
+            contractVersion = $contractVer
+          }
+          $info | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $hostDir "build-info.json")
+          Get-Content (Join-Path $hostDir "build-info.json")
+
+      - name: Package snapshot
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Compress-Archive -Path "${{ steps.host.outputs.dir }}/*" -DestinationPath "artifacts/Phosphor-${{ github.ref_name }}.zip" -Force
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/Phosphor-${{ github.ref_name }}.zip
