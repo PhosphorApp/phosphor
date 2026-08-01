@@ -59,6 +59,50 @@ Create a **.NET 8 class library** that references **only** the contract, compile
 - Do **not** reference the `Phosphor` host project. If you need something from it, it belongs in the
   contract — file an issue.
 
+### Installing the `Phosphor.Plugin.Abstractions` NuGet package
+
+The contract ships as a package on nuget.org:
+[`Phosphor.Plugin.Abstractions`](https://www.nuget.org/packages/Phosphor.Plugin.Abstractions/).
+It targets **net8.0**, has **no dependencies**, and is **MIT-licensed**. Install it with your tool of
+choice:
+
+```bash
+# .NET CLI
+dotnet add package Phosphor.Plugin.Abstractions --version 0.14.0
+```
+
+```powershell
+# Package Manager Console (Visual Studio)
+NuGet\Install-Package Phosphor.Plugin.Abstractions -Version 0.14.0
+```
+
+> **Add the `runtime` exclusion yourself.** The `dotnet add` / `Install-Package` commands write a plain
+> `<PackageReference>` **without** `<ExcludeAssets>runtime</ExcludeAssets>`. You must edit the
+> generated reference to match the compile-only form shown above — otherwise your plug-in bundles its
+> own copy of the contract, the two assembly identities won't unify across the load boundary, and casts
+> to `IPhosphorSourceProvider` fail at load time.
+
+For [Central Package Management](https://learn.microsoft.com/nuget/consume-packages/central-package-management),
+version the package in `Directory.Packages.props` and keep the asset exclusion on the project-level
+reference:
+
+```xml
+<!-- Directory.Packages.props -->
+<PackageVersion Include="Phosphor.Plugin.Abstractions" Version="0.14.0" />
+```
+
+```xml
+<!-- YourPlugin.csproj -->
+<PackageReference Include="Phosphor.Plugin.Abstractions">
+  <ExcludeAssets>runtime</ExcludeAssets>
+</PackageReference>
+```
+
+**Keep the package version in step with the API version you build against.** The package version tracks
+the contract's `PluginApi.Current`, and the host rejects plug-ins built against an incompatible
+`ApiVersion` (see §3). Reporting `ApiVersion => PluginApi.Current` keeps your plug-in aligned with
+whatever package version you referenced.
+
 ### Deployment
 
 The host scans a `plugins/` folder next to `Phosphor.exe`. Drop your build output at:
