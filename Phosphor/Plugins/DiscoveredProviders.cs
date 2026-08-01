@@ -41,6 +41,32 @@ public static class DiscoveredProviders
             else
                 WarnOnMissingRequiredTools(plugin.Provider, baseDirectory);
         }
+
+        LogLoadedPluginSummary();
+    }
+
+    /// <summary>
+    /// Emits a concise per-plug-in load summary (assembly + contract version, or the skip reason) so a
+    /// hand-dropped DLL or a contract-incompatible plug-in is visible in the debug log. Mirrors what the
+    /// About tab's "LOADED PLUG-INS" panel shows.
+    /// </summary>
+    private static void LogLoadedPluginSummary()
+    {
+        foreach (var plugin in _lastResults)
+        {
+            var name = System.IO.Path.GetFileNameWithoutExtension(plugin.AssemblyPath);
+            if (string.IsNullOrEmpty(name)) name = plugin.TypeId;
+
+            if (plugin.IsLoaded)
+            {
+                var contract = plugin.Provider?.ApiVersion?.ToString() ?? "?";
+                DebugLog.Log(LogLevel.Info, "PluginLoader", $"Loaded plug-in {name} (contract {contract}).");
+            }
+            else
+            {
+                DebugLog.Log(LogLevel.Warning, "PluginLoader", $"Skipped plug-in {name}: {plugin.Error}");
+            }
+        }
     }
 
     /// <summary>

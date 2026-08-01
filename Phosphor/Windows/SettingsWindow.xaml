@@ -3248,6 +3248,13 @@
                                     Foreground="{StaticResource AccentBrush}" Margin="0,12,0,6"/>
                         <StackPanel x:Name="PanelMonitorInfo"/>
 
+                        <TextBlock Text="LOADED PLUG-INS" FontSize="12" FontWeight="Bold"
+                                    Foreground="{StaticResource AccentBrush}" Margin="0,16,0,6"/>
+                        <TextBlock Text="Source plug-ins the host loaded at startup, with their assembly and contract versions. A skipped plug-in is incompatible with this host's contract version (see the debug log for details)."
+                                   FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,6"
+                                   TextWrapping="Wrap"/>
+                        <StackPanel x:Name="PanelLoadedPlugins"/>
+
                         <TextBlock Text="PERFORMANCE TIPS" FontSize="12" FontWeight="Bold"
                                     Foreground="{StaticResource AccentBrush}" Margin="0,16,0,6"/>
                         <TextBlock FontSize="11" Foreground="{StaticResource TextDimBrush}" TextWrapping="Wrap" Margin="0,0,0,4"

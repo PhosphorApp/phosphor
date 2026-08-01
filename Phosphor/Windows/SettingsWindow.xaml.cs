@@ -1443,7 +1443,10 @@ public partial class SettingsWindow : JukeboxWindow
             // Refresh monitor info if About tab is already selected on open
             if (SettingsTabs.SelectedItem is System.Windows.Controls.TabItem tab &&
                 tab.Header is string header && header == "ABOUT")
+            {
                 RefreshMonitorInfo();
+                RefreshLoadedPlugins();
+            }
         };
     }
 
@@ -2578,7 +2581,10 @@ public partial class SettingsWindow : JukeboxWindow
         // Refresh monitor info when the About tab is selected
         if (SettingsTabs.SelectedItem is System.Windows.Controls.TabItem tab &&
             tab.Header is string header && header == "ABOUT")
+        {
             RefreshMonitorInfo();
+            RefreshLoadedPlugins();
+        }
     }
 
     private void OnTestModeKey(object sender, KeyEventArgs e)
@@ -7324,6 +7330,72 @@ public partial class SettingsWindow : JukeboxWindow
                     });
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Populates the About tab's "LOADED PLUG-INS" diagnostic panel from the plug-in loader's last
+    /// discovery pass (<see cref="DiscoveredProviders.LastResults"/>). Read-only, per-assembly view —
+    /// distinct from the editable per-instance cards on the Plug-ins tab. Lists each plug-in's assembly
+    /// version and the contract (ApiVersion) it was built against, and flags skipped/incompatible ones.
+    /// This is the surface that disambiguates a hand-dropped plug-in DLL from the shipped snapshot.
+    /// </summary>
+    private void RefreshLoadedPlugins()
+    {
+        if (PanelLoadedPlugins == null) return;
+        PanelLoadedPlugins.Children.Clear();
+
+        var textBrush = (System.Windows.Media.Brush)FindResource("TextBrush");
+        var dimBrush = (System.Windows.Media.Brush)FindResource("TextDimBrush");
+
+        var results = Phosphor.Plugins.DiscoveredProviders.LastResults;
+        if (results.Count == 0)
+        {
+            PanelLoadedPlugins.Children.Add(new System.Windows.Controls.TextBlock
+            {
+                Text = "No plug-ins discovered.",
+                Foreground = dimBrush,
+                FontSize = 11,
+                Margin = new Thickness(0, 4, 0, 0),
+            });
+            return;
+        }
+
+        foreach (var plugin in results.OrderBy(p => p.TypeId, StringComparer.OrdinalIgnoreCase))
+        {
+            string name = System.IO.Path.GetFileNameWithoutExtension(plugin.AssemblyPath);
+            if (string.IsNullOrEmpty(name)) name = plugin.TypeId;
+
+            string asmVersion = "?";
+            try
+            {
+                if (System.IO.File.Exists(plugin.AssemblyPath))
+                    asmVersion = System.Diagnostics.FileVersionInfo.GetVersionInfo(plugin.AssemblyPath).FileVersion ?? "?";
+            }
+            catch { /* best-effort diagnostic — leave as ? */ }
+
+            string line;
+            System.Windows.Media.Brush brush;
+            if (plugin.IsLoaded)
+            {
+                string contract = plugin.Provider?.ApiVersion?.ToString() ?? "?";
+                line = $"{name} — v{asmVersion} (contract {contract})";
+                brush = textBrush;
+            }
+            else
+            {
+                line = $"{name} — v{asmVersion} — SKIPPED: {plugin.Error}";
+                brush = dimBrush;
+            }
+
+            PanelLoadedPlugins.Children.Add(new System.Windows.Controls.TextBlock
+            {
+                Text = line,
+                Foreground = brush,
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 4, 0, 0),
+            });
         }
     }
 
