@@ -24,11 +24,30 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Resolve version
+        id: ver
+        shell: pwsh
+        # workflow_dispatch runs on a branch, so github.ref_name is e.g. "master" — NOT a version.
+        # Only a v* tag yields a real version. Produce:
+        #   version = a valid numeric build version (0.0.0 fallback for non-tag runs)
+        #   label   = a human/file-safe name for the zip + release title
+        run: |
+          $ref = "${{ github.ref_name }}"
+          if ("${{ github.ref_type }}" -eq "tag" -and $ref -match '^v?\d+\.\d+\.\d+') {
+            $version = $ref.TrimStart('v')
+            $label   = $ref
+          } else {
+            $version = "0.0.0"
+            $label   = "0.0.0-dev-$ref-${{ github.run_number }}"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "label=$label"     >> $env:GITHUB_OUTPUT
+          Write-Host "Resolved version=$version label=$label (ref_type=${{ github.ref_type }}, ref=$ref)"
+
       - name: Build host (Release)
         shell: pwsh
         run: |
-          $v = "${{ github.ref_name }}".TrimStart('v')
-          if (-not $v) { $v = "0.0.0" }
+          $v = "${{ steps.ver.outputs.version }}"
           dotnet build Phosphor.slnx --configuration Release `
             -p:Version=$v -p:AssemblyVersion=$v -p:FileVersion=$v
 
@@ -83,7 +102,7 @@ jobs:
           $abstractionsDll = Join-Path $hostDir "Phosphor.Plugin.Abstractions.dll"
           $contractVer = if (Test-Path $abstractionsDll) { (Get-Item $abstractionsDll).VersionInfo.FileVersion } else { $null }
           $info = [pscustomobject]@{
-            hostVersion     = "${{ github.ref_name }}".TrimStart('v')
+            hostVersion     = "${{ steps.ver.outputs.version }}"
             builtUtc        = (Get-Date).ToUniversalTime().ToString("o")
             pluginsCommit   = "${{ steps.plugins.outputs.sha }}"
             contractVersion = $contractVer
@@ -95,9 +114,17 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          Compress-Archive -Path "${{ steps.host.outputs.dir }}/*" -DestinationPath "artifacts/Phosphor-${{ github.ref_name }}.zip" -Force
+          Compress-Archive -Path "${{ steps.host.outputs.dir }}/*" -DestinationPath "artifacts/Phosphor-${{ steps.ver.outputs.label }}.zip" -Force
 
-      - name: Create GitHub Release
+      - name: Upload snapshot artifact (all runs)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Phosphor-${{ steps.ver.outputs.label }}
+          path: artifacts/Phosphor-${{ steps.ver.outputs.label }}.zip
+          retention-days: 14
+
+      - name: Create GitHub Release (tagged runs only)
+        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/Phosphor-${{ github.ref_name }}.zip
+          files: artifacts/Phosphor-${{ steps.ver.outputs.label }}.zip
