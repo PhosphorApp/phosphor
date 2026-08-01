@@ -134,10 +134,14 @@ jobs:
           Compress-Archive -Path "${{ steps.host.outputs.dir }}/*" -DestinationPath "artifacts/Phosphor-${{ steps.ver.outputs.label }}.zip" -Force
 
       - name: Upload snapshot artifact (all runs)
+        # Point at the snapshot DIRECTORY, not the .zip: GitHub's upload-artifact always wraps its
+        # contents in one zip on download, so uploading the folder yields a single browsable zip
+        # (files directly inside) rather than a zip-containing-a-zip. The tag-release path below still
+        # attaches the pre-made single .zip directly (action-gh-release does not re-wrap).
         uses: actions/upload-artifact@v4
         with:
           name: Phosphor-${{ steps.ver.outputs.label }}
-          path: artifacts/Phosphor-${{ steps.ver.outputs.label }}.zip
+          path: ${{ steps.host.outputs.dir }}/**
           retention-days: 14
 
       - name: Create GitHub Release (tagged runs only)
