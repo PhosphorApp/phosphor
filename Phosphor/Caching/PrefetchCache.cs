@@ -93,6 +93,14 @@ public class PrefetchCache
         var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _downloadCts = cts;
 
+        // De-dupe against the on-disk VideoCache (or a prior prefetch) fetching the same id: doubling
+        // the request volume for one id feeds YouTube's 403 throttle. Loser of the race skips.
+        if (!CacheDownloadCoordinator.TryBegin(videoId))
+        {
+            DebugLog.Log(LogLevel.Debug, "PrefetchCache", $"Skip {videoId}: already being downloaded by another cache path");
+            return;
+        }
+
         try
         {
             // No downloadable source configured � nothing to prefetch.
@@ -117,16 +125,18 @@ public class PrefetchCache
             var muxedFile = Path.Combine(PrefetchDir, $"{videoId}.mkv");
             var muxed = await MuxWithFfmpegAsync(videoFile, audioFile, muxedFile, cts.Token);
 
-            // Remove intermediate files
-            try { File.Delete(videoFile); } catch { }
-            try { File.Delete(audioFile); } catch { }
-
             if (!muxed)
             {
                 DebugLog.Log(LogLevel.Warning, "PrefetchCache", $"Mux failed for {videoId}");
                 try { File.Delete(muxedFile); } catch { }
+                // Keep the raw video/audio: a mux failure is often a single throttled/corrupt stream,
+                // and retaining both lets a retry re-pull only what's broken instead of both streams.
                 return;
             }
+
+            // Mux succeeded — the raw intermediates are now redundant; remove them.
+            try { File.Delete(videoFile); } catch { }
+            try { File.Delete(audioFile); } catch { }
 
             lock (_lock)
             {
@@ -144,6 +154,10 @@ public class PrefetchCache
         {
             DebugLog.Log(LogLevel.Warning, "PrefetchCache", $"Failed for {videoId}: {ex.Message}");
             CleanFiles(videoId);
+        }
+        finally
+        {
+            CacheDownloadCoordinator.End(videoId);
         }
     }
 

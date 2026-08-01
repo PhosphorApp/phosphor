@@ -125,6 +125,14 @@ public class VideoCache
             }
         }
 
+        // De-dupe against the prefetch cache (or a second cache job) fetching the same id: doubling
+        // the request volume for one id feeds YouTube's 403 throttle. Loser of the race skips.
+        if (!CacheDownloadCoordinator.TryBegin(videoId))
+        {
+            DebugLog.Log(LogLevel.Debug, "VideoCache", $"Skip {videoId}: already being downloaded by another cache path");
+            return;
+        }
+
         try
         {
             // No downloadable source configured — the cache cannot populate.
@@ -158,17 +166,21 @@ public class VideoCache
 
             var muxed = await MuxWithFfmpegAsync(videoPath, audioPath, muxedPath, chaptersPath, ct);
 
-            // Remove intermediate files
+            if (!muxed)
+            {
+                DebugLog.Log(LogLevel.Warning, "VideoCache", $"Mux failed for {videoId} — see preceding ffmpeg error for the cause (e.g. a missing/failed audio stream)");
+                try { File.Delete(muxedPath); } catch { }
+                if (chaptersPath != null) try { File.Delete(chaptersPath); } catch { }
+                // Keep the raw video/audio: a mux failure is often a single throttled/corrupt stream,
+                // and retaining both lets a retry re-pull only what's broken instead of both streams
+                // (a full re-download would only add throttle pressure).
+                return;
+            }
+
+            // Mux succeeded — the raw intermediates are now redundant; remove them.
             try { File.Delete(videoPath); } catch { }
             try { File.Delete(audioPath); } catch { }
             if (chaptersPath != null) try { File.Delete(chaptersPath); } catch { }
-
-            if (!muxed)
-            {
-                DebugLog.Log(LogLevel.Warning, "VideoCache", $"Mux failed for {videoId} — ffmpeg may not be installed");
-                try { File.Delete(muxedPath); } catch { }
-                return;
-            }
 
             var totalSize = new FileInfo(muxedPath).Length;
 
@@ -196,6 +208,10 @@ public class VideoCache
             DebugLog.Log(LogLevel.Warning, "VideoCache", $"Download failed for {videoId}: {ex.Message}");
             // Clean up partial files
             CleanPartialFiles(videoId);
+        }
+        finally
+        {
+            CacheDownloadCoordinator.End(videoId);
         }
     }
 
