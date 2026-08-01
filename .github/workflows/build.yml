@@ -10,6 +10,9 @@ jobs:
   build:
     runs-on: windows-latest
 
+    # Builds the host app + DofBridge only. Plug-ins live in the separate phosphor-plugins
+    # repo and are NOT built here; the host restores the Phosphor.Plugin.Abstractions package
+    # from NuGet. A plug-in snapshot is folded in by the release workflow, not this CI build.
     steps:
       - uses: actions/checkout@v4
 

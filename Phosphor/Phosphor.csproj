@@ -100,31 +100,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Phosphor.Plugin.Abstractions\Phosphor.Plugin.Abstractions.csproj" />
     <!--
-      Build-order-only reference to the reference plug-in: ReferenceOutputAssembly=false keeps it OUT
-      of the host's runtime dependencies (it must be discovered dynamically from plugins/, not linked),
-      while ensuring it builds before the host so the copy target below has fresh output.
+      The host owns the single runtime copy of the plug-in contract. It references the published
+      Phosphor.Plugin.Abstractions package (unlike plug-ins, the host KEEPS the runtime asset so the
+      contract types unify across the AssemblyLoadContext boundary at load time).
+      Plug-ins are NOT referenced here: they live in the separate phosphor-plugins repo and are
+      discovered at runtime from plugins/. For local F5 debugging, build the plugins repo with
+      PHOSPHOR_HOST_DIR pointed at this host's output so plug-ins self-deploy into plugins/.
     -->
-    <ProjectReference Include="..\Phosphor.Plugins.LocalFolder\Phosphor.Plugins.LocalFolder.csproj">
-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
-      <Private>false</Private>
-    </ProjectReference>
-    <!-- Build-order-only reference to the SiriusXM plug-in (same rationale as LocalFolder above). -->
-    <ProjectReference Include="..\Phosphor.Plugins.SiriusXM\Phosphor.Plugins.SiriusXM.csproj">
-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
-      <Private>false</Private>
-    </ProjectReference>
-    <!-- Build-order-only reference to the IPTV plug-in (same rationale as LocalFolder above). -->
-    <ProjectReference Include="..\Phosphor.Plugins.Iptv\Phosphor.Plugins.Iptv.csproj">
-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
-      <Private>false</Private>
-    </ProjectReference>
-    <!-- Build-order-only reference to the HDHomeRun plug-in (same rationale as LocalFolder above). -->
-    <ProjectReference Include="..\Phosphor.Plugins.HdHomeRun\Phosphor.Plugins.HdHomeRun.csproj">
-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
-      <Private>false</Private>
-    </ProjectReference>
+    <PackageReference Include="Phosphor.Plugin.Abstractions" Version="0.14.0" />
   </ItemGroup>
 
   <!--
