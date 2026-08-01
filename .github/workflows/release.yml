@@ -124,7 +124,13 @@ jobs:
           # Self-deploy target writes each plug-in into <host>/plugins/<Name>/.
           PHOSPHOR_HOST_DIR: ${{ steps.host.outputs.dir }}
         run: |
-          dotnet build _plugins/Phosphor.Plugins.slnx --configuration Release
+          $v = "${{ steps.ver.outputs.version }}"
+          # Stamp plug-in FileVersion with the release version so every folded-in plug-in reports the
+          # release it shipped in on the About page (e.g. 0.9.3), distinct from an untagged CI drop-in
+          # (which stamps 1.0.0.<run#>). AssemblyVersion stays fixed at 1.0.0 — it is the binding
+          # identity the host's AssemblyLoadContext resolves against and must not churn per build.
+          dotnet build _plugins/Phosphor.Plugins.slnx --configuration Release `
+            -p:FileVersion=$v -p:AssemblyVersion=1.0.0
 
       - name: Verify plugins were folded into the snapshot
         shell: pwsh
