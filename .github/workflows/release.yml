@@ -2,8 +2,10 @@ name: Release
 
 # Produces a client snapshot: the host app + a point-in-time build of phosphor-plugins folded in.
 # Distribution model = the client release IS the plugin snapshot (no in-app updater). The plugins
-# commit SHA is stamped into build-info.json for traceability (a given release is traceable to the
-# exact plugin source it shipped, even though it pulls plugins@latest rather than pinning versions).
+# commit SHA is stamped into build-info.json for traceability (a given release is always traceable to
+# the exact plugin source it shipped). Plugin source selection: if phosphor-plugins carries a tag
+# matching this host tag, that tagged source is pinned (a reproducible host+plugins pair); otherwise
+# it falls back to plugins master HEAD (latest) with a warning — see the "Resolve plugins ref" step.
 
 on:
   push:
@@ -77,14 +79,39 @@ jobs:
         shell: pwsh
         run: Expand-Archive -Path "dependencies/projectM/ProjectM_Presets_Base.zip" -DestinationPath "${{ steps.host.outputs.dir }}/presets" -Force
 
-      - name: Checkout plugins@latest
+      - name: Checkout plugins (pin to matching tag, else latest master)
         uses: actions/checkout@v4
         with:
           repository: PhosphorApp/phosphor-plugins
           path: _plugins
           fetch-depth: 0
+          # Fetch tags too so we can resolve a matching plugins tag below.
+          fetch-tags: true
           # A PAT is required while phosphor-plugins is private. Store it as a repo secret.
           token: ${{ secrets.PLUGINS_REPO_TOKEN }}
+
+      - name: Resolve plugins ref (pin to host tag, fall back to master)
+        id: pluginsref
+        shell: pwsh
+        # Reproducibility model: if the plugins repo carries a tag matching THIS host tag
+        # (e.g. host v0.9.3-tester.2 -> plugins v0.9.3-tester.2), build that exact tagged plugin
+        # source — a named, reproducible host+plugins pair. If no such tag exists (the common case
+        # where plugins were untouched for this release), fall back to plugins master HEAD (latest)
+        # with a warning. Either way the exact SHA is recorded in build-info.json for traceability.
+        run: |
+          $pin = "none"
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $tag = "${{ github.ref_name }}"
+            git -C _plugins rev-parse -q --verify "refs/tags/$tag" 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+              git -C _plugins checkout --quiet "refs/tags/$tag"
+              $pin = $tag
+              Write-Host "Pinned plugins to matching tag $tag"
+            } else {
+              Write-Host "::warning::No plugins tag '$tag' found — falling back to plugins master (latest). Tag plugins with '$tag' for a reproducible pair."
+            }
+          }
+          "pin=$pin" >> $env:GITHUB_OUTPUT
 
       - name: Record plugins commit
         id: plugins
@@ -122,6 +149,7 @@ jobs:
             hostVersion     = "${{ steps.ver.outputs.version }}"
             builtUtc        = (Get-Date).ToUniversalTime().ToString("o")
             pluginsCommit   = "${{ steps.plugins.outputs.sha }}"
+            pluginsPin      = "${{ steps.pluginsref.outputs.pin }}"
             contractVersion = $contractVer
           }
           $info | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $hostDir "build-info.json")
