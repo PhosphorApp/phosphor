@@ -4,7 +4,21 @@ This file is authoritative context for AI agents working on this codebase. Read 
 
 ---
 
-## Solution Structure
+## Repository Layout (three repos)
+
+Phosphor is split across **three repositories** under the `PhosphorApp` GitHub org:
+
+| Repo | Contents | License | Visibility |
+|------|----------|---------|------------|
+| `PhosphorApp/phosphor` | Host app (`Phosphor/`) + `DofBridge` / `DofBridge.x86` | PolyForm Noncommercial | private until launch |
+| `PhosphorApp/phosphor-abstractions` | The plug-in CONTRACT — published to NuGet as `Phosphor.Plugin.Abstractions` | MIT | package public |
+| `PhosphorApp/phosphor-plugins` | All `Phosphor.Plugins.*` source plug-ins (one solution) | MIT | private until launch |
+
+The contract is MIT so third-party plug-in authors can build against it freely; the **app** is the
+part whose commercial use is restricted (PolyForm Noncommercial). The abstractions package is public
+on NuGet (NuGet has no private packages) but contains only contract types — nothing proprietary.
+
+**This repo (`phosphor`) — host solution structure:**
 
 ```
 phosphor/
@@ -21,27 +35,48 @@ phosphor/
 │   ├── Visuals/          # AudioReactiveService, blob patterns, Mandelbrot, projectM interop
 │   └── Windows/          # JukeboxWindow base, PlayfieldWindow, BackglassWindow, DmdWindow,
 │                         #   TopperWindow, SettingsWindow, PresetBrowserWindow
-├── Phosphor.Plugin.Abstractions/   # The plug-in CONTRACT (IPhosphorSource, capabilities,
-│                         #   SourceItem/SourceCategory/ResolvedStream, IPluginHost)
-├── Phosphor.Plugins.YouTube/       # YouTube source plug-in (YoutubeExplode + yt-dlp engines)
-├── Phosphor.Plugins.Plex/          # Plex source plug-in (REST client, no SDK)
-├── Phosphor.Plugins.Jellyfin/ .Emby/ .Vimeo/ .Dailymotion/ .SoundCloud/
-│   .SiriusXM/ .IHeartRadio/ .LocalFolder/   # Additional source plug-ins
 ├── DofBridge/            # .NET Framework 4.8 console app; hosts DirectOutput, receives
 │                         #   commands via named pipe "PhosphorDof"
 └── DofBridge.x86/        # Identical to DofBridge, compiled x86 for 32-bit DOF drivers
 ```
 
+The host references the contract as a **NuGet `PackageReference`** (`Phosphor.Plugin.Abstractions`)
+and ships the single runtime copy of that DLL. The `Phosphor.Plugins.*` projects live in the separate
+`phosphor-plugins` repo — they are NOT in this solution.
+
 ### Plug-in architecture (important)
 Every media source — YouTube and Plex included — is an **external plug-in** discovered at startup
 from the host's `plugins/` folder (see `Phosphor/Plugins/Loader/PluginLoader.cs`). There are no
-statically-referenced "built-in" sources. A plug-in references ONLY
-`Phosphor.Plugin.Abstractions` (compile-only; the host owns the single runtime copy), implements
-capability interfaces (`ITextSearchCapable`, `IBrowsable`, `IPagedBrowsable`, `IPlayableResolver`,
-`IScopedSearchable`, `IGaplessCapable`, `IDownloadable`, `IFavoritable`, …), and self-deploys into
-`Phosphor/bin/.../plugins/<Name>/`. Each plug-in loads in its own `AssemblyLoadContext` (isolated
-private deps). The host reaches shared native tools (`yt-dlp.exe`, `ffmpeg.exe`) via
-`IPluginHost.GetToolPath`; a provider declares `RequiredTools` for load-time validation.
+statically-referenced "built-in" sources. A plug-in references ONLY the
+`Phosphor.Plugin.Abstractions` **NuGet package** (compile-only: `ExcludeAssets=runtime` /
+`PrivateAssets=all` — the host owns the single runtime copy), implements capability interfaces
+(`ITextSearchCapable`, `IBrowsable`, `IPagedBrowsable`, `IPlayableResolver`, `IScopedSearchable`,
+`IGaplessCapable`, `IDownloadable`, `IFavoritable`, …), and self-deploys into `plugins/<Name>/`. Each
+plug-in loads in its own `AssemblyLoadContext` (isolated private deps). The host reaches shared native
+tools (`yt-dlp.exe`, `ffmpeg.exe`) via `IPluginHost.GetToolPath`; a provider declares `RequiredTools`
+for load-time validation.
+
+### Contract versioning & NuGet
+`PluginApi.Current` (in the abstractions repo) is the single source of truth for the contract version
+(currently `0.14.0`); the package version tracks it. Publishing is via **Trusted Publishing (OIDC)** —
+the `phosphor-abstractions` repo's `.github/workflows/publish.yml` fires on a `v*` tag, derives the
+package version from the tag, and pushes to NuGet with no stored API key. A bump is: edit the contract,
+tag `vX.Y.Z`, done. The host and plug-ins then move to the new `PackageReference` version.
+
+### Building & distributing plug-ins (dev loop + releases)
+- **Dev inner loop:** the `phosphor-plugins` repo's shared `Directory.Build.targets` self-deploys each
+  plug-in to `$(PHOSPHOR_HOST_DIR)\plugins\<Name>` when that env var is set (point it at a built host
+  output for F5), else to a repo-local `dist\plugins\<Name>`. A fresh host clone has NO plug-ins until
+  you build the plugins repo once with `PHOSPHOR_HOST_DIR` set.
+- **Distribution model:** a **client release IS the plug-in snapshot**. The host's
+  `.github/workflows/release.yml` (on a `v*` tag) builds the host, checks out `phosphor-plugins@latest`,
+  builds them into the host's `plugins/`, writes `build-info.json` (host version + plugins commit SHA +
+  contract version), and publishes a GitHub Release. There is NO in-app updater.
+- **Hotfix path (power-user testers):** the `phosphor-plugins` CI publishes per-plug-in folder artifacts
+  (and a combined `plugins.zip`). A tester drops a replacement `plugins/<Name>/` folder in place — the
+  runtime `AssemblyLoadContext` loading already supports this. The About tab's "LOADED PLUG-INS" panel
+  (and a load-time log line) shows each loaded plug-in's assembly + contract version so a hand-dropped
+  DLL is distinguishable from the shipped snapshot.
 
 **Discovery convention (one plug-in per folder):** a folder `plugins/<Name>/` names its provider
 assembly `Phosphor.Plugins.<Name>.dll`. When that file exists the loader loads *only* it and skips
@@ -203,9 +238,9 @@ Each command is written as: `BinaryWriter.Write(char type)` + `Write(int number)
 | Screensaver visuals | `Visuals/Patterns/*.cs`, `Visuals/AudioReactiveService.cs` |
 | DOF integration | `Input/DofClient.cs`, `DofBridge/Program.cs` |
 | Plug-in host (loader/registry/discovery) | `Plugins/Loader/PluginLoader.cs`, `Plugins/SourceRegistry.cs`, `Plugins/DiscoveredProviders.cs`, `Plugins/Host/PluginHost.cs` |
-| Plug-in contract | `Phosphor.Plugin.Abstractions/*` |
-| YouTube source (engines + YoutubeExplode/yt-dlp) | `Phosphor.Plugins.YouTube/*` |
-| Plex source (REST client) | `Phosphor.Plugins.Plex/*` |
+| Plug-in contract | **`phosphor-abstractions` repo** → NuGet `Phosphor.Plugin.Abstractions` (referenced as a package) |
+| Source plug-ins (YouTube, Plex, etc.) | **`phosphor-plugins` repo** (`Phosphor.Plugins.*`) — not in this solution |
+| Loaded-plugin diagnostics | `Windows/SettingsWindow.xaml.cs` → `RefreshLoadedPlugins()` (About tab) |
 | Caching (engine-agnostic; driven via `IDownloadable`) | `Caching/*.cs` |
 | Host playback vocabulary | `Video/VideoVocabulary.cs` |
 | Data models | `Models/VideoItem.cs`, `Models/Category.cs`, `Models/KeyBindings.cs` |
@@ -233,9 +268,11 @@ Each command is written as: `BinaryWriter.Write(char type)` + `Write(int number)
 - **Add a blob pattern**: Implement `IBlobPattern`, add a value to the `BlobPattern` enum, register in the pattern factory. Decide whether to exclude from random rotation.
 - **Add a new window**: Inherit `JukeboxWindow`, create a proxy class if cross-thread access is needed, register and create the window in `App.xaml.cs`.
 - **Add a DOF trigger**: Call `DofClient.Trigger('E', number, value)` or `TriggerPulse('E', number)`. Pick an unused element number.
-- **Add a source**: Create a `Phosphor.Plugins.<Name>` project referencing only
-  `Phosphor.Plugin.Abstractions` (compile-only), implement `IPhosphorSourceProvider` (parameterless
-  ctor!) + the capability interfaces the source supports, and add a self-deploy target (clone an
-  existing plug-in's csproj, e.g. `Phosphor.Plugins.Plex`). No host changes needed — it's discovered.
+- **Add a source**: In the **`phosphor-plugins` repo**, create a `Phosphor.Plugins.<Name>` project
+  referencing only the `Phosphor.Plugin.Abstractions` NuGet package (compile-only:
+  `ExcludeAssets=runtime` / `PrivateAssets=all`), implement `IPhosphorSourceProvider` (parameterless
+  ctor!) + the capability interfaces the source supports. The shared `Directory.Build.targets`
+  self-deploys it automatically — clone an existing plug-in's csproj (e.g. `Phosphor.Plugins.Plex`).
+  No host changes needed — it's discovered from `plugins/` at runtime.
 - **Add a Plex feature**: Work in `Phosphor.Plugins.Plex/PlexService.cs` (REST call) and map it to the
   contract in `PlexSource.cs`/`PlexMappings.cs`. The host stays source-agnostic.
