@@ -63,6 +63,19 @@ jobs:
         run: |
           dotnet build _plugins/Phosphor.Plugins.slnx --configuration Release
 
+      - name: Verify plugins were folded into the snapshot
+        shell: pwsh
+        # Guard against a "green but empty" release: if the plugins checkout/build produced no
+        # plugins/<Name>/ folders, fail loudly here rather than shipping a plugin-less snapshot.
+        run: |
+          $pluginsDir = Join-Path "${{ steps.host.outputs.dir }}" "plugins"
+          $folders = if (Test-Path $pluginsDir) { @(Get-ChildItem $pluginsDir -Directory) } else { @() }
+          if ($folders.Count -eq 0) {
+            Write-Error "No plug-ins found in $pluginsDir — the plugins checkout/build did not deploy anything. Failing the release."
+            exit 1
+          }
+          Write-Host "Folded in $($folders.Count) plug-in(s): $($folders.Name -join ', ')"
+
       - name: Write build-info.json
         shell: pwsh
         run: |
