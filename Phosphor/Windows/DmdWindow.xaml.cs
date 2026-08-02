@@ -856,6 +856,10 @@ public partial class DmdWindow : JukeboxWindow
             vmFav.FavoritesGrouping = settings.FavoritesGrouping;
             vmFav.FavoritesSort = settings.FavoritesSort;
 
+            // Restore the persisted manual collapsed/expanded state of the queue panel.
+            _queueCollapsed = settings.DmdQueueCollapsed;
+            ApplyQueueCollapsedState();
+
             // Auto-hide-when-empty: start collapsed if enabled and the queue is empty at launch.
             _queueWasEmpty = vmFav.ActiveQueue.Count == 0;
             if (settings.DmdAutoHideQueueWhenEmpty && _queueWasEmpty && !_queueCollapsed)
@@ -4643,6 +4647,8 @@ public partial class DmdWindow : JukeboxWindow
     private void ToggleQueueCollapsed()
     {
         _queueCollapsed = !_queueCollapsed;
+        if (_appSettings != null)
+            _appSettings.DmdQueueCollapsed = _queueCollapsed;
         ApplyQueueCollapsedState();
     }
 

@@ -484,6 +484,11 @@ public class AppSettings
     /// this only reacts to empty↔non-empty transitions so it doesn't fight the user's manual toggles.
     /// </summary>
     public bool DmdAutoHideQueueWhenEmpty { get; set; }
+    /// <summary>
+    /// Persisted collapsed/expanded state of the DMD queue panel so the user's manual toggle
+    /// (via the QUEUE label) is restored on next launch.
+    /// </summary>
+    public bool DmdQueueCollapsed { get; set; }
     public int DmdNowPlayingAreaSizeModifier { get; set; }
     public int DmdPlayButtonSizeModifier { get; set; }
     public int DmdGenreIconSizeModifier { get; set; }

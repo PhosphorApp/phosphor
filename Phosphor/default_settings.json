@@ -428,6 +428,7 @@
   "DmdRotation": 0,
   "DmdQueuePosition": 0,
   "DmdAutoHideQueueWhenEmpty": false,
+  "DmdQueueCollapsed": false,
   "DmdNowPlayingAreaSizeModifier": 0,
   "DmdPlayButtonSizeModifier": 0,
   "DmdGenreIconSizeModifier": -2,
