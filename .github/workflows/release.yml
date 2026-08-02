@@ -30,11 +30,15 @@ jobs:
         id: ver
         shell: pwsh
         # Versioning model: major.minor.build, where you tag major.minor and CI auto-fills the build
-        # number from github.run_number. Supported tag shapes (with or without a leading 'v'):
+        # number (PATCH) from github.run_number. The prerelease suffix (-tester / -rc) is a bare
+        # CHANNEL marker, not a counter — the ever-increasing build number carries the ordering, and
+        # it lives in exactly one place (PATCH) so it isn't duplicated in the suffix.
+        # Supported tag shapes (with or without a leading 'v'):
         #   v1.2            -> version 1.2.<run#>            label v1.2.<run#>            (release)
+        #   v1.2-tester     -> version 1.2.<run#>            label v1.2.<run#>-tester     (PRERELEASE)
+        #   v1.2-rc         -> version 1.2.<run#>            label v1.2.<run#>-rc         (PRERELEASE)
         #   v1.2.3          -> version 1.2.3                 label v1.2.3                 (release, pinned build)
-        #   v1.2-tester.1   -> version 1.2.<run#>            label v1.2.<run#>-tester.1   (PRERELEASE)
-        #   v1.2.3-rc.1     -> version 1.2.3                 label v1.2.3-rc.1            (PRERELEASE)
+        #   v1.2.3-rc       -> version 1.2.3                 label v1.2.3-rc              (PRERELEASE, pinned build)
         #   (non-tag / manual dispatch) -> version 0.0.0     label 0.0.0-dev-<ref>-<run#> (artifact only)
         # Outputs:
         #   version    = clean numeric AssemblyVersion/FileVersion (always X.Y.Z, no suffix)
@@ -49,7 +53,7 @@ jobs:
           if ($isTag -and $ref -match '^v?(\d+)\.(\d+)(?:\.(\d+))?(-.+)?$') {
             $maj = $Matches[1]; $min = $Matches[2]
             $build = if ($Matches[3]) { $Matches[3] } else { $run }   # auto build number when omitted
-            $suffix = $Matches[4]                                      # e.g. -tester.1 (may be empty)
+            $suffix = $Matches[4]                                      # e.g. -tester / -rc (bare channel marker; may be empty)
             $version = "$maj.$min.$build"                              # clean numeric core for assembly
             $label   = "v$version$suffix"
             if ($suffix) { $prerelease = "true" }
