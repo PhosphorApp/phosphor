@@ -103,7 +103,10 @@ jobs:
           if ("${{ github.ref_type }}" -eq "tag") {
             $tag = "${{ github.ref_name }}"
             git -C _plugins rev-parse -q --verify "refs/tags/$tag" 2>$null | Out-Null
-            if ($LASTEXITCODE -eq 0) {
+            $tagFound = ($LASTEXITCODE -eq 0)
+            # Reset so the failed lookup (a signal, not an error) doesn't propagate as the step's exit code.
+            $global:LASTEXITCODE = 0
+            if ($tagFound) {
               git -C _plugins checkout --quiet "refs/tags/$tag"
               $pin = $tag
               Write-Host "Pinned plugins to matching tag $tag"
@@ -112,6 +115,7 @@ jobs:
             }
           }
           "pin=$pin" >> $env:GITHUB_OUTPUT
+          exit 0
 
       - name: Record plugins commit
         id: plugins
