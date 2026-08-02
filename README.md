@@ -9,7 +9,7 @@ lighting.
 
 Watch this video for an overview and getting started tips:
 
-<iframe width="560" height="315" src="[https://youtube.com](https://www.youtube.com/watch?v=mY4DwBXnRB4)" title="YouTube video player" frameborder="0" allowfullscreen></iframe>
+[![Phosphor video overview](https://img.youtube.com/vi/mY4DwBXnRB4/hqdefault.jpg)](https://www.youtube.com/watch?v=mY4DwBXnRB4)
 
 ## Features
 
