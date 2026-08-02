@@ -5,6 +5,12 @@ desktop media player. Phosphor plays music videos across a cabinet's screens (pl
 backglass, topper, DMD) with audio-reactive animated visuals and optional DOF cabinet
 lighting.
 
+## Video Overview
+
+Watch this video for an overview and getting started tips:
+
+<iframe width="560" height="315" src="[https://youtube.com](https://www.youtube.com/watch?v=mY4DwBXnRB4)" title="YouTube video player" frameborder="0" allowfullscreen></iframe>
+
 ## Features
 
 - **Many media sources via plug-ins** — Sources are pluggable and configured in Settings.
@@ -47,7 +53,8 @@ Everything else is bundled — LibVLC (via the `VideoLAN.LibVLC.Windows` package
 ## Getting Started
 
 1. Download the latest release from the release page and extract the ZIP to a folder of your choice. 
-   All settings are stored locally in the folder for portability (primarily `settings.json`).
+   All settings are stored locally in the folder for portability (primarily `settings.json`). First run
+   may take a few seconds to start; this is normal and future runs will be faster.
 2. Open **Settings** to configure window positions, source plug-ins (add/enable/configure),
    and optional server details.
 
