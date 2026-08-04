@@ -624,15 +624,15 @@ public partial class SettingsWindow : JukeboxWindow
         CbShowTopper.IsChecked = settings.ShowTopper;
         CbEnableSecondPlayer.IsChecked = settings.EnableSecondPlayer;
         CbAutoPlayQueue.IsChecked = settings.AutoPlayQueueOnStart;
-        // Populate startup ditti list (migrate legacy single path if present)
-        _startupDittiPaths.Clear();
-        foreach (var p in settings.StartupDittiPaths)
+        // Populate startup ditty list (migrate legacy single path if present)
+        _startupDittyPaths.Clear();
+        foreach (var p in settings.StartupDittyPaths)
             if (!string.IsNullOrWhiteSpace(p))
-                _startupDittiPaths.Add(p);
-        if (_startupDittiPaths.Count == 0 && !string.IsNullOrWhiteSpace(settings.StartupDittiPath))
-            _startupDittiPaths.Add(settings.StartupDittiPath);
-        LbStartupDittiPaths.ItemsSource = _startupDittiPaths;
-        CbEnableStartupDitti.IsChecked = settings.EnableStartupDitti;
+                _startupDittyPaths.Add(p);
+        if (_startupDittyPaths.Count == 0 && !string.IsNullOrWhiteSpace(settings.StartupDittyPath))
+            _startupDittyPaths.Add(settings.StartupDittyPath);
+        LbStartupDittyPaths.ItemsSource = _startupDittyPaths;
+        CbEnableStartupDitty.IsChecked = settings.EnableStartupDitty;
         CbDofEnabled.IsChecked = settings.DofEnabled;
         TbDofRomName.Text = settings.DofRomName;
         CbDofSimulator.IsChecked = settings.DofSimulator;
@@ -1606,20 +1606,20 @@ public partial class SettingsWindow : JukeboxWindow
             TbStaticImagePath.Text = dlg.FileName;
     }
 
-    private readonly ObservableCollection<string> _startupDittiPaths = new();
+    private readonly ObservableCollection<string> _startupDittyPaths = new();
 
-    private void AddStartupDitti_Click(object sender, RoutedEventArgs e)
+    private void AddStartupDitty_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "Select Startup Ditti Audio",
+            Title = "Select Startup Ditty Audio",
             Filter = "Audio files|*.mp3;*.m4a;*.ogg;*.wav;*.flac;*.wma;*.aac|All files|*.*",
             Multiselect = true
         };
         // Seed initial directory from an existing entry if any
-        if (_startupDittiPaths.Count > 0)
+        if (_startupDittyPaths.Count > 0)
         {
-            var first = _startupDittiPaths[0];
+            var first = _startupDittyPaths[0];
             var resolved = System.IO.Path.IsPathRooted(first)
                 ? first
                 : System.IO.Path.Combine(AppContext.BaseDirectory, first);
@@ -1631,16 +1631,16 @@ public partial class SettingsWindow : JukeboxWindow
 
         foreach (var file in dlg.FileNames)
         {
-            var stored = MakePortableDittiPath(file);
-            if (!_startupDittiPaths.Contains(stored))
-                _startupDittiPaths.Add(stored);
+            var stored = MakePortableDittyPath(file);
+            if (!_startupDittyPaths.Contains(stored))
+                _startupDittyPaths.Add(stored);
         }
     }
 
-    private void RemoveStartupDitti_Click(object sender, RoutedEventArgs e)
+    private void RemoveStartupDitty_Click(object sender, RoutedEventArgs e)
     {
         if (sender is System.Windows.Controls.Button btn && btn.DataContext is string path)
-            _startupDittiPaths.Remove(path);
+            _startupDittyPaths.Remove(path);
     }
 
     /// <summary>
@@ -1648,7 +1648,7 @@ public partial class SettingsWindow : JukeboxWindow
     /// (or any subfolder of it), returns a relative path so settings are portable.
     /// Otherwise returns the original absolute path.
     /// </summary>
-    private static string MakePortableDittiPath(string fullPath)
+    private static string MakePortableDittyPath(string fullPath)
     {
         try
         {
@@ -1777,7 +1777,7 @@ public partial class SettingsWindow : JukeboxWindow
 
         foreach (var folder in dlg.FolderNames)
         {
-            var stored = MakePortableDittiPath(folder);
+            var stored = MakePortableDittyPath(folder);
             if (!_topperVideoFolders.Contains(stored))
                 _topperVideoFolders.Add(stored);
         }
@@ -1911,7 +1911,7 @@ public partial class SettingsWindow : JukeboxWindow
 
         foreach (var folder in dlg.FolderNames)
         {
-            var stored = MakePortableDittiPath(folder);
+            var stored = MakePortableDittyPath(folder);
             if (!_backglassVideoFolders.Contains(stored))
                 _backglassVideoFolders.Add(stored);
         }
@@ -2166,7 +2166,7 @@ public partial class SettingsWindow : JukeboxWindow
 
         foreach (var folder in dlg.FolderNames)
         {
-            var stored = MakePortableDittiPath(folder);
+            var stored = MakePortableDittyPath(folder);
             if (!_playfieldVideoFolders.Contains(stored))
                 _playfieldVideoFolders.Add(stored);
         }
@@ -3966,9 +3966,9 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.ShowTopper = CbShowTopper.IsChecked == true;
         _settings.EnableSecondPlayer = CbEnableSecondPlayer.IsChecked == true;
         _settings.AutoPlayQueueOnStart = CbAutoPlayQueue.IsChecked == true;
-        _settings.StartupDittiPaths = new List<string>(_startupDittiPaths);
-        _settings.StartupDittiPath = ""; // legacy field cleared; data lives in StartupDittiPaths
-        _settings.EnableStartupDitti = CbEnableStartupDitti.IsChecked == true;
+        _settings.StartupDittyPaths = new List<string>(_startupDittyPaths);
+        _settings.StartupDittyPath = ""; // legacy field cleared; data lives in StartupDittyPaths
+        _settings.EnableStartupDitty = CbEnableStartupDitty.IsChecked == true;
         _settings.DofEnabled = CbDofEnabled.IsChecked == true;
         _settings.DofRomName = string.IsNullOrWhiteSpace(TbDofRomName.Text) ? "vpinjukebox" : TbDofRomName.Text.Trim();
         _settings.DofSimulator = CbDofSimulator.IsChecked == true;

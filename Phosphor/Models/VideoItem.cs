@@ -52,7 +52,7 @@ public class VideoItem : ObservableObject
 
     /// <summary>
     /// True for real YouTube items. YouTube video IDs are plain identifiers with no
-    /// "scheme:" prefix, so anything containing a colon (e.g. "plex:", "ditti:startup")
+    /// "scheme:" prefix, so anything containing a colon (e.g. "plex:", "ditty:startup")
     /// is a non-YouTube source.
     /// </summary>
     public bool IsYouTube => !string.IsNullOrEmpty(VideoId) && !VideoId.Contains(':');

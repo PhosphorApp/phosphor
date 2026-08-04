@@ -559,17 +559,17 @@ public class AppSettings
     public bool AutoPlayQueueOnStart { get; set; }
     /// <summary>
     /// Legacy single-path setting. Retained for backward compatibility with older
-    /// settings files. When loaded, it is merged into <see cref="StartupDittiPaths"/>
+    /// settings files. When loaded, it is merged into <see cref="StartupDittyPaths"/>
     /// and cleared on next save.
     /// </summary>
-    public string StartupDittiPath { get; set; } = "";
+    public string StartupDittyPath { get; set; } = "";
     /// <summary>
     /// List of audio file paths to use as startup ditties. A random entry is chosen
     /// each launch. Paths may be relative (resolved against the app base directory,
     /// allowing portable settings) or absolute.
     /// </summary>
-    public List<string> StartupDittiPaths { get; set; } = [];
-    public bool EnableStartupDitti { get; set; }
+    public List<string> StartupDittyPaths { get; set; } = [];
+    public bool EnableStartupDitty { get; set; }
     public int LastQueueIndex { get; set; } = -1;
     public bool DofEnabled { get; set; }
     public bool DofSimulator { get; set; }
@@ -761,13 +761,13 @@ public class AppSettings
                 // Decrypt any DPAPI-encrypted plug-in secrets back to plaintext so the rest of the
                 // app and plug-ins always operate on plaintext, regardless of the EncryptSecrets flag.
                 loaded.DecryptLoadedSecrets();
-                // Migrate legacy single StartupDittiPath into the list-based StartupDittiPaths
-                if (!string.IsNullOrWhiteSpace(loaded.StartupDittiPath) &&
-                    !loaded.StartupDittiPaths.Contains(loaded.StartupDittiPath))
+                // Migrate legacy single StartupDittyPath into the list-based StartupDittyPaths
+                if (!string.IsNullOrWhiteSpace(loaded.StartupDittyPath) &&
+                    !loaded.StartupDittyPaths.Contains(loaded.StartupDittyPath))
                 {
-                    loaded.StartupDittiPaths.Insert(0, loaded.StartupDittiPath);
+                    loaded.StartupDittyPaths.Insert(0, loaded.StartupDittyPath);
                 }
-                loaded.StartupDittiPath = "";
+                loaded.StartupDittyPath = "";
                 return loaded;
             }
             catch

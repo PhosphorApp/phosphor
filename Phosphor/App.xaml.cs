@@ -19,7 +19,7 @@ public partial class App : Application
     private DmdWindow _dmdWindow = null!;
     private LibVLC? _sharedVlc;
     private Task<LibVLC?>? _sharedVlcTask;
-    private System.Windows.Media.MediaPlayer? _dittiPlayer;
+    private System.Windows.Media.MediaPlayer? _dittyPlayer;
     private JukeboxViewModel? _viewModel;
 
     /// <summary>
@@ -62,7 +62,7 @@ public partial class App : Application
         DebugLog.Log(LogLevel.Info, "App", "Loading settings complete");
 
         // Pre-initialize a shared LibVLC instance on a background thread.
-        // Both the startup ditti and backglass reuse this single instance.
+        // Both the startup ditty and backglass reuse this single instance.
         _sharedVlcTask = Task.Run(() =>
         {
             try
@@ -255,8 +255,8 @@ public partial class App : Application
                 viewModel.PlayCommand.Execute(null);
             }
 
-            // Play startup ditti if enabled and auto-play queue is not active
-            PlayStartupDitti(viewModel);
+            // Play startup ditty if enabled and auto-play queue is not active
+            PlayStartupDitty(viewModel);
 
             LogWindowsAudioLevel("Startup");
             DebugLog.Log(LogLevel.Info, "App", "Deferred startup complete");
@@ -446,8 +446,8 @@ public partial class App : Application
         try { ProjectMPresetLog.Flush(); } catch { }
         try { ProjectMPresetMonitorLog.Flush(); } catch { }
 
-        // Stop startup ditti if still playing
-        DisposeStartupDitti();
+        // Stop startup ditty if still playing
+        DisposeStartupDitty();
 
         // Wait for shared VLC task if it never completed
         if (_sharedVlcTask != null)
@@ -524,17 +524,17 @@ public partial class App : Application
         });
     }
 
-    private void PlayStartupDitti(JukeboxViewModel viewModel)
+    private void PlayStartupDitty(JukeboxViewModel viewModel)
     {
-        var paths = _settings.StartupDittiPaths ?? new List<string>();
+        var paths = _settings.StartupDittyPaths ?? new List<string>();
         // Honor legacy single-path setting if list is empty
-        if (paths.Count == 0 && !string.IsNullOrWhiteSpace(_settings.StartupDittiPath))
-            paths = new List<string> { _settings.StartupDittiPath };
+        if (paths.Count == 0 && !string.IsNullOrWhiteSpace(_settings.StartupDittyPath))
+            paths = new List<string> { _settings.StartupDittyPath };
 
-        DebugLog.Log(LogLevel.Debug, "Ditti", $"PlayStartupDitti called: Enabled={_settings.EnableStartupDitti}, Count={paths.Count}, AutoPlay={_settings.AutoPlayQueueOnStart}, QueueCount={viewModel.Queue.Count}");
-        if (!_settings.EnableStartupDitti) { DebugLog.Log(LogLevel.Debug, "Ditti", "Skipped: not enabled"); return; }
-        if (paths.Count == 0) { DebugLog.Log(LogLevel.Debug, "Ditti", "Skipped: no paths"); return; }
-        if (_settings.AutoPlayQueueOnStart && viewModel.Queue.Count > 0) { DebugLog.Log(LogLevel.Debug, "Ditti", "Skipped: auto-play queue active"); return; }
+        DebugLog.Log(LogLevel.Debug, "Ditty", $"PlayStartupDitty called: Enabled={_settings.EnableStartupDitty}, Count={paths.Count}, AutoPlay={_settings.AutoPlayQueueOnStart}, QueueCount={viewModel.Queue.Count}");
+        if (!_settings.EnableStartupDitty) { DebugLog.Log(LogLevel.Debug, "Ditty", "Skipped: not enabled"); return; }
+        if (paths.Count == 0) { DebugLog.Log(LogLevel.Debug, "Ditty", "Skipped: no paths"); return; }
+        if (_settings.AutoPlayQueueOnStart && viewModel.Queue.Count > 0) { DebugLog.Log(LogLevel.Debug, "Ditty", "Skipped: auto-play queue active"); return; }
 
         // Resolve relative paths against base directory; filter to ones that exist
         var resolved = new List<string>();
@@ -547,89 +547,89 @@ public partial class App : Application
             if (System.IO.File.Exists(full))
                 resolved.Add(full);
             else
-                DebugLog.Log(LogLevel.Debug, "Ditti", $"Skipping missing file: {p}");
+                DebugLog.Log(LogLevel.Debug, "Ditty", $"Skipping missing file: {p}");
         }
-        if (resolved.Count == 0) { DebugLog.Log(LogLevel.Debug, "Ditti", "Skipped: no existing files"); return; }
+        if (resolved.Count == 0) { DebugLog.Log(LogLevel.Debug, "Ditty", "Skipped: no existing files"); return; }
 
-        var dittiPath = resolved[Random.Shared.Next(resolved.Count)];
-        StartDittiPlayback(viewModel, dittiPath);
+        var dittyPath = resolved[Random.Shared.Next(resolved.Count)];
+        StartDittyPlayback(viewModel, dittyPath);
     }
 
-    private void StartDittiPlayback(JukeboxViewModel viewModel, string dittiPath)
+    private void StartDittyPlayback(JukeboxViewModel viewModel, string dittyPath)
     {
         try
         {
-            _dittiPlayer = new System.Windows.Media.MediaPlayer();
-            _dittiPlayer.Volume = viewModel.Player1.Volume / 100.0; // WPF volume is 0.0–1.0
+            _dittyPlayer = new System.Windows.Media.MediaPlayer();
+            _dittyPlayer.Volume = viewModel.Player1.Volume / 100.0; // WPF volume is 0.0–1.0
 
             // Show in Now Playing
-            viewModel.Player1.CurrentlyPlaying = new VideoItem { Title = "Startup Ditti", VideoId = "ditti:startup" };
+            viewModel.Player1.CurrentlyPlaying = new VideoItem { Title = "Startup Ditty", VideoId = "ditty:startup" };
 
             // Track volume changes from the slider
-            void onVolumeChanged(int v) { if (_dittiPlayer != null) _dittiPlayer.Volume = v / 100.0; }
+            void onVolumeChanged(int v) { if (_dittyPlayer != null) _dittyPlayer.Volume = v / 100.0; }
             viewModel.VolumeChanged += onVolumeChanged;
 
-            // Stop ditti when real playback starts or user presses stop
-            void clearDitti()
+            // Stop ditty when real playback starts or user presses stop
+            void clearDitty()
             {
-                cleanupDittiEvents();
-                if (viewModel.Player1.CurrentlyPlaying?.VideoId == "ditti:startup")
+                cleanupDittyEvents();
+                if (viewModel.Player1.CurrentlyPlaying?.VideoId == "ditty:startup")
                     viewModel.Player1.CurrentlyPlaying = null;
-                DisposeStartupDitti();
+                DisposeStartupDitty();
             }
-            void onPlay(string _) => clearDitti();
-            void onStop() => clearDitti();
-            void cleanupDittiEvents() { viewModel.PlayRequested -= onPlay; viewModel.StopRequested -= onStop; viewModel.VolumeChanged -= onVolumeChanged; }
+            void onPlay(string _) => clearDitty();
+            void onStop() => clearDitty();
+            void cleanupDittyEvents() { viewModel.PlayRequested -= onPlay; viewModel.StopRequested -= onStop; viewModel.VolumeChanged -= onVolumeChanged; }
             viewModel.PlayRequested += onPlay;
             viewModel.StopRequested += onStop;
 
-            // Clear Now Playing when ditti finishes naturally
-            _dittiPlayer.MediaEnded += (_, _) =>
+            // Clear Now Playing when ditty finishes naturally
+            _dittyPlayer.MediaEnded += (_, _) =>
             {
-                cleanupDittiEvents();
+                cleanupDittyEvents();
                 Dispatcher.BeginInvoke(() =>
                 {
-                    if (viewModel.Player1.CurrentlyPlaying?.VideoId == "ditti:startup")
+                    if (viewModel.Player1.CurrentlyPlaying?.VideoId == "ditty:startup")
                         viewModel.Player1.CurrentlyPlaying = null;
-                    DisposeStartupDitti();
+                    DisposeStartupDitty();
                 });
             };
 
             // Log failures gracefully (e.g. unsupported format)
-            _dittiPlayer.MediaFailed += (_, args) =>
+            _dittyPlayer.MediaFailed += (_, args) =>
             {
-                DebugLog.Log(LogLevel.Warning, "Ditti", $"WPF MediaPlayer failed: {args.ErrorException?.Message}");
-                cleanupDittiEvents();
+                DebugLog.Log(LogLevel.Warning, "Ditty", $"WPF MediaPlayer failed: {args.ErrorException?.Message}");
+                cleanupDittyEvents();
                 Dispatcher.BeginInvoke(() =>
                 {
-                    if (viewModel.Player1.CurrentlyPlaying?.VideoId == "ditti:startup")
+                    if (viewModel.Player1.CurrentlyPlaying?.VideoId == "ditty:startup")
                         viewModel.Player1.CurrentlyPlaying = null;
-                    DisposeStartupDitti();
+                    DisposeStartupDitty();
                 });
             };
 
-            _dittiPlayer.Open(new Uri(dittiPath, UriKind.Absolute));
-            _dittiPlayer.Play();
-            DebugLog.Log(LogLevel.Debug, "Ditti", $"Startup ditti playing (WPF MediaPlayer): {dittiPath}");
+            _dittyPlayer.Open(new Uri(dittyPath, UriKind.Absolute));
+            _dittyPlayer.Play();
+            DebugLog.Log(LogLevel.Debug, "Ditty", $"Startup ditty playing (WPF MediaPlayer): {dittyPath}");
         }
         catch (Exception ex)
         {
-            DebugLog.Log(LogLevel.Warning, "Ditti", $"Startup ditti failed: {ex.Message}");
-            if (viewModel.Player1.CurrentlyPlaying?.VideoId == "ditti:startup")
+            DebugLog.Log(LogLevel.Warning, "Ditty", $"Startup ditty failed: {ex.Message}");
+            if (viewModel.Player1.CurrentlyPlaying?.VideoId == "ditty:startup")
                 viewModel.Player1.CurrentlyPlaying = null;
-            DisposeStartupDitti();
+            DisposeStartupDitty();
         }
     }
 
-    private void DisposeStartupDitti()
+    private void DisposeStartupDitty()
     {
         try
         {
-            _dittiPlayer?.Stop();
-            _dittiPlayer?.Close();
+            _dittyPlayer?.Stop();
+            _dittyPlayer?.Close();
         }
         catch { }
-        _dittiPlayer = null;
+        _dittyPlayer = null;
     }
 
     /// <summary>

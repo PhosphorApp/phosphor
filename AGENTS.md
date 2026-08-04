@@ -95,7 +95,7 @@ pre-scan unless a single plug-in folder starts shipping *multiple candidate prov
 
 ### App.xaml.cs
 - Entry point. Creates all windows on separate threads (Playfield and Backglass each get their own `Thread` + `Dispatcher`).
-- Pre-initializes a shared `LibVLC` instance on a background thread; both the startup "ditti" clip and the backglass reuse it.
+- Pre-initializes a shared `LibVLC` instance on a background thread; both the startup "ditty" clip and the backglass reuse it.
 - Owns the startup splash screen lifetime.
 - Wires global exception handlers.
 

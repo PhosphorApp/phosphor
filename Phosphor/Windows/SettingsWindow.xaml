@@ -125,23 +125,23 @@
                                         <!-- ═══ SECTION: Audio ═══ -->
                                         <TextBlock Text="AUDIO" FontSize="12" FontWeight="Bold"
                                                    Foreground="{StaticResource AccentBrush}" Margin="0,16,0,6"/>
-                                        <CheckBox x:Name="CbEnableStartupDitti" Content="Enable Startup Ditti (random selection from list)"
+                                        <CheckBox x:Name="CbEnableStartupDitty" Content="Enable Startup ditty (random selection from list)"
                                                   Foreground="{StaticResource TextBrush}" Margin="0,0,0,2"/>
                                         <TextBlock Text="On app startup (unless 'Auto play queue on start' is enabled) one sound is chosen at random from the list below and played once. It stops when another track starts or the user presses Stop. Paths inside the app folder are stored as relative paths so settings remain portable."
                                                    FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="18,0,0,6"
                                                    TextWrapping="Wrap"/>
-                                        <TextBlock Text="Startup Ditti Files:" Foreground="{StaticResource TextBrush}"
+                                        <TextBlock Text="Startup Ditty Files:" Foreground="{StaticResource TextBrush}"
                                                    Margin="0,4,0,4"/>
                                         <Border BorderBrush="{StaticResource TextDimBrush}" BorderThickness="1"
                                                 Background="{StaticResource SurfaceBrush}" Margin="0,0,0,4">
-                                            <ListBox x:Name="LbStartupDittiPaths" MaxHeight="160" MinHeight="60"
+                                            <ListBox x:Name="LbStartupDittyPaths" MaxHeight="160" MinHeight="60"
                                                      Background="Transparent" BorderThickness="0"
                                                      HorizontalContentAlignment="Stretch">
                                                 <ListBox.ItemTemplate>
                                                     <DataTemplate>
                                                         <DockPanel LastChildFill="True" Margin="2">
                                                             <Button DockPanel.Dock="Right" Content="✕" Padding="6,2" Margin="6,0,0,0"
-                                                                    Click="RemoveStartupDitti_Click"
+                                                                    Click="RemoveStartupDitty_Click"
                                                                     ToolTip="Remove this file from the list"/>
                                                             <TextBlock Text="{Binding}" Foreground="{StaticResource TextBrush}"
                                                                        VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
@@ -152,7 +152,7 @@
                                         </Border>
                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                             <Button Content="+ Add…" Padding="10,4"
-                                                    Click="AddStartupDitti_Click"/>
+                                                    Click="AddStartupDitty_Click"/>
                                         </StackPanel>
                                         <CheckBox x:Name="CbGapless" Content="Gapless playback (audio tracks)"
                                                   Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
