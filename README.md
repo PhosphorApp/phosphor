@@ -11,6 +11,11 @@ Watch this video for an overview and getting started tips:
 
 [![Phosphor video overview](https://img.youtube.com/vi/mY4DwBXnRB4/hqdefault.jpg)](https://www.youtube.com/watch?v=mY4DwBXnRB4)
 
+## Visualizations
+
+This video surveys the visualizations available in Phosphor:
+[![Phosphor visualizations](https://img.youtube.com/vi/O7UaOkVmF3g/hqdefault.jpg)](https://www.youtube.com/watch?v=O7UaOkVmF3g)
+
 ## Features
 
 - **Many media sources via plug-ins** — Sources are pluggable and configured in Settings.
