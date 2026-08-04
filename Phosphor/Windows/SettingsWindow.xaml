@@ -125,7 +125,7 @@
                                         <!-- ═══ SECTION: Audio ═══ -->
                                         <TextBlock Text="AUDIO" FontSize="12" FontWeight="Bold"
                                                    Foreground="{StaticResource AccentBrush}" Margin="0,16,0,6"/>
-                                        <CheckBox x:Name="CbEnableStartupDitty" Content="Enable Startup ditty (random selection from list)"
+                                        <CheckBox x:Name="CbEnableStartupDitty" Content="Enable Startup Ditty (random selection from list)"
                                                   Foreground="{StaticResource TextBrush}" Margin="0,0,0,2"/>
                                         <TextBlock Text="On app startup (unless 'Auto play queue on start' is enabled) one sound is chosen at random from the list below and played once. It stops when another track starts or the user presses Stop. Paths inside the app folder are stored as relative paths so settings remain portable."
                                                    FontSize="11" Foreground="{StaticResource TextDimBrush}" Margin="18,0,0,6"
