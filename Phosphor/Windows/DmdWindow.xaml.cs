@@ -632,6 +632,18 @@ public partial class DmdWindow : JukeboxWindow
     }
 
     /// <summary>
+    /// When the queue is collapsed, clicking anywhere on the strip (the whole QueueBorder, not just the
+    /// "QUEUE" label) expands it. When expanded this does nothing — collapsing stays label-only so clicks
+    /// inside the queue list/header aren't hijacked.
+    /// </summary>
+    private void QueueBorder_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (!_queueCollapsed) return;
+        e.Handled = true;
+        ToggleQueueCollapsed();
+    }
+
+    /// <summary>
     /// Optional "auto-hide queue when empty": collapses the queue on empty and expands it when the
     /// first item is added. Only reacts to empty↔non-empty transitions so it never fights the user's
     /// manual collapse/expand toggles between those transitions.
@@ -3115,6 +3127,11 @@ public partial class DmdWindow : JukeboxWindow
         Resources["QueueButtonFontSize"] = Math.Max(4, fontSize);
         Resources["QueueButtonSize"] = Math.Max(8, buttonDim);
         Resources["QueueHeaderFontSize"] = Math.Max(4, fontSize);
+
+        // If the queue is currently collapsed, re-apply so the collapsed strip resizes to fit the
+        // new "QUEUE" font size (otherwise a larger font truncates against the fixed strip width).
+        if (_queueCollapsed)
+            ApplyQueueCollapsedState();
     }
 
     public void SetGenreIconSize(int modifier)
@@ -4661,6 +4678,59 @@ public partial class DmdWindow : JukeboxWindow
     {
         bool isRight = _queuePosition == QueuePosition.Right;
 
+        // Measure the "QUEUE" glyph line height deterministically from the current font. The word runs
+        // along the strip's long axis (top-to-bottom when rotated for Right, left-to-right for Bottom),
+        // so it's the font's *line height* — not text width — that drives the strip's cross-axis size.
+        // Measuring the rotated Button's DesiredSize is unreliable (DynamicResource font may be unresolved
+        // and the rotation bounding box mis-compensates for ascent/descent), so we measure glyphs directly.
+        double fontSize = Resources.Contains("QueueHeaderFontSize")
+            ? (double)Resources["QueueHeaderFontSize"]
+            : 14.0;
+        var typeface = new Typeface(QueueCollapsedStrip.FontFamily, QueueCollapsedStrip.FontStyle,
+            FontWeights.Bold, QueueCollapsedStrip.FontStretch);
+        var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        var formatted = new FormattedText("QUEUE", System.Globalization.CultureInfo.CurrentCulture,
+            System.Windows.FlowDirection.LeftToRight, typeface, fontSize, System.Windows.Media.Brushes.White, dpi);
+        double glyphHeight = formatted.Height;
+
+        double stripSize;
+        if (isRight)
+        {
+            // Vertical label for the Right layout, rotated 90° via LayoutTransform. Horizontal centering
+            // renders the full glyph line reliably (Left alignment squeezes/clips the rotated content), so
+            // keep Center and instead shift the text toward the strip's right using an asymmetric left
+            // margin — Center honours margins by offsetting the centre point by marginLeft/2. Top-justify
+            // so the word sits at the top of the strip. The right shift and top gap are baked into the
+            // strip width so nothing clips.
+            const double rightShift = 2; // shifts the centred text right by rightShift/2
+            // QueueBorder wraps the strip with Padding="8" (16px total horizontally); that padding eats
+            // into the column width, so add it back so the glyph line still fits.
+            double borderPad = QueueBorder.Padding.Left + QueueBorder.Padding.Right;
+            stripSize = Math.Max(QueueCollapsedStripSize, glyphHeight + 6 + rightShift + borderPad);
+
+            QueueCollapsedStripRotation.Angle = 90;
+            QueueCollapsedStrip.Padding = new Thickness(0);
+            QueueCollapsedStrip.Margin = new Thickness(rightShift, 8, 0, 0);
+            QueueCollapsedStrip.VerticalAlignment = VerticalAlignment.Top;
+            QueueCollapsedStrip.HorizontalAlignment = System.Windows.HorizontalAlignment.Center;
+        }
+        else
+        {
+            // Horizontal label for the Bottom layout. Left-justify the text. QueueBorder wraps the strip
+            // with Padding="8" (16px total vertically) which eats into the row height, so add it back so
+            // the caps aren't clipped. A small bottom margin nudges the text up so it sits optically
+            // centred (all-caps text has extra descent space below).
+            double borderPadV = QueueBorder.Padding.Top + QueueBorder.Padding.Bottom;
+            stripSize = Math.Max(QueueCollapsedStripSize, glyphHeight + 6 + borderPadV);
+
+            QueueCollapsedStripRotation.Angle = 0;
+            QueueCollapsedStrip.Padding = new Thickness(0);
+            QueueCollapsedStrip.Margin = new Thickness(3, 0, 0, 3);
+            QueueCollapsedStrip.VerticalAlignment = VerticalAlignment.Center;
+            QueueCollapsedStrip.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
+        }
+
+
         if (isRight)
         {
             var col = ContentQueueGrid.ColumnDefinitions.Count > 2 ? ContentQueueGrid.ColumnDefinitions[2] : null;
@@ -4668,8 +4738,8 @@ public partial class DmdWindow : JukeboxWindow
             {
                 if (_queueCollapsed)
                 {
-                    col.MinWidth = QueueCollapsedStripSize;
-                    col.Width = new GridLength(QueueCollapsedStripSize, GridUnitType.Pixel);
+                    col.MinWidth = stripSize;
+                    col.Width = new GridLength(stripSize, GridUnitType.Pixel);
                 }
                 else
                 {
@@ -4680,16 +4750,6 @@ public partial class DmdWindow : JukeboxWindow
                         : new GridLength(1, GridUnitType.Star);
                 }
             }
-            // Vertical label for the Right layout. Padding is asymmetric to optically center the
-            // all-caps text (font ascent/descent) once rotated 90°.
-            // Vertical label for the Right layout. Rotated 90° via LayoutTransform. Position with
-            // Margin (parent/screen space, not affected by the rotation): Top nudges the label down,
-            // Left/Right nudge it horizontally within the strip. Padding stays minimal.
-            QueueCollapsedStripRotation.Angle = 90;
-            QueueCollapsedStrip.Padding = new Thickness(0);
-            QueueCollapsedStrip.Margin = new Thickness(0, 8, 0, 0);
-            QueueCollapsedStrip.VerticalAlignment = VerticalAlignment.Top;
-            QueueCollapsedStrip.HorizontalAlignment = System.Windows.HorizontalAlignment.Center;
         }
         else
         {
@@ -4698,8 +4758,8 @@ public partial class DmdWindow : JukeboxWindow
             {
                 if (_queueCollapsed)
                 {
-                    row.MinHeight = QueueCollapsedStripSize;
-                    row.Height = new GridLength(QueueCollapsedStripSize, GridUnitType.Pixel);
+                    row.MinHeight = stripSize;
+                    row.Height = new GridLength(stripSize, GridUnitType.Pixel);
                 }
                 else
                 {
@@ -4710,15 +4770,14 @@ public partial class DmdWindow : JukeboxWindow
                         : new GridLength(1, GridUnitType.Star);
                 }
             }
-            // Horizontal label for the Bottom layout. Centered with symmetric padding.
-            QueueCollapsedStripRotation.Angle = 0;
-            QueueCollapsedStrip.Padding = new Thickness(4, 2, 4, 2);
-            QueueCollapsedStrip.VerticalAlignment = VerticalAlignment.Center;
-            QueueCollapsedStrip.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
         }
 
         QueueExpandedPanel.Visibility = _queueCollapsed ? Visibility.Collapsed : Visibility.Visible;
         QueueCollapsedStrip.Visibility = _queueCollapsed ? Visibility.Visible : Visibility.Collapsed;
+
+        // Show a hand cursor over the whole collapsed strip (not just the label) so it reads as clickable;
+        // clear it when expanded so the queue list/header keep the default cursor.
+        QueueBorder.Cursor = _queueCollapsed ? System.Windows.Input.Cursors.Hand : null;
 
         // When collapsed the splitter is hidden, so add a small gap between the queue strip and the
         // content area's scrollbar (left for Right, top for Bottom). Expanded uses the splitter's gap.

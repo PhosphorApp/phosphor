@@ -722,7 +722,8 @@
                       ResizeBehavior="PreviousAndNext"/>
 
         <!-- Queue -->
-        <Border x:Name="QueueBorder" Grid.Column="2" Background="{StaticResource SurfaceBrush}" CornerRadius="6" Padding="8">
+        <Border x:Name="QueueBorder" Grid.Column="2" Background="{StaticResource SurfaceBrush}" CornerRadius="6" Padding="8"
+                PreviewMouseLeftButtonDown="QueueBorder_MouseLeftButtonUp">
             <Grid>
             <!-- Collapsed strip: shown only when the queue is collapsed. Clicking it restores the panel.
                  For the Right layout the label is rotated vertical; for Bottom it stays horizontal
@@ -766,6 +767,7 @@
                             IsEnabled="{Binding HasActiveQueueItems}"
                             Visibility="{Binding HasActiveQueueItems, Converter={StaticResource BoolVis}}"/>
                     <Button x:Name="QueueHeaderLabel" DockPanel.Dock="Left"
+                            HorizontalAlignment="Left"
                             Foreground="{StaticResource TextDimBrush}" Cursor="Hand"
                             FontSize="{DynamicResource QueueHeaderFontSize}" FontWeight="Bold"
                             VerticalAlignment="Center" HorizontalContentAlignment="Left"
