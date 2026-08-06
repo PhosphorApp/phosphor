@@ -522,11 +522,7 @@ public partial class SettingsWindow : JukeboxWindow
         SetResizable(settings.ResizableWindows);
 
         // Version info
-        var asm = System.Reflection.Assembly.GetExecutingAssembly();
-        var asmVersion = asm.GetName().Version;
-        VersionText.Text = asmVersion is not null
-            ? $"v{asmVersion.Major}.{asmVersion.Minor}.{asmVersion.Build}.{asmVersion.Revision}"
-            : "v0.0";
+        VersionText.Text = AppVersion.DisplayWithPrefix;
 
         BindingsList.ItemsSource = _entries;
 

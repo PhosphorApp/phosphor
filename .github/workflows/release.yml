@@ -71,8 +71,12 @@ jobs:
         shell: pwsh
         run: |
           $v = "${{ steps.ver.outputs.version }}"
+          # AssemblyVersion/FileVersion take the clean numeric core; InformationalVersion carries the
+          # full label (channel suffix included, minus the leading 'v') so the app/log can display the
+          # exact build/channel — e.g. "0.9.35-rc" — that a tester is running.
+          $info = "${{ steps.ver.outputs.label }}" -replace '^v', ''
           dotnet build Phosphor.slnx --configuration Release `
-            -p:Version=$v -p:AssemblyVersion=$v -p:FileVersion=$v
+            -p:Version=$v -p:AssemblyVersion=$v -p:FileVersion=$v -p:InformationalVersion=$info
 
       - name: Resolve host output dir
         id: host

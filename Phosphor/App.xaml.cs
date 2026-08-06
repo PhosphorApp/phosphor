@@ -57,8 +57,7 @@ public partial class App : Application
         DebugLog.Enabled = _settings.DebugLogging;
         DebugLog.MinimumLevel = _settings.DebugLogLevel;
         RenderPerformanceMonitor.Start();
-        var appVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
-        DebugLog.Log(LogLevel.Info, "App", $"Application starting - v{appVersion}");
+        DebugLog.Log(LogLevel.Info, "App", $"Application starting - {AppVersion.DisplayWithPrefix}");
         DebugLog.Log(LogLevel.Info, "App", "Loading settings complete");
 
         // Pre-initialize a shared LibVLC instance on a background thread.
