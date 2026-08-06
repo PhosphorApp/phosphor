@@ -5889,6 +5889,9 @@ public partial class SettingsWindow : JukeboxWindow
         {
             Foreground = text, Background = surface2, Height = EditorHeight,
             VerticalContentAlignment = VerticalAlignment.Center,
+            // Cap the popup height so it can't stretch to the full screen height (part of the
+            // off-screen-placement bug was a popup sized as tall as the display).
+            MaxDropDownHeight = 320,
         };
         // Prevent the parent ScrollViewer from scrolling when the selection changes: WPF raises
         // RequestBringIntoView on selection, which bubbles up and moves the settings scroll position.
@@ -5928,6 +5931,12 @@ public partial class SettingsWindow : JukeboxWindow
             var needsFetch = !_pluginLibraryAvailable.TryGetValue(instId, out var avail) || avail.Count == 0;
             if (needsFetch)
             {
+                // Close the popup while we fetch. If we leave it open across the await, the settings
+                // ScrollViewer can shift (harvest + the scroll-guard's restore, which runs at Input
+                // priority) and the still-open popup stays anchored to the combo's transient/off-screen
+                // position — that's the "dropdown renders far off the bottom of the screen" bug, which
+                // gets worse after adding a plug-in because the taller content allows a bigger shift.
+                combo.IsDropDownOpen = false;
                 combo.Items.Clear();
                 combo.Items.Add(new System.Windows.Controls.ComboBoxItem
                 { Content = "Loading…", Tag = null, IsEnabled = false });
@@ -5936,7 +5945,22 @@ public partial class SettingsWindow : JukeboxWindow
                 _pluginLibraryAvailable.Remove(instId);
                 await FetchAvailableLibrariesAsync(instId);
                 RefreshCombo();
-                combo.IsDropDownOpen = true;
+                // Re-open below Input priority so this runs AFTER the scroll-guard restores the combo to
+                // its settled on-screen position; the popup then places against the correct location
+                // instead of a stale/off-screen one.
+                await Dispatcher.BeginInvoke(
+                    new Action(() => combo.IsDropDownOpen = true),
+                    System.Windows.Threading.DispatcherPriority.Background);
+            }
+            else
+            {
+                // The cache is already populated — typically by the background prefetch that runs when
+                // the instance has libraries added. That prefetch fills the cache but doesn't rebuild
+                // this combo (it only re-renders the tab when sub-options arrive, which Jellyfin/Emby
+                // don't declare), so the combo can still be showing the "(click to load libraries…)"
+                // placeholder from its initial build. Rebuild from the cache so the real library list
+                // appears on open. Without this, adding at least one library left the dropdown stuck.
+                RefreshCombo();
             }
         };
 
@@ -6082,6 +6106,18 @@ public partial class SettingsWindow : JukeboxWindow
                     }
                 }
                 catch { fetchFailed = true; /* don't cache a failed fetch — allow retry */ }
+                finally
+                {
+                    // Dispose the transient source so any connection/resources it opened during
+                    // InitializeAsync are released. Without this the undisposed source lingers and a
+                    // source built on the next window open can fail to re-connect, leaving the
+                    // "click to load libraries…" dropdown permanently empty.
+                    DisposeTransientSource(source);
+                }
+            }
+            else
+            {
+                DisposeTransientSource(source);
             }
         }
         // Only cache a successful fetch. A failed fetch (e.g. a wrong password → 401) must NOT be
