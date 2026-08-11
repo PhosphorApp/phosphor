@@ -21,7 +21,16 @@ public partial class JukeboxViewModel : ObservableObject
 
     // ── Plug-in sources (the source path — YouTube and Plex run through the registry) ──
     private Phosphor.Plugins.SourceRegistry? _sourceRegistry;
+    // The registry's shared HttpClient, created once and reused across reconciles so the registry
+    // instance (and its live sources) survives a settings apply instead of being rebuilt.
+    private HttpClient? _sourceRegistryHttp;
     private bool _pluginsDiscovered;
+
+    // Live now-playing pollers, keyed by player context: while an IsLiveStream item whose source
+    // implements ILiveNowPlayingProvider plays, a background loop refreshes its LiveTrackText.
+    private readonly Dictionary<Phosphor.Playback.PlayerContext, CancellationTokenSource> _liveNowPlayingPollers = new();
+    // Default poll cadence when the source doesn't tell us when the current track ends.
+    private static readonly TimeSpan LiveNowPlayingDefaultInterval = TimeSpan.FromSeconds(15);
 
     // Tracks the in-flight registry build so callers that depend on registry-derived wiring (e.g. the
     // cache's DownloadOverride, which is set inside BuildSourceRegistryAsync) can await it instead of
@@ -137,12 +146,13 @@ public partial class JukeboxViewModel : ObservableObject
             _pluginsDiscovered = true;
         }
 
-        // Dispose the previous registry so its sources release any connections/watchers/timers
-        // before we replace them (this method runs on every settings save).
-        var previous = _sourceRegistry;
-
-        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(NetworkTimeoutSeconds) };
-        var registry = new Phosphor.Plugins.SourceRegistry(http);
+        // Reconcile IN PLACE on the existing registry when we have one: BuildAsync keeps unchanged
+        // source instances alive (only reconfiguring/disposing what actually changed), so applying
+        // settings never tears down an active source — e.g. a live stream whose local proxy would
+        // otherwise be killed. Only the very first build constructs a fresh registry.
+        var http = _sourceRegistryHttp ??= new HttpClient { Timeout = TimeSpan.FromSeconds(NetworkTimeoutSeconds) };
+        var registry = _sourceRegistry ?? new Phosphor.Plugins.SourceRegistry(http);
+        var isNewRegistry = !ReferenceEquals(registry, _sourceRegistry);
         try
         {
             // The persisted PluginInstances list is the source of truth for the plug-in path and is
@@ -151,29 +161,29 @@ public partial class JukeboxViewModel : ObservableObject
             if (settings.PluginInstances.Count == 0)
                 settings.PluginInstances = Phosphor.Plugins.PluginSettingsFactory.FromAppSettings(settings);
 
-            await registry.BuildAsync(settings.PluginInstances);
+            var reconcile = await registry.BuildAsync(settings.PluginInstances);
             _sourceRegistry = registry;
             DebugLog.Log(LogLevel.Info, "SourceRegistry", $"Built {registry.Sources.Count} source(s)");
             WireCacheDownloadOverride();
 
             // Render tiles immediately from the persisted categories.json entries (no network wait),
             // then kick off the background fetch that recovers each tile's live SourceState and
-            // reconciles new/removed tiles when it completes.
+            // reconciles new/removed tiles when it completes. Sources whose config was unchanged keep
+            // their already-fetched tiles, so we don't re-query (and re-authenticate) them.
             await RunOnUiAsync(RebuildCategories);
-            BuildPluginBrowseTiles(registry);
+            BuildPluginBrowseTiles(registry, reconcile.UnchangedInstanceIds);
             BuildSearchSources(registry);
         }
         catch (Exception ex)
         {
             DebugLog.LogException("SourceRegistry build", ex);
-            _sourceRegistry = null;
+            // Only null out (and dispose below) a registry we just created; never drop a live one.
+            if (isNewRegistry) _sourceRegistry = null;
         }
 
-        if (previous != null)
-        {
-            try { await previous.DisposeAsync(); }
-            catch (Exception ex) { DebugLog.LogException("SourceRegistry dispose (previous)", ex); }
-        }
+        // No wholesale registry teardown here: BuildAsync reconciled in place, disposing only the
+        // sources that were actually removed/changed. A live source (e.g. an in-flight SiriusXM
+        // stream) that is still configured is preserved across the settings apply.
 
         try { SourceRegistryRebuilt?.Invoke(); }
         catch (Exception ex) { DebugLog.LogException("SourceRegistryRebuilt handlers", ex); }
@@ -194,19 +204,42 @@ public partial class JukeboxViewModel : ObservableObject
     /// <see cref="BrowsePluginCategoryAsync"/>). Built-in YouTube is skipped (not browsable). Failures
     /// per source are logged and skipped so one bad plug-in never blocks the home screen.
     /// </summary>
-    private void BuildPluginBrowseTiles(Phosphor.Plugins.SourceRegistry registry)
+    private void BuildPluginBrowseTiles(Phosphor.Plugins.SourceRegistry registry,
+        IReadOnlyCollection<string>? unchangedInstanceIds = null)
     {
-        _pluginTilesReady = FetchAndReconcilePluginTilesAsync(registry);
+        _pluginTilesReady = FetchAndReconcilePluginTilesAsync(registry, unchangedInstanceIds);
     }
 
     /// <summary>
     /// The background body behind <see cref="BuildPluginBrowseTiles"/>: fetches each browsable
     /// source's root categories in parallel, populates <see cref="_pluginBrowseTiles"/> with live
     /// <c>SourceState</c>, syncs the tiles into the persisted genre entries, and rebuilds the category
-    /// list so tiles pick up their live state.
+    /// list so tiles pick up their live state. Sources listed in <paramref name="unchangedInstanceIds"/>
+    /// (carried over untouched by the registry reconcile) reuse their already-fetched tiles instead of
+    /// re-querying — avoiding a needless network round-trip and re-authentication on every settings save.
     /// </summary>
-    private async Task FetchAndReconcilePluginTilesAsync(Phosphor.Plugins.SourceRegistry registry)
+    private async Task FetchAndReconcilePluginTilesAsync(Phosphor.Plugins.SourceRegistry registry,
+        IReadOnlyCollection<string>? unchangedInstanceIds = null)
     {
+        var unchanged = unchangedInstanceIds is { Count: > 0 }
+            ? new HashSet<string>(unchangedInstanceIds, StringComparer.Ordinal)
+            : null;
+
+        // Snapshot the previously-fetched tiles per source, so unchanged sources can reuse them
+        // without re-querying (the fetch does auth + list-libraries round-trips for media servers).
+        Dictionary<string, List<Category>>? priorTilesBySource = null;
+        if (unchanged != null)
+        {
+            priorTilesBySource = new Dictionary<string, List<Category>>(StringComparer.Ordinal);
+            foreach (var tile in _pluginBrowseTiles)
+            {
+                if (tile.SourceInstanceId is not { } id || !unchanged.Contains(id)) continue;
+                if (!priorTilesBySource.TryGetValue(id, out var bucket))
+                    priorTilesBySource[id] = bucket = new List<Category>();
+                bucket.Add(tile);
+            }
+        }
+
         // Each browsable source's GetRootCategoriesAsync does a network round-trip (auth + list
         // libraries) for media servers. Running them sequentially makes startup wait for the SUM of
         // every server's latency (Plex + Emby + Jellyfin + …). Fetch all sources in PARALLEL instead,
@@ -219,6 +252,13 @@ public partial class JukeboxViewModel : ObservableObject
 
         async Task<List<Category>> FetchTilesAsync(Phosphor.Plugin.Abstractions.IPhosphorSource source)
         {
+            // Unchanged source with tiles already in hand: reuse them, skip the network fetch/auth.
+            if (priorTilesBySource != null &&
+                priorTilesBySource.TryGetValue(source.InstanceId, out var reused))
+            {
+                return reused;
+            }
+
             var sourceTilesList = new List<Category>();
             try
             {
@@ -983,6 +1023,115 @@ public partial class JukeboxViewModel : ObservableObject
         }
     }
 
+    // ── Live now-playing poller (current song for a playing live channel) ────────
+
+    // Master switch for the live now-playing feature. OFF while the label is hidden (the available
+    // SXM metadata endpoint trails the broadcast ~1 min — see docs/SIRIUSXM_NOWPLAYING.md); disabling
+    // here also avoids the background polling network calls. Keep in sync with
+    // PlayerContext.ShowLiveTrackLabel. Flip both to true once the fresher liveUpdate feed is adopted.
+    private const bool LiveNowPlayingEnabled = false;
+
+    /// <summary>
+    /// Starts (or replaces) the background now-playing poller for <paramref name="ctx"/> against
+    /// <paramref name="item"/>. No-ops unless the item is a live stream whose owning source implements
+    /// <see cref="Phosphor.Plugin.Abstractions.ILiveNowPlayingProvider"/>. The loop updates the item's
+    /// <see cref="VideoItem.LiveTrackText"/> and stops when the item stops or is replaced.
+    /// </summary>
+    private void StartLiveNowPlayingPoller(Phosphor.Playback.PlayerContext ctx, VideoItem? item)
+    {
+        // Tear down any existing poller for this player first.
+        StopLiveNowPlayingPoller(ctx);
+
+        if (!LiveNowPlayingEnabled) return;
+        if (item is not { IsLiveStream: true }) return;
+        if (SourceForItem(item) is not Phosphor.Plugin.Abstractions.ILiveNowPlayingProvider provider) return;
+
+        var cts = new CancellationTokenSource();
+        _liveNowPlayingPollers[ctx] = cts;
+        _ = PollLiveNowPlayingAsync(ctx, item, provider, cts.Token);
+    }
+
+    /// <summary>Stops and disposes the now-playing poller for a player, if any.</summary>
+    private void StopLiveNowPlayingPoller(Phosphor.Playback.PlayerContext ctx)
+    {
+        if (_liveNowPlayingPollers.TryGetValue(ctx, out var existing))
+        {
+            _liveNowPlayingPollers.Remove(ctx);
+            try { existing.Cancel(); } catch { }
+            try { existing.Dispose(); } catch { }
+        }
+    }
+
+    /// <summary>
+    /// Background loop: periodically asks the source for the current track and pushes it onto the
+    /// item's <see cref="VideoItem.LiveTrackText"/> (on the UI thread) when it changes. Polls near the
+    /// track's expected end when the source reports it, otherwise on a fixed default interval. Ends
+    /// when the token is cancelled (item stopped/replaced) or the item is no longer the one playing.
+    /// </summary>
+    private async Task PollLiveNowPlayingAsync(
+        Phosphor.Playback.PlayerContext ctx,
+        VideoItem item,
+        Phosphor.Plugin.Abstractions.ILiveNowPlayingProvider provider,
+        CancellationToken ct)
+    {
+        string? last = item.LiveTrackText;
+        try
+        {
+            while (!ct.IsCancellationRequested && ReferenceEquals(ctx.CurrentlyPlaying, item))
+            {
+                var interval = LiveNowPlayingDefaultInterval;
+                try
+                {
+                    var np = await provider.GetNowPlayingAsync(item.VideoId, TimeSpan.FromMilliseconds(Math.Max(0, ctx.PlaybackPosition)), ct);
+                    if (np is { HasAny: true })
+                    {
+                        var text = FormatLiveTrack(np);
+                        if (!string.Equals(text, last, StringComparison.Ordinal))
+                        {
+                            last = text;
+                            await RunOnUiAsync(() =>
+                            {
+                                // Guard against a late update landing after a track change.
+                                if (ReferenceEquals(ctx.CurrentlyPlaying, item))
+                                {
+                                    item.LiveTrackText = text;
+                                    ctx.NotifyNowPlayingTitleChanged();
+                                }
+                            });
+                        }
+                        // Poll again a touch after the current track is expected to end.
+                        if (np.NextChangeUtc is { } next)
+                        {
+                            var until = next - DateTimeOffset.UtcNow + TimeSpan.FromSeconds(2);
+                            if (until > TimeSpan.Zero && until < TimeSpan.FromMinutes(30))
+                                interval = until;
+                        }
+                    }
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    DebugLog.LogException($"LiveNowPlaying poll '{item.VideoId}'", ex);
+                }
+
+                // Clamp so a bad/near-zero next-change estimate can't hot-loop the endpoint.
+                if (interval < TimeSpan.FromSeconds(5)) interval = TimeSpan.FromSeconds(5);
+                await Task.Delay(interval, ct);
+            }
+        }
+        catch (OperationCanceledException) { /* expected on stop/replace */ }
+    }
+
+    // Composes the "Artist · Song" (or just the title) fragment appended to the now-playing bar.
+    private static string FormatLiveTrack(Phosphor.Plugin.Abstractions.LiveNowPlaying np)
+    {
+        var parts = new List<string>(2);
+        if (!string.IsNullOrWhiteSpace(np.Artist)) parts.Add(np.Artist!.Trim());
+        if (!string.IsNullOrWhiteSpace(np.Title)) parts.Add(np.Title!.Trim());
+        // Artist-less content (e.g. a talk show title) falls back to just the title.
+        return string.Join(" \u00B7 ", parts);
+    }
+
     /// <summary>
     /// Builds the short source annotation (e.g. "(from YouTube - Cached)") for an item. Shared by both
     /// players via <see cref="PlayerContext.SourceTextResolver"/> — needs the source registry.
@@ -1537,6 +1686,8 @@ public partial class JukeboxViewModel : ObservableObject
         {
             if (outgoing is not null && !ReferenceEquals(outgoing, incoming))
                 ReleasePlaybackFor(outgoing);
+            // Restart the live now-playing poller for this player against the incoming item.
+            StartLiveNowPlayingPoller(ctx, incoming);
         };
 
         // Player 1 still drives two VM-level aggregates the DMD binds directly (the rest of the
@@ -3310,6 +3461,12 @@ public partial class JukeboxViewModel : ObservableObject
                 Author = entry.Author,
                 ThumbnailUrl = entry.ThumbnailUrl,
                 VideoId = entry.VideoId,
+                // Carry the source identity so replay routes back to the original plug-in source
+                // (SiriusXM/Plex/…) instead of the YouTube fallback. Null for legacy/YouTube entries.
+                SourceInstanceId = entry.SourceInstanceId,
+                SourceStateToken = entry.SourceStateToken,
+                IsAudioOnly = entry.IsAudioOnly,
+                IsLiveStream = entry.IsLiveStream,
             });
         }
 

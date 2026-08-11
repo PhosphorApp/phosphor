@@ -108,7 +108,7 @@
       discovered at runtime from plugins/. For local F5 debugging, build the plugins repo with
       PHOSPHOR_HOST_DIR pointed at this host's output so plug-ins self-deploy into plugins/.
     -->
-    <PackageReference Include="Phosphor.Plugin.Abstractions" Version="0.14.0" />
+    <PackageReference Include="Phosphor.Plugin.Abstractions" Version="0.15.0" />
   </ItemGroup>
 
   <!--

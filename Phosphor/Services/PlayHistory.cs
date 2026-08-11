@@ -10,6 +10,14 @@ public class HistoryEntry
     public string VideoId { get; set; } = "";
     public DateTime PlayedAt { get; set; }
     public string PlayedAtDisplay => PlayedAt.ToString("g");
+
+    // Source routing/identity so a replayed history item resolves through its ORIGINAL source
+    // (e.g. SiriusXM, Plex) instead of falling back to YouTube. Null/false for legacy entries and
+    // the built-in YouTube engine, which keeps back-compat with older history.json files.
+    public string? SourceInstanceId { get; set; }
+    public string? SourceStateToken { get; set; }
+    public bool IsAudioOnly { get; set; }
+    public bool IsLiveStream { get; set; }
 }
 
 public class PlayHistory
@@ -31,6 +39,10 @@ public class PlayHistory
             Author = item.Author,
             ThumbnailUrl = item.ThumbnailUrl,
             VideoId = item.VideoId,
+            SourceInstanceId = item.SourceInstanceId,
+            SourceStateToken = item.SourceStateToken,
+            IsAudioOnly = item.IsAudioOnly,
+            IsLiveStream = item.IsLiveStream,
             PlayedAt = DateTime.Now
         });
 

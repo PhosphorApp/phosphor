@@ -32,4 +32,32 @@ public sealed class PluginInstanceConfig
     /// <c>SourceRegistry.CachingPolicy</c>, and editable in the Plug-ins settings tab.
     /// </summary>
     public bool? AllowCaching { get; set; }
+
+    /// <summary>
+    /// True when this config is behaviorally identical to <paramref name="other"/> — same type,
+    /// display name, enabled/caching flags, and settings blob. The <see cref="SourceRegistry"/> uses
+    /// this to decide whether a live source instance can be kept as-is (avoiding a needless
+    /// dispose/rebuild that would tear down active connections — e.g. an in-flight live stream).
+    /// </summary>
+    public bool ConfigEquals(PluginInstanceConfig other)
+    {
+        if (other is null) return false;
+        if (!string.Equals(TypeId, other.TypeId, StringComparison.Ordinal)) return false;
+        if (!string.Equals(DisplayName ?? "", other.DisplayName ?? "", StringComparison.Ordinal)) return false;
+        if (Enabled != other.Enabled) return false;
+        if (AllowCaching != other.AllowCaching) return false;
+        return SettingsEqual(Settings, other.Settings);
+    }
+
+    private static bool SettingsEqual(Dictionary<string, string?> a, Dictionary<string, string?> b)
+    {
+        if (ReferenceEquals(a, b)) return true;
+        if (a.Count != b.Count) return false;
+        foreach (var kv in a)
+        {
+            if (!b.TryGetValue(kv.Key, out var bv)) return false;
+            if (!string.Equals(kv.Value ?? "", bv ?? "", StringComparison.Ordinal)) return false;
+        }
+        return true;
+    }
 }

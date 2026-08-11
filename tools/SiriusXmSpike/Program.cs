@@ -96,6 +96,23 @@ if (playIdx >= 0 && playIdx + 1 < args.Length)
     return await ProvePlaybackAsync(ch);
 }
 
+// ── Optional: dump the raw now-playing-live JSON for a channel (`--dump-nowplaying <ch>`) ──
+// Used to pin the track-metadata (cut-marker) parser to the real response shape.
+var npDumpIdx = Array.FindIndex(args, a => a is "--dump-nowplaying" or "--np");
+if (npDumpIdx >= 0 && npDumpIdx + 1 < args.Length)
+{
+    var wanted = args[npDumpIdx + 1];
+    var ch = channels.FirstOrDefault(c =>
+        string.Equals(c.ChannelId, wanted, StringComparison.OrdinalIgnoreCase) ||
+        c.Number == wanted);
+    if (ch.ChannelId is null or "")
+    {
+        Console.Error.WriteLine($"Channel '{wanted}' not found in lineup.");
+        return 1;
+    }
+    return await DumpNowPlayingAsync(ch);
+}
+
 // ── Optional Step 5: dump the category taxonomy (`--categories`) ──
 if (args.Any(a => a is "--categories" or "-c"))
 {
@@ -167,6 +184,73 @@ void DumpCategories(JsonElement? response)
     Console.WriteLine("Copy the CATEGORY column to seed the Music/Talk/Sports super-group JSON.");
 
     static string Trunc(string s, int n) => s.Length <= n ? s : s[..(n - 1)] + "…";
+}
+
+// Fetches tune/now-playing-live for a channel and writes the raw JSON to a file, so the track-
+// metadata (cut-marker) parser can be pinned to the real response shape. Also prints a best-effort
+// scan of any array properties named like "markers"/"cut" to speed up locating the track fields.
+async Task<int> DumpNowPlayingAsync(Channel ch)
+{
+    Console.WriteLine($"[np] now-playing -> '{ch.ChannelId}' ({ch.Name})…");
+    var now = DateTimeOffset.UtcNow;
+    var npParams = new Dictionary<string, string>
+    {
+        ["assetGUID"] = ch.Guid,
+        ["ccRequestType"] = "AUDIO_VIDEO",
+        ["channelId"] = ch.ChannelId,
+        ["hls_output_mode"] = "custom",
+        ["marker_mode"] = "all_separate_cue_points",
+        ["result-template"] = "web",
+        ["time"] = now.ToUnixTimeMilliseconds().ToString(),
+        ["timestamp"] = now.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss.fff") + "Z",
+    };
+    var np = await GetAsync("tune/now-playing-live", npParams, RestV2);
+    if (np is not { } r)
+    {
+        Console.Error.WriteLine("    now-playing-live returned nothing.");
+        return 1;
+    }
+
+    var outPath = Path.Combine(AppContext.BaseDirectory, $"nowplaying-{ch.ChannelId}.json");
+    var pretty = JsonSerializer.Serialize(r, new JsonSerializerOptions { WriteIndented = true });
+    File.WriteAllText(outPath, pretty);
+    Console.WriteLine($"    wrote {pretty.Length:N0} chars to {outPath}");
+
+    // Best-effort: surface property names that look like they carry marker/cut/track data.
+    Console.WriteLine("    scanning for marker/cut/track-like properties…");
+    ScanForTrackHints(r, "");
+    return 0;
+
+    static void ScanForTrackHints(JsonElement el, string path)
+    {
+        switch (el.ValueKind)
+        {
+            case JsonValueKind.Object:
+                foreach (var p in el.EnumerateObject())
+                {
+                    var lower = p.Name.ToLowerInvariant();
+                    if (lower.Contains("marker") || lower.Contains("cut") || lower.Contains("artist")
+                        || lower.Contains("track") || lower.Contains("song") || lower.Contains("album")
+                        || lower.Contains("title") || lower.Contains("episode") || lower.Contains("show"))
+                    {
+                        var kind = p.Value.ValueKind;
+                        var preview = kind is JsonValueKind.String ? $" = \"{p.Value.GetString()}\"" : $" ({kind})";
+                        Console.WriteLine($"      {path}{p.Name}{preview}");
+                    }
+                    ScanForTrackHints(p.Value, path + p.Name + ".");
+                }
+                break;
+            case JsonValueKind.Array:
+                int i = 0;
+                foreach (var item in el.EnumerateArray())
+                {
+                    if (i > 3) break; // sample the first few
+                    ScanForTrackHints(item, path + $"[{i}].");
+                    i++;
+                }
+                break;
+        }
+    }
 }
 
 // Proves a channel's live stream is reachable + decryptable end to end:

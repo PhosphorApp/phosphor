@@ -87,14 +87,27 @@ public sealed class SourceRegistry : IAsyncDisposable
 
     /// <summary>
     /// Builds and initializes the source instances from the given per-instance configs. Safe to
-    /// call again to rebuild after settings change; existing instances are discarded. Disabled
-    /// configs are skipped. Unknown provider type ids are logged and ignored.
+    /// call again to reconcile after settings change. Unchanged instances are <b>kept alive</b> (no
+    /// dispose/rebuild), so applying settings never tears down an active source — e.g. an in-flight
+    /// live stream whose local proxy would otherwise be killed. Instances whose config changed are
+    /// reconfigured in place via <see cref="IPhosphorSource.ApplySettings"/>; only removed,
+    /// type-changed, or newly-disabled instances are disposed. Disabled configs are skipped. Unknown
+    /// provider type ids are logged and ignored.
     /// </summary>
-    public async Task BuildAsync(IEnumerable<PluginInstanceConfig> configs, CancellationToken ct = default)
+    /// <returns>
+    /// A <see cref="ReconcileResult"/> whose <see cref="ReconcileResult.UnchangedInstanceIds"/> lists
+    /// the instances carried over untouched (same type + identical config), so the caller can reuse
+    /// already-fetched, source-derived state (e.g. browse tiles) instead of re-querying them.
+    /// </returns>
+    public async Task<ReconcileResult> BuildAsync(IEnumerable<PluginInstanceConfig> configs, CancellationToken ct = default)
     {
-        await DisposeSourcesAsync();
-        _sources.Clear();
-        _configs.Clear();
+        // Index the surviving live instances by id so we can reuse them.
+        var existing = _sources.ToDictionary(s => s.InstanceId, StringComparer.Ordinal);
+
+        var rebuilt = new List<IPhosphorSource>();
+        var newConfigs = new Dictionary<string, PluginInstanceConfig>(StringComparer.Ordinal);
+        var keptIds = new HashSet<string>(StringComparer.Ordinal);
+        var unchangedIds = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var cfg in configs)
         {
@@ -107,12 +120,47 @@ public sealed class SourceRegistry : IAsyncDisposable
                 continue;
             }
 
+            // Reuse a live instance when the type matches: keep it as-is if the config is unchanged,
+            // otherwise reconfigure it in place. This preserves any state/connections it holds.
+            if (existing.TryGetValue(cfg.InstanceId, out var live) &&
+                string.Equals(live.TypeId, cfg.TypeId, StringComparison.Ordinal))
+            {
+                var hadConfig = _configs.TryGetValue(cfg.InstanceId, out var prev);
+                if (!hadConfig || !prev!.ConfigEquals(cfg))
+                {
+                    if (!string.IsNullOrEmpty(cfg.DisplayName))
+                        live.DisplayName = cfg.DisplayName!;
+                    try { live.ApplySettings(cfg.Settings); }
+                    catch (Exception ex) { DebugLog.LogException($"SourceRegistry reconfigure '{cfg.InstanceId}'", ex); }
+                }
+                else
+                {
+                    unchangedIds.Add(cfg.InstanceId);
+                }
+                rebuilt.Add(live);
+                newConfigs[cfg.InstanceId] = cfg;
+                keptIds.Add(cfg.InstanceId);
+                continue;
+            }
+
             var source = provider.CreateInstance(cfg.InstanceId, cfg.Settings);
             if (!string.IsNullOrEmpty(cfg.DisplayName))
                 source.DisplayName = cfg.DisplayName!;
-            _configs[cfg.InstanceId] = cfg;
-            await AddAsync(source, ct);
+            newConfigs[cfg.InstanceId] = cfg;
+            await InitializeAsync(source, ct);
+            rebuilt.Add(source);
         }
+
+        // Dispose only the instances that were NOT carried over (removed, disabled, or type-changed).
+        var toDispose = _sources.Where(s => !keptIds.Contains(s.InstanceId)).ToList();
+        await DisposeSourcesAsync(toDispose);
+
+        _sources.Clear();
+        _sources.AddRange(rebuilt);
+        _configs.Clear();
+        foreach (var kv in newConfigs) _configs[kv.Key] = kv.Value;
+
+        return new ReconcileResult(unchangedIds);
     }
 
     /// <summary>
@@ -122,21 +170,21 @@ public sealed class SourceRegistry : IAsyncDisposable
     /// </summary>
     private IPhosphorSourceProvider? CreateProvider(string typeId) => DiscoveredProviders.Get(typeId);
 
-    private async Task AddAsync(IPhosphorSource source, CancellationToken ct)
+    private async Task InitializeAsync(IPhosphorSource source, CancellationToken ct)
     {
         var host = new PluginHost(source.InstanceId, _http);
         await source.InitializeAsync(host, ct);
-        _sources.Add(source);
     }
 
     /// <summary>
-    /// Disposes each current source that opts into teardown (<see cref="IAsyncDisposable"/> or
-    /// <see cref="IDisposable"/>), so a rebuild or app shutdown releases any connections, watchers,
-    /// or timers a source holds. Defensive: a faulty source's dispose never aborts the sweep.
+    /// Disposes each source in <paramref name="sources"/> that opts into teardown
+    /// (<see cref="IAsyncDisposable"/> or <see cref="IDisposable"/>), so a reconcile or app shutdown
+    /// releases any connections, watchers, or timers a source holds. Defensive: a faulty source's
+    /// dispose never aborts the sweep.
     /// </summary>
-    private async Task DisposeSourcesAsync()
+    private static async Task DisposeSourcesAsync(IEnumerable<IPhosphorSource> sources)
     {
-        foreach (var source in _sources)
+        foreach (var source in sources)
         {
             try
             {
@@ -160,7 +208,7 @@ public sealed class SourceRegistry : IAsyncDisposable
     /// <summary>Disposes all live sources. Call when the registry is being replaced or the app exits.</summary>
     public async ValueTask DisposeAsync()
     {
-        await DisposeSourcesAsync();
+        await DisposeSourcesAsync(_sources);
         _sources.Clear();
         _configs.Clear();
     }
@@ -179,3 +227,10 @@ public sealed record SourceSummary(
 
 /// <summary>One setting field with its actual configured display value (secrets already masked).</summary>
 public sealed record SourceSettingValue(string Key, string Label, string DisplayValue, bool Secret);
+
+/// <summary>Outcome of a <see cref="SourceRegistry.BuildAsync"/> reconcile.</summary>
+/// <param name="UnchangedInstanceIds">
+/// Instances that were carried over untouched (same type and identical config), so any already-fetched
+/// source-derived state (e.g. browse tiles) for them can be reused instead of re-querying the source.
+/// </param>
+public sealed record ReconcileResult(IReadOnlyCollection<string> UnchangedInstanceIds);

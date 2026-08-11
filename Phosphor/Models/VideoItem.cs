@@ -84,6 +84,19 @@ public class VideoItem : ObservableObject
     /// </summary>
     public bool IsLiveStream { get; set; }
 
+    private string? _liveTrackText;
+    /// <summary>
+    /// For live streams that report a now-playing track (e.g. a SiriusXM channel's current song),
+    /// the pre-formatted "Artist · Song" fragment the host appends to the now-playing title. Updated
+    /// in place by the live now-playing poller while this item plays; null when unknown/none. Observable
+    /// so the now-playing bar refreshes when the track changes without swapping the item.
+    /// </summary>
+    public string? LiveTrackText
+    {
+        get => _liveTrackText;
+        set => SetProperty(ref _liveTrackText, value);
+    }
+
     /// <summary>
     /// Optional startup budget hint for the player's first-frame watchdog, surfaced by the source when
     /// it resolved the stream (see <c>ResolvedStream.StartupTimeout</c>). <c>null</c> keeps the player's
