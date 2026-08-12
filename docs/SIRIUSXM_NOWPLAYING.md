@@ -445,3 +445,16 @@ Remaining cleanup (unchanged from above): once gateway streaming is fully truste
 `SxmClient.cs`/`SxmProxy.cs`/`SxmNode` legacy references and the `UseLegacyStreaming` branch to retire
 the cookie path entirely. Note the `SxmCategoryMap` assembly-location load fix now lives in the
 shipping plugin (the original bug — loading from `AppContext.BaseDirectory` — is fixed here).
+
+## Future: "Up next" / "Coming up" (scoped separately)
+
+A follow-on feature would surface **what's coming up next** on a live channel. SiriusXM is a natural
+first implementer: the edge `liveUpdate` response we already fetch for now-playing carries the
+**forward schedule** (`items[]` ahead of the current cut) — today `ExtractNowPlaying` selects the
+current cut and discards the later ones, so "up next" is nearly free (pick the next `SONG` cut after
+the current one, same `LiveAudioLagMs` anchor). HDHomeRun (EPG "next program") is a later candidate.
+
+This needs a small abstractions rev (**0.16.0**): a new opt-in capability
+`ILiveUpNextProvider` (single next item) plus a reserved `ILiveUpcomingProvider : ILiveUpNextProvider`
+(forward list, for a future search/discovery view), and a `LiveUpNext` record. Full design + locked
+decisions are in **`docs/LIVE_UPNEXT_SCOPING.md`** — implement from there.
