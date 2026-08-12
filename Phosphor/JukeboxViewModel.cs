@@ -1025,11 +1025,11 @@ public partial class JukeboxViewModel : ObservableObject
 
     // ── Live now-playing poller (current song for a playing live channel) ────────
 
-    // Master switch for the live now-playing feature. OFF while the label is hidden (the available
-    // SXM metadata endpoint trails the broadcast ~1 min — see docs/SIRIUSXM_NOWPLAYING.md); disabling
-    // here also avoids the background polling network calls. Keep in sync with
-    // PlayerContext.ShowLiveTrackLabel. Flip both to true once the fresher liveUpdate feed is adopted.
-    private const bool LiveNowPlayingEnabled = false;
+    // Master switch for the live now-playing feature. ON to verify the experimental SiriusXM-Exp
+    // plugin, which sources now-playing from the fresher edge-gateway liveUpdate feed (see
+    // docs/SIRIUSXM_NOWPLAYING.md). Enables the background now-playing poller for any live source
+    // implementing ILiveNowPlayingProvider. Keep in sync with PlayerContext.ShowLiveTrackLabel.
+    private const bool LiveNowPlayingEnabled = true;
 
     /// <summary>
     /// Starts (or replaces) the background now-playing poller for <paramref name="ctx"/> against

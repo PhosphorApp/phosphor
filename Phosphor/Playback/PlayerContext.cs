@@ -164,12 +164,12 @@ public sealed class PlayerContext : INotifyPropertyChanged
 
     public bool IsLiveStream => _currentlyPlaying?.IsLiveStream == true;
 
-    // Feature gate for the live now-playing track label (e.g. SiriusXM current song). Currently OFF:
-    // the only available metadata endpoint publishes cuts ~1 min behind the broadcast, so the label
-    // trails the audio confusingly. The full plumbing (VideoItem.LiveTrackText + the VM poller +
-    // ILiveNowPlayingProvider) is kept intact behind this flag; flip to true once the fresher
-    // edge-gateway liveUpdate feed is adopted (see docs/SIRIUSXM_NOWPLAYING.md). Set true to re-enable.
-    private const bool ShowLiveTrackLabel = false;
+    // Feature gate for the live now-playing track label (e.g. SiriusXM current song). ON to verify the
+    // experimental SiriusXM-Exp plugin, which sources now-playing from the fresher edge-gateway
+    // liveUpdate feed (see docs/SIRIUSXM_NOWPLAYING.md). The full plumbing (VideoItem.LiveTrackText +
+    // the VM poller + ILiveNowPlayingProvider) sits behind this flag. Keep in sync with
+    // JukeboxViewModel.LiveNowPlayingEnabled.
+    private const bool ShowLiveTrackLabel = true;
 
     public string NowPlayingTitle
     {
