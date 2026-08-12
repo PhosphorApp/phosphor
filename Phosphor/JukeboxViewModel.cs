@@ -1025,12 +1025,6 @@ public partial class JukeboxViewModel : ObservableObject
 
     // ── Live now-playing poller (current song for a playing live channel) ────────
 
-    // Master switch for the live now-playing feature. ON to verify the experimental SiriusXM-Exp
-    // plugin, which sources now-playing from the fresher edge-gateway liveUpdate feed (see
-    // docs/SIRIUSXM_NOWPLAYING.md). Enables the background now-playing poller for any live source
-    // implementing ILiveNowPlayingProvider. Keep in sync with PlayerContext.ShowLiveTrackLabel.
-    private const bool LiveNowPlayingEnabled = true;
-
     /// <summary>
     /// Starts (or replaces) the background now-playing poller for <paramref name="ctx"/> against
     /// <paramref name="item"/>. No-ops unless the item is a live stream whose owning source implements
@@ -1042,7 +1036,6 @@ public partial class JukeboxViewModel : ObservableObject
         // Tear down any existing poller for this player first.
         StopLiveNowPlayingPoller(ctx);
 
-        if (!LiveNowPlayingEnabled) return;
         if (item is not { IsLiveStream: true }) return;
         if (SourceForItem(item) is not Phosphor.Plugin.Abstractions.ILiveNowPlayingProvider provider) return;
 
