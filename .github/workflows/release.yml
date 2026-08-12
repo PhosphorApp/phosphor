@@ -136,13 +136,15 @@ jobs:
           # Self-deploy target writes each plug-in into <host>/plugins/<Name>/.
           PHOSPHOR_HOST_DIR: ${{ steps.host.outputs.dir }}
         run: |
-          $v = "${{ steps.ver.outputs.version }}"
-          # Stamp plug-in FileVersion with the release version so every folded-in plug-in reports the
-          # release it shipped in on the About page (e.g. 0.9.3), distinct from an untagged CI drop-in
-          # (which stamps 1.0.0.<run#>). AssemblyVersion stays fixed at 1.0.0 — it is the binding
-          # identity the host's AssemblyLoadContext resolves against and must not churn per build.
+          # Each plug-in owns its own version: its .csproj declares <Version> (e.g. SiriusXM 1.1.0),
+          # which flows to FileVersion and is what the About page displays — so per-plug-in versions
+          # are preserved through the release build instead of being flattened to the host version.
+          # A plug-in that declares no version simply defaults to 1.0.0. AssemblyVersion stays pinned
+          # at 1.0.0 for every plug-in — it is the binding identity the host's AssemblyLoadContext
+          # resolves against and must not churn per build. The host release version is still recorded
+          # in build-info.json (pluginsCommit/pluginsPin) for snapshot traceability.
           dotnet build _plugins/Phosphor.Plugins.slnx --configuration Release `
-            -p:FileVersion=$v -p:AssemblyVersion=1.0.0
+            -p:AssemblyVersion=1.0.0
 
       - name: Verify plugins were folded into the snapshot
         shell: pwsh
