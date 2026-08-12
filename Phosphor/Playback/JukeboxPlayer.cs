@@ -151,11 +151,28 @@ public sealed class JukeboxPlayer
             string? streamingResolution = null;
             string? cachedResolution = null;
 
+            var vm = Model;
+            var state = Context;
+
+            // Applies THIS PLAYER's volume to the live media player. Wrapped so it can be invoked from
+            // both the Playing event and the first Vout — libVLC silently ignores/throws on volume sets
+            // before its audio output object exists, which happens on a genuinely cold start (no warm
+            // plugin cache). Re-asserting at first frame self-corrects a dropped Playing-time set; without
+            // it, a fresh Windows per-app mixer session (new exe path) stays at its 100% default.
+            void ApplyContextVolume()
+            {
+                if (state == null) return;
+                try { mediaPlayer.Volume = VolumeTaper.VlcVolume(state.Volume); }
+                catch (Exception ex) { DebugLog.Log(LogLevel.Debug, "Volume", $"Deferred volume apply skipped: {ex.Message}"); }
+            }
+
             // Wait for first video output before revealing the video surface.
             var voutTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             void OnVout(object? s, MediaPlayerVoutEventArgs a)
             {
                 mediaPlayer.Vout -= OnVout;
+                // Re-assert volume now that the audio output reliably exists (covers a lost cold-start set).
+                ApplyContextVolume();
                 _host.BeginInvokeOnHost(() => _host.OnFirstVideoFrame());
                 voutTcs.TrySetResult();
             }
@@ -163,9 +180,6 @@ public sealed class JukeboxPlayer
 
             // Create a fresh video surface, hidden until VLC has a frame ready.
             _host.EnsureVideoSurfaceHidden();
-
-            var vm = Model;
-            var state = Context;
 
             // Apply THIS PLAYER's volume once VLC actually starts playing (libVLC ignores volume set
             // before a track is playing). One-shot per play. Using the per-player context volume (not the
@@ -175,7 +189,7 @@ public sealed class JukeboxPlayer
                 void OnPlayingApplyVolume(object? s, EventArgs a)
                 {
                     mediaPlayer.Playing -= OnPlayingApplyVolume;
-                    try { mediaPlayer.Volume = VolumeTaper.VlcVolume(state.Volume); } catch { /* tearing down */ }
+                    ApplyContextVolume();
                 }
                 mediaPlayer.Playing += OnPlayingApplyVolume;
 
