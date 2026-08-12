@@ -1120,8 +1120,9 @@
                                      VerticalAlignment="Center" IsMoveToPointEnabled="True"
                                      IsEnabled="{Binding Player1.IsPlaying}"
                                      Visibility="{Binding Player1.IsLiveStream, Converter={StaticResource BoolVis}, ConverterParameter=Invert}"/>
-                                <!-- Live streams (e.g. SiriusXM) have no seekable timeline — show a LIVE badge instead of the scrub bar. -->
-                                <TextBlock Text="● LIVE" Foreground="{StaticResource AccentBrush}"
+                                <!-- Live streams (e.g. SiriusXM) have no seekable timeline — show a LIVE badge instead of the scrub bar.
+                                     LiveIndicatorText is "● LIVE", optionally annotated with what's coming up next. -->
+                                <TextBlock Text="{Binding Player1.LiveIndicatorText}" Foreground="{StaticResource AccentBrush}"
                                            FontWeight="Bold" VerticalAlignment="Center" HorizontalAlignment="Left"
                                            Margin="8,0,0,0"
                                            Visibility="{Binding Player1.IsLiveStream, Converter={StaticResource BoolVis}}"/>
@@ -1338,7 +1339,7 @@
                                      VerticalAlignment="Center" IsMoveToPointEnabled="True"
                                      IsEnabled="{Binding IsPlaying}"
                                      Visibility="{Binding IsLiveStream, Converter={StaticResource BoolVis}, ConverterParameter=Invert}"/>
-                                <TextBlock Text="● LIVE" Foreground="{StaticResource AccentBrush}"
+                                <TextBlock Text="{Binding LiveIndicatorText}" Foreground="{StaticResource AccentBrush}"
                                            FontWeight="Bold" VerticalAlignment="Center" HorizontalAlignment="Left"
                                            Margin="8,0,0,0"
                                            Visibility="{Binding IsLiveStream, Converter={StaticResource BoolVis}}"/>

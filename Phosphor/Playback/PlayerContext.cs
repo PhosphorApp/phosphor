@@ -65,6 +65,7 @@ public sealed class PlayerContext : INotifyPropertyChanged
                 OnPropertyChanged(nameof(NowPlayingTitle));
                 OnPropertyChanged(nameof(NowPlayingSourceText));
                 OnPropertyChanged(nameof(IsLiveStream));
+                OnPropertyChanged(nameof(LiveIndicatorText));
                 OnPropertyChanged(nameof(PlaybackTimeText));
                 CurrentlyPlayingChanged?.Invoke(outgoing, value);
             }
@@ -191,6 +192,30 @@ public sealed class PlayerContext : INotifyPropertyChanged
 
     public string NowPlayingSourceText =>
         _currentlyPlaying == null ? "" : (SourceTextResolver?.Invoke(_currentlyPlaying, _isCurrentFromCache) ?? "");
+
+    /// <summary>
+    /// The text shown in place of the scrub bar for a live stream: the "● LIVE" badge, optionally
+    /// annotated with what's coming up next when the source reports it (e.g.
+    /// "● LIVE (Up next: The Beatles · Yellow Submarine)"). Gated behind
+    /// <see cref="ShowLiveTrackLabel"/> just like the now-playing label; falls back to a bare badge
+    /// when no up-next info is available. Refreshed in place by the live poller via
+    /// <see cref="NotifyLiveIndicatorChanged"/>.
+    /// </summary>
+    public string LiveIndicatorText
+    {
+        get
+        {
+            const string badge = "\u25CF LIVE";
+            var upNext = _currentlyPlaying?.LiveUpNextText;
+            if (ShowLiveTrackLabel && !string.IsNullOrEmpty(upNext))
+                return $"{badge} ({upNext})";
+            return badge;
+        }
+    }
+
+    /// <summary>Re-raises <see cref="LiveIndicatorText"/> after the current item's up-next fragment is
+    /// refreshed in place by the live poller, so the LIVE badge updates without an item swap.</summary>
+    public void NotifyLiveIndicatorChanged() => OnPropertyChanged(nameof(LiveIndicatorText));
 
     public string PlaybackTimeText
     {

@@ -97,6 +97,19 @@ public class VideoItem : ObservableObject
         set => SetProperty(ref _liveTrackText, value);
     }
 
+    private string? _liveUpNextText;
+    /// <summary>
+    /// For live streams whose source implements <c>ILiveUpNextProvider</c> (e.g. a SiriusXM channel's
+    /// next song), the pre-formatted "Up next: Artist · Song" fragment shown alongside the LIVE badge.
+    /// Updated in place by the live now-playing poller while this item plays; null when unknown/none.
+    /// Observable so the LIVE badge refreshes when the upcoming track changes without swapping the item.
+    /// </summary>
+    public string? LiveUpNextText
+    {
+        get => _liveUpNextText;
+        set => SetProperty(ref _liveUpNextText, value);
+    }
+
     /// <summary>
     /// Optional startup budget hint for the player's first-frame watchdog, surfaced by the source when
     /// it resolved the stream (see <c>ResolvedStream.StartupTimeout</c>). <c>null</c> keeps the player's

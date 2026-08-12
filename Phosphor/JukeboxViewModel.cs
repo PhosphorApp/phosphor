@@ -1068,6 +1068,13 @@ public partial class JukeboxViewModel : ObservableObject
         CancellationToken ct)
     {
         string? last = item.LiveTrackText;
+        string? lastUpNext = item.LiveUpNextText;
+        // The "Artist · Song" core of the currently-held up-next, used to ride out transient nulls
+        // and to detect when it has rolled over into now-playing (see below).
+        string? heldUpNextCore = null;
+        // Optional richer capability: what's coming up next (e.g. SiriusXM). Reuse this same poll
+        // cadence — no second loop — piggybacking on the now-playing fetch.
+        var upNextProvider = SourceForItem(item) as Phosphor.Plugin.Abstractions.ILiveUpNextProvider;
         try
         {
             while (!ct.IsCancellationRequested && ReferenceEquals(ctx.CurrentlyPlaying, item))
@@ -1075,10 +1082,13 @@ public partial class JukeboxViewModel : ObservableObject
                 var interval = LiveNowPlayingDefaultInterval;
                 try
                 {
-                    var np = await provider.GetNowPlayingAsync(item.VideoId, TimeSpan.FromMilliseconds(Math.Max(0, ctx.PlaybackPosition)), ct);
+                    var position = TimeSpan.FromMilliseconds(Math.Max(0, ctx.PlaybackPosition));
+                    var np = await provider.GetNowPlayingAsync(item.VideoId, position, ct);
+                    string? nowPlayingCore = null;
                     if (np is { HasAny: true })
                     {
                         var text = FormatLiveTrack(np);
+                        nowPlayingCore = text;
                         if (!string.Equals(text, last, StringComparison.Ordinal))
                         {
                             last = text;
@@ -1098,6 +1108,49 @@ public partial class JukeboxViewModel : ObservableObject
                             var until = next - DateTimeOffset.UtcNow + TimeSpan.FromSeconds(2);
                             if (until > TimeSpan.Zero && until < TimeSpan.FromMinutes(30))
                                 interval = until;
+                        }
+                    }
+
+                    // What's coming up next (optional capability), annotated onto the LIVE badge.
+                    if (upNextProvider != null)
+                    {
+                        var un = await upNextProvider.GetUpNextAsync(item.VideoId, position, ct);
+
+                        string? upNextText;
+                        if (un is { HasAny: true })
+                        {
+                            // Fresh up-next: show it and remember its core for rollover detection.
+                            upNextText = FormatUpNext(un);
+                            heldUpNextCore = UpNextCore(un);
+                        }
+                        else if (lastUpNext != null
+                                 && heldUpNextCore != null
+                                 && !string.Equals(heldUpNextCore, nowPlayingCore, StringComparison.Ordinal))
+                        {
+                            // Transient gap: the source's forward schedule hasn't published the next-next
+                            // item yet, but the held up-next hasn't rolled over into now-playing. Keep
+                            // showing it (avoid a flicker to bare LIVE) until it actually starts airing.
+                            upNextText = lastUpNext;
+                        }
+                        else
+                        {
+                            // Nothing available and the held item has rolled into now-playing (or none was
+                            // held): clear.
+                            upNextText = null;
+                            heldUpNextCore = null;
+                        }
+
+                        if (!string.Equals(upNextText, lastUpNext, StringComparison.Ordinal))
+                        {
+                            lastUpNext = upNextText;
+                            await RunOnUiAsync(() =>
+                            {
+                                if (ReferenceEquals(ctx.CurrentlyPlaying, item))
+                                {
+                                    item.LiveUpNextText = upNextText;
+                                    ctx.NotifyLiveIndicatorChanged();
+                                }
+                            });
                         }
                     }
                 }
@@ -1123,6 +1176,27 @@ public partial class JukeboxViewModel : ObservableObject
         if (!string.IsNullOrWhiteSpace(np.Title)) parts.Add(np.Title!.Trim());
         // Artist-less content (e.g. a talk show title) falls back to just the title.
         return string.Join(" \u00B7 ", parts);
+    }
+
+    // The "Artist · Song" (or just the title) core of an up-next item, matching FormatLiveTrack's shape
+    // so a held up-next can be detected once it rolls over into now-playing.
+    private static string UpNextCore(Phosphor.Plugin.Abstractions.LiveUpNext un)
+    {
+        var parts = new List<string>(2);
+        if (!string.IsNullOrWhiteSpace(un.Subtitle)) parts.Add(un.Subtitle!.Trim());
+        if (!string.IsNullOrWhiteSpace(un.Title)) parts.Add(un.Title!.Trim());
+        return string.Join(" \u00B7 ", parts);
+    }
+
+    // Composes the "Up next[ @ HH:mm:ss]: Artist · Song" fragment shown alongside the LIVE badge.
+    // The timestamp is included only when the source reports a start time; it may be dropped later if
+    // it proves inaccurate against buffered/lagged live audio.
+    private static string FormatUpNext(Phosphor.Plugin.Abstractions.LiveUpNext un)
+    {
+        var track = UpNextCore(un);
+        if (un.StartsUtc is { } starts)
+            return $"Up next @ {starts.ToLocalTime():HH:mm:ss}: {track}";
+        return $"Up next: {track}";
     }
 
     /// <summary>
