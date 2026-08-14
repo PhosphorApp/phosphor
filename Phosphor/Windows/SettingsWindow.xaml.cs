@@ -1114,6 +1114,7 @@ public partial class SettingsWindow : JukeboxWindow
         SliderGenreIconSize.Value = settings.DmdGenreIconSizeModifier;
         SliderGenreIconSpacing.Value = settings.DmdGenreIconSpacingModifier;
         SliderGenreIconPadding.Value = settings.DmdGenreIconPaddingModifier;
+        SliderTrackIconSize.Value = settings.DmdTrackIconSizeModifier;
         SliderTrackButtonSize.Value = settings.DmdTrackButtonSizeModifier;
 
         foreach (var loc in new[] { "Playbar", "Queue" })
@@ -4070,6 +4071,7 @@ public partial class SettingsWindow : JukeboxWindow
         _settings.DmdGenreIconSizeModifier = Math.Clamp((int)SliderGenreIconSize.Value, -12, 24);
         _settings.DmdGenreIconSpacingModifier = Math.Clamp((int)SliderGenreIconSpacing.Value, -8, 8);
         _settings.DmdGenreIconPaddingModifier = Math.Clamp((int)SliderGenreIconPadding.Value, -8, 8);
+        _settings.DmdTrackIconSizeModifier = Math.Clamp((int)SliderTrackIconSize.Value, -12, 24);
         _settings.DmdTrackButtonSizeModifier = Math.Clamp((int)SliderTrackButtonSize.Value, -12, 24);
         _settings.DmdMinorButtonLocation = (MinorButtonLocation)Math.Clamp(CbMinorButtonLocation.SelectedIndex, 0, 1);
         _settings.FavoritesGrouping = (FavoritesGrouping)Math.Clamp(CbFavoritesGrouping.SelectedIndex, 0, 2);

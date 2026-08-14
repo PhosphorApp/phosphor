@@ -856,6 +856,7 @@ public partial class DmdWindow : JukeboxWindow
         SetGenreIconSize(settings.DmdGenreIconSizeModifier);
         SetGenreIconSpacing(settings.DmdGenreIconSpacingModifier);
         SetGenreIconPadding(settings.DmdGenreIconPaddingModifier);
+        SetTrackIconSize(settings.DmdTrackIconSizeModifier);
         SetTrackButtonSize(settings.DmdTrackButtonSizeModifier);
         SetMinorButtonLocation(settings.DmdMinorButtonLocation);
         SetShowStatusText(settings.ShowStatusText);
@@ -2849,6 +2850,7 @@ public partial class DmdWindow : JukeboxWindow
         SetGenreIconSize(_appSettings.DmdGenreIconSizeModifier);
         SetGenreIconSpacing(_appSettings.DmdGenreIconSpacingModifier);
         SetGenreIconPadding(_appSettings.DmdGenreIconPaddingModifier);
+        SetTrackIconSize(_appSettings.DmdTrackIconSizeModifier);
         SetTrackButtonSize(_appSettings.DmdTrackButtonSizeModifier);
         SetMinorButtonLocation(_appSettings.DmdMinorButtonLocation);
         SetShowStatusText(_appSettings.ShowStatusText);
@@ -3141,6 +3143,18 @@ public partial class DmdWindow : JukeboxWindow
         Resources["GenreLabelFontSize"] = 13.0 * scale;
         _genreIconSizeScale = scale;
         ApplyGenreButtonDimensions();
+    }
+
+    /// <summary>
+    /// Scales the fallback glyph/icon shown for container result rows (e.g. Plex hubs/playlists,
+    /// Twitch root categories) that have no thumbnail. Only affects icons — thumbnails keep their
+    /// own sizing so mixed icon/thumbnail result pages are unaffected.
+    /// </summary>
+    public void SetTrackIconSize(int modifier)
+    {
+        double scale = 1.0 + modifier / 20.0;
+        Resources["TrackIconFontSize"] = 32.0 * scale;
+        Resources["TrackIconWidth"] = 55.0 * scale;
     }
 
     public void SetGenreIconSpacing(int modifier)

@@ -35,7 +35,8 @@
         <sys:Double x:Key="QueueThumbnailHeight">38</sys:Double>
         <sys:Double x:Key="ResultThumbnailHeight">45</sys:Double>
         <sys:Double x:Key="ResultContentHeight">55</sys:Double>
-        <sys:Double x:Key="NowPlayingLabelFontSize">12</sys:Double>
+        <sys:Double x:Key="TrackIconFontSize">32</sys:Double>
+        <sys:Double x:Key="TrackIconWidth">55</sys:Double>
         <sys:Double x:Key="NowPlayingTimeFontSize">15</sys:Double>
         <sys:Double x:Key="NowPlayingSpeakerFontSize">11</sys:Double>
         <sys:Double x:Key="NowPlayingVolumeWidth">90</sys:Double>
@@ -120,9 +121,9 @@
         <!-- Fallback glyph for result rows (generic browse container with no thumbnail).
              Only visible for generic containers lacking a thumbnail. -->
         <DataTemplate x:Key="ResultIconCurrent">
-            <ei:EmojiIcon Margin="0,0,8,0" Width="55"
+            <ei:EmojiIcon Margin="0,0,8,0" Width="{DynamicResource TrackIconWidth}"
                           Emoji="{Binding ContainerIcon}"
-                          DisplaySize="32"
+                          DisplaySize="{DynamicResource TrackIconFontSize}"
                           IconStyle="{Binding CurrentIconStyle, RelativeSource={RelativeSource AncestorType=local:DmdWindow}}"
                           FontSet="{Binding CurrentEmojiFontSet, RelativeSource={RelativeSource AncestorType=local:DmdWindow}}"
                           TintBrush="{StaticResource AccentBrush}"

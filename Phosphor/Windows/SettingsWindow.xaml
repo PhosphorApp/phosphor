@@ -2140,6 +2140,15 @@
                                 <TextBlock Text="Looser" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
                             </DockPanel>
                             <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Track Icon Size:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <TextBlock Text="Smaller" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <Slider x:Name="SliderTrackIconSize" Minimum="-12" Maximum="24"
+                                        TickFrequency="2" IsSnapToTickEnabled="True"
+                                        Width="140" VerticalAlignment="Center"/>
+                                <TextBlock Text="Larger" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,0,0,8">
                                 <TextBlock Text="Track Font Size:" Foreground="{StaticResource TextBrush}"
                                            VerticalAlignment="Center" Width="110"/>
                                 <TextBlock Text="Smaller" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
