@@ -67,6 +67,30 @@ jobs:
           "prerelease=$prerelease" >> $env:GITHUB_OUTPUT
           Write-Host "Resolved version=$version label=$label prerelease=$prerelease (ref_type=${{ github.ref_type }}, ref=$ref)"
 
+      - name: Guard against committed local NuGet sources
+        shell: pwsh
+        # A file-based (local) package source committed into nuget.config points at a folder that
+        # only exists on a dev machine (e.g. ..\local-nuget). CI has no such folder and NuGet
+        # HARD-ERRORS on a missing local source path, failing restore with a confusing message.
+        # Fail fast here with a clear reason instead. Only non-http(s) sources are flagged, so the
+        # nuget.org feed is fine; a genuine CI mirror would use an http(s) URL.
+        run: |
+          $bad = @()
+          foreach ($cfg in Get-ChildItem -Recurse -File -Filter 'nuget.config' -ErrorAction SilentlyContinue) {
+            try { [xml]$xml = Get-Content $cfg.FullName -Raw } catch { continue }
+            foreach ($src in $xml.configuration.packageSources.add) {
+              $val = "$($src.value)"
+              if ($val -and $val -notmatch '^(?i)https?://') {
+                $bad += "  $($cfg.FullName): <add key=""$($src.key)"" value=""$val"" />"
+              }
+            }
+          }
+          if ($bad.Count -gt 0) {
+            Write-Error ("Committed local NuGet source(s) detected — these break CI restore (the path doesn't exist on the runner). Remove them from nuget.config and add local feeds locally instead:`n" + ($bad -join "`n"))
+            exit 1
+          }
+          Write-Host "No committed local NuGet sources found."
+
       - name: Build host (Release)
         shell: pwsh
         run: |
