@@ -4022,41 +4022,66 @@ public partial class JukeboxViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Fills in missing thumbnails for aggregated-favorite rows whose owning source can resolve one
-    /// lazily (e.g. a Twitch channel container has no stored thumbnail, but its live/most-recent-VOD
-    /// preview does). Runs off-thread per source, updates the row live, and writes the resolved
-    /// thumbnail back to the persisted index so subsequent opens are instant. For live sources the
-    /// value is refreshed each open, so the tile tracks the current broadcast.
+    /// Heals aggregated-favorite rows when the Favorites view is opened: refreshes each row's display
+    /// metadata (title, source label, thumbnail, duration) from its owning source and writes the
+    /// result back to the persisted index so subsequent opens render instantly. Favorites can sit
+    /// unused for a long time, so a channel pinned long ago — whose source catalog hasn't loaded this
+    /// session — may otherwise show a raw id instead of its real name. Runs off-thread per row.
+    ///
+    /// Prefers the source's async <see cref="Phosphor.Plugin.Abstractions.IFavoriteMetadataRefresh"/>
+    /// (which may load a catalog / do an authenticated fetch, e.g. reload the SiriusXM lineup) and
+    /// falls back to the cheap synchronous <see cref="Phosphor.Plugin.Abstractions.IFavoritable.GetFavorite"/>
+    /// / <see cref="Phosphor.Plugin.Abstractions.IReplayableById.RebuildPlayable"/>.
     /// </summary>
     private void EnrichFavoriteThumbnails(IEnumerable<VideoItem> rows)
     {
-        var pending = rows
-            .Where(r => !r.IsHeader && r.IsAggregatedFavorite
-                        && !string.IsNullOrEmpty(r.SourceInstanceId)
-                        && (r.IsLiveStream || r.IsGenericContainer || string.IsNullOrEmpty(r.ThumbnailUrl)))
-            .ToList();
+        var pending = rows.Where(r => !r.IsHeader && r.IsAggregatedFavorite
+                                      && !string.IsNullOrEmpty(r.SourceInstanceId))
+                          .ToList();
         if (pending.Count == 0) return;
 
         foreach (var row in pending)
         {
             var source = _sourceRegistry?.ByInstance(row.SourceInstanceId!);
-            if (source is not Phosphor.Plugin.Abstractions.IReplayableById and not Phosphor.Plugin.Abstractions.IFavoritable)
+            if (source is not Phosphor.Plugin.Abstractions.IFavoriteMetadataRefresh
+                and not Phosphor.Plugin.Abstractions.IReplayableById
+                and not Phosphor.Plugin.Abstractions.IFavoritable)
                 continue;
 
             _ = SafeFireAndForget(Task.Run(async () =>
             {
-                Phosphor.Plugin.Abstractions.SourceItem? rebuilt =
-                    (source as Phosphor.Plugin.Abstractions.IFavoritable)?.GetFavorite(row.VideoId)
-                    ?? (source as Phosphor.Plugin.Abstractions.IReplayableById)?.RebuildPlayable(row.VideoId);
-                var thumb = rebuilt?.ThumbnailUrl;
-                if (string.IsNullOrEmpty(thumb) || thumb == row.ThumbnailUrl) return;
+                Phosphor.Plugin.Abstractions.SourceItem? refreshed = null;
+                if (source is Phosphor.Plugin.Abstractions.IFavoriteMetadataRefresh mr)
+                    refreshed = await mr.RefreshFavoriteAsync(row.VideoId, _searchCts.Token);
+                refreshed ??= (source as Phosphor.Plugin.Abstractions.IFavoritable)?.GetFavorite(row.VideoId)
+                              ?? (source as Phosphor.Plugin.Abstractions.IReplayableById)?.RebuildPlayable(row.VideoId);
+                if (refreshed is null) return;
+
+                // A source that only knows the id echoes it back as the Title — treat that as "no
+                // better title" so we never overwrite a good stored name with the raw id.
+                var newTitle = !string.IsNullOrEmpty(refreshed.Title) && refreshed.Title != row.VideoId
+                    ? refreshed.Title : null;
+                var newThumb = string.IsNullOrEmpty(refreshed.ThumbnailUrl) ? null : refreshed.ThumbnailUrl;
+
+                bool titleChanged = newTitle != null && newTitle != row.Title;
+                bool thumbChanged = newThumb != null && newThumb != row.ThumbnailUrl;
+                if (!titleChanged && !thumbChanged) return;
 
                 await RunOnUiAsync(() =>
                 {
-                    row.ThumbnailUrl = thumb!;
-                    row.NotifyPropertyChanged(nameof(VideoItem.ThumbnailUrl));
+                    if (titleChanged)
+                    {
+                        row.Title = newTitle!;
+                        row.NotifyPropertyChanged(nameof(VideoItem.Title));
+                    }
+                    if (thumbChanged)
+                    {
+                        row.ThumbnailUrl = newThumb!;
+                        row.NotifyPropertyChanged(nameof(VideoItem.ThumbnailUrl));
+                    }
                 });
-                _favoritesIndex.UpdateThumbnail(row.SourceInstanceId!, row.VideoId, thumb);
+                _favoritesIndex.UpdateDisplay(row.SourceInstanceId!, row.VideoId,
+                    title: newTitle, thumbnailUrl: newThumb);
             }));
         }
     }

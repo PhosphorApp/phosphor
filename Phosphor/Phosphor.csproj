@@ -13,9 +13,9 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
+    <Version>1.0.1</Version>
+    <AssemblyVersion>1.0.1.0</AssemblyVersion>
+    <FileVersion>1.0.1.0</FileVersion>
     <LegacyCorruptedStateExceptionsPolicy>true</LegacyCorruptedStateExceptionsPolicy>
   </PropertyGroup>
 
@@ -108,7 +108,7 @@
       discovered at runtime from plugins/. For local F5 debugging, build the plugins repo with
       PHOSPHOR_HOST_DIR pointed at this host's output so plug-ins self-deploy into plugins/.
     -->
-    <PackageReference Include="Phosphor.Plugin.Abstractions" Version="0.16.0" />
+    <PackageReference Include="Phosphor.Plugin.Abstractions" Version="0.17.0" />
   </ItemGroup>
 
   <!--

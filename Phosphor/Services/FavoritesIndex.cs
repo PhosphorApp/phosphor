@@ -212,6 +212,34 @@ public sealed class FavoritesIndex
         }
     }
 
+    /// <summary>
+    /// Heals a stored entry's display metadata (title, source label, thumbnail, duration, audio/live
+    /// flags) after a source lazily refreshes it (e.g. reloading a channel lineup when the Favorites
+    /// view is opened) and persists if anything changed. No-op when the key is absent or nothing
+    /// differs. Blank incoming values are ignored so a partial refresh never wipes a good record.
+    /// </summary>
+    public void UpdateDisplay(
+        string sourceInstanceId, string itemId,
+        string? title = null, string? sourceLabel = null, string? thumbnailUrl = null,
+        double? durationSeconds = null, bool? isAudioOnly = null, bool? isLiveStream = null)
+    {
+        var key = $"{sourceInstanceId}\u0000{itemId}";
+        lock (_gate)
+        {
+            if (!_entries.TryGetValue(key, out var e)) return;
+
+            bool changed = false;
+            if (!string.IsNullOrEmpty(title) && e.Title != title) { e.Title = title!; changed = true; }
+            if (!string.IsNullOrEmpty(sourceLabel) && e.SourceLabel != sourceLabel) { e.SourceLabel = sourceLabel!; changed = true; }
+            if (!string.IsNullOrEmpty(thumbnailUrl) && e.ThumbnailUrl != thumbnailUrl) { e.ThumbnailUrl = thumbnailUrl; changed = true; }
+            if (durationSeconds is { } d && e.DurationSeconds != d) { e.DurationSeconds = d; changed = true; }
+            if (isAudioOnly is { } a && e.IsAudioOnly != a) { e.IsAudioOnly = a; changed = true; }
+            if (isLiveStream is { } l && e.IsLiveStream != l) { e.IsLiveStream = l; changed = true; }
+
+            if (changed) Save();
+        }
+    }
+
     /// <summary>Removes an entry and persists. No-op if absent.</summary>
     public void Remove(string sourceInstanceId, string itemId)
     {
