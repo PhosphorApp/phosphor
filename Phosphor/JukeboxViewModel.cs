@@ -4584,7 +4584,14 @@ public partial class JukeboxViewModel : ObservableObject
             return;
         }
 
-        var sourceItem = await Task.Run(() => fav.GetFavorite(favRow.VideoId));
+        // Prefer the async refresh (loads the source's catalog if needed, e.g. reloads the SiriusXM
+        // lineup) so the rebuilt item carries the CURRENT display metadata — otherwise the cheap
+        // synchronous GetFavorite returns a minimal id-only item on a cold start (or stale cache),
+        // and now-playing shows the raw id/GUID instead of the channel name until the lineup loads.
+        var sourceItem = source is Phosphor.Plugin.Abstractions.IFavoriteMetadataRefresh mr
+            ? await mr.RefreshFavoriteAsync(favRow.VideoId, _searchCts.Token)
+            : null;
+        sourceItem ??= await Task.Run(() => fav.GetFavorite(favRow.VideoId));
         if (sourceItem is null)
         {
             StatusText = $"Can't play {favRow.Title}: no longer available.";
