@@ -252,6 +252,10 @@ public sealed class JukeboxPlayer
                     media.AddOption(":http-reconnect");
                     media.AddOption(":sout-mux-caching=5000");
                 }
+                else
+                {
+                    MediaEngine.ApplyNetworkOptions(media, vm);
+                }
 
                 Engine.LastMuxedStreamUrl = streamUrl;
                 mediaPlayer.Play(media);

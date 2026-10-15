@@ -27,6 +27,14 @@ public partial class BackglassWindow : JukeboxWindow
     // once dragging settles, avoiding a storm of rebuilds while the window is resized.
     private readonly DispatcherTimer _resizeDebounceTimer = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private DispatcherTimer? _positionTimer;
+    private long _lastLivePositionTick;
+    private long _lastPositionTimerTick;
+    private double _maxPositionTimerGapMs;
+    private int _skippedNoDataContext;
+    private int _skippedNoContext;
+    private int _skippedSeeking;
+    private int _skippedGapless;
+    private int _skippedNoMediaPlayer;
     // Wall-clock start of the current live stream, used to show elapsed time (LibVLC's Time reflects
     // the live DVR window, not elapsed-since-start). Null when not playing a live stream.
     private DateTime? _liveStartUtc { get => _engine.LiveStartUtc; set => _engine.LiveStartUtc = value; }
@@ -359,18 +367,41 @@ public partial class BackglassWindow : JukeboxWindow
         // holding any playback logic.
         JukeboxPlayer.Attach(vm);
 
-        _positionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        _positionTimer = new DispatcherTimer(DispatcherPriority.Normal, Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(250)
+        };
         _positionTimer.Tick += (_, _) =>
         {
-            if (DataContext is not JukeboxViewModel v) return;
+            var tick = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (_lastLivePositionTick != 0 && _lastPositionTimerTick != 0)
+                _maxPositionTimerGapMs = Math.Max(_maxPositionTimerGapMs,
+                    System.Diagnostics.Stopwatch.GetElapsedTime(_lastPositionTimerTick, tick).TotalMilliseconds);
+            _lastPositionTimerTick = tick;
+
+            if (DataContext is not JukeboxViewModel v)
+            {
+                if (_lastLivePositionTick != 0) _skippedNoDataContext++;
+                return;
+            }
             // Write back to THIS player's own context (Backglass = Player 1) so a second player never
             // clobbers it. Reads (IsSeeking / CurrentlyPlaying) also come from this player's state.
             var state = JukeboxPlayer.Context;
-            if (state == null || state.IsSeeking) return;
+            if (state == null)
+            {
+                if (_lastLivePositionTick != 0) _skippedNoContext++;
+                return;
+            }
+            if (state.IsSeeking)
+            {
+                if (_lastLivePositionTick != 0) _skippedSeeking++;
+                return;
+            }
 
             // PCM gapless mode
             if (_usingGaplessPlayer && _gaplessPlayer != null)
             {
+                if (_lastLivePositionTick != 0) _skippedGapless++;
                 state.PlaybackDuration = Math.Max(1, _gaplessPlayer.DurationMs);
                 state.PlaybackPosition = Math.Max(0, _gaplessPlayer.PositionMs);
 
@@ -381,19 +412,43 @@ public partial class BackglassWindow : JukeboxWindow
                 return;
             }
 
-            if (_mediaPlayer == null) return;
+            if (_mediaPlayer == null)
+            {
+                if (_lastLivePositionTick != 0) _skippedNoMediaPlayer++;
+                return;
+            }
 
             // Live streams (e.g. SiriusXM): LibVLC's Time is the position within the live DVR window
             // (SXM buffers ~2 min), which makes elapsed jump to ~2:20 at start. Instead, count elapsed
             // from a wall-clock stamp taken when playback began, and report no fixed duration.
             if (state.CurrentlyPlaying?.IsLiveStream == true)
             {
-                if (_liveStartUtc == null) _liveStartUtc = DateTime.UtcNow;
+                if (_liveStartUtc == null)
+                {
+                    _liveStartUtc = DateTime.UtcNow;
+                    _lastLivePositionTick = 0;
+                    _maxPositionTimerGapMs = 0;
+                    _skippedNoDataContext = _skippedNoContext = _skippedSeeking = _skippedGapless = _skippedNoMediaPlayer = 0;
+                }
+                if (_lastLivePositionTick != 0)
+                {
+                    var gap = System.Diagnostics.Stopwatch.GetElapsedTime(_lastLivePositionTick, tick);
+                    if (gap > TimeSpan.FromMilliseconds(750))
+                        DebugLog.Log(LogLevel.Debug, "LiveClock.Backglass",
+                            $"position update gap {gap.TotalMilliseconds:F0}ms; max raw tick gap {_maxPositionTimerGapMs:F0}ms; " +
+                            $"skipped: dataContext={_skippedNoDataContext} context={_skippedNoContext} seeking={_skippedSeeking} gapless={_skippedGapless} mediaPlayer={_skippedNoMediaPlayer}");
+                }
+                _lastLivePositionTick = tick;
+                _maxPositionTimerGapMs = 0;
+                _skippedNoDataContext = _skippedNoContext = _skippedSeeking = _skippedGapless = _skippedNoMediaPlayer = 0;
                 state.PlaybackDuration = 1; // no seekable duration
                 state.PlaybackPosition = Math.Max(0, (DateTime.UtcNow - _liveStartUtc.Value).TotalMilliseconds);
                 return;
             }
             _liveStartUtc = null;
+            _lastLivePositionTick = 0;
+            _maxPositionTimerGapMs = 0;
+            _skippedNoDataContext = _skippedNoContext = _skippedSeeking = _skippedGapless = _skippedNoMediaPlayer = 0;
 
             // LibVLC reports Length = 0 for some transcoded/chunked HTTP streams (e.g. a Jellyfin
             // HLS transcode), which would pin the scrub bar "at the end". Fall back to the item's

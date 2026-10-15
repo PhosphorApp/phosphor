@@ -136,6 +136,8 @@ public partial class DmdWindow : JukeboxWindow
 
     // Mouse cursor auto-hide fields
     private readonly DispatcherTimer _cursorIdleTimer;
+    private readonly DispatcherTimer _liveHeartbeatTimer;
+    private long _lastLiveHeartbeatTick;
     private bool _cursorHidden;
     private PresetBrowserWindow? _presetBrowserWindow;
 
@@ -163,6 +165,27 @@ public partial class DmdWindow : JukeboxWindow
         _cursorIdleTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
         _cursorIdleTimer.Tick += (_, _) => HideMouseCursor();
         _cursorIdleTimer.Start();
+
+        _liveHeartbeatTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        _liveHeartbeatTimer.Tick += (_, _) =>
+        {
+            if (DataContext is not JukeboxViewModel { Player1.CurrentlyPlaying.IsLiveStream: true })
+            {
+                _lastLiveHeartbeatTick = 0;
+                return;
+            }
+
+            var tick = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (_lastLiveHeartbeatTick != 0)
+            {
+                var gap = System.Diagnostics.Stopwatch.GetElapsedTime(_lastLiveHeartbeatTick, tick);
+                if (gap > TimeSpan.FromMilliseconds(750))
+                    DebugLog.Log(LogLevel.Debug, "LiveClock.Dmd", $"dispatcher heartbeat gap {gap.TotalMilliseconds:F0}ms");
+            }
+            _lastLiveHeartbeatTick = tick;
+        };
+        Loaded += (_, _) => _liveHeartbeatTimer.Start();
+        Closed += (_, _) => _liveHeartbeatTimer.Stop();
 
         InitializeComponent();
         SkipButton.IsVisibleChanged += (_, _) => InvalidateNavRing();
