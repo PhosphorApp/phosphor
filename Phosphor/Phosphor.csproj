@@ -13,9 +13,9 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>1.0.4</Version>
-    <AssemblyVersion>1.0.4.0</AssemblyVersion>
-    <FileVersion>1.0.4.0</FileVersion>
+    <Version>1.0.5</Version>
+    <AssemblyVersion>1.0.5.0</AssemblyVersion>
+    <FileVersion>1.0.5.0</FileVersion>
     <LegacyCorruptedStateExceptionsPolicy>true</LegacyCorruptedStateExceptionsPolicy>
   </PropertyGroup>
 
@@ -30,16 +30,16 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <PackageReference Include="LibVLCSharp.WPF" Version="3.9.7.1" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
+    <PackageReference Include="LibVLCSharp.WPF" Version="3.10.2" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.13" />
     <PackageReference Include="NAudio" Version="2.3.0" />
     <PackageReference Include="SharpDX.DirectInput" Version="4.2.0" />
     <PackageReference Include="SkiaSharp" Version="4.150.1" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.10" />
-    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.23.1" />
+    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.24" />
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
     <PackageReference Include="Vortice.D3DCompiler" Version="3.8.3" />
-    <PackageReference Include="VirtualizingWrapPanel" Version="2.5.1" />
+    <PackageReference Include="VirtualizingWrapPanel" Version="2.5.4" />
     <PackageReference Include="Vortice.Direct3D9" Version="3.8.3" />
   </ItemGroup>
 
@@ -134,18 +134,14 @@
   -->
   <Target Name="TrimUnusedNativeRuntimes" AfterTargets="Build;Publish">
     <ItemGroup>
-      <_AllRuntimeDir Include="$([System.IO.Directory]::GetDirectories('$(OutDir)runtimes'))"
-                      Condition="Exists('$(OutDir)runtimes')" />
-      <_UnusedRuntimeDir Include="@(_AllRuntimeDir)"
-                         Condition="'%(Filename)' != 'win-x64' and '%(Filename)' != 'win'" />
-      <_AllLibVlcDir Include="$([System.IO.Directory]::GetDirectories('$(OutDir)libvlc'))"
-                     Condition="Exists('$(OutDir)libvlc')" />
-      <_UnusedLibVlcDir Include="@(_AllLibVlcDir)"
-                        Condition="'%(Filename)' != 'win-x64'" />
+      <_AllRuntimeDir Include="$([System.IO.Directory]::GetDirectories('$(OutDir)runtimes'))" Condition="Exists('$(OutDir)runtimes')" />
+      <_UnusedRuntimeDir Include="@(_AllRuntimeDir)" Condition="'%(Filename)' != 'win-x64' and '%(Filename)' != 'win'" />
+      <_AllLibVlcDir Include="$([System.IO.Directory]::GetDirectories('$(OutDir)libvlc'))" Condition="Exists('$(OutDir)libvlc')" />
+      <_UnusedLibVlcDir Include="@(_AllLibVlcDir)" Condition="'%(Filename)' != 'win-x64'" />
     </ItemGroup>
     <RemoveDir Directories="@(_UnusedRuntimeDir)" Condition="'@(_UnusedRuntimeDir)' != ''" />
     <RemoveDir Directories="@(_UnusedLibVlcDir)" Condition="'@(_UnusedLibVlcDir)' != ''" />
-    <Message Importance="high" Text="Trimmed @(_UnusedRuntimeDir->Count()) unused native runtime(s) and @(_UnusedLibVlcDir->Count()) unused libvlc runtime(s) (kept win-x64)." />
+    <Message Importance="high" Text="Trimmed @(_UnusedRuntimeDir-&gt;Count()) unused native runtime(s) and @(_UnusedLibVlcDir-&gt;Count()) unused libvlc runtime(s) (kept win-x64)." />
   </Target>
 
 
