@@ -62,12 +62,15 @@ public partial class App : Application
 
         // Pre-initialize a shared LibVLC instance on a background thread.
         // Both the startup ditty and backglass reuse this single instance.
+        Phosphor.Playback.VlcDiagnostics.Configure(_settings.VlcVerboseDiagnostics, _settings.VlcAudioOutput);
         _sharedVlcTask = Task.Run(() =>
         {
             try
             {
                 DebugLog.Log(LogLevel.Info, "App", "Pre-initializing shared LibVLC...");
-                var vlc = new LibVLC("--no-video-title-show", "--network-caching=3000", "--http-reconnect");
+                var vlcArgs = Phosphor.Playback.VlcDiagnostics.BuildSharedArgs();
+                var vlc = new LibVLC(vlcArgs);
+                Phosphor.Playback.VlcDiagnostics.Attach(vlc, "shared", vlcArgs);
                 DebugLog.Log(LogLevel.Info, "App", "Shared LibVLC pre-initialized");
                 return vlc;
             }

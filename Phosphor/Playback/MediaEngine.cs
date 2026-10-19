@@ -96,7 +96,9 @@ public sealed class MediaEngine
         // volume is a per-stream gain, independent of the shared-instance players.
         if (_isolatedAudioInstance && _libVLC == null)
         {
-            _libVLC = new LibVLC("--no-video-title-show", "--network-caching=3000", "--http-reconnect", "--aout=directsound");
+            var isoArgs = new[] { "--no-video-title-show", "--network-caching=3000", "--http-reconnect", "--aout=directsound" };
+            _libVLC = new LibVLC(isoArgs);
+            VlcDiagnostics.Attach(_libVLC, "engine-isolated", isoArgs);
         }
         // If the app provided a shared-VLC task, adopt its result instead of spinning up a second
         // LibVLC (the window awaits this off-thread before calling us).
@@ -111,8 +113,17 @@ public sealed class MediaEngine
             catch { /* fall through to fresh instance */ }
         }
 
-        var vlc = _libVLC ?? new LibVLC("--no-video-title-show", "--network-caching=3000", "--http-reconnect");
+        if (_libVLC == null)
+        {
+            var args = VlcDiagnostics.BuildSharedArgs();
+            var created = new LibVLC(args);
+            VlcDiagnostics.Attach(created, "engine", args);
+            _libVLC = created;
+        }
+        var vlc = _libVLC;
+        VlcDiagnostics.Attach(vlc, "engine", new[] { "(provided instance)" });
         var mp = new MediaPlayer(vlc);
+        VlcDiagnostics.AttachPlayer(mp, "engine");
         // Stop VLC from grabbing mouse/keyboard on its video HWND so events pass through to the
         // hosting WinForms panel (enables the window's drag/resize hooks).
         mp.EnableMouseInput = false;
@@ -156,6 +167,7 @@ public sealed class MediaEngine
     public MediaPlayer? SwapMediaPlayer(MediaPlayer next)
     {
         var old = _mediaPlayer;
+        VlcDiagnostics.AttachPlayer(next, "engine");
         next.EndReached += (s, e) => EndReached?.Invoke(s, e);
         _mediaPlayer = next;
         return old;
@@ -209,6 +221,7 @@ public sealed class MediaEngine
         int fileCache = vm?.FileCachingMs ?? 300;
         bool reconnect = vm?.HttpReconnect ?? true;
 
+        VlcDiagnostics.LogCaching(networkCache, liveCache, fileCache, reconnect);
         media.AddOption($":network-caching={networkCache}");
         media.AddOption($":live-caching={liveCache}");
         media.AddOption($":file-caching={fileCache}");

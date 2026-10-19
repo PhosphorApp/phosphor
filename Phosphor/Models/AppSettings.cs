@@ -585,6 +585,12 @@ public class AppSettings
     /// </summary>
     public LogLevel DebugLogLevel { get; set; } = LogLevel.Debug;
 
+    /// <summary>When true, LibVLC's verbose log (audio output, HLS, avcodec, clock/sync) is forwarded to the debug log as [VLC] lines.</summary>
+    public bool VlcVerboseDiagnostics { get; set; }
+
+    /// <summary>Audio output module for the shared LibVLC: "default", "mmdevice", "directsound" or "waveout".</summary>
+    public string VlcAudioOutput { get; set; } = "default";
+
     /// <summary>
     /// Genre/category names that have been hidden by the user from the DMD home screen.
     /// </summary>

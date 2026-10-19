@@ -1,4 +1,5 @@
 using Phosphor.Plugin.Abstractions;
+using System.Reflection;
 using Phosphor.Plugins.Loader;
 
 namespace Phosphor.Plugins;
@@ -60,7 +61,12 @@ public static class DiscoveredProviders
             if (plugin.IsLoaded)
             {
                 var contract = plugin.Provider?.ApiVersion?.ToString() ?? "?";
-                DebugLog.Log(LogLevel.Info, "PluginLoader", $"Loaded plug-in {name} (contract {contract}).");
+                var asm = plugin.Provider?.GetType().Assembly;
+                var version = asm?.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion
+                    ?? asm?.GetName().Version?.ToString() ?? "?";
+                var plus = version.IndexOf('+');
+                if (plus > 0) version = version[..plus];
+                DebugLog.Log(LogLevel.Info, "PluginLoader", $"Loaded plug-in {name} (v{version} contract {contract}).");
             }
             else
             {
