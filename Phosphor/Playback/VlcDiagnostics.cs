@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Net.Http;
 using System.Runtime.CompilerServices;
 using LibVLCSharp.Shared;
 using VlcLogLevel = LibVLCSharp.Shared.LogLevel;
@@ -156,8 +157,69 @@ public static class VlcDiagnostics
             };
             var repeat = suppressed > 0 ? $" (+{suppressed} similar suppressed)" : "";
             DebugLog.Log(level, "VLC", $"[{module}] [{e.Level}] {message}{repeat}");
+
+            if (e.Level == VlcLogLevel.Error)
+                TryProbeFailedMrl(message);
         }
         catch { /* never throw into native code */ }
+    }
+
+    private static readonly HttpClient ProbeClient = new() { Timeout = TimeSpan.FromSeconds(8) };
+    private static long _lastProbeTick;
+
+    /// <summary>
+    /// LibVLC discards the HTTP error body, so when it cannot open an http(s) MRL, re-request the URL
+    /// in the background and log the status, key headers and start of the body (e.g. why Plex returned 400).
+    /// </summary>
+    private static void TryProbeFailedMrl(string message)
+    {
+        const string marker = "unable to open the MRL '";
+        var start = message.IndexOf(marker, StringComparison.Ordinal);
+        if (start < 0)
+            return;
+        start += marker.Length;
+        var end = message.IndexOf("'. ", start, StringComparison.Ordinal);
+        if (end < 0)
+            end = message.LastIndexOf('\'');
+        if (end <= start)
+            return;
+        var url = message.Substring(start, end - start);
+        if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+            !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var now = Environment.TickCount64;
+        if (now - Interlocked.Exchange(ref _lastProbeTick, now) < 1000)
+            return;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var resp = await ProbeClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+                var headers = string.Join("; ", resp.Headers.Concat(resp.Content.Headers)
+                    .Select(h => $"{h.Key}={string.Join(",", h.Value)}")
+                    .Where(h => h.StartsWith("X-Plex", StringComparison.OrdinalIgnoreCase)
+                             || h.StartsWith("Content-Type", StringComparison.OrdinalIgnoreCase)
+                             || h.StartsWith("Server", StringComparison.OrdinalIgnoreCase)));
+                string body;
+                try
+                {
+                    using var stream = await resp.Content.ReadAsStreamAsync().ConfigureAwait(false);
+                    var buf = new byte[2048];
+                    int n = await stream.ReadAsync(buf.AsMemory(0, buf.Length)).ConfigureAwait(false);
+                    body = System.Text.Encoding.UTF8.GetString(buf, 0, n).Replace('\r', ' ').Replace('\n', ' ');
+                }
+                catch (Exception bex) { body = $"(body unreadable: {bex.Message})"; }
+
+                var lvl = resp.IsSuccessStatusCode ? LogLevel.Info : LogLevel.Warning;
+                DebugLog.Log(lvl, "VLC", $"[probe] {(int)resp.StatusCode} {resp.ReasonPhrase}; headers=[{headers}]; body=[{body}]; url={url}");
+            }
+            catch (Exception ex)
+            {
+                DebugLog.Log(LogLevel.Warning, "VLC", $"[probe] request failed: {ex.GetType().Name}: {ex.Message}; url={url}");
+            }
+        });
     }
 
     private static bool ContainsAny(string text, string[] needles)
