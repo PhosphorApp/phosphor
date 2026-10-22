@@ -620,6 +620,16 @@ public partial class BackglassWindow : JukeboxWindow
     {
         if (_mediaPlayer == null) return;
         DebugLog.Log(LogLevel.Debug, "MediaEnded", $"EndReached fired | State={_mediaPlayer.State} Time={_mediaPlayer.Time} Length={_mediaPlayer.Length} Pos={_mediaPlayer.Position:F4}");
+
+        // LibVLC can raise a stray EndReached for media that never actually played (right after a new
+        // Play(), e.g. when the previous media was stopped). A real end has a known length and position;
+        // acting on the stray one auto-advances the queue and hijacks the item the user just picked.
+        if (_mediaPlayer.Time <= 0 && _mediaPlayer.Length <= 0)
+        {
+            DebugLog.Log(LogLevel.Debug, "MediaEnded", "Ignoring spurious EndReached (media never started).");
+            return;
+        }
+
         Dispatcher.BeginInvoke(() =>
         {
             DebugLog.Log(LogLevel.Trace, "MediaEnded", "Processing on dispatcher");
