@@ -16,6 +16,10 @@
         <local:WidthFractionConverter x:Key="WidthFraction"/>
         <local:EnumLabelConverter x:Key="EnumLabel"/>
 
+        <!-- A-Z jump bar sizing (overridden at runtime by SetAlphaNavSize). -->
+        <sys:Double x:Key="AlphaNavFontSize">13</sys:Double>
+        <sys:Double x:Key="AlphaNavMinWidth">22</sys:Double>
+
         <!-- Favorites view axes: enum value lists for the two quick dropdowns. -->
         <ObjectDataProvider x:Key="FavoritesGroupingValues" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
             <ObjectDataProvider.MethodParameters>
@@ -378,18 +382,71 @@
             </DockPanel>
 
             <!-- Generic plug-in browse bar (source-agnostic drill-down breadcrumb) -->
-            <DockPanel Grid.Row="1" Margin="0,0,0,4"
+            <Grid Grid.Row="1" Margin="0,0,0,4" Grid.IsSharedSizeScope="True"
                        Visibility="{Binding IsGenericBrowsing, Converter={StaticResource BoolVis}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="BrowseBarSide"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="BrowseBarSide"/>
+                </Grid.ColumnDefinitions>
 
-                <TextBlock x:Name="BrowseBreadcrumbText" Text="{Binding BrowseBreadcrumb}" DockPanel.Dock="Left"
+                <!-- Breadcrumb keeps its own column (trimmed if very long) so the letter strip, which
+                     wraps within the remaining width, can never be drawn over it. The right-hand column
+                     shares its width (SharedSizeGroup) but is empty, so the strip is centered on the bar. -->
+                <TextBlock x:Name="BrowseBreadcrumbText" Grid.Column="0" Text="{Binding BrowseBreadcrumb}"
+                           ToolTip="{Binding BrowseBreadcrumb}" MaxWidth="320" TextTrimming="CharacterEllipsis"
                            Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="12" Tag="NavText"
                            VerticalAlignment="Center" Margin="0,0,12,0"/>
-            </DockPanel>
+                <ItemsControl Grid.Column="1" ItemsSource="{Binding AlphaLetters}" VerticalAlignment="Center" HorizontalAlignment="Center"
+                              Visibility="{Binding ShowAlphaJumpBar, Converter={StaticResource BoolVis}}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Content="{Binding Label}" MinWidth="{DynamicResource AlphaNavMinWidth}" Padding="4,2" Margin="1,0"
+                                    Cursor="Hand" FontSize="{DynamicResource AlphaNavFontSize}" FontWeight="SemiBold"
+                                    IsEnabled="{Binding HasItems}"
+                                    Command="{Binding DataContext.JumpToLetterCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                    CommandParameter="{Binding}">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="Bd" Background="Transparent" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Bd" Property="Background" Value="#33FFFFFF"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                                            </DataTrigger>
+                                            <Trigger Property="IsEnabled" Value="False">
+                                                <Setter Property="Opacity" Value="0.3"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Grid>
 
             <ListBox Grid.Row="2" ItemsSource="{Binding SearchResults}"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          ScrollViewer.IsDeferredScrollingEnabled="True"
                          ScrollViewer.ScrollChanged="ResultsList_ScrollChanged"
+                         PreviewMouseWheel="ResultsList_PreviewMouseWheel"
                          SelectionChanged="ResultsList_SelectionChanged"
                          MouseDoubleClick="ResultsList_MouseDoubleClick"
                          AllowDrop="True"

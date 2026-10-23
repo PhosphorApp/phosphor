@@ -259,6 +259,17 @@ public partial class DmdWindow : JukeboxWindow
                 };
                 vmLoaded.PropertyChanged += (_, args) =>
                 {
+                    if (args.PropertyName == nameof(JukeboxViewModel.ShowAlphaJumpBar))
+                        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+                        {
+                            // The strip appearing after the first page arrives can leave the wrap panel with a
+                            // stale measure (only the first rows drawn); force a fresh layout pass.
+                            ResultsList.UpdateLayout();
+                            FindVisualChildren<WpfToolkit.Controls.VirtualizingWrapPanel>(ResultsList).FirstOrDefault()?.InvalidateMeasure();
+                        });
+                };
+                vmLoaded.PropertyChanged += (_, args) =>
+                {
                     if (args.PropertyName == nameof(JukeboxViewModel.PlayTransitioning))
                         _dofClient?.Trigger('E', 110, vmLoaded.PlayTransitioning ? 1 : 0);
                     if (args.PropertyName == nameof(JukeboxViewModel.ActiveCurrentQueueItem) && vmLoaded.ActiveCurrentQueueItem != null)
@@ -276,8 +287,12 @@ public partial class DmdWindow : JukeboxWindow
                     {
                         _resultsIndex = -1;
                         _inActionMode = false;
-                        var sv = FindVisualChildren<ScrollViewer>(ResultsList).FirstOrDefault();
-                        sv?.ScrollToTop();
+                        if (!_prependingResults)
+                        {
+                            _scrolledSinceReset = false;
+                            var sv = FindVisualChildren<ScrollViewer>(ResultsList).FirstOrDefault();
+                            sv?.ScrollToTop();
+                        }
                     }
 
                     // Apply/clear provider grouping on the results view (favorites "Group by provider").
@@ -292,7 +307,7 @@ public partial class DmdWindow : JukeboxWindow
                     });
                 };
             }
-            ResultsList.SizeChanged += (_, _) => UpdateResultItemWidth();
+            ResultsList.SizeChanged += (_, _) => ScheduleResultItemWidthUpdate();
             QueueList.ItemContainerGenerator.StatusChanged += (_, _) =>
             {
                 if (QueueList.ItemContainerGenerator.Status == System.Windows.Controls.Primitives.GeneratorStatus.ContainersGenerated)
@@ -326,7 +341,7 @@ public partial class DmdWindow : JukeboxWindow
         if (grouped == _favoritesGrouped && customOrder == _favoritesCustomOrder) return;
         _favoritesGrouped = grouped;
         _favoritesCustomOrder = customOrder;
-        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, UpdateResultItemWidth);
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => UpdateResultItemWidth());
     }
 
     private void CenterCursorOnWindow()
@@ -883,6 +898,8 @@ public partial class DmdWindow : JukeboxWindow
         SetTrackButtonSize(settings.DmdTrackButtonSizeModifier);
         SetMinorButtonLocation(settings.DmdMinorButtonLocation);
         SetShowStatusText(settings.ShowStatusText);
+        if (DataContext is JukeboxViewModel vmNav) vmNav.ShowNavigationHeaders = settings.DmdShowNavigationHeaders;
+        SetAlphaNavSize(settings.DmdAlphaNavSizeModifier);
         SetTitleText(settings.TitleText);
 
         // Restore the saved Favorites view axes into the VM at startup so the inline dropdowns and the
@@ -2008,8 +2025,62 @@ public partial class DmdWindow : JukeboxWindow
         return null;
     }
 
+    // Letter-jump bidirectional paging state.
+    private bool _prependingResults;
+    private bool _loadingPrevious;
+    private bool _scrolledSinceReset;
+
+    private async Task LoadPreviousResultsAsync()
+    {
+        if (_loadingPrevious || DataContext is not JukeboxViewModel vm || !vm.CanLoadPrevious || vm.IsSearching)
+            return;
+        if (vm.SearchResults.Count == 0) return;
+
+        _loadingPrevious = true;
+        try
+        {
+            // The current top row is the anchor: after the insert, scroll it back into view so the
+            // list doesn't jump to the top (the insert raises a Reset).
+            var anchor = vm.SearchResults[0];
+            _prependingResults = true;
+            int inserted;
+            try { inserted = await vm.LoadPreviousGenericPageAsync(); }
+            finally { _prependingResults = false; }
+
+            if (inserted > 0)
+                await Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => ResultsList.ScrollIntoView(anchor));
+        }
+        finally
+        {
+            _loadingPrevious = false;
+        }
+    }
+
+    private void ResultsList_PreviewMouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
+    {
+        // Wheel-up while already at the top of a list entered mid-way via a letter jump: load earlier items.
+        if (e.Delta > 0 && DataContext is JukeboxViewModel { CanLoadPrevious: true })
+        {
+            var sv = FindVisualChildren<ScrollViewer>(ResultsList).FirstOrDefault();
+            if (sv != null && sv.VerticalOffset <= 1)
+                _ = LoadPreviousResultsAsync();
+        }
+    }
+
     private void ResultsList_ScrollChanged(object sender, ScrollChangedEventArgs e)
     {
+        if (e.VerticalOffset > 50) _scrolledSinceReset = true;
+
+        if (DataContext is JukeboxViewModel vmScroll)
+        {
+            if (vmScroll.ShowAlphaJumpBar && e.ExtentHeight > 0 && vmScroll.SearchResults.Count > 0)
+                vmScroll.UpdateActiveLetter((int)(e.VerticalOffset / e.ExtentHeight * vmScroll.SearchResults.Count));
+
+            // Scrolled (not jumped) up near the top: pull in the page above.
+            if (_scrolledSinceReset && e.VerticalChange < 0 && e.VerticalOffset <= 50 && vmScroll.CanLoadPrevious)
+                _ = LoadPreviousResultsAsync();
+        }
+
         // Auto-load more when scrolled near the bottom
         if (e.VerticalOffset + e.ViewportHeight >= e.ExtentHeight - 50)
         {
@@ -2190,7 +2261,31 @@ public partial class DmdWindow : JukeboxWindow
         Resources["ResultContentHeight"] = Math.Ceiling(titleRowHeight + buttonRowHeight);
     }
 
-    private void UpdateResultItemWidth()
+    private DispatcherTimer? _resultResizeTimer;
+    private string? _lastResultWidthKey;
+
+    /// <summary>
+    /// Debounces window-resize relayout of the results list. Swapping the container style on every
+    /// SizeChanged while dragging leaves the VirtualizingWrapPanel with a stale cached item size /
+    /// extent (stray extra columns, rows that vanish below the first few). Apply once, after the
+    /// resize settles.
+    /// </summary>
+    private void ScheduleResultItemWidthUpdate()
+    {
+        if (_resultResizeTimer == null)
+        {
+            _resultResizeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
+            _resultResizeTimer.Tick += (_, _) =>
+            {
+                _resultResizeTimer.Stop();
+                UpdateResultItemWidth(force: false);
+            };
+        }
+        _resultResizeTimer.Stop();
+        _resultResizeTimer.Start();
+    }
+
+    private void UpdateResultItemWidth(bool force = true)
     {
         // Grouped Favorites view keeps the multi-column wrap panel, but lets provider header rows
         // span the full width (forcing a line break) via AllowDifferentSizedItems. Normal tiles keep
@@ -2202,7 +2297,13 @@ public partial class DmdWindow : JukeboxWindow
         if (!_favoritesGrouped && _resultColumns <= 1)
         {
             // Single column — clear width constraint
-            ResultsList.ItemContainerStyle = MakeItemContainerStyle(double.NaN);
+            var singleKey = "single";
+            if (force || _lastResultWidthKey != singleKey)
+            {
+                _lastResultWidthKey = singleKey;
+                ResultsList.ItemContainerStyle = MakeItemContainerStyle(double.NaN);
+                RefreshResultsPanelLayout();
+            }
             return;
         }
 
@@ -2212,7 +2313,56 @@ public partial class DmdWindow : JukeboxWindow
 
         double itemWidth = Math.Floor(availableWidth / _resultColumns);
         double? fullWidth = (_favoritesGrouped || _favoritesCustomOrder) ? availableWidth : (double?)null;
+
+        // Skip no-op style swaps (e.g. a height-only resize): replacing the style regenerates every
+        // container and invalidates the panel's cached sizes.
+        var key = $"{itemWidth}|{fullWidth}|{_resultColumns}|{_favoritesGrouped}|{_favoritesCustomOrder}";
+        if (!force && key == _lastResultWidthKey)
+        {
+            // Style unchanged, but the panel may still hold sizes cached from a previous width
+            // (a drag can leave it stale) — always rebuild its layout once the resize settles.
+            RefreshResultsPanelLayout();
+            return;
+        }
+        _lastResultWidthKey = key;
+
         ResultsList.ItemContainerStyle = MakeItemContainerStyle(itemWidth, fullWidth);
+        RefreshResultsPanelLayout();
+    }
+
+    private static readonly System.Reflection.FieldInfo? _wrapFirstItemSizeField =
+        typeof(WpfToolkit.Controls.VirtualizingWrapPanel).GetField("sizeOfFirstItem",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+    private static readonly System.Reflection.FieldInfo? _wrapItemSizesCacheField =
+        typeof(WpfToolkit.Controls.VirtualizingWrapPanel).GetField("itemSizesCache",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+    /// <summary>Forces the virtualizing panel to drop its cached item sizes and re-measure once the
+    /// new container style has been applied.</summary>
+    private void RefreshResultsPanelLayout()
+    {
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            var panel = FindVisualChildren<WpfToolkit.Controls.VirtualizingWrapPanel>(ResultsList).FirstOrDefault();
+            if (panel == null) return;
+
+            // VirtualizingWrapPanel caches the first item's size and per-item sizes; after a resize
+            // these can describe the old width, producing stray columns and clipped/missing rows.
+            // The fields are private, so this is best-effort and silently skipped if they ever move.
+            try
+            {
+                _wrapFirstItemSizeField?.SetValue(panel, System.Windows.Size.Empty);
+                (_wrapItemSizesCacheField?.GetValue(panel) as System.Collections.IList)?.Clear();
+            }
+            catch (Exception ex)
+            {
+                DebugLog.LogException("Reset wrap panel size cache", ex);
+            }
+
+            panel.InvalidateMeasure();
+            panel.InvalidateArrange();
+            ResultsList.UpdateLayout();
+        });
     }
 
     private Style MakeItemContainerStyle(double width, double? headerWidth = null)
@@ -2877,6 +3027,8 @@ public partial class DmdWindow : JukeboxWindow
         SetTrackButtonSize(_appSettings.DmdTrackButtonSizeModifier);
         SetMinorButtonLocation(_appSettings.DmdMinorButtonLocation);
         SetShowStatusText(_appSettings.ShowStatusText);
+        if (DataContext is JukeboxViewModel vmNavApply) vmNavApply.ShowNavigationHeaders = _appSettings.DmdShowNavigationHeaders;
+        SetAlphaNavSize(_appSettings.DmdAlphaNavSizeModifier);
         LogStep("TrackList/Buttons/Status");
 
         // Restart local (DMD) Mandelbrot/ProjectM renderers LAST and asynchronously
@@ -3157,6 +3309,12 @@ public partial class DmdWindow : JukeboxWindow
         // new "QUEUE" font size (otherwise a larger font truncates against the fixed strip width).
         if (_queueCollapsed)
             ApplyQueueCollapsedState();
+    }
+
+    public void SetAlphaNavSize(int modifier)
+    {
+        Resources["AlphaNavFontSize"] = Math.Max(9.0, 13.0 + modifier);
+        Resources["AlphaNavMinWidth"] = Math.Max(16.0, 22.0 + modifier * 1.5);
     }
 
     public void SetGenreIconSize(int modifier)

@@ -2166,6 +2166,22 @@
                                         Width="140" VerticalAlignment="Center"/>
                                 <TextBlock Text="Larger" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
                             </DockPanel>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="A-Z Nav Size:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <TextBlock Text="Smaller" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <Slider x:Name="SliderAlphaNavSize" Minimum="-4" Maximum="6"
+                                        TickFrequency="2" IsSnapToTickEnabled="True"
+                                        Width="140" VerticalAlignment="Center"/>
+                                <TextBlock Text="Larger" Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                            </DockPanel>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Show A-Z Nav:" Foreground="{StaticResource TextBrush}"
+                                           VerticalAlignment="Center" Width="110"/>
+                                <CheckBox x:Name="CbShowNavigationHeaders"
+                                          Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
+                                          ToolTip="Shows an A-Z jump bar above large alphabetical lists (e.g. Plex libraries) so you can jump straight to a letter. Turn off for a cleaner interface."/>
+                            </DockPanel>
 
                             <!-- ═══ SECTION: FAVORITES ═══ -->
                             <TextBlock Text="FAVORITES" FontSize="12" FontWeight="Bold"

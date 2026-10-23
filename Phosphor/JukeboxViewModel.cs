@@ -455,6 +455,7 @@ public partial class JukeboxViewModel : ObservableObject
         IsViewingPlaylist = false;
         StatusText = $"Loading {node.Title}...";
         SearchResults.Clear();
+        ResetAlphaJump();
 
         try
         {
@@ -521,8 +522,11 @@ public partial class JukeboxViewModel : ObservableObject
                 _genericPagedCategory = sourceCategory;
                 _genericPagedResolver = resolver;
                 _genericPagedOffset = 0;
+                _genericPagedStart = 0;
+                _genericPagedLeadCount = SearchResults.Count;
                 _genericPagedTotal = int.MaxValue;
                 await LoadMoreGenericPageAsync();
+                await LoadAlphaIndexAsync(source, sourceCategory, ct);
             }
             else
             {
@@ -615,9 +619,182 @@ public partial class JukeboxViewModel : ObservableObject
     private Phosphor.Plugin.Abstractions.IPlayableResolver? _genericPagedResolver;
     private int _genericPagedOffset;
     private int _genericPagedTotal;
+    private int _genericPagedStart;      // offset of the first loaded paged item (>0 after a letter jump)
+    private int _genericPagedLeadCount;  // rows ahead of the paged items (e.g. Hubs/Playlists tiles)
+
+    // ── Letter jump bar (title-sorted paged nodes on IAlphaIndexable sources) ──
+    public ObservableCollection<AlphaLetterItem> AlphaLetters { get; } = new();
+
+    private bool _showAlphaJumpBar;
+    public bool ShowAlphaJumpBar
+    {
+        get => _showAlphaJumpBar;
+        private set => SetProperty(ref _showAlphaJumpBar, value);
+    }
+
+    private bool _showNavigationHeaders = true;
+    /// <summary>User setting: offer the letter jump bar. When false, browse behaves as before the feature.</summary>
+    public bool ShowNavigationHeaders
+    {
+        get => _showNavigationHeaders;
+        set
+        {
+            if (!SetProperty(ref _showNavigationHeaders, value)) return;
+            // Turning it off mid-browse removes the strip; turning it on takes effect on the next browse.
+            if (!value) ResetAlphaJump();
+        }
+    }
+
+    private bool _canLoadPrevious;
+    /// <summary>True when items above the first loaded one exist (after jumping into the middle of a list).</summary>
+    public bool CanLoadPrevious
+    {
+        get => _canLoadPrevious;
+        private set => SetProperty(ref _canLoadPrevious, value);
+    }
+
+    /// <summary>Raised after a letter jump repopulates the list so the view can scroll to the top.</summary>
+    public event Action? ResultsJumped;
+
+    private void ResetAlphaJump()
+    {
+        AlphaLetters.Clear();
+        ShowAlphaJumpBar = false;
+        CanLoadPrevious = false;
+        _genericPagedStart = 0;
+        _genericPagedLeadCount = 0;
+    }
+
+    private async Task LoadAlphaIndexAsync(
+        object source, Phosphor.Plugin.Abstractions.SourceCategory category, CancellationToken ct)
+    {
+        if (!ShowNavigationHeaders) return;
+        if (source is not Phosphor.Plugin.Abstractions.IAlphaIndexable indexable) return;
+        try
+        {
+            var index = await indexable.GetAlphaIndexAsync(category, ct);
+            if (ct.IsCancellationRequested || index is null || index.Entries.Count == 0) return;
+
+            var entries = index.Entries;
+            bool latin = entries.All(e => e.Label == "#" || (e.Label.Length == 1 && e.Label[0] is >= 'A' and <= 'Z'));
+            if (latin)
+            {
+                // Show the full # A-Z strip; letters with no items render disabled.
+                var byLabel = entries.ToDictionary(e => e.Label);
+                foreach (var label in new[] { "#" }.Concat(Enumerable.Range('A', 26).Select(c => ((char)c).ToString())))
+                    AlphaLetters.Add(byLabel.TryGetValue(label, out var e)
+                        ? new AlphaLetterItem(label, e.StartOffset, e.Count)
+                        : new AlphaLetterItem(label, 0, 0));
+            }
+            else
+            {
+                foreach (var e in entries)
+                    AlphaLetters.Add(new AlphaLetterItem(e.Label, e.StartOffset, e.Count));
+            }
+            ShowAlphaJumpBar = true;
+            UpdateActiveLetter(0);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            DebugLog.LogException("Alpha index", ex);
+        }
+    }
+
+    /// <summary>Highlights the letter containing the row at <paramref name="firstVisibleIndex"/>.</summary>
+    public void UpdateActiveLetter(int firstVisibleIndex)
+    {
+        if (AlphaLetters.Count == 0) return;
+        int abs = _genericPagedStart + Math.Max(0, firstVisibleIndex - _genericPagedLeadCount);
+        AlphaLetterItem? active = null;
+        foreach (var l in AlphaLetters)
+            if (l.HasItems && l.StartOffset <= abs) active = l;
+        foreach (var l in AlphaLetters)
+            l.IsActive = ReferenceEquals(l, active);
+    }
+
+    [RelayCommand]
+    private async Task JumpToLetterAsync(AlphaLetterItem? letter)
+    {
+        if (letter is not { HasItems: true } || _genericPaged is null || _genericPagedCategory is null) return;
+
+        // Cancel any in-flight page load and wait for it to release the loading flag.
+        _searchCts.Cancel();
+        _searchCts = new CancellationTokenSource();
+        for (int i = 0; i < 100 && _isLoadingMore; i++)
+            await Task.Delay(20);
+        if (_isLoadingMore) return;
+
+        SearchResults.ReplaceAll(Array.Empty<VideoItem>());
+        _genericPagedLeadCount = 0;
+        _genericPagedStart = _genericPagedOffset = letter.StartOffset;
+        CanLoadPrevious = _genericPagedStart > 0;
+        foreach (var l in AlphaLetters) l.IsActive = ReferenceEquals(l, letter);
+
+        await LoadMoreGenericPageAsync();
+        ResultsJumped?.Invoke();
+    }
+
+    /// <summary>Loads the page above the first loaded item and inserts it at the top.
+    /// Returns the number of rows inserted (the view uses it to keep its scroll position).</summary>
+    public async Task<int> LoadPreviousGenericPageAsync()
+    {
+        if (_genericPaged is null || _genericPagedCategory is null || _isLoadingMore || _genericPagedStart <= 0)
+            return 0;
+
+        _isLoadingMore = true;
+        var token = _searchCts.Token;
+        try
+        {
+            int count = Math.Min(SearchPageSize, _genericPagedStart);
+            int newStart = _genericPagedStart - count;
+            var page = await _genericPaged.BrowsePageAsync(_genericPagedCategory, newStart, count, token);
+            if (token.IsCancellationRequested || page.Items.Count == 0) return 0;
+
+            var rows = new List<VideoItem>(page.Items.Count);
+            foreach (var item in page.Items)
+                rows.Add(await BuildLeafRowAsync(item, _genericPagedResolver, token));
+            if (token.IsCancellationRequested) return 0;
+
+            SearchResults.InsertRangeAtStart(rows);
+            _genericPagedStart = newStart;
+            CanLoadPrevious = _genericPagedStart > 0;
+            StatusText = PagedStatusText(CanLoadMore);
+            return rows.Count;
+        }
+        catch (OperationCanceledException) { return 0; }
+        catch (Exception ex)
+        {
+            DebugLog.LogException("Generic browse previous page", ex);
+            CanLoadPrevious = false;
+            return 0;
+        }
+        finally
+        {
+            _isLoadingMore = false;
+        }
+    }
+
+    private string PagedStatusText(bool hasMore)
+    {
+        int loaded = _genericPagedOffset - _genericPagedStart;
+        if (_genericPagedStart > 0 && _genericPagedTotal != int.MaxValue)
+            return $"Showing {_genericPagedStart + 1:N0}–{_genericPagedOffset:N0} of {_genericPagedTotal:N0}";
+        return hasMore
+            ? $"Showing {SearchResults.Count} item(s) — scroll for more"
+            : $"Showing all {SearchResults.Count} item(s)";
+    }
 
     /// <summary>Resolves a leaf <see cref="SourceItem"/> to a playable <see cref="VideoItem"/> and adds it.</summary>
     private async Task AddResolvedLeafAsync(
+        Phosphor.Plugin.Abstractions.SourceItem item,
+        Phosphor.Plugin.Abstractions.IPlayableResolver? resolver,
+        CancellationToken ct)
+        => SearchResults.Add(await BuildLeafRowAsync(item, resolver, ct));
+
+    /// <summary>Builds the row for a leaf <see cref="SourceItem"/>: a drill-in container tile when it
+    /// is flagged <c>IsContainer</c>, otherwise a resolved playable row.</summary>
+    private async Task<VideoItem> BuildLeafRowAsync(
         Phosphor.Plugin.Abstractions.SourceItem item,
         Phosphor.Plugin.Abstractions.IPlayableResolver? resolver,
         CancellationToken ct)
@@ -628,11 +805,10 @@ public partial class JukeboxViewModel : ObservableObject
         {
             var policy = _sourceRegistry?.ByInstance(item.SourceInstanceId)
                 as Phosphor.Plugin.Abstractions.IContainerPlayPolicy;
-            SearchResults.Add(ToContainerLeafItem(item, resolver as Phosphor.Plugin.Abstractions.IFavoritable, policy));
-            return;
+            return ToContainerLeafItem(item, resolver as Phosphor.Plugin.Abstractions.IFavoritable, policy);
         }
 
-        SearchResults.Add(await ResolveLeafAsync(item, resolver, ct));
+        return await ResolveLeafAsync(item, resolver, ct);
     }
 
     /// <summary>
@@ -814,9 +990,8 @@ public partial class JukeboxViewModel : ObservableObject
             // a source that under-reports TotalSize).
             bool hasMore = page.Items.Count > 0 && _genericPagedOffset < _genericPagedTotal;
             CanLoadMore = hasMore;
-            StatusText = hasMore
-                ? $"Showing {SearchResults.Count} item(s) — scroll for more"
-                : $"Showing all {SearchResults.Count} item(s)";
+            CanLoadPrevious = _genericPagedStart > 0;
+            StatusText = PagedStatusText(hasMore);
         }
         catch (Exception ex)
         {
@@ -3024,6 +3199,7 @@ public partial class JukeboxViewModel : ObservableObject
         _genericPagedCategory = null;
         _genericPagedResolver = null;
         _genericPagedOffset = 0;
+        ResetAlphaJump();
         UpdateBrowseBreadcrumb();
         ActiveCategory = "";
         SearchResults.Clear();
@@ -3137,6 +3313,7 @@ public partial class JukeboxViewModel : ObservableObject
                 _genericPagedCategory = null;
                 _genericPagedResolver = null;
                 _genericPagedOffset = 0;
+                ResetAlphaJump();
                 UpdateBrowseBreadcrumb();
             }
         }

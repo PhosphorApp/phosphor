@@ -484,6 +484,10 @@ public class AppSettings
     /// this only reacts to empty↔non-empty transitions so it doesn't fight the user's manual toggles.
     /// </summary>
     public bool DmdAutoHideQueueWhenEmpty { get; set; }
+    /// <summary>Show the letter jump bar ("A B C …") on title-sorted browse lists when the source offers an index.</summary>
+    public bool DmdShowNavigationHeaders { get; set; } = true;
+    /// <summary>Relative size of the A-Z jump bar letters (0 = default).</summary>
+    public int DmdAlphaNavSizeModifier { get; set; }
     /// <summary>
     /// Persisted collapsed/expanded state of the DMD queue panel so the user's manual toggle
     /// (via the QUEUE label) is restored on next launch.
