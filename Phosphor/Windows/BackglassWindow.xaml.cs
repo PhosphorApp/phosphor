@@ -458,7 +458,7 @@ public partial class BackglassWindow : JukeboxWindow
                 lengthMs = (long)known.TotalMilliseconds;
 
             state.PlaybackDuration = Math.Max(1, lengthMs);
-            state.PlaybackPosition = Math.Max(0, _mediaPlayer.Time);
+            state.UpdatePlaybackPositionFromPlayer(Math.Max(0, _mediaPlayer.Time));
 
             // Prefetch next track when within 30 seconds of the end
             var remaining2 = lengthMs - _mediaPlayer.Time;

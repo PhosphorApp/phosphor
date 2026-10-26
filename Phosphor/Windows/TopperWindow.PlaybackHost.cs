@@ -133,7 +133,7 @@ public partial class TopperWindow : IPlaybackHost
             if (lengthMs <= 0 && state.CurrentlyPlaying?.Duration is { } known && known > TimeSpan.Zero)
                 lengthMs = (long)known.TotalMilliseconds;
             state.PlaybackDuration = Math.Max(1, lengthMs);
-            state.PlaybackPosition = Math.Max(0, mp.Time);
+            state.UpdatePlaybackPositionFromPlayer(Math.Max(0, mp.Time));
         };
     }
 

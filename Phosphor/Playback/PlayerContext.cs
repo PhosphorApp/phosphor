@@ -90,6 +90,20 @@ public sealed class PlayerContext : INotifyPropertyChanged
         }
     }
 
+    /// <summary>
+    /// Position write-back for the periodic player timers. LibVLC's Time can jitter backward by a few
+    /// hundred ms on adaptive/split streams, which makes the displayed second flicker back. Small
+    /// backward steps while playing are ignored; real seeks/restarts (larger jumps, or explicit
+    /// <see cref="PlaybackPosition"/> sets) still apply.
+    /// </summary>
+    public void UpdatePlaybackPositionFromPlayer(double positionMs)
+    {
+        double delta = positionMs - _playbackPosition;
+        if (!IsPaused && delta < 0 && delta > -2000)
+            return;
+        PlaybackPosition = positionMs;
+    }
+
     private double _playbackDuration = 1;
     public double PlaybackDuration
     {
