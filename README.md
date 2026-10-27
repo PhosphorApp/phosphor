@@ -21,7 +21,7 @@ This video surveys the visualizations available in Phosphor:
 - **Many media sources via plug-ins** — Sources are pluggable and configured in Settings.
   Available plug-ins include **YouTube**, **Plex**, **Jellyfin**, **Emby**,
   **Vimeo**, **Dailymotion**, **SoundCloud**, **Twitch**, **SiriusXM**, **iHeartRadio**,
-  and a **Local Folder** source.
+  **HDHomeRun**, **IPTV**, **PodcastIndex**, and a **Local Folder** source.
 - **Extensible** — Additional plug-ins can be developed and loaded at runtime. See the
   [Plug-in Authoring Guide](docs/PLUGIN_AUTHORING_GUIDE.md) for details.
 - **Multi-screen layout** — Independent, individually positioned/sized windows for
@@ -41,11 +41,15 @@ This video surveys the visualizations available in Phosphor:
 
 | Project | Target | Description |
 |---------|--------|-------------|
-| `Phosphor` | .NET 8, WPF | Main application and plug-in host |
-| `Phosphor.Plugin.Abstractions` | .NET 8 | The plug-in contract (`IPhosphorSource`, capabilities) |
-| `Phosphor.Plugins.*` | .NET 8 | Source plug-ins (YouTube, Plex, Jellyfin, Emby, Vimeo, Dailymotion, SoundCloud, Twitch, SiriusXM, iHeartRadio, LocalFolder) |
+| `Phosphor` | .NET 8, WPF | Main application and plug-in host (this repo) |
 | `DofBridge` | .NET Framework 4.8 | Out-of-process DOF host |
 | `DofBridge.x86` | .NET Framework 4.8 | x86 variant for 32-bit DOF drivers |
+
+Related repositories: [`phosphor-abstractions`](https://github.com/PhosphorApp/phosphor-abstractions)
+(the plug-in contract, published on NuGet as `Phosphor.Plugin.Abstractions`) and
+[`phosphor-plugins`](https://github.com/PhosphorApp/phosphor-plugins) (the `Phosphor.Plugins.*` source
+plug-ins: YouTube, Plex, Jellyfin, Emby, Vimeo, Dailymotion, SoundCloud, Twitch, SiriusXM, iHeartRadio,
+HDHomeRun, IPTV, PodcastIndex, LocalFolder).
 
 ## Requirements
 

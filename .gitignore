@@ -54,3 +54,6 @@ LICENSE.draft.txt
 # (the real sources live at Phosphor/Caching/PrefetchCache.cs and Phosphor/Emoji/EmojiRenderer.cs)
 Phosphor/Services/PrefetchCache.cs
 Phosphor/Visuals/EmojiRenderer.cs
+
+# Local design/spike notes (context for maintainers, not onboarding docs)
+docs/_local/

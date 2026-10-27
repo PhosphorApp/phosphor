@@ -4,9 +4,13 @@ This guide explains how to build a **source plug-in** for Phosphor — a compone
 music/video source (a media server, a local library, a streaming service, …) that shows up in the
 app alongside the built-in **YouTube** and **Plex** sources.
 
-The complete, working reference is **`Phosphor.Plugins.LocalFolder`** in this repository. It plays
-media files from user-configured folders and implements most of the optional capabilities. Read it
-alongside this guide — every pattern here is demonstrated there.
+The complete, working reference is **`Phosphor.Plugins.LocalFolder`** in the
+[`phosphor-plugins`](https://github.com/PhosphorApp/phosphor-plugins) repository (all source plug-ins
+live there, not in the host repo). It plays media files from user-configured folders and implements
+many of the optional capabilities. Read it alongside this guide — the core patterns here are
+demonstrated there. The contract itself lives in
+[`phosphor-abstractions`](https://github.com/PhosphorApp/phosphor-abstractions) (MIT) and ships on NuGet.
+Before contributing, see `CONTRIBUTING.md` and `CLA.md` in the host repo.
 
 ---
 
@@ -44,11 +48,11 @@ Create a **.NET 8 class library** that references **only** the contract, compile
 	<!-- Reference the contract COMPILE-ONLY. The host ships the single shared runtime copy, so
 		 you must NOT bundle your own — otherwise contract types won't unify across the load
 		 boundary and casts to IPhosphorSourceProvider will fail. -->
-	<PackageReference Include="Phosphor.Plugin.Abstractions" Version="0.14.0">
+	<PackageReference Include="Phosphor.Plugin.Abstractions" Version="0.18.0">
 	  <ExcludeAssets>runtime</ExcludeAssets>
 	</PackageReference>
-	<!-- (In-tree, you can use a ProjectReference with <Private>false</Private>/<ExcludeAssets>runtime</ExcludeAssets>
-		 instead — see Phosphor.Plugins.LocalFolder.csproj.) -->
+	<!-- Use the latest version on nuget.org (0.18.0 at the time of writing). In the phosphor-plugins
+		 repo, the shared Directory.Build.targets handles deployment — clone an existing plug-in's csproj. -->
   </ItemGroup>
 </Project>
 ```
@@ -68,12 +72,12 @@ choice:
 
 ```bash
 # .NET CLI
-dotnet add package Phosphor.Plugin.Abstractions --version 0.14.0
+dotnet add package Phosphor.Plugin.Abstractions
 ```
 
 ```powershell
 # Package Manager Console (Visual Studio)
-NuGet\Install-Package Phosphor.Plugin.Abstractions -Version 0.14.0
+Install-Package Phosphor.Plugin.Abstractions
 ```
 
 > **Add the `runtime` exclusion yourself.** The `dotnet add` / `Install-Package` commands write a plain
@@ -88,7 +92,7 @@ reference:
 
 ```xml
 <!-- Directory.Packages.props -->
-<PackageVersion Include="Phosphor.Plugin.Abstractions" Version="0.14.0" />
+<PackageVersion Include="Phosphor.Plugin.Abstractions" Version="0.18.0" />
 ```
 
 ```xml
@@ -99,8 +103,8 @@ reference:
 ```
 
 **Keep the package version in step with the API version you build against.** The package version tracks
-the contract's `PluginApi.Current`, and the host rejects plug-ins built against an incompatible
-`ApiVersion` (see §3). Reporting `ApiVersion => PluginApi.Current` keeps your plug-in aligned with
+the contract's `PluginApi.Current` (currently 0.18), and the host rejects plug-ins built against an
+incompatible `ApiVersion` (see §3). The contract is pre-1.0 and additive changes land in minor bumps.
 whatever package version you referenced.
 
 ### Deployment
@@ -108,8 +112,17 @@ whatever package version you referenced.
 The host scans a `plugins/` folder next to `Phosphor.exe`. Drop your build output at:
 
 ```
-Phosphor/…/plugins/<YourPluginName>/Phosphor.Plugins.<YourPluginName>.dll   (+ any private dependencies)
+<Phosphor install folder>/plugins/<YourPluginName>/Phosphor.Plugins.<YourPluginName>.dll   (+ any private dependencies)
 ```
+
+**Dev loop (phosphor-plugins repo):** set the `PHOSPHOR_HOST_DIR` environment variable to a built host
+output folder and the shared `Directory.Build.targets` copies each plug-in into
+`$(PHOSPHOR_HOST_DIR)\plugins\<Name>` on build. Without it, plug-ins deploy to a repo-local
+`dist\plugins\<Name>`. A fresh host clone has no plug-ins until you build the plugins repo once.
+
+**Releases:** a Phosphor release bundles a snapshot of the plug-ins (there is no in-app updater). Testers
+can hot-swap a single plug-in by replacing its `plugins/<Name>/` folder; the About tab's
+"Loaded plug-ins" panel shows each plug-in's assembly and contract version.
 
 Each plug-in gets its own subfolder (one plug-in per folder) and its own collectible
 `AssemblyLoadContext`, so a bad DLL is isolated (logged and skipped) and never crashes startup. The
@@ -152,7 +165,8 @@ public sealed class LocalFolderSourceProvider : IPhosphorSourceProvider
 ```
 
 **Version gating.** The host loads your plug-in only if `IsCompatible(ApiVersion)` holds — currently
-`PluginApi.MinimumSupported <= your major.minor <= PluginApi.Current`. Setting
+`PluginApi.MinimumSupported (currently 0.12) <= your major.minor <= PluginApi.Current` (compared on
+major.minor only; a plug-in built against a *newer* contract than the host is rejected).
 `ApiVersion => PluginApi.Current` keeps you in step with whatever contract you compiled against.
 
 **Optional provider metadata:**
@@ -269,6 +283,20 @@ what you implement, and enables the matching features.
 | `IHideable` | `GetHideableItems`/`GetHiddenIds`/bulk `SetHidden` | "Manage hidden channels…" button → themed dual-list + group tree; you persist the hidden set and filter your own browse |
 | `IExperimental` | *(marker on the **provider**)* | "⚠ EXPERIMENTAL" badge in the Plug-ins settings tab (advisory only) |
 | `IPlaybackReportable` | `ReportPlaybackFailure(id, kind)` → `bool` | Host tells you a play attempt failed; you decide if the item is now unplayable |
+| `IPlaybackSuccessReportable` | success counterpart | Clears an "unavailable" state (`ShowUnavailableBadge`) once the item plays again |
+| `IPlaybackStoppable` | best-effort stop callback | Host tells you the playing item changed/stopped so you can tear down server-side sessions (must not throw) |
+| `IFilterableSearch` / `ISearchHintProvider` | filtered search / search hints | Search filters and hint text in the search UI |
+| `IDeferredStreamResolution` | defer stream resolution | Host resolves the stream lazily at play time |
+| `ISavedSearchCategories` / `IEditableSavedSearchCategories` | saved-search tiles | Persisted searches surfaced as category tiles (and user-editable) |
+| `IResultCachePolicy` | `ResultCachePolicy` | Per-source control of host result caching |
+| `IFavoriteCapture` / `IFavoriteMetadataRefresh` / `IReplayableById` | favorites extras | Favoriting containers (artist/album), healing stored metadata, replaying by id |
+| `IContainerPlayPolicy` | `ContainerPlayAll` | Whether playing a container queues everything or just the latest item (e.g. a recency feed) |
+| `ILiveNowPlayingProvider` | `GetNowPlayingAsync` | Host polls current track/segment metadata while a live item plays |
+| `ILiveUpNextProvider` | `GetUpNextAsync` | Host polls the next track / EPG program for a live item (`ILiveUpcomingProvider` is reserved, unused) |
+| `IAlphaIndexable` | `AlphaIndex` per node | **A-Z jump bar** for large title-sorted paged nodes (requires `IPagedBrowsable`; offsets must match `BrowsePageAsync` order; set `SourceCategory.IsTitleSorted`) |
+
+> The table is a summary; `Capabilities.cs` in `phosphor-abstractions` is the authority on exact signatures
+> and semantics. Optional capabilities are additive — a source that doesn't implement one is unaffected.
 
 ### Data-flow types you'll use
 
@@ -280,6 +308,7 @@ what you implement, and enables the matching features.
   Set the optional **`Icon`** (a glyph/emoji, e.g. `"🎵"`) to theme the tile; the host falls back to a
   default folder glyph when it's null/empty.
 - **`BrowseResult`** — `{ Categories, Items }`. Return sub-categories, leaf items, or both.
+  **`BrowsePage`** (`Items`, `TotalSize`) is the paged equivalent returned by `IPagedBrowsable`.
 - **`ResolvedStream`** — how to play an item: a `StreamTransport` (`Http`, `File`, `Other`), a
   `StreamLayout` (`Muxed`, `SeparateVideoAudio`, `AudioOnly`), and the URI(s). Local files return
   `StreamTransport.File` with the path — the host plays it directly.
@@ -287,7 +316,14 @@ what you implement, and enables the matching features.
   for continuous radio-style streams with no fixed duration. The host then shows elapsed time as
   `M:SS / *`, hides the scrub bar (a "● LIVE" badge instead), disables seek, and never auto-advances
   the queue. (SiriusXM channels use this.)
-- **Live thumbnail badge** — set **`SourceItem.ShowLiveBadge = true`** to have the host draw a small red
+- **Startup timeout** — set **`ResolvedStream.StartupTimeout`** for streams that start slowly (e.g. Live TV
+  that must tune a tuner and spin up a transcode). Null keeps the host's standard first-frame timeout
+  (10 s); a non-null value is the budget the host's startup watchdog waits instead (Plex/Jellyfin live TV
+  use 30 s).
+- **Chapters / dates** — `SourceItem.Chapters` (`ChapterMarker` list) and `PublishedAt` are optional display
+  data. `SourceItem.SourceStateToken` is a string alternative to `SourceState` for state that must survive a
+  restart (e.g. persisted queue/favorites).
+- **Live thumbnail badge**
   "live now" dot on the item's thumbnail. This is a *display hint only* and deliberately separate from
   `IsLiveStream`: use it to call out a single currently-broadcasting feed shown among finite items
   (e.g. a Twitch channel's live stream sitting atop its VODs). Sources whose items are **all** live
@@ -400,9 +436,11 @@ For user-facing messages that should appear in the app's status line (not the di
 
 ## 10. Where to look in the repo
 
-- **`Phosphor.Plugin.Abstractions/`** — the contract. `IPhosphorSource.cs`,
+- **`phosphor-abstractions` repo** — the contract (also on NuGet). `IPhosphorSource.cs`,
   `IPhosphorSourceProvider.cs`, `Capabilities.cs`, `PluginSettingDescriptor.cs`, `SourceItem.cs`,
-  `SourceCategory.cs`, `ResolvedStream.cs`, `IPluginHost.cs`, `PluginApi.cs`.
-- **`Phosphor.Plugins.LocalFolder/`** — the full reference plug-in (this guide's running example).
-- **`Phosphor/Plugins/Loader/PluginLoader.cs`** — how the host discovers, version-gates, and isolates
-  plug-ins (for understanding, not something you call).
+  `SourceCategory.cs`, `ResolvedStream.cs`, `IPluginHost.cs`, `PlaybackPreferences.cs`, `LogLevel.cs`,
+  `PluginApi.cs`.
+- **`phosphor-plugins` repo** — all source plug-ins. `Phosphor.Plugins.LocalFolder/` is the simplest full
+  reference (this guide's running example); `Phosphor.Plugins.Plex/` shows Tier-2 config and paging.
+- **This repo: `Phosphor/Plugins/Loader/PluginLoader.cs`** — how the host discovers, version-gates, and
+  isolates plug-ins (for understanding, not something you call).

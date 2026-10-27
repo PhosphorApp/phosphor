@@ -10,13 +10,14 @@ Phosphor is split across **three repositories** under the `PhosphorApp` GitHub o
 
 | Repo | Contents | License | Visibility |
 |------|----------|---------|------------|
-| `PhosphorApp/phosphor` | Host app (`Phosphor/`) + `DofBridge` / `DofBridge.x86` | PolyForm Noncommercial | private until launch |
-| `PhosphorApp/phosphor-abstractions` | The plug-in CONTRACT — published to NuGet as `Phosphor.Plugin.Abstractions` | MIT | package public |
-| `PhosphorApp/phosphor-plugins` | All `Phosphor.Plugins.*` source plug-ins (one solution) | MIT | private until launch |
+| `PhosphorApp/phosphor` | Host app (`Phosphor/`) + `DofBridge` / `DofBridge.x86` | PolyForm Noncommercial | public |
+| MIT | public (+ NuGet package) |
+| `PhosphorApp/phosphor-plugins` | All `Phosphor.Plugins.*` source plug-ins (one solution) | MIT | public |
 
 The contract is MIT so third-party plug-in authors can build against it freely; the **app** is the
-part whose commercial use is restricted (PolyForm Noncommercial). The abstractions package is public
-on NuGet (NuGet has no private packages) but contains only contract types — nothing proprietary.
+part whose commercial use is restricted (PolyForm Noncommercial). The abstractions package on NuGet
+contains only contract types — nothing proprietary. Contributions are governed by `CONTRIBUTING.md`
+and `CLA.md`.
 
 **This repo (`phosphor`) — host solution structure:**
 
@@ -24,21 +25,37 @@ on NuGet (NuGet has no private packages) but contains only contract types — no
 phosphor/
 ├── Phosphor/          # Main WPF app (.NET 8) — the plug-in HOST
 │   ├── App.xaml.cs       # Startup, shared LibVLC init, window orchestration
-│   ├── JukeboxViewModel.cs  # Central ViewModel; owns all app state, dispatches to plug-in sources
-│   ├── Models/           # AppSettings, VideoItem, Category, KeyBindings, enums
-│   ├── Caching/          # VideoCache, PrefetchCache, ThumbnailCache, PlaylistCache (engine-agnostic)
-│   ├── Input/            # DofClient (named-pipe DOF bridge), DirectInputPoller
-│   ├── Plugins/          # Plug-in host: SourceRegistry, DiscoveredProviders, PluginLoader,
-│   │                     #   PluginHost, KnownSourceTypeIds, PluginSettingsFactory
+│   ├── JukeboxViewModel.cs  # Central ViewModel; owns UI/app state, dispatches to plug-in sources
+│   ├── default_settings.json / default_categories.json  # shipped fallbacks (never written to)
+│   ├── Models/           # AppSettings, VideoItem, Category, GenreCategoryStore, KeyBindings,
+│   │                     #   PinupSettings, ChapterMarker, observable collections
+│   ├── Playback/         # JukeboxPlayer, PlayerQueue (per-player queue + persistence), PlayerContext,
+│   │                     #   AutoDjService, MediaEngine, IPlaybackHost, ActiveQueueForwarder, VlcDiagnostics
+│   ├── Caching/          # VideoCache, PrefetchCache, ThumbnailCache, PlaylistCache, ResultCache,
+│   │                     #   CacheDownloadCoordinator (engine-agnostic)
+│   ├── Input/            # DofClient (named-pipe DOF bridge), DirectInputPoller (SharpDX.DirectInput)
+│   ├── Plugins/          # Plug-in host: SourceRegistry, DiscoveredProviders, PluginInstanceConfig,
+│   │                     #   KnownSourceTypeIds, PluginSettingsFactory, Loader/PluginLoader,
+│   │                     #   Host/PluginHost + SecretProtector
 │   ├── Video/            # Host-side playback vocabulary (VideoVocabulary.cs) — NOT the engines
-│   ├── Services/         # PlayHistory, PlaylistManager, SearchHistory, DebugLog
-│   ├── Visuals/          # AudioReactiveService, blob patterns, Mandelbrot, projectM interop
-│   └── Windows/          # JukeboxWindow base, PlayfieldWindow, BackglassWindow, DmdWindow,
-│                         #   TopperWindow, SettingsWindow, PresetBrowserWindow
+│   ├── Services/         # PlayHistory, PlaylistManager, SearchHistory, FavoritesIndex, DebugLog,
+│   │                     #   AppVersion, Pinup* (Pinup Popper integration)
+│   ├── Visuals/          # AudioReactiveService, blob patterns (Patterns/), Mandelbrot, projectM interop
+│   └── Windows/          # JukeboxWindow base, Playfield/Backglass/Topper/Dmd windows (+ *Proxy,
+│                         #   *.Ambient.cs, *.PlaybackHost.cs partials), SettingsWindow,
+│                         #   PresetBrowserWindow, ManageHiddenWindow, DarkConfirmDialog
 ├── DofBridge/            # .NET Framework 4.8 console app; hosts DirectOutput, receives
 │                         #   commands via named pipe "PhosphorDof"
-└── DofBridge.x86/        # Identical to DofBridge, compiled x86 for 32-bit DOF drivers
+├── DofBridge.x86/        # Identical to DofBridge, compiled x86 for 32-bit DOF drivers
+├── dependencies/         # Bundled tools/natives: DirectOutput, projectM, ffmpeg.exe, yt-dlp.exe
+├── docs/                 # PLUGIN_AUTHORING_GUIDE.md, KNOWN_ISSUES.md (docs/_local/ is git-ignored)
+├── tools/                # Standalone spike/prototype projects (not part of the shipped app)
+├── licenses/             # Third-party license notices
+└── .github/workflows/    # build.yml, build-debug.yml, release.yml
 ```
+
+> `Phosphor/Plugins/Plex/` currently contains empty `PlexSource.cs` / `PlexSourceProvider.cs` stubs —
+> leftovers from the pre-plug-in era; Plex lives in the `phosphor-plugins` repo.
 
 The host references the contract as a **NuGet `PackageReference`** (`Phosphor.Plugin.Abstractions`)
 and ships the single runtime copy of that DLL. The `Phosphor.Plugins.*` projects live in the separate
@@ -58,7 +75,8 @@ for load-time validation.
 
 ### Contract versioning & NuGet
 `PluginApi.Current` (in the abstractions repo) is the single source of truth for the contract version
-(currently `0.14.0`); the package version tracks it. Publishing is via **Trusted Publishing (OIDC)** —
+(currently `0.18.0`; the host's `Phosphor.csproj` pins the same version); the package version tracks it.
+The host accepts plug-ins whose major.minor is between `PluginApi.MinimumSupported` (0.12) and `Current`.
 the `phosphor-abstractions` repo's `.github/workflows/publish.yml` fires on a `v*` tag, derives the
 package version from the tag, and pushes to NuGet with no stored API key. A bump is: edit the contract,
 tag `vX.Y.Z`, done. The host and plug-ins then move to the new `PackageReference` version.
@@ -86,8 +104,6 @@ falls back to scanning every DLL, so this is a non-breaking speedup, not a hard 
 deliberately lightweight — do **not** replace it with a `plugin.json` manifest or `MetadataLoadContext`
 pre-scan unless a single plug-in folder starts shipping *multiple candidate provider DLLs*; the
 `AssemblyLoadContext` isolation already makes a bad/incompatible DLL non-fatal (logged and skipped).
-```
-
 
 ---
 
@@ -100,39 +116,30 @@ pre-scan unless a single plug-in folder starts shipping *multiple candidate prov
 - Wires global exception handlers.
 
 ### JukeboxViewModel.cs
-- Single large `ObservableObject` (CommunityToolkit.Mvvm). The authoritative source of truth for all UI state.
-- Owns: search results, now-playing state, category list, playlist management, Plex integration, screensaver state, settings propagation.
-- **Do not split into multiple files** without good reason — the entire file is intentionally cohesive.
+- Single large `ObservableObject` (CommunityToolkit.Mvvm, ~5.6k lines). The authoritative source of truth for UI/app state.
+- Owns: search results, now-playing state, category list, playlist management, screensaver state, settings propagation, and dispatch to plug-in sources.
+- Queue storage/navigation lives in `Playback/PlayerQueue.cs`, AutoDJ fill in `Playback/AutoDjService.cs`, and stream resolution/seek/gapless in `Playback/JukeboxPlayer.cs`. The VM coordinates them via `PlayerContext` (Player1 = Backglass, Player2 = Topper).
+- Keep logical groupings together; the file is large but intentionally cohesive. It is a `partial class`, so a split along an existing seam is acceptable if it clearly helps.
 - Genre categories come from `categories.json` via `GenreCategoryStore` (see below).
 
-**Section Map** (landmarks are approximate — line numbers drift; search by symbol/comment):
+**Where things are** (search by symbol; line numbers drift and are intentionally not listed):
 
-> Source browse/search/playback are now **source-agnostic**: the VM dispatches through the plug-in
-> `SourceRegistry` and capability interfaces (there are no YouTube- or Plex-specific browse methods
-> in the VM anymore). Look for `EnterBrowseNodeAsync`, `ExpandContainerToLeavesAsync`, `DoSearch`,
-> and the `...ViaPluginOrLegacy` helpers.
+> Source browse/search/playback are **source-agnostic**: the VM dispatches through the plug-in
+> `SourceRegistry` and capability interfaces (there are no YouTube- or Plex-specific methods in the VM).
 
-| Line | Section |
-|------|---------|
-| ~23 | Genre categories (loaded from `categories.json`) |
-| ~77 | Categories (playlists + genres, rebuilt dynamically) |
-| ~80 | Observable state properties |
-| ~311 | Search history |
-| ~384 | Video / thumbnail / category caches |
-| ~429 | Quality, audio channel, network buffering settings |
-| ~490 | Duration filter & pagination |
-| ~532 | Category management (add / remove / reorder) |
-| ~2005 | "Find More Like This" |
-| ~2020 | Queue persistence (saved to disk) |
-| ~2049 | Queue & Playback (play, stop, skip, previous) |
-| ~2439 | Playlist management (create, delete, add/remove items) |
-| ~2625 | AutoDJ (automatic queue fill from genres/videos) |
-| ~2843 | Play history |
-
+| Concern | Search for |
+|---------|-----------|
+| Genre categories / source tiles | `GenreCategoryStore.Load`, `SyncSourceTiles` |
+| Browse / drill-down | `EnterBrowseNodeAsync`, `ExpandContainerToLeavesAsync` |
+| Search (incl. history) | `DoSearch`, `SearchVideosViaPluginOrLegacy`, `AllSearchHistory` |
+| Live-stream playback | `ResolveAndPlayLiveAsync` |
+| Queue persistence / playback | `SaveQueue`, `PlayNextOn`, `Player1` / `Player2` |
+| Playlists, history, favorites | `_playlists` (`PlaylistManager`), `_history` (`PlayHistory`), `FavoritesIndex` |
 ### Windows
 - All windows inherit `JukeboxWindow` which provides borderless style, Win32 hit-test dragging, and "Expand to Monitor" toggle.
-- `PlayfieldProxy` / `BackglassProxy` marshal calls across thread boundaries to their respective `Dispatcher`s.
+- `PlayfieldProxy` / `BackglassProxy` / `TopperProxy` marshal calls across thread boundaries to their respective `Dispatcher`s.
 - `PlayfieldWindow` and `BackglassWindow` run on dedicated threads to keep video rendering off the UI thread.
+- `BackglassWindow` and `TopperWindow` implement `IPlaybackHost` (`*.PlaybackHost.cs` partials) so `Playback/JukeboxPlayer` can drive either; idle/ambient visuals live in `*.Ambient.cs`.
 - Window layout (position/size) is stored in `AppSettings` and restored on startup.
 
 ### AppSettings (Models/AppSettings.cs)
@@ -144,7 +151,7 @@ pre-scan unless a single plug-in folder starts shipping *multiple candidate prov
 ### Visuals
 - `AudioReactiveService` — WASAPI loopback capture → FFT → smoothed `Level`, `Bass`, `Treble`, beat detection. Feeds both blob patterns and projectM PCM.
 - Blob patterns (`IBlobPattern`) are rendered on a WPF `Canvas` using `DrawingContext`. Each window (Playfield, Backglass, Topper, DMD) independently selects a pattern from `BlobPattern` enum.
-- `MandelbrotGpuRenderer` — GPU-accelerated via `SharpDX`/`Direct2D`; falls back to CPU. Controlled by `AppSettings.MandelbrotUseGpu`.
+GPU-accelerated via Vortice (Direct3D 11 compute/shaders); falls back to CPU.
 - `ProjectMPattern` / `ProjectMRenderer` / `ProjectMInterop` — P/Invoke wrapper around `projectM-4.dll` (native). Renders into an OpenGL surface and blits to WPF. PCM is fed from `AudioReactiveService.ConsumeRawPcm()`.
 
 ### Caching
@@ -152,6 +159,7 @@ pre-scan unless a single plug-in folder starts shipping *multiple candidate prov
 - `PrefetchCache` — background pre-fetch of upcoming tracks.
 - `ThumbnailCache` — stores item thumbnails as PNG files.
 - `PlaylistCache` / `ResultCache` — in-memory + disk caches for playlist and search results with configurable TTL.
+- `CacheDownloadCoordinator` — coordinates cache downloads (driven through the plug-in `IDownloadable` capability).
 
 ### Input
 - `DofClient` — manages `DofBridge.exe` as a child process, connects via named pipe `"PhosphorDof"`, sends binary commands `[char type][int32 number][int32 value]`. Uses an unbounded `Channel` for FIFO ordering.
@@ -173,12 +181,11 @@ Each command is written as: `BinaryWriter.Write(char type)` + `Write(int number)
 
 `DofClient.Trigger(type, number, value)` enqueues a command; `TriggerPulse(type, number)` sends value=1 then auto-sends value=0 after a brief delay. All active triggers are auto-cleared on shutdown.
 
-### Plex source (`Phosphor.Plugins.Plex`)
-- Vanilla `HttpClient` REST client (`PlexService.cs`) against the Plex Media Server API — no Plex SDK.
-- Requires `serverUrl` + `token` (Plex auth token); multi-instance (two servers) supported via the provider.
-- Supports: library browsing, hub categories, artist/album drill-down, playlist enumeration, stream URL
-  construction, in-library scoped search, and gapless (stable pre-built audio URL). Stereo/2-channel
-  downmix is enforced for pinball cabs (surround channels drive exciters, not music).
+### Source plug-ins (separate repo)
+All sources (YouTube, Plex, Jellyfin, Emby, Vimeo, Dailymotion, SoundCloud, Twitch, SiriusXM, iHeartRadio,
+HDHomeRun, IPTV, PodcastIndex, LocalFolder) live in `phosphor-plugins`. The host stays source-agnostic and
+only sees them through the contract. Source-specific behavior (e.g. Plex's REST client and stereo downmix
+for pinball cabs) is documented in that repo.
 
 ---
 
@@ -191,10 +198,9 @@ Each command is written as: `BinaryWriter.Write(char type)` + `Write(int number)
 | Two DOF bridge builds (x64/x86) | Some cabinet setups run 32-bit DOF drivers |
 | Playfield/Backglass on separate threads | Video decode + render is heavy; keeps UI thread responsive |
 | Single shared `LibVLC` instance | LibVLC has significant init cost; sharing avoids double initialization |
-| No Plex SDK | Reduces dependencies; the REST API is stable and sufficient |
-| `JukeboxViewModel` kept in one file | Cohesion — large but deliberate; splitting adds navigation overhead |
+| `JukeboxViewModel` kept in one file | Cohesion — large but deliberate; playback/queue/AutoDJ already live in `Playback/` |
 | Mouse repositioning disabled by default | Mouse Without Borders (multi-PC KVM) interferes with programmatic cursor moves |
-| `BulkObservableCollection` / `RangedObservableCollection` | Batch UI updates to avoid per-item `CollectionChanged` storms |
+| `RangedObservableCollection` |
 
 ---
 
@@ -203,15 +209,15 @@ Each command is written as: `BinaryWriter.Write(char type)` + `Write(int number)
 - **UI**: WPF (.NET 8), CommunityToolkit.Mvvm
 - **Video**: LibVLCSharp
 - **Audio capture**: NAudio (WASAPI loopback)
-- **Visuals**: Custom WPF `DrawingContext`, SharpDX/Direct2D (Mandelbrot GPU), projectM 4 (P/Invoke)
+Vortice Direct3D 11 (Mandelbrot GPU), SkiaSharp, projectM 4 (P/Invoke)
 - **Sources**: each media source is an external plug-in (see Plug-in architecture above). **YouTube**
   (`Phosphor.Plugins.YouTube`) has pluggable engines — **YoutubeExplode** (in-process, default) and
   **yt-dlp** (bundled `dependencies/yt-dlp.exe`, self-updating), selectable in the plug-in's settings;
   it ships YoutubeExplode as a private dependency and reaches yt-dlp/ffmpeg via `IPluginHost.GetToolPath`.
   **Plex** (`Phosphor.Plugins.Plex`) is a REST client (no SDK).
 - **DOF**: DirectOutput Framework (via DofBridge process)
-- **Input**: DirectInput (via SharpDX or interop)
-- **Serialization**: System.Text.Json
+- **Input**: DirectInput (`SharpDX.DirectInput`)
+- **Storage**: `System.Text.Json` for settings/categories; `Microsoft.Data.Sqlite` for the Pinup Popper integration
 
 ---
 
@@ -223,6 +229,8 @@ Each command is written as: `BinaryWriter.Write(char type)` + `Write(int number)
 - Do **not** target .NET 8 APIs in `DofBridge` or `DofBridge.x86` — they must remain on .NET Framework 4.8.
 - When adding a new `IBlobPattern`, register it in the `BlobPattern` enum and the pattern factory; also consider whether it should be excluded from the random rotation (`ExcludeMandelbrotFromRandom` pattern).
 - `JukeboxViewModel` is partial-class friendly (CommunityToolkit source gen) but keep logical groupings together.
+- Queue, AutoDJ and stream-resolution logic belong in `Playback/`, not back in the ViewModel or window code-behind.
+- Do **not** add code under `Phosphor/Plugins/Plex/` — it holds empty legacy stubs; Plex is a plug-in.
 
 ---
 
@@ -232,6 +240,9 @@ Each command is written as: `BinaryWriter.Write(char type)` + `Write(int number)
 |------|--------------|
 | Startup & wiring | `App.xaml.cs` |
 | All UI state | `JukeboxViewModel.cs` |
+| Queue / AutoDJ / playback engine | `Playback/PlayerQueue.cs`, `Playback/AutoDjService.cs`, `Playback/JukeboxPlayer.cs`, `Playback/MediaEngine.cs` |
+| Favorites / history / playlists | `Services/FavoritesIndex.cs`, `Services/PlayHistory.cs`, `Services/PlaylistManager.cs` |
+| Pinup Popper integration | `Services/Pinup*.cs`, `Models/PinupSettings.cs`, `Windows/IPinupFollower.cs` |
 | Settings model | `Models/AppSettings.cs` |
 | Window base | `Windows/JukeboxWindow.cs` |
 | Video windows | `Windows/PlayfieldWindow.xaml.cs`, `Windows/BackglassWindow.xaml.cs` |
@@ -244,7 +255,7 @@ Each command is written as: `BinaryWriter.Write(char type)` + `Write(int number)
 | Caching (engine-agnostic; driven via `IDownloadable`) | `Caching/*.cs` |
 | Host playback vocabulary | `Video/VideoVocabulary.cs` |
 | Data models | `Models/VideoItem.cs`, `Models/Category.cs`, `Models/KeyBindings.cs` |
-| Genre categories | `Models/GenreCategoryStore.cs`, `categories.json` |
+| Genre categories | `Models/GenreCategoryStore.cs`, `default_categories.json` (shipped), `categories.json` (user) |
 
 ---
 
@@ -252,11 +263,10 @@ Each command is written as: `BinaryWriter.Write(char type)` + `Write(int number)
 
 `categories.json` is the single stateful backing file for genre categories. `GenreCategoryStore` is a static helper that reads/writes it:
 
-- **Load**: reads `categories.json` from the app directory into memory (cached after first read).
+- **Load**: reads `categories.json` from the app directory into memory (cached after first read). If it doesn't exist, it seeds from the shipped `default_categories.json` (never written to).
 - **Save / SaveInBackground**: writes the in-memory list back to `categories.json`.
-- On first run, the app ships a default `categories.json`; there is no separate seed file.
 - Plug-in browse tiles (Plex libraries, etc.) are reconciled into the category list via
-  `GenreCategoryStore.SyncSourceTiles` (adds new, prunes stale, preserves user customization).
+  `GenreCategoryStore.SyncSourceTiles` (adds new, prunes stale, preserves user customization); saved-search tiles use `SyncSavedSearchTiles`.
 - Unlike `AppSettings`, categories **are saved immediately** when the user edits them (not deferred to exit).
 
 ---
@@ -264,7 +274,7 @@ Each command is written as: `BinaryWriter.Write(char type)` + `Write(int number)
 ## Common Task Recipes
 
 - **Add a setting**: Add a property to `Models/AppSettings.cs` and a matching default in `default_settings.json`. Do not add save logic — settings save on exit.
-- **Add a genre category**: Add an entry to `categories.json`. The `GenreCategoryStore` handles serialization; no code change needed for static categories.
+Add an entry to `default_categories.json` (the shipped defaults). The `GenreCategoryStore` handles
 - **Add a blob pattern**: Implement `IBlobPattern`, add a value to the `BlobPattern` enum, register in the pattern factory. Decide whether to exclude from random rotation.
 - **Add a new window**: Inherit `JukeboxWindow`, create a proxy class if cross-thread access is needed, register and create the window in `App.xaml.cs`.
 - **Add a DOF trigger**: Call `DofClient.Trigger('E', number, value)` or `TriggerPulse('E', number)`. Pick an unused element number.
@@ -274,5 +284,4 @@ Each command is written as: `BinaryWriter.Write(char type)` + `Write(int number)
   ctor!) + the capability interfaces the source supports. The shared `Directory.Build.targets`
   self-deploys it automatically — clone an existing plug-in's csproj (e.g. `Phosphor.Plugins.Plex`).
   No host changes needed — it's discovered from `plugins/` at runtime.
-- **Add a Plex feature**: Work in `Phosphor.Plugins.Plex/PlexService.cs` (REST call) and map it to the
-  contract in `PlexSource.cs`/`PlexMappings.cs`. The host stays source-agnostic.
+- **Add a source-specific feature** (e.g. for Plex): work in that plug-in's project in the `phosphor-plugins` repo. If it needs a new contract capability, add it in `phosphor-abstractions`, publish a new package version, then bump the `PackageReference` here. The host stays source-agnostic.
