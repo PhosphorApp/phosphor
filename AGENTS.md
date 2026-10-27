@@ -11,7 +11,7 @@ Phosphor is split across **three repositories** under the `PhosphorApp` GitHub o
 | Repo | Contents | License | Visibility |
 |------|----------|---------|------------|
 | `PhosphorApp/phosphor` | Host app (`Phosphor/`) + `DofBridge` / `DofBridge.x86` | PolyForm Noncommercial | public |
-| MIT | public (+ NuGet package) |
+| `PhosphorApp/phosphor-abstractions` | The plug-in CONTRACT — published to NuGet as `Phosphor.Plugin.Abstractions` | MIT | public (+ NuGet package) |
 | `PhosphorApp/phosphor-plugins` | All `Phosphor.Plugins.*` source plug-ins (one solution) | MIT | public |
 
 The contract is MIT so third-party plug-in authors can build against it freely; the **app** is the
